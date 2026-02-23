@@ -1,4 +1,4 @@
-# Lexibrarian Memory
+# Lexibrary Memory
 
 ## Tooling
 - Package manager: `uv` (not pip/poetry)

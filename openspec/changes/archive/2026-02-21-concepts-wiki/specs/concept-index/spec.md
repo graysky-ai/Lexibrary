@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: ConceptIndex class
-The system SHALL provide a `ConceptIndex` class in `src/lexibrarian/wiki/index.py` that:
+The system SHALL provide a `ConceptIndex` class in `src/lexibrary/wiki/index.py` that:
 - Is constructed with `concepts_dir: Path` pointing to `.lexibrary/concepts/`
 - Provides `load() -> None` that scans the directory and parses all `.md` files into `ConceptFile` objects
 - Stores parsed concepts in a `concepts: list[ConceptFile]` attribute

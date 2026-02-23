@@ -1,12 +1,12 @@
 ## Why
 
-Phase 8c completes the agent integration layer. Currently, agents have no inter-agent signalling (the project-wide HANDOFF.md is static and noisy) and no environment-specific rules telling them how to use the Lexibrarian library. Without these, agents must be manually instructed each session — defeating the purpose of a self-documenting codebase. IWH provides ephemeral, directory-scoped signals that replace HANDOFF.md, and auto-generated agent rules make library usage automatic across Claude Code, Cursor, and Codex environments.
+Phase 8c completes the agent integration layer. Currently, agents have no inter-agent signalling (the project-wide HANDOFF.md is static and noisy) and no environment-specific rules telling them how to use the Lexibrary library. Without these, agents must be manually instructed each session — defeating the purpose of a self-documenting codebase. IWH provides ephemeral, directory-scoped signals that replace HANDOFF.md, and auto-generated agent rules make library usage automatic across Claude Code, Cursor, and Codex environments.
 
 ## What Changes
 
 - **New `iwh/` module** — Pydantic model, parser, serializer, reader (with consume-on-read), writer, and gitignore integration for `.iwh` files
 - **New `init/rules/` module** — Agent environment rule generators for Claude Code (CLAUDE.md + `.claude/commands/`), Cursor (`.cursor/rules/` + `.cursor/skills/`), and Codex (AGENTS.md)
-- **Marker utilities** — `<!-- lexibrarian:start/end -->` section management for appending/updating rule sections in existing files
+- **Marker utilities** — `<!-- lexibrary:start/end -->` section management for appending/updating rule sections in existing files
 - **`iwh_path()` helper** — Path computation for `.iwh` files in the `.lexibrary/` mirror tree
 - **`lexictl setup --update` implementation** — Replace the stub with real rule generation, reading `agent_environment` from persisted config
 - **HANDOFF.md removal** — Remove `HANDOFF_PLACEHOLDER`, scaffolder file creation, config `handoff_tokens`, and ignore pattern entries (**BREAKING** for projects with existing HANDOFF.md references)

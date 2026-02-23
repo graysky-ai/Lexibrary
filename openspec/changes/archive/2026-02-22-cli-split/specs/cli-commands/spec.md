@@ -16,7 +16,7 @@ All error messages, help text, and suggestions in CLI commands SHALL reference t
 - Status dashboard validation section SHALL reference `lexictl validate`
 
 #### Scenario: Project root error references lexictl init
-- **WHEN** any command that requires a project root is run outside a Lexibrarian project
+- **WHEN** any command that requires a project root is run outside a Lexibrary project
 - **THEN** the error message contains "lexictl init" (not "lexi init")
 
 #### Scenario: Init --agent help references lexictl setup
@@ -62,7 +62,7 @@ The `lexi --help` output SHALL list only agent-facing commands: `lookup`, `index
 - **THEN** the system SHALL update all changed files and regenerate START_HERE.md
 
 #### Scenario: No project found
-- **WHEN** `lexictl update` is run outside a Lexibrarian project (no `.lexibrary/`)
+- **WHEN** `lexictl update` is run outside a Lexibrary project (no `.lexibrary/`)
 - **THEN** the system SHALL print an error and exit with code 1
 
 ### Requirement: Lookup command returns design file

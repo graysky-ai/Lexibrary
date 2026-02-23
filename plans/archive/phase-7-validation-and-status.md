@@ -57,7 +57,7 @@ Phase 7 builds the tools. Phase 8 (Agent Setup) and Phase 9 (Daemon & CI) wire t
 
 ## 7a — Validator Module
 
-### New module: `src/lexibrarian/validator/`
+### New module: `src/lexibrary/validator/`
 
 ```
 validator/
@@ -282,9 +282,9 @@ This keeps `lexi status` fast (< 2 seconds for typical projects) while `lexi val
 
 | File | Purpose |
 |------|---------|
-| `src/lexibrarian/validator/__init__.py` | Public API: `validate_library()`, re-export `ValidationReport` |
-| `src/lexibrarian/validator/checks.py` | Individual check functions |
-| `src/lexibrarian/validator/report.py` | `ValidationReport`, `ValidationIssue`, `ValidationSummary` models + Rich rendering |
+| `src/lexibrary/validator/__init__.py` | Public API: `validate_library()`, re-export `ValidationReport` |
+| `src/lexibrary/validator/checks.py` | Individual check functions |
+| `src/lexibrary/validator/report.py` | `ValidationReport`, `ValidationIssue`, `ValidationSummary` models + Rich rendering |
 | `tests/test_validator.py` | Unit tests for each check function |
 | `tests/test_validator_integration.py` | Integration tests with `tmp_path` project fixtures |
 | `tests/test_cli_validate_status.py` | CLI command tests for validate and status |
@@ -293,9 +293,9 @@ This keeps `lexi status` fast (< 2 seconds for typical projects) while `lexi val
 
 | File | Change |
 |------|--------|
-| `src/lexibrarian/cli.py` | Replace `validate` and `status` stubs with real implementations; enhance `lexi lookup` with convention inheritance |
+| `src/lexibrary/cli.py` | Replace `validate` and `status` stubs with real implementations; enhance `lexi lookup` with convention inheritance |
 | `blueprints/START_HERE.md` | Add `validator` to Package Map and Navigation by Intent |
-| `blueprints/src/lexibrarian/cli.md` | Update with new validate/status/lookup behavior |
+| `blueprints/src/lexibrary/cli.md` | Update with new validate/status/lookup behavior |
 
 ---
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from lexibrarian.config.schema import (
+from lexibrary.config.schema import (
     CrawlConfig,
     DaemonConfig,
     IgnoreConfig,
@@ -207,7 +207,7 @@ def test_lexibrary_config_has_iwh() -> None:
 
 
 def test_iwh_config_importable_from_package() -> None:
-    """IWHConfig is re-exported from lexibrarian.config."""
-    from lexibrarian.config import IWHConfig as PackageIWHConfig
+    """IWHConfig is re-exported from lexibrary.config."""
+    from lexibrary.config import IWHConfig as PackageIWHConfig
 
     assert PackageIWHConfig is IWHConfig

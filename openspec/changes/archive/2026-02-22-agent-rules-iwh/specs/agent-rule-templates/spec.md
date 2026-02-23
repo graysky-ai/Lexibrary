@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Core rule content
-The system SHALL provide `get_core_rules() -> str` in `src/lexibrarian/init/rules/base.py` returning shared Lexibrarian rules applicable to all agent environments. The rules SHALL instruct agents to:
+The system SHALL provide `get_core_rules() -> str` in `src/lexibrary/init/rules/base.py` returning shared Lexibrary rules applicable to all agent environments. The rules SHALL instruct agents to:
 - Read `.lexibrary/START_HERE.md` at session start
 - Check for `.iwh` signals when entering directories — read, act, delete
 - Run `lexi lookup <file>` before editing
@@ -34,18 +34,18 @@ The system SHALL provide `get_search_skill_content() -> str` in `base.py` return
 - **THEN** the returned string SHALL include instructions to run `lexi search` combining concept lookup, Stack search, and design file results
 
 ### Requirement: Claude Code rule generation
-The system SHALL provide `generate_claude_rules(project_root: Path) -> list[Path]` in `src/lexibrarian/init/rules/claude.py` that generates:
-- `CLAUDE.md` — append/update a marker-delimited Lexibrarian section with core rules
+The system SHALL provide `generate_claude_rules(project_root: Path) -> list[Path]` in `src/lexibrary/init/rules/claude.py` that generates:
+- `CLAUDE.md` — append/update a marker-delimited Lexibrary section with core rules
 - `.claude/commands/lexi-orient.md` — orient command file
 - `.claude/commands/lexi-search.md` — search command file
 
 #### Scenario: Creates CLAUDE.md from scratch
 - **WHEN** calling `generate_claude_rules()` where no `CLAUDE.md` exists
-- **THEN** a `CLAUDE.md` SHALL be created containing the Lexibrarian section between `<!-- lexibrarian:start -->` and `<!-- lexibrarian:end -->` markers
+- **THEN** a `CLAUDE.md` SHALL be created containing the Lexibrary section between `<!-- lexibrary:start -->` and `<!-- lexibrary:end -->` markers
 
 #### Scenario: Appends to existing CLAUDE.md without markers
-- **WHEN** calling `generate_claude_rules()` where `CLAUDE.md` exists but has no Lexibrarian markers
-- **THEN** the Lexibrarian section SHALL be appended with markers, and existing content SHALL be preserved
+- **WHEN** calling `generate_claude_rules()` where `CLAUDE.md` exists but has no Lexibrary markers
+- **THEN** the Lexibrary section SHALL be appended with markers, and existing content SHALL be preserved
 
 #### Scenario: Updates existing marked section
 - **WHEN** calling `generate_claude_rules()` where `CLAUDE.md` exists with markers and old content between them
@@ -60,36 +60,36 @@ The system SHALL provide `generate_claude_rules(project_root: Path) -> list[Path
 - **THEN** command files SHALL be overwritten with current content
 
 ### Requirement: Cursor rule generation
-The system SHALL provide `generate_cursor_rules(project_root: Path) -> list[Path]` in `src/lexibrarian/init/rules/cursor.py` that generates:
-- `.cursor/rules/lexibrarian.mdc` — MDC rules file with YAML frontmatter (`alwaysApply: true`)
+The system SHALL provide `generate_cursor_rules(project_root: Path) -> list[Path]` in `src/lexibrary/init/rules/cursor.py` that generates:
+- `.cursor/rules/lexibrary.mdc` — MDC rules file with YAML frontmatter (`alwaysApply: true`)
 - `.cursor/skills/lexi.md` — combined skills file
 
 #### Scenario: Creates MDC rules file
 - **WHEN** calling `generate_cursor_rules()`
-- **THEN** `.cursor/rules/lexibrarian.mdc` SHALL exist with YAML frontmatter containing `description`, `globs`, and `alwaysApply: true`, followed by core rules
+- **THEN** `.cursor/rules/lexibrary.mdc` SHALL exist with YAML frontmatter containing `description`, `globs`, and `alwaysApply: true`, followed by core rules
 
 #### Scenario: Creates combined skills file
 - **WHEN** calling `generate_cursor_rules()`
 - **THEN** `.cursor/skills/lexi.md` SHALL exist with combined orient and search skill content
 
 ### Requirement: Codex rule generation
-The system SHALL provide `generate_codex_rules(project_root: Path) -> list[Path]` in `src/lexibrarian/init/rules/codex.py` that generates:
-- `AGENTS.md` — append/update a marker-delimited Lexibrarian section with core rules and embedded skills
+The system SHALL provide `generate_codex_rules(project_root: Path) -> list[Path]` in `src/lexibrary/init/rules/codex.py` that generates:
+- `AGENTS.md` — append/update a marker-delimited Lexibrary section with core rules and embedded skills
 
 #### Scenario: Creates AGENTS.md from scratch
 - **WHEN** calling `generate_codex_rules()` where no `AGENTS.md` exists
-- **THEN** an `AGENTS.md` SHALL be created containing the Lexibrarian section between markers
+- **THEN** an `AGENTS.md` SHALL be created containing the Lexibrary section between markers
 
 #### Scenario: Appends to existing AGENTS.md
 - **WHEN** calling `generate_codex_rules()` where `AGENTS.md` exists without markers
-- **THEN** the Lexibrarian section SHALL be appended with markers, and existing content SHALL be preserved
+- **THEN** the Lexibrary section SHALL be appended with markers, and existing content SHALL be preserved
 
 #### Scenario: Updates existing marked section
 - **WHEN** calling `generate_codex_rules()` where `AGENTS.md` exists with markers
 - **THEN** only the content between markers SHALL be replaced
 
 ### Requirement: Rule generation public API
-The system SHALL provide in `src/lexibrarian/init/rules/__init__.py`:
+The system SHALL provide in `src/lexibrary/init/rules/__init__.py`:
 - `generate_rules(project_root: Path, environments: list[str]) -> dict[str, list[Path]]` — generates rules for specified environments, returning a mapping of environment name to list of created file paths
 - `supported_environments() -> list[str]` — returns `["claude", "cursor", "codex"]`
 

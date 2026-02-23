@@ -14,9 +14,9 @@
 |------|---------|
 | `pyproject.toml` | Project metadata, dependencies, build config, CLI entry points |
 | `.python-version` | Pin to `3.12` |
-| `.gitignore` | Python defaults + `.aindex`, `.lexibrarian_cache.json`, `.lexibrarian.log`, `baml_client/` |
-| `src/lexibrarian/__init__.py` | `__version__ = "0.1.0"` |
-| `src/lexibrarian/__main__.py` | `from lexibrarian.cli import app; app()` |
+| `.gitignore` | Python defaults + `.aindex`, `.lexibrary_cache.json`, `.lexibrary.log`, `baml_client/` |
+| `src/lexibrary/__init__.py` | `__version__ = "0.1.0"` |
+| `src/lexibrary/__main__.py` | `from lexibrary.cli import app; app()` |
 
 ### `pyproject.toml` specification
 
@@ -54,15 +54,15 @@ dev = [
 ]
 
 [project.scripts]
-lexibrarian = "lexibrarian.cli:app"
-lexi = "lexibrarian.cli:app"
+lexibrary = "lexibrary.cli:app"
+lexi = "lexibrary.cli:app"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/lexibrarian"]
+packages = ["src/lexibrary"]
 
 [tool.ruff]
 target-version = "py311"
@@ -80,14 +80,14 @@ testpaths = ["tests"]
 ```
 
 ### Steps
-1. Create all directories: `src/lexibrarian/`, `src/lexibrarian/config/`, `src/lexibrarian/crawler/`, `src/lexibrarian/indexer/`, `src/lexibrarian/llm/`, `src/lexibrarian/tokenizer/`, `src/lexibrarian/daemon/`, `src/lexibrarian/ignore/`, `src/lexibrarian/utils/`, `tests/`, `tests/fixtures/sample_project/`, `baml_src/`
+1. Create all directories: `src/lexibrary/`, `src/lexibrary/config/`, `src/lexibrary/crawler/`, `src/lexibrary/indexer/`, `src/lexibrary/llm/`, `src/lexibrary/tokenizer/`, `src/lexibrary/daemon/`, `src/lexibrary/ignore/`, `src/lexibrary/utils/`, `tests/`, `tests/fixtures/sample_project/`, `baml_src/`
 2. Write `pyproject.toml`
 3. Write `.python-version` containing `3.12`
 4. Write `.gitignore`
-5. Write `src/lexibrarian/__init__.py` and `__main__.py`
+5. Write `src/lexibrary/__init__.py` and `__main__.py`
 6. Place empty `__init__.py` in every sub-package
 7. Run `uv sync` to install dependencies and create `uv.lock`
-8. Verify: `uv run python -m lexibrarian` runs without import errors
+8. Verify: `uv run python -m lexibrary` runs without import errors
 
 ---
 
@@ -97,10 +97,10 @@ testpaths = ["tests"]
 
 | File | Purpose |
 |------|---------|
-| `src/lexibrarian/config/__init__.py` | Re-export `LexibraryConfig`, `load_config` |
-| `src/lexibrarian/config/schema.py` | Pydantic models |
-| `src/lexibrarian/config/loader.py` | Find config file, load + validate |
-| `src/lexibrarian/config/defaults.py` | Default `lexibrary.toml` template string for `init` command |
+| `src/lexibrary/config/__init__.py` | Re-export `LexibraryConfig`, `load_config` |
+| `src/lexibrary/config/schema.py` | Pydantic models |
+| `src/lexibrary/config/loader.py` | Find config file, load + validate |
+| `src/lexibrary/config/defaults.py` | Default `lexibrary.toml` template string for `init` command |
 
 ### `schema.py` — Pydantic Models
 
@@ -149,7 +149,7 @@ class IgnoreConfig(BaseModel):
 class DaemonConfig(BaseModel):
     debounce_seconds: float = 2.0
     full_sweep_interval_minutes: int = 30
-    log_file: str = ".lexibrarian.log"
+    log_file: str = ".lexibrary.log"
 
 class OutputConfig(BaseModel):
     filename: str = ".aindex"
@@ -209,10 +209,10 @@ Contains a `DEFAULT_CONFIG_TEMPLATE: str` — the full `lexibrary.toml` content 
 
 | File | Purpose |
 |------|---------|
-| `src/lexibrarian/ignore/__init__.py` | Re-export `IgnoreMatcher`, `create_ignore_matcher` |
-| `src/lexibrarian/ignore/gitignore.py` | Parse `.gitignore` files using `pathspec` |
-| `src/lexibrarian/ignore/patterns.py` | Load additional patterns from config |
-| `src/lexibrarian/ignore/matcher.py` | Combined matcher with a single `is_ignored(path) -> bool` |
+| `src/lexibrary/ignore/__init__.py` | Re-export `IgnoreMatcher`, `create_ignore_matcher` |
+| `src/lexibrary/ignore/gitignore.py` | Parse `.gitignore` files using `pathspec` |
+| `src/lexibrary/ignore/patterns.py` | Load additional patterns from config |
+| `src/lexibrary/ignore/matcher.py` | Combined matcher with a single `is_ignored(path) -> bool` |
 
 ### `gitignore.py` — Key Logic
 
@@ -312,10 +312,10 @@ def create_ignore_matcher(config: LexibraryConfig, root: Path) -> IgnoreMatcher:
 
 | File | Purpose |
 |------|---------|
-| `src/lexibrarian/utils/__init__.py` | Re-exports |
-| `src/lexibrarian/utils/hashing.py` | `hash_file(path) -> str` — SHA-256 hex digest |
-| `src/lexibrarian/utils/logging.py` | `setup_logging(verbose, log_file)` — configure stdlib logging + rich handler |
-| `src/lexibrarian/utils/paths.py` | `find_project_root(start) -> Path` — find root by looking for `.git` or `lexibrary.toml` |
+| `src/lexibrary/utils/__init__.py` | Re-exports |
+| `src/lexibrary/utils/hashing.py` | `hash_file(path) -> str` — SHA-256 hex digest |
+| `src/lexibrary/utils/logging.py` | `setup_logging(verbose, log_file)` — configure stdlib logging + rich handler |
+| `src/lexibrary/utils/paths.py` | `find_project_root(start) -> Path` — find root by looking for `.git` or `lexibrary.toml` |
 
 ### `hashing.py`
 
@@ -372,7 +372,7 @@ def find_project_root(start: Path | None = None) -> Path:
 
 ## 1.5 CLI Skeleton
 
-### File: `src/lexibrarian/cli.py`
+### File: `src/lexibrary/cli.py`
 
 Minimal Typer app with placeholder commands. Full implementations come in Phase 6.
 
@@ -381,7 +381,7 @@ import typer
 from rich.console import Console
 
 app = typer.Typer(
-    name="lexibrarian",
+    name="lexibrary",
     help="AI-friendly codebase indexer. Creates .aindex files to help LLMs navigate your project.",
     no_args_is_help=True,
 )
@@ -394,7 +394,7 @@ def init(path: str = typer.Argument(".", help="Project root directory")):
 
 @app.command()
 def crawl(path: str = typer.Argument(".", help="Project root directory")):
-    """Run the Lexibrarian crawler."""
+    """Run the Lexibrary crawler."""
     console.print("[yellow]crawl command — not yet implemented[/yellow]")
 
 @app.command()
@@ -417,7 +417,7 @@ def clean(path: str = typer.Argument(".", help="Project root directory")):
 ```bash
 uv sync
 uv run lexi --help        # Shows help with all 5 commands
-uv run lexibrarian --help  # Same output (alias works)
+uv run lexibrary --help  # Same output (alias works)
 uv run lexi crawl          # Prints "not yet implemented"
 ```
 
@@ -427,7 +427,7 @@ uv run lexi crawl          # Prints "not yet implemented"
 
 - [ ] `uv sync` installs all dependencies without errors
 - [ ] `uv run lexi --help` shows help text with all 5 subcommands
-- [ ] `uv run lexibrarian --help` produces identical output
+- [ ] `uv run lexibrary --help` produces identical output
 - [ ] `load_config()` returns valid `LexibraryConfig` with defaults when no file exists
 - [ ] `load_config(path)` correctly loads and validates a `lexibrary.toml` fixture
 - [ ] `IgnoreMatcher.is_ignored()` correctly matches `.gitignore` patterns

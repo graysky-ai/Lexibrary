@@ -1,6 +1,6 @@
 ## Why
 
-Lexibrarian needs foundational infrastructure to function. Currently, there is no project structure, configuration system, CLI entry point, or ignore-pattern handling. Without these fundamentals, we cannot build any higher-level features (crawling, indexing, LLM integration). This phase establishes the scaffolding that all subsequent phases depend on.
+Lexibrary needs foundational infrastructure to function. Currently, there is no project structure, configuration system, CLI entry point, or ignore-pattern handling. Without these fundamentals, we cannot build any higher-level features (crawling, indexing, LLM integration). This phase establishes the scaffolding that all subsequent phases depend on.
 
 ## What Changes
 
@@ -28,5 +28,5 @@ Lexibrarian needs foundational infrastructure to function. Currently, there is n
 
 - **Code**: Affects entire project structure; subsequent phases depend on config system, ignore system, and CLI entry points
 - **Dependencies**: Introduces Typer, Pydantic, Pathspec, Rich, Tiktoken, BAML, Watchdog, and dev tools (Pytest, Ruff, Mypy)
-- **CLI**: Establishes `lexi` and `lexibrarian` command entry points; all future commands build on this foundation
+- **CLI**: Establishes `lexi` and `lexibrary` command entry points; all future commands build on this foundation
 - **User Workflow**: Users can now initialize projects and see CLI help; configuration is centralized in `lexibrary.toml`

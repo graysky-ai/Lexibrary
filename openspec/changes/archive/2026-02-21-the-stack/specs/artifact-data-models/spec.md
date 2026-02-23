@@ -18,20 +18,20 @@ Pydantic 2 model with fields: `source_path` (str), `frontmatter` (DesignFileFron
 ## REMOVED Requirements
 
 ### Requirement: GuardrailThread model
-**Reason**: Replaced by `StackPost` model in `src/lexibrarian/stack/models.py` (see `stack-post-model` spec).
-**Migration**: Use `StackPost` from `lexibrarian.stack` instead of `GuardrailThread` from `lexibrarian.artifacts`.
+**Reason**: Replaced by `StackPost` model in `src/lexibrary/stack/models.py` (see `stack-post-model` spec).
+**Migration**: Use `StackPost` from `lexibrary.stack` instead of `GuardrailThread` from `lexibrary.artifacts`.
 
 ## MODIFIED Requirements
 
 ### Requirement: Artifacts module exports
-`src/lexibrarian/artifacts/__init__.py` SHALL re-export: DesignFile, DesignFileFrontmatter, AIndexFile, ConceptFile, StalenessMetadata. The `GuardrailThread` export SHALL be removed.
+`src/lexibrary/artifacts/__init__.py` SHALL re-export: DesignFile, DesignFileFrontmatter, AIndexFile, ConceptFile, StalenessMetadata. The `GuardrailThread` export SHALL be removed.
 
 #### Scenario: DesignFileFrontmatter importable from artifacts
-- **WHEN** `from lexibrarian.artifacts import DesignFileFrontmatter` is used
+- **WHEN** `from lexibrary.artifacts import DesignFileFrontmatter` is used
 - **THEN** the import SHALL succeed
 
 #### Scenario: GuardrailThread no longer exported
-- **WHEN** `from lexibrarian.artifacts import GuardrailThread` is attempted
+- **WHEN** `from lexibrary.artifacts import GuardrailThread` is attempted
 - **THEN** the import SHALL raise `ImportError`
 
 ## RENAMED Requirements

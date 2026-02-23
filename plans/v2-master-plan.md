@@ -1,4 +1,4 @@
-# Lexibrarian v2 — Master Implementation Plan
+# Lexibrary v2 — Master Implementation Plan
 
 **Reference:** `lexibrary-overview.md` (the authoritative design document)
 **Previous plans:** `plans/archive/v1/` (original aindex-only approach)
@@ -36,15 +36,15 @@ The v1 codebase built a solid foundation of reusable infrastructure. The new vis
 
 | Module | Purpose |
 |--------|---------|
-| `src/lexibrarian/ast_parser/` | Tree-sitter multi-language AST + interface extraction |
-| `src/lexibrarian/artifacts/` | Pydantic models for design files, .aindex, concepts, stack posts |
-| `src/lexibrarian/archivist/` | Orchestrate AST → skeleton → LLM → design file pipeline |
-| `src/lexibrarian/wiki/` | Wikilink parsing, resolution, concept file management (originally `knowledge_graph/`) |
-| `src/lexibrarian/stack/` | Stack post CRUD, voting, search |
-| `src/lexibrarian/init/` | Project init wizard + agent environment rule generation |
-| `src/lexibrarian/validator/` | Consistency checks (links, token bounds, bidirectional deps) |
-| `src/lexibrarian/linkgraph/` | SQLite link graph index — schema, builder, read-only query interface |
-| `src/lexibrarian/iwh/` | I Was Here (IWH) system — ephemeral inter-agent signals |
+| `src/lexibrary/ast_parser/` | Tree-sitter multi-language AST + interface extraction |
+| `src/lexibrary/artifacts/` | Pydantic models for design files, .aindex, concepts, stack posts |
+| `src/lexibrary/archivist/` | Orchestrate AST → skeleton → LLM → design file pipeline |
+| `src/lexibrary/wiki/` | Wikilink parsing, resolution, concept file management (originally `knowledge_graph/`) |
+| `src/lexibrary/stack/` | Stack post CRUD, voting, search |
+| `src/lexibrary/init/` | Project init wizard + agent environment rule generation |
+| `src/lexibrary/validator/` | Consistency checks (links, token bounds, bidirectional deps) |
+| `src/lexibrary/linkgraph/` | SQLite link graph index — schema, builder, read-only query interface |
+| `src/lexibrary/iwh/` | I Was Here (IWH) system — ephemeral inter-agent signals |
 
 ---
 
@@ -52,7 +52,7 @@ The v1 codebase built a solid foundation of reusable infrastructure. The new vis
 
 ```
 project-root/
-  .lexignore             # Lexibrarian-specific ignore patterns (gitignore format)
+  .lexignore             # Lexibrary-specific ignore patterns (gitignore format)
   .lexibrary/
     config.yaml          # project config (version controlled)
     index.db             # link graph index (gitignored, rebuilt by lexictl update)
@@ -75,7 +75,7 @@ project-root/
 
 `.iwh` files are ephemeral inter-agent signals, gitignored (pattern: `**/.iwh`). See overview §1 for full IWH specification.
 
-Config lives at `.lexibrary/config.yaml` (project) and `~/.config/lexibrarian/config.yaml` (global).
+Config lives at `.lexibrary/config.yaml` (project) and `~/.config/lexibrary/config.yaml` (global).
 Project root is found by walking upward from CWD to locate `.lexibrary/`.
 
 ### Ignore System
@@ -195,7 +195,7 @@ Interface hash prevents expensive LLM regeneration when only internal implementa
 
 **Goal:** `lexictl update [<path>]` generates or refreshes design files as a **fallback** when agents haven't updated them directly. `lexi lookup <file>` returns the design file. START_HERE.md generation. `lexi describe` for directory descriptions.
 
-This is the core value proposition of Lexibrarian.
+This is the core value proposition of Lexibrary.
 
 ### Agent-First Authoring Model
 
@@ -254,13 +254,13 @@ Config-driven LLM client routing via BAML `ClientRegistry` (spike needed to veri
 Every generated artifact gets a footer:
 
 ```markdown
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/services/auth_service.py
 source_hash: a3f2b8c1
 interface_hash: 7e2d4f90
 design_hash: c4d5e6f7
 generated: 2026-01-15T10:30:00Z
-generator: lexibrarian v0.2.0
+generator: lexibrary v0.2.0
 -->
 ```
 
@@ -297,7 +297,7 @@ A wikilink `[[Authentication]]` resolves to `.lexibrary/concepts/Authentication.
 
 ### New Module: `wiki/`
 
-`src/lexibrarian/wiki/` — resolver, parser, serializer, index, template. The master plan called this `knowledge_graph/` but `wiki/` better reflects the evolved design.
+`src/lexibrary/wiki/` — resolver, parser, serializer, index, template. The master plan called this `knowledge_graph/` but `wiki/` better reflects the evolved design.
 
 ### What to Watch Out For
 
@@ -433,7 +433,7 @@ Phase 8 is structured into three sequential sub-phases:
 
 1. **Project Detection** — auto-detect name from `pyproject.toml`/`package.json`/directory name. *(Default: directory name)*
 2. **Scope Root** — "Which directories contain your source code?" Auto-suggest `src/`, `lib/`, `app/`. *(Default: `.`). "Modify later: `.lexibrary/config.yaml` → `scope_root`"*
-3. **Agent Environment** — auto-detect from `.claude/`, `.cursor/`, `CLAUDE.md`/`AGENTS.md`. Multi-select. If folders missing, ask before creating. If existing files found, grep for Lexibrarian section: found → advise user; not found → will append. *(Default: auto-detected). "Modify later: `.lexibrary/config.yaml` → `agent_environment`"*
+3. **Agent Environment** — auto-detect from `.claude/`, `.cursor/`, `CLAUDE.md`/`AGENTS.md`. Multi-select. If folders missing, ask before creating. If existing files found, grep for Lexibrary section: found → advise user; not found → will append. *(Default: auto-detected). "Modify later: `.lexibrary/config.yaml` → `agent_environment`"*
 4. **LLM Provider** — detect env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). "We never store, log, or transmit your API key." Store provider + env var name in config. If env var not found, advise what to set. *(Default: first detected). "Modify later: `.lexibrary/config.yaml` → `llm.provider`, `llm.api_key_env`"*
 5. **Ignore Patterns** — suggest common patterns based on detected project type. *(Default: none). "Modify later: `.lexignore`"*
 6. **Token Budgets** — show defaults, offer to customize. *(Default: accept). "Customize later: `.lexibrary/config.yaml` → `token_budgets`"*
@@ -452,7 +452,7 @@ Phase 8 is structured into three sequential sub-phases:
 **What to Watch Out For:**
 - API key security: never prompt for the key itself; detect from environment only; display clear transparency message
 - Agent environment detection: check for folders AND files (`.claude/` dir, `CLAUDE.md` file)
-- `AGENTS.md`/`CLAUDE.md` editing: grep for `<!-- lexibrarian:` markers before modifying; append section if no marker found; warn user if existing section found
+- `AGENTS.md`/`CLAUDE.md` editing: grep for `<!-- lexibrary:` markers before modifying; append section if no marker found; warn user if existing section found
 - Wizard should work non-interactively with `--defaults` flag for CI/scripting
 
 ---
@@ -466,7 +466,7 @@ Phase 8 is structured into three sequential sub-phases:
 | Environment | Files Written |
 |-------------|--------------|
 | `claude` | `CLAUDE.md` (append section), `.claude/commands/lexi-*.md`, `.claude/skills/` |
-| `cursor` | `.cursor/rules/lexibrarian.mdc`, `.cursor/skills/lexi.md` |
+| `cursor` | `.cursor/rules/lexibrary.mdc`, `.cursor/skills/lexi.md` |
 | `codex` | `AGENTS.md` (append section) |
 
 **Rule Content — agents are instructed to:**
@@ -481,7 +481,7 @@ Phase 8 is structured into three sequential sub-phases:
 
 **I Was Here (IWH) System:**
 
-New module: `src/lexibrarian/iwh/`
+New module: `src/lexibrary/iwh/`
 
 | Component | Purpose |
 |-----------|---------|
@@ -539,7 +539,7 @@ The agent-first authoring model (D-019) means agents update design files during 
 **Implementation:**
 ```bash
 #!/bin/sh
-# Lexibrarian post-commit hook — update design files for committed changes
+# Lexibrary post-commit hook — update design files for committed changes
 # Generated by: lexictl setup --hooks
 
 changed_files=$(git diff-tree --no-commit-id --name-only -r HEAD)
@@ -548,7 +548,7 @@ if [ -n "$changed_files" ]; then
 fi
 ```
 
-The hook runs `lexictl update` in the background (`&`) so it doesn't block the user's terminal after commit. Output goes to `.lexibrarian.log`.
+The hook runs `lexictl update` in the background (`&`) so it doesn't block the user's terminal after commit. Output goes to `.lexibrary.log`.
 
 **What to Watch Out For:**
 - Hook must be executable (`chmod +x`)
@@ -583,7 +583,7 @@ Before running a sweep, scan `scope_root` for any file with `mtime` newer than t
 **PR validation gate:**
 ```yaml
 # GitHub Actions example
-- name: Validate Lexibrarian library
+- name: Validate Lexibrary library
   run: |
     lexictl update --changed-only $(git diff --name-only origin/main...HEAD)
     lexictl validate --severity warning
@@ -654,7 +654,7 @@ Worktrees are naturally safe across all trigger modes:
 
 ### Logging
 
-All trigger modes log to `.lexibrarian.log` (project root, gitignored):
+All trigger modes log to `.lexibrary.log` (project root, gitignored):
 - File change events processed (source file path, change level)
 - LLM calls initiated and completed (with duration and token usage)
 - Design hash re-check discards ("agent edited during generation, discarding")
@@ -729,7 +729,7 @@ Tags are also indexed (design file, concept, and Stack post tags in a shared nam
 
 ### SQLite Schema
 
-Database: `.lexibrary/index.db` (gitignored, always rebuildable). 8 tables + FTS5 virtual table. Implementation: `src/lexibrarian/linkgraph/schema.py`.
+Database: `.lexibrary/index.db` (gitignored, always rebuildable). 8 tables + FTS5 virtual table. Implementation: `src/lexibrary/linkgraph/schema.py`.
 
 **Pragmas** (set on every connection open):
 ```sql
@@ -788,7 +788,7 @@ Constraints: `UNIQUE(source_id, target_id, link_type)`, `ON DELETE CASCADE`.
 - **Multi-hop traversal** (D-081): Recursive CTEs with configurable `max_depth` (default: 3). See `LinkGraph.traverse()`.
 - **Build summary**: `SELECT action, COUNT(*), SUM(duration_ms) FROM build_log WHERE build_started = (SELECT MAX(build_started) FROM build_log) GROUP BY action`
 
-### New Module: `src/lexibrarian/linkgraph/`
+### New Module: `src/lexibrary/linkgraph/`
 
 | File | Purpose | Status |
 |------|---------|--------|

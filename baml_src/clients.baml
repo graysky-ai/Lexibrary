@@ -1,4 +1,4 @@
-// Lexibrarian LLM client definitions
+// Lexibrary LLM client definitions
 
 retry_policy DefaultRetry {
   max_retries 2

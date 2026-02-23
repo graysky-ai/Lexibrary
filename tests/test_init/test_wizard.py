@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 from rich.console import Console
 
-from lexibrarian.init.wizard import (
+from lexibrary.init.wizard import (
     WizardAnswers,
     _step_agent_environment,
     _step_ignore_patterns,
@@ -172,13 +172,13 @@ class TestStepSummaryDefaults:
 class TestStepProjectNameInteractive:
     def test_user_accepts_detected(self, tmp_path: Path, console: Console) -> None:
         (tmp_path / "pyproject.toml").write_text('[project]\nname = "detected"\n', encoding="utf-8")
-        with patch("lexibrarian.init.wizard.Prompt.ask", return_value="detected"):
+        with patch("lexibrary.init.wizard.Prompt.ask", return_value="detected"):
             result = _step_project_name(tmp_path, console, use_defaults=False)
         assert result == "detected"
 
     def test_user_overrides_name(self, tmp_path: Path, console: Console) -> None:
         (tmp_path / "pyproject.toml").write_text('[project]\nname = "detected"\n', encoding="utf-8")
-        with patch("lexibrarian.init.wizard.Prompt.ask", return_value="custom-name"):
+        with patch("lexibrary.init.wizard.Prompt.ask", return_value="custom-name"):
             result = _step_project_name(tmp_path, console, use_defaults=False)
         assert result == "custom-name"
 
@@ -186,19 +186,19 @@ class TestStepProjectNameInteractive:
 class TestStepScopeRootInteractive:
     def test_user_accepts_detected(self, tmp_path: Path, console: Console) -> None:
         (tmp_path / "src").mkdir()
-        with patch("lexibrarian.init.wizard.Prompt.ask", return_value="src/"):
+        with patch("lexibrary.init.wizard.Prompt.ask", return_value="src/"):
             result = _step_scope_root(tmp_path, console, use_defaults=False)
         assert result == "src/"
 
 
 class TestStepAgentEnvironmentInteractive:
     def test_user_selects_multiple(self, tmp_path: Path, console: Console) -> None:
-        with patch("lexibrarian.init.wizard.Prompt.ask", return_value="claude, cursor"):
+        with patch("lexibrary.init.wizard.Prompt.ask", return_value="claude, cursor"):
             result = _step_agent_environment(tmp_path, console, use_defaults=False)
         assert result == ["claude", "cursor"]
 
     def test_user_enters_empty(self, tmp_path: Path, console: Console) -> None:
-        with patch("lexibrarian.init.wizard.Prompt.ask", return_value=""):
+        with patch("lexibrary.init.wizard.Prompt.ask", return_value=""):
             result = _step_agent_environment(tmp_path, console, use_defaults=False)
         assert result == []
 
@@ -206,15 +206,15 @@ class TestStepAgentEnvironmentInteractive:
 class TestStepIgnorePatternsInteractive:
     def test_user_accepts_suggestions(self, tmp_path: Path, console: Console) -> None:
         (tmp_path / "pyproject.toml").touch()
-        with patch("lexibrarian.init.wizard.Confirm.ask", return_value=True):
+        with patch("lexibrary.init.wizard.Confirm.ask", return_value=True):
             result = _step_ignore_patterns(tmp_path, console, use_defaults=False)
         assert "**/migrations/" in result
 
     def test_user_rejects_and_provides_custom(self, tmp_path: Path, console: Console) -> None:
         (tmp_path / "pyproject.toml").touch()
         with (
-            patch("lexibrarian.init.wizard.Confirm.ask", return_value=False),
-            patch("lexibrarian.init.wizard.Prompt.ask", return_value="build/, dist/"),
+            patch("lexibrary.init.wizard.Confirm.ask", return_value=False),
+            patch("lexibrary.init.wizard.Prompt.ask", return_value="build/, dist/"),
         ):
             result = _step_ignore_patterns(tmp_path, console, use_defaults=False)
         assert result == ["build/", "dist/"]
@@ -222,7 +222,7 @@ class TestStepIgnorePatternsInteractive:
 
 class TestStepTokenBudgetsInteractive:
     def test_user_declines_customization(self, console: Console) -> None:
-        with patch("lexibrarian.init.wizard.Confirm.ask", return_value=False):
+        with patch("lexibrary.init.wizard.Confirm.ask", return_value=False):
             customized, budgets = _step_token_budgets(console, use_defaults=False)
         assert customized is False
         assert budgets == {}
@@ -230,9 +230,9 @@ class TestStepTokenBudgetsInteractive:
     def test_user_customizes_a_budget(self, console: Console) -> None:
         prompt_responses = iter(["800", "100", "500", "100", "200", "400"])
         with (
-            patch("lexibrarian.init.wizard.Confirm.ask", return_value=True),
+            patch("lexibrary.init.wizard.Confirm.ask", return_value=True),
             patch(
-                "lexibrarian.init.wizard.Prompt.ask",
+                "lexibrary.init.wizard.Prompt.ask",
                 side_effect=lambda *a, **kw: next(prompt_responses),
             ),
         ):
@@ -243,12 +243,12 @@ class TestStepTokenBudgetsInteractive:
 
 class TestStepIWHInteractive:
     def test_user_enables(self, console: Console) -> None:
-        with patch("lexibrarian.init.wizard.Confirm.ask", return_value=True):
+        with patch("lexibrary.init.wizard.Confirm.ask", return_value=True):
             result = _step_iwh(console, use_defaults=False)
         assert result is True
 
     def test_user_disables(self, console: Console) -> None:
-        with patch("lexibrarian.init.wizard.Confirm.ask", return_value=False):
+        with patch("lexibrary.init.wizard.Confirm.ask", return_value=False):
             result = _step_iwh(console, use_defaults=False)
         assert result is False
 
@@ -256,13 +256,13 @@ class TestStepIWHInteractive:
 class TestStepSummaryInteractive:
     def test_user_confirms(self, console: Console) -> None:
         answers = WizardAnswers(project_name="test-proj")
-        with patch("lexibrarian.init.wizard.Confirm.ask", return_value=True):
+        with patch("lexibrary.init.wizard.Confirm.ask", return_value=True):
             result = _step_summary(answers, console, use_defaults=False)
         assert result is True
 
     def test_user_cancels(self, console: Console) -> None:
         answers = WizardAnswers(project_name="test-proj")
-        with patch("lexibrarian.init.wizard.Confirm.ask", return_value=False):
+        with patch("lexibrary.init.wizard.Confirm.ask", return_value=False):
             result = _step_summary(answers, console, use_defaults=False)
         assert result is False
 
@@ -358,11 +358,11 @@ class TestRunWizardInteractive:
 
         with (
             patch(
-                "lexibrarian.init.wizard.Prompt.ask",
+                "lexibrary.init.wizard.Prompt.ask",
                 side_effect=lambda *a, **kw: next(prompt_values),
             ),
             patch(
-                "lexibrarian.init.wizard.Confirm.ask",
+                "lexibrary.init.wizard.Confirm.ask",
                 side_effect=lambda *a, **kw: next(confirm_values),
             ),
         ):
@@ -400,11 +400,11 @@ class TestRunWizardInteractive:
 
         with (
             patch(
-                "lexibrarian.init.wizard.Prompt.ask",
+                "lexibrary.init.wizard.Prompt.ask",
                 side_effect=lambda *a, **kw: next(prompt_values),
             ),
             patch(
-                "lexibrarian.init.wizard.Confirm.ask",
+                "lexibrary.init.wizard.Confirm.ask",
                 side_effect=lambda *a, **kw: next(confirm_values),
             ),
         ):

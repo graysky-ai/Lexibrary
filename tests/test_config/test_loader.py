@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.config.loader import load_config
-from lexibrarian.config.schema import LexibraryConfig
+from lexibrary.config.loader import load_config
+from lexibrary.config.schema import LexibraryConfig
 
 
 def test_load_config_defaults_only(tmp_path: Path) -> None:

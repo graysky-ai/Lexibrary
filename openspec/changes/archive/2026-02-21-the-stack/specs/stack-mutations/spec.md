@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Add answer to post
-The system SHALL provide an `add_answer(post_path: Path, author: str, body: str) -> StackPost` function in `src/lexibrarian/stack/mutations.py` that:
+The system SHALL provide an `add_answer(post_path: Path, author: str, body: str) -> StackPost` function in `src/lexibrary/stack/mutations.py` that:
 - Parses the existing post from disk
 - Appends a new `StackAnswer` with the next answer number, today's date, the given author and body
 - Re-serializes and writes the post back to disk

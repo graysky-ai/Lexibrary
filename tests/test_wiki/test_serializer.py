@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.artifacts.concept import ConceptFile, ConceptFileFrontmatter
-from lexibrarian.wiki.parser import parse_concept_file
-from lexibrarian.wiki.serializer import serialize_concept_file
+from lexibrary.artifacts.concept import ConceptFile, ConceptFileFrontmatter
+from lexibrary.wiki.parser import parse_concept_file
+from lexibrary.wiki.serializer import serialize_concept_file
 
 
 class TestSerializeConceptFile:

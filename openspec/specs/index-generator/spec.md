@@ -4,7 +4,7 @@
 TBD - created by archiving change directory-indexes. Update Purpose after archive.
 ## Requirements
 ### Requirement: Generate structural AIndexFile for a directory
-The system SHALL provide a `generate_aindex(directory: Path, project_root: Path, ignore_matcher: IgnoreMatcher, binary_extensions: set[str]) -> AIndexFile` function in `src/lexibrarian/indexer/generator.py` that produces an `AIndexFile` model for a given directory without making any LLM calls.
+The system SHALL provide a `generate_aindex(directory: Path, project_root: Path, ignore_matcher: IgnoreMatcher, binary_extensions: set[str]) -> AIndexFile` function in `src/lexibrary/indexer/generator.py` that produces an `AIndexFile` model for a given directory without making any LLM calls.
 
 The function SHALL:
 - List directory contents and filter out ignored entries via `ignore_matcher`

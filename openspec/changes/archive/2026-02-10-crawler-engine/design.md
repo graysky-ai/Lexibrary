@@ -1,6 +1,6 @@
 ## Context
 
-Lexibrarian Phases 1-4 deliver all building blocks: config/ignore system, tokenizer, indexer (data model + generator + parser + writer), and LLM service (BAML-based with rate limiting). The `src/lexibrarian/crawler/` package exists but is empty — only an `__init__.py` stub.
+Lexibrary Phases 1-4 deliver all building blocks: config/ignore system, tokenizer, indexer (data model + generator + parser + writer), and LLM service (BAML-based with rate limiting). The `src/lexibrary/crawler/` package exists but is empty — only an `__init__.py` stub.
 
 The crawler engine is the integration layer that wires these components together into the `lexi crawl` command. It must traverse a project tree bottom-up, read files, detect changes, call the LLM for summaries, and produce `.aindex` files in every directory.
 
@@ -19,7 +19,7 @@ Key existing interfaces consumed:
 **Goals:**
 - Bottom-up directory traversal producing `.aindex` files for every non-ignored directory
 - Incremental crawling: skip unchanged files using SHA-256 hash-based change detection
-- Persistent cache (`.lexibrarian_cache.json`) surviving across crawl runs
+- Persistent cache (`.lexibrary_cache.json`) surviving across crawl runs
 - Batch small files into single LLM calls; process large files individually
 - Dry-run mode for previewing without writing files
 - Progress reporting via callback
@@ -39,7 +39,7 @@ Use `os.walk(topdown=True)` to enable in-place pruning of ignored directories, c
 **Alternative**: Recursive DFS with manual stack — more complex, no benefit since `os.walk` already handles the traversal and pruning is straightforward.
 
 ### 2. JSON cache file at project root
-Store change-detection state in `.lexibrarian_cache.json` at the project root. Simple JSON with version field for forward compatibility. Cache keyed by file path string.
+Store change-detection state in `.lexibrary_cache.json` at the project root. Simple JSON with version field for forward compatibility. Cache keyed by file path string.
 
 **Alternative**: SQLite — heavier dependency, overkill for a flat key-value store of file hashes. JSON is human-readable and easy to debug.
 

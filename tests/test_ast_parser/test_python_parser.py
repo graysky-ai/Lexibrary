@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from lexibrarian.ast_parser.python_parser import extract_interface
+from lexibrary.ast_parser.python_parser import extract_interface
 
 # Path to the fixtures directory
 FIXTURES = Path(__file__).parent / "fixtures"

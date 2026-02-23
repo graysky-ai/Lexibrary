@@ -20,15 +20,15 @@ The `lexi init` command SHALL create a `lexibrary.toml` file in the target direc
 - **THEN** the command prints a warning message and exits with code 1 without modifying the existing file
 
 ### Requirement: Init command manages gitignore
-The `lexi init` command SHALL create or update a `.gitignore` file to include Lexibrarian-specific entries (`.aindex`, `.lexibrarian_cache.json`, `.lexibrarian.log`, `.lexibrarian.pid`).
+The `lexi init` command SHALL create or update a `.gitignore` file to include Lexibrary-specific entries (`.aindex`, `.lexibrary_cache.json`, `.lexibrary.log`, `.lexibrary.pid`).
 
 #### Scenario: Init creates new gitignore
 - **WHEN** running `lexi init` in a directory without a `.gitignore` file
-- **THEN** a `.gitignore` file is created containing all Lexibrarian entries under a `# Lexibrary` header
+- **THEN** a `.gitignore` file is created containing all Lexibrary entries under a `# Lexibrary` header
 
 #### Scenario: Init updates existing gitignore
 - **WHEN** running `lexi init` in a directory with an existing `.gitignore` that does not contain `.aindex`
-- **THEN** the Lexibrarian entries are appended to the existing `.gitignore` under a `# Lexibrary` header
+- **THEN** the Lexibrary entries are appended to the existing `.gitignore` under a `# Lexibrary` header
 
 #### Scenario: Init does not duplicate gitignore entries
 - **WHEN** running `lexi init` in a directory with a `.gitignore` that already contains `.aindex`
@@ -91,11 +91,11 @@ The `lexi status` command SHALL display a Rich panel containing: config file pat
 - **THEN** the daemon status shows "not running"
 
 #### Scenario: Status detects stale PID file
-- **WHEN** a `.lexibrarian.pid` file exists but the PID does not correspond to a running process
+- **WHEN** a `.lexibrary.pid` file exists but the PID does not correspond to a running process
 - **THEN** the daemon status shows "not running (stale PID file)"
 
 ### Requirement: Clean command removes generated files
-The `lexi clean` command SHALL find and remove all `.aindex` files, the cache file (`.lexibrarian_cache.json`), and the log file (`.lexibrarian.log`) from the project. It MUST prompt for confirmation unless `--yes` is provided.
+The `lexi clean` command SHALL find and remove all `.aindex` files, the cache file (`.lexibrary_cache.json`), and the log file (`.lexibrary.log`) from the project. It MUST prompt for confirmation unless `--yes` is provided.
 
 #### Scenario: Clean with confirmation
 - **WHEN** running `lexi clean` without `--yes`
@@ -106,7 +106,7 @@ The `lexi clean` command SHALL find and remove all `.aindex` files, the cache fi
 - **THEN** all `.aindex` files, cache, and log files are removed without prompting
 
 #### Scenario: Clean with nothing to clean
-- **WHEN** running `lexi clean` in a directory with no Lexibrarian-generated files
+- **WHEN** running `lexi clean` in a directory with no Lexibrary-generated files
 - **THEN** the command prints "Nothing to clean." and exits normally
 
 ### Requirement: Daemon command stub

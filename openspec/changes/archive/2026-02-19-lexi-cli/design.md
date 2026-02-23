@@ -1,6 +1,6 @@
 ## Context
 
-The CLI has 5 placeholder commands from Phase 1 that use `typer.echo()` and do nothing. All supporting subsystems (config loading, ignore matching, tokenizer, LLM service, indexer format) are implemented. The crawler engine (Phase 5) is not yet implemented — the `src/lexibrarian/crawler/` module is empty. The daemon service (Phase 7) is also pending.
+The CLI has 5 placeholder commands from Phase 1 that use `typer.echo()` and do nothing. All supporting subsystems (config loading, ignore matching, tokenizer, LLM service, indexer format) are implemented. The crawler engine (Phase 5) is not yet implemented — the `src/lexibrary/crawler/` module is empty. The daemon service (Phase 7) is also pending.
 
 The existing `config/defaults.py` already has a `DEFAULT_CONFIG_TEMPLATE` string. The config schema uses `OutputConfig` with fields `index_filename`, `cache_filename`, and `log_filename` (not the names in the phase-6 plan like `daemon.log_file`).
 

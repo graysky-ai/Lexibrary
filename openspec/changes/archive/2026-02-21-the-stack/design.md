@@ -1,6 +1,6 @@
 ## Context
 
-Lexibrarian currently has a placeholder `GuardrailThread` model (Phase 5) with stub CLI commands (`lexi guardrail new`, `lexi guardrails`). The model is minimal — it tracks a problem and resolution but lacks Q&A structure, voting, multi-answer support, and cross-artifact search. Design files reference guardrails via `guardrail_refs` and a `## Guardrails` section. The wikilink resolver handles `GR-NNN` patterns.
+Lexibrary currently has a placeholder `GuardrailThread` model (Phase 5) with stub CLI commands (`lexi guardrail new`, `lexi guardrails`). The model is minimal — it tracks a problem and resolution but lacks Q&A structure, voting, multi-answer support, and cross-artifact search. Design files reference guardrails via `guardrail_refs` and a `## Guardrails` section. The wikilink resolver handles `GR-NNN` patterns.
 
 Phase 6 replaces this with The Stack — a richer knowledge base with posts, answers, comments, voting, and cross-linking. The existing parser/serializer patterns from design files and concepts provide a proven template for the new `stack/` module.
 

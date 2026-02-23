@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: ConceptFileFrontmatter model
-The system SHALL define a `ConceptFileFrontmatter` Pydantic 2 model in `src/lexibrarian/artifacts/concept.py` with fields:
+The system SHALL define a `ConceptFileFrontmatter` Pydantic 2 model in `src/lexibrary/artifacts/concept.py` with fields:
 - `title` (str) — display name of the concept
 - `aliases` (list[str]) — alternative names for wikilink resolution, default empty list
 - `tags` (list[str]) — categorization tags, default empty list
@@ -52,8 +52,8 @@ The `name` property SHALL return `frontmatter.title`.
 - **THEN** `summary`, `related_concepts`, `linked_files`, and `decision_log` SHALL all default to empty
 
 ### Requirement: Artifacts module exports ConceptFileFrontmatter
-`src/lexibrarian/artifacts/__init__.py` SHALL re-export `ConceptFileFrontmatter` alongside the existing `ConceptFile` export.
+`src/lexibrary/artifacts/__init__.py` SHALL re-export `ConceptFileFrontmatter` alongside the existing `ConceptFile` export.
 
 #### Scenario: ConceptFileFrontmatter importable
-- **WHEN** `from lexibrarian.artifacts import ConceptFileFrontmatter` is used
+- **WHEN** `from lexibrary.artifacts import ConceptFileFrontmatter` is used
 - **THEN** the import SHALL succeed

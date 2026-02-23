@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Generate Markdown from IandexData
-`generate_iandex(data: IandexData) -> str` function in `src/lexibrarian/indexer/generator.py`. When building file descriptions for the Child Map, the generator SHALL:
+`generate_iandex(data: IandexData) -> str` function in `src/lexibrary/indexer/generator.py`. When building file descriptions for the Child Map, the generator SHALL:
 1. Check if a design file exists at `mirror_path(project_root, file)`
 2. If yes → call `parse_design_file_frontmatter(design_file_path)` and use the `description` field
 3. If no → fall back to the structural description: `"{Language} source ({N} lines)"`

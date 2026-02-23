@@ -180,7 +180,7 @@ The `validate_library` function SHALL accept `project_root` and `lexibrary_dir` 
 The `AVAILABLE_CHECKS` registry SHALL include entries for `"bidirectional_deps"`, `"dangling_links"`, and `"orphan_artifacts"`, each with default severity `"info"`. These entries SHALL map to check functions that accept the standard `(project_root, lexibrary_dir) -> list[ValidationIssue]` signature.
 
 #### Scenario: New checks are registered
-- **WHEN** importing `AVAILABLE_CHECKS` from `lexibrarian.validator`
+- **WHEN** importing `AVAILABLE_CHECKS` from `lexibrary.validator`
 - **THEN** `"bidirectional_deps"`, `"dangling_links"`, and `"orphan_artifacts"` are present as keys with their check functions and `"info"` default severity
 
 #### Scenario: New checks appear in help output

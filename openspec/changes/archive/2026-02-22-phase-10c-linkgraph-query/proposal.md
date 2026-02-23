@@ -4,7 +4,7 @@ The link graph schema (Phase 10a) and builder (Phase 10b, in parallel) establish
 
 ## What Changes
 
-- New `LinkGraph` class in `src/lexibrarian/linkgraph/query.py` providing read-only query methods against `index.db`
+- New `LinkGraph` class in `src/lexibrary/linkgraph/query.py` providing read-only query methods against `index.db`
 - `LinkGraph.open()` factory with graceful degradation: returns `None` when `index.db` is missing, corrupt, or has a schema version mismatch (D-071)
 - Query methods for all key access patterns: reverse deps, concept references, tag search, full-text search, alias resolution, convention inheritance, and build summary
 - `LinkGraph.traverse()` for multi-hop graph traversal using recursive CTEs with configurable `max_depth` (default: 3) to prevent runaway queries on cyclic graphs (D-081)
@@ -21,7 +21,7 @@ The link graph schema (Phase 10a) and builder (Phase 10b, in parallel) establish
 
 ## Impact
 
-- **Code:** New file `src/lexibrarian/linkgraph/query.py`, updated `src/lexibrarian/linkgraph/__init__.py`
+- **Code:** New file `src/lexibrary/linkgraph/query.py`, updated `src/lexibrary/linkgraph/__init__.py`
 - **APIs:** New `LinkGraph` class becomes the public read interface for all link graph consumers (CLI commands, validators, pipeline)
 - **Dependencies:** None (uses stdlib `sqlite3`)
 - **Downstream unblocked:** Phases 10d (pipeline integration), 10e (CLI integration), and 10f (validation/status) all depend on this query interface

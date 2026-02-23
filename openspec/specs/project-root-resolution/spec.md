@@ -23,7 +23,7 @@ The system SHALL provide a `find_project_root(start: Path) -> Path` function tha
 - **THEN** it raises `LexibraryNotFoundError` without infinite looping
 
 ### Requirement: LexibraryNotFoundError exception
-The system SHALL define a `LexibraryNotFoundError` exception class in `src/lexibrarian/exceptions.py` that callers can catch and handle independently of `SystemExit`.
+The system SHALL define a `LexibraryNotFoundError` exception class in `src/lexibrary/exceptions.py` that callers can catch and handle independently of `SystemExit`.
 
 #### Scenario: LexibraryNotFoundError is catchable
 - **WHEN** catching `LexibraryNotFoundError` from `find_project_root()`

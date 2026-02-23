@@ -7,7 +7,7 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-from lexibrarian.stack import StackAnswer, StackPost, StackPostFrontmatter, StackPostRefs
+from lexibrary.stack import StackAnswer, StackPost, StackPostFrontmatter, StackPostRefs
 
 
 class TestStackPostRefs:
@@ -163,7 +163,7 @@ class TestStackPost:
 
     def test_import_from_stack_module(self) -> None:
         """Verify public API re-exports work."""
-        from lexibrarian.stack import (  # noqa: F401
+        from lexibrary.stack import (  # noqa: F401
             StackAnswer,
             StackPost,
             StackPostFrontmatter,

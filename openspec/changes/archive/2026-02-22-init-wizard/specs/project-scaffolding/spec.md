@@ -79,8 +79,8 @@ The scaffolder SHALL generate a `.lexignore` file with a header comment and any 
 - **THEN** it SHALL create the same structure as before (including HANDOFF.md)
 
 ### Requirement: Wizard scaffolder exported from init package
-`create_lexibrary_from_wizard` SHALL be importable from `lexibrarian.init`.
+`create_lexibrary_from_wizard` SHALL be importable from `lexibrary.init`.
 
 #### Scenario: Import create_lexibrary_from_wizard
-- **WHEN** running `from lexibrarian.init import create_lexibrary_from_wizard`
+- **WHEN** running `from lexibrary.init import create_lexibrary_from_wizard`
 - **THEN** the import SHALL succeed

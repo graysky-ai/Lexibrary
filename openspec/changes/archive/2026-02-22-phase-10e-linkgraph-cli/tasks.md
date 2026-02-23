@@ -1,6 +1,6 @@
 ## 1. Linkgraph Module Exports
 
-- [x] 1.1 Add `open_index` re-export to `src/lexibrarian/linkgraph/__init__.py` so CLI code can `from lexibrarian.linkgraph import open_index`
+- [x] 1.1 Add `open_index` re-export to `src/lexibrary/linkgraph/__init__.py` so CLI code can `from lexibrary.linkgraph import open_index`
 - [x] 1.2 Verify `open_index(project_root)` returns `LinkGraph | None` from `query.py` (Phase 10c prerequisite -- confirm the function exists and its signature)
 
 ## 2. Reverse Links in `lexi lookup`
@@ -40,6 +40,6 @@
 
 ## 7. Blueprint Updates
 
-- [x] 7.1 Update `blueprints/src/lexibrarian/cli/lexi_app.md` to document reverse link display in `lookup` and `open_index` usage in `search`
-- [x] 7.2 Update `blueprints/src/lexibrarian/search.md` to document the `link_graph` parameter and dual code paths
-- [x] 7.3 Update `blueprints/src/lexibrarian/linkgraph/` (create or update design file for `__init__.py`) to document `open_index` re-export
+- [x] 7.1 Update `blueprints/src/lexibrary/cli/lexi_app.md` to document reverse link display in `lookup` and `open_index` usage in `search`
+- [x] 7.2 Update `blueprints/src/lexibrary/search.md` to document the `link_graph` parameter and dual code paths
+- [x] 7.3 Update `blueprints/src/lexibrary/linkgraph/` (create or update design file for `__init__.py`) to document `open_index` re-export

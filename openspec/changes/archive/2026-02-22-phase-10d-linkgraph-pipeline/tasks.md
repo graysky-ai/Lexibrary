@@ -35,7 +35,7 @@
 
 ## 6. Final Verification
 
-- [x] 6.1 Run full test suite (`uv run pytest --cov=lexibrarian`) and verify all tests pass
+- [x] 6.1 Run full test suite (`uv run pytest --cov=lexibrary`) and verify all tests pass
 - [x] 6.2 Run linter (`uv run ruff check src/ tests/`) and fix any issues
 - [x] 6.3 Run type checker (`uv run mypy src/`) and fix any issues
 - [x] 6.4 Manually test `lexictl update` on the project to verify `index.db` is created

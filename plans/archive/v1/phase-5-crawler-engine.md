@@ -10,7 +10,7 @@ This is the central integration phase. It consumes everything built in Phases 1-
 
 ## 5.1 File Reader
 
-### File: `src/lexibrarian/crawler/file_reader.py`
+### File: `src/lexibrary/crawler/file_reader.py`
 
 Reads files for LLM summarization with binary detection and size limits.
 
@@ -82,7 +82,7 @@ Key considerations:
 
 ## 5.2 Discovery
 
-### File: `src/lexibrarian/crawler/discovery.py`
+### File: `src/lexibrary/crawler/discovery.py`
 
 Directory and file discovery with ignore filtering.
 
@@ -165,7 +165,7 @@ def list_directory_files(
 
 ## 5.3 Change Detector
 
-### File: `src/lexibrarian/crawler/change_detector.py`
+### File: `src/lexibrary/crawler/change_detector.py`
 
 Hash-based change detection with a JSON cache file.
 
@@ -195,7 +195,7 @@ class CrawlCache:
 class ChangeDetector:
     """Detects file changes using SHA-256 hashes.
 
-    Stores state in .lexibrarian_cache.json at the project root.
+    Stores state in .lexibrary_cache.json at the project root.
     """
 
     def __init__(self, cache_path: Path):
@@ -269,14 +269,14 @@ class ChangeDetector:
 ```
 
 ### Cache file location
-- `.lexibrarian_cache.json` at the project root
+- `.lexibrary_cache.json` at the project root
 - Added to `.gitignore` by `lexi init`
 
 ---
 
 ## 5.4 Crawl Engine
 
-### File: `src/lexibrarian/crawler/engine.py`
+### File: `src/lexibrary/crawler/engine.py`
 
 The main orchestrator. Ties together discovery, file reading, change detection, tokenizer, LLM service, and indexer.
 
@@ -567,7 +567,7 @@ async def _summarize_changed_files(
 
 ## 5.5 `__init__.py`
 
-### File: `src/lexibrarian/crawler/__init__.py`
+### File: `src/lexibrary/crawler/__init__.py`
 
 ```python
 from .engine import full_crawl, CrawlStats

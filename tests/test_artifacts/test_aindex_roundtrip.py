@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from lexibrarian.artifacts.aindex import AIndexEntry, AIndexFile
-from lexibrarian.artifacts.aindex_parser import parse_aindex
-from lexibrarian.artifacts.aindex_serializer import serialize_aindex
-from lexibrarian.artifacts.design_file import StalenessMetadata
-from lexibrarian.artifacts.writer import write_artifact
+from lexibrary.artifacts.aindex import AIndexEntry, AIndexFile
+from lexibrary.artifacts.aindex_parser import parse_aindex
+from lexibrary.artifacts.aindex_serializer import serialize_aindex
+from lexibrary.artifacts.design_file import StalenessMetadata
+from lexibrary.artifacts.writer import write_artifact
 
 
 def _meta(**overrides: object) -> StalenessMetadata:
@@ -17,7 +17,7 @@ def _meta(**overrides: object) -> StalenessMetadata:
         "source": "src/",
         "source_hash": "abc123def456",
         "generated": datetime(2026, 1, 15, 10, 30, 0),
-        "generator": "lexibrarian-v2",
+        "generator": "lexibrary-v2",
     }
     base.update(overrides)
     return StalenessMetadata(**base)
@@ -77,7 +77,7 @@ class TestRoundTripBasic:
             source="lib/",
             source_hash="deadbeef",
             generated=datetime(2026, 6, 15, 8, 0, 0),
-            generator="lexibrarian-v3",
+            generator="lexibrary-v3",
         )
         original = _aindex(
             directory_path="lib",
@@ -91,7 +91,7 @@ class TestRoundTripBasic:
         assert result.metadata.source == "lib/"
         assert result.metadata.source_hash == "deadbeef"
         assert result.metadata.generated == datetime(2026, 6, 15, 8, 0, 0)
-        assert result.metadata.generator == "lexibrarian-v3"
+        assert result.metadata.generator == "lexibrary-v3"
 
     def test_round_trip_preserves_interface_hash(self, tmp_path: Path) -> None:
         meta = _meta(interface_hash="iface999")

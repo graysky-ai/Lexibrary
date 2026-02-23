@@ -12,10 +12,10 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from lexibrarian.cli import lexictl_app
-from lexibrarian.init.rules import generate_rules, supported_environments
-from lexibrarian.init.rules.markers import MARKER_END, MARKER_START
-from lexibrarian.iwh.gitignore import ensure_iwh_gitignored
+from lexibrary.cli import lexictl_app
+from lexibrary.init.rules import generate_rules, supported_environments
+from lexibrary.init.rules.markers import MARKER_END, MARKER_START
+from lexibrary.iwh.gitignore import ensure_iwh_gitignored
 
 runner = CliRunner()
 
@@ -104,7 +104,7 @@ class TestFullFlowPerEnvironment:
         assert len(paths) == 2
 
         # MDC file
-        mdc = tmp_path / ".cursor" / "rules" / "lexibrarian.mdc"
+        mdc = tmp_path / ".cursor" / "rules" / "lexibrary.mdc"
         assert mdc.exists()
         mdc_content = mdc.read_text(encoding="utf-8")
         assert mdc_content.startswith("---\n")
@@ -161,7 +161,7 @@ class TestMultiEnvironment:
         assert (tmp_path / "CLAUDE.md").exists()
         assert (tmp_path / ".claude" / "commands" / "lexi-orient.md").exists()
         assert (tmp_path / ".claude" / "commands" / "lexi-search.md").exists()
-        assert (tmp_path / ".cursor" / "rules" / "lexibrarian.mdc").exists()
+        assert (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").exists()
         assert (tmp_path / ".cursor" / "skills" / "lexi.md").exists()
         assert (tmp_path / "AGENTS.md").exists()
 
@@ -271,7 +271,7 @@ class TestSetupUpdateRefresh:
         assert result.exit_code == 0  # type: ignore[union-attr]
 
         assert (project / "CLAUDE.md").exists()
-        assert (project / ".cursor" / "rules" / "lexibrarian.mdc").exists()
+        assert (project / ".cursor" / "rules" / "lexibrary.mdc").exists()
         assert (project / "AGENTS.md").exists()
 
         output = result.output  # type: ignore[union-attr]
@@ -290,7 +290,7 @@ class TestUserContentPreservation:
     """User-authored content outside markers survives regeneration."""
 
     def test_claude_preserves_user_content_above_markers(self, tmp_path: Path) -> None:
-        """User content before the Lexibrarian section in CLAUDE.md is preserved."""
+        """User content before the Lexibrary section in CLAUDE.md is preserved."""
         claude_md = tmp_path / "CLAUDE.md"
         user_content = "# My Project\n\nCustom project rules go here.\n"
         claude_md.write_text(user_content, encoding="utf-8")
@@ -303,7 +303,7 @@ class TestUserContentPreservation:
         assert MARKER_START in content
 
     def test_claude_preserves_user_content_below_markers(self, tmp_path: Path) -> None:
-        """User content after the Lexibrarian section in CLAUDE.md is preserved."""
+        """User content after the Lexibrary section in CLAUDE.md is preserved."""
         claude_md = tmp_path / "CLAUDE.md"
         initial = f"{MARKER_START}\nold rules\n{MARKER_END}\n\n# My Footer\n\nKeep this section.\n"
         claude_md.write_text(initial, encoding="utf-8")
@@ -321,7 +321,7 @@ class TestUserContentPreservation:
         initial = (
             f"# My Agent Instructions\n\n"
             f"Custom instructions.\n\n"
-            f"{MARKER_START}\nold lexibrarian rules\n{MARKER_END}\n\n"
+            f"{MARKER_START}\nold lexibrary rules\n{MARKER_END}\n\n"
             f"# More Instructions"
         )
         agents_md.write_text(initial, encoding="utf-8")
@@ -332,7 +332,7 @@ class TestUserContentPreservation:
         assert "# My Agent Instructions" in content
         assert "Custom instructions." in content
         assert "# More Instructions" in content
-        assert "old lexibrarian rules" not in content
+        assert "old lexibrary rules" not in content
         assert "START_HERE.md" in content
 
     def test_user_content_preserved_across_multiple_updates(self, tmp_path: Path) -> None:
@@ -521,7 +521,7 @@ class TestEndToEndFlow:
 
         claude_content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
         agents_content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-        mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrarian.mdc").read_text(
+        mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").read_text(
             encoding="utf-8"
         )
 
@@ -535,7 +535,7 @@ class TestEndToEndFlow:
 
         claude_content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
         agents_content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-        mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrarian.mdc").read_text(
+        mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").read_text(
             encoding="utf-8"
         )
 
@@ -548,7 +548,7 @@ class TestEndToEndFlow:
 
         claude_content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
         agents_content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-        mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrarian.mdc").read_text(
+        mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").read_text(
             encoding="utf-8"
         )
 

@@ -7,11 +7,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lexibrarian.config.schema import TokenizerConfig
-from lexibrarian.tokenizer.anthropic_counter import AnthropicCounter
-from lexibrarian.tokenizer.approximate import ApproximateCounter
-from lexibrarian.tokenizer.factory import create_tokenizer
-from lexibrarian.tokenizer.tiktoken_counter import TiktokenCounter
+from lexibrary.config.schema import TokenizerConfig
+from lexibrary.tokenizer.anthropic_counter import AnthropicCounter
+from lexibrary.tokenizer.approximate import ApproximateCounter
+from lexibrary.tokenizer.factory import create_tokenizer
+from lexibrary.tokenizer.tiktoken_counter import TiktokenCounter
 
 # === Approximate Backend Tests ===
 
@@ -76,7 +76,7 @@ class TestTiktokenCounter:
 
 
 class TestAnthropicCounter:
-    @patch("lexibrarian.tokenizer.anthropic_counter.anthropic.Anthropic")
+    @patch("lexibrary.tokenizer.anthropic_counter.anthropic.Anthropic")
     def test_count(self, mock_anthropic_cls: MagicMock) -> None:
         """count() should return the mocked input_tokens value."""
         mock_client = MagicMock()
@@ -91,7 +91,7 @@ class TestAnthropicCounter:
 
         assert result == 42
 
-    @patch("lexibrarian.tokenizer.anthropic_counter.anthropic.Anthropic")
+    @patch("lexibrary.tokenizer.anthropic_counter.anthropic.Anthropic")
     def test_api_called_correctly(self, mock_anthropic_cls: MagicMock) -> None:
         """API should be called with correct model and message structure."""
         mock_client = MagicMock()
@@ -109,7 +109,7 @@ class TestAnthropicCounter:
             messages=[{"role": "user", "content": "test text"}],
         )
 
-    @patch("lexibrarian.tokenizer.anthropic_counter.anthropic.Anthropic")
+    @patch("lexibrary.tokenizer.anthropic_counter.anthropic.Anthropic")
     def test_name(self, mock_anthropic_cls: MagicMock) -> None:
         """Name should contain 'anthropic' and the model."""
         counter = AnthropicCounter(model="claude-sonnet-4-5-20250514")
@@ -127,7 +127,7 @@ class TestFactory:
         counter = create_tokenizer(config)
         assert isinstance(counter, TiktokenCounter)
 
-    @patch("lexibrarian.tokenizer.anthropic_counter.anthropic.Anthropic")
+    @patch("lexibrary.tokenizer.anthropic_counter.anthropic.Anthropic")
     def test_factory_anthropic(self, mock_anthropic_cls: MagicMock) -> None:
         """Factory should create AnthropicCounter for 'anthropic_api' backend."""
         config = TokenizerConfig(backend="anthropic_api", model="claude-sonnet-4-5-20250514")

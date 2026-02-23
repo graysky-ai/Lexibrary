@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lexibrarian.init.rules.base import (
+from lexibrary.init.rules.base import (
     get_core_rules,
     get_orient_skill_content,
     get_search_skill_content,

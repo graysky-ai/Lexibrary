@@ -54,8 +54,8 @@ The system SHALL define a `GuardrailThread` Pydantic 2 model representing a guar
 - **THEN** Pydantic raises a ValidationError
 
 ### Requirement: Artifacts module exports
-The `src/lexibrarian/artifacts/__init__.py` SHALL re-export all public model classes so callers can write `from lexibrarian.artifacts import DesignFile, AIndexFile, ConceptFile, GuardrailThread, StalenessMetadata`.
+The `src/lexibrary/artifacts/__init__.py` SHALL re-export all public model classes so callers can write `from lexibrary.artifacts import DesignFile, AIndexFile, ConceptFile, GuardrailThread, StalenessMetadata`.
 
 #### Scenario: All models importable from top-level artifacts
-- **WHEN** importing `from lexibrarian.artifacts import DesignFile, AIndexFile, ConceptFile, GuardrailThread, StalenessMetadata`
+- **WHEN** importing `from lexibrary.artifacts import DesignFile, AIndexFile, ConceptFile, GuardrailThread, StalenessMetadata`
 - **THEN** all five names are available without ImportError

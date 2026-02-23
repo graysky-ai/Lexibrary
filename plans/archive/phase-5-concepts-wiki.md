@@ -129,12 +129,12 @@ class ConceptFile(BaseModel):
 
 ---
 
-## New Module: `src/lexibrarian/wiki/`
+## New Module: `src/lexibrary/wiki/`
 
 The master plan calls this `knowledge_graph/` but `wiki/` better reflects the evolved design. This is the core module for Phase 5.
 
 ```
-src/lexibrarian/wiki/
+src/lexibrary/wiki/
 ├── __init__.py          ← Public API re-exports
 ├── resolver.py          ← Wikilink resolution (exact + fuzzy match)
 ├── parser.py            ← Parse concept files from disk

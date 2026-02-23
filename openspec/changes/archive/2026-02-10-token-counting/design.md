@@ -1,6 +1,6 @@
 ## Context
 
-Lexibrarian crawls codebases and counts tokens to efficiently build context for LLM consumption. Token counting requirements vary:
+Lexibrary crawls codebases and counts tokens to efficiently build context for LLM consumption. Token counting requirements vary:
 - **Development/CI**: Needs to be fast and offline (no API calls)
 - **Claude-specific workflows**: Needs accurate counts matching Claude's tokenizer
 - **Fallback scenarios**: Must work without any external dependencies

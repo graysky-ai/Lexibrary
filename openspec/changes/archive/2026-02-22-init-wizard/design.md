@@ -27,7 +27,7 @@ The config schema currently has `LexibraryConfig` with nested sub-models for LLM
 
 ### D1: Detection functions as pure utilities
 
-Detection functions live in a new `src/lexibrarian/init/detection.py` module as pure functions that take `project_root: Path` and return typed results. No stdout I/O, no Rich output — fully testable with `tmp_path`.
+Detection functions live in a new `src/lexibrary/init/detection.py` module as pure functions that take `project_root: Path` and return typed results. No stdout I/O, no Rich output — fully testable with `tmp_path`.
 
 **Alternative considered:** Inline detection in wizard steps. Rejected because it makes testing harder and prevents reuse from `lexictl setup --update`.
 
@@ -71,7 +71,7 @@ Use stdlib `tomllib` (Python 3.11+) for reading `pyproject.toml` during project 
 ## Module Layout
 
 ```
-src/lexibrarian/
+src/lexibrary/
   config/
     schema.py          # + IWHConfig, project_name, agent_environment, iwh
     defaults.py        # + new sections in DEFAULT_PROJECT_CONFIG_TEMPLATE

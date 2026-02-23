@@ -1,12 +1,12 @@
 # Lexibrary — One-Pager
 
-**Lexibrary** is an AI-friendly codebase indexer that produces `.aindex` files: structured Markdown maps that help language models and AI coding assistants navigate codebases without reading every file. The tool **Lexibrarian** implements this system.
+**Lexibrary** is an AI-friendly codebase indexer that produces `.aindex` files: structured Markdown maps that help language models and AI coding assistants navigate codebases without reading every file. The tool **Lexibrary** implements this system.
 
 ---
 
 ## Technical
 
-**What it does.** Lexibrarian crawls a project bottom-up, writes a `.aindex` file in each directory containing:
+**What it does.** Lexibrary crawls a project bottom-up, writes a `.aindex` file in each directory containing:
 
 - A 1–3 sentence directory summary (LLM-generated)
 - A table of files with token counts and one-sentence descriptions

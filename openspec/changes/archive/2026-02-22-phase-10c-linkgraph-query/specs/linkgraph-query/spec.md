@@ -157,7 +157,7 @@ The `LinkGraph` class SHALL open the SQLite connection in read-only mode using U
 The `linkgraph/__init__.py` module SHALL export the `LinkGraph` class and all result dataclasses in its `__all__` list.
 
 #### Scenario: Import from package
-- **WHEN** code executes `from lexibrarian.linkgraph import LinkGraph`
+- **WHEN** code executes `from lexibrary.linkgraph import LinkGraph`
 - **THEN** the import SHALL succeed and `LinkGraph` SHALL be the query class from `query.py`
 
 ### Requirement: Parameterized queries

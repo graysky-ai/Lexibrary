@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lexibrarian.archivist.service import (
+from lexibrary.archivist.service import (
     _PROVIDER_CLIENT_MAP,
     ArchivistService,
     DesignFileRequest,
@@ -14,13 +14,13 @@ from lexibrarian.archivist.service import (
     StartHereRequest,
     StartHereResult,
 )
-from lexibrarian.baml_client.types import (
+from lexibrary.baml_client.types import (
     DesignFileDependency,
     DesignFileOutput,
     StartHereOutput,
 )
-from lexibrarian.config.schema import LLMConfig
-from lexibrarian.llm.rate_limiter import RateLimiter
+from lexibrary.config.schema import LLMConfig
+from lexibrary.llm.rate_limiter import RateLimiter
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -422,7 +422,7 @@ class TestClientRouting:
     ) -> None:
         service = ArchivistService(rate_limiter=rate_limiter, config=anthropic_config)
 
-        with patch("lexibrarian.archivist.service.b") as mock_b:
+        with patch("lexibrary.archivist.service.b") as mock_b:
             mock_b.with_options.return_value = mock_b
             service._get_baml_client()
             mock_b.with_options.assert_called_once_with(client="AnthropicArchivist")
@@ -432,7 +432,7 @@ class TestClientRouting:
     ) -> None:
         service = ArchivistService(rate_limiter=rate_limiter, config=openai_config)
 
-        with patch("lexibrarian.archivist.service.b") as mock_b:
+        with patch("lexibrary.archivist.service.b") as mock_b:
             mock_b.with_options.return_value = mock_b
             service._get_baml_client()
             mock_b.with_options.assert_called_once_with(client="OpenAIArchivist")
@@ -442,7 +442,7 @@ class TestClientRouting:
     ) -> None:
         service = ArchivistService(rate_limiter=rate_limiter, config=unknown_config)
 
-        with patch("lexibrarian.archivist.service.b") as mock_b:
+        with patch("lexibrary.archivist.service.b") as mock_b:
             result = service._get_baml_client()
             mock_b.with_options.assert_not_called()
             assert result is mock_b

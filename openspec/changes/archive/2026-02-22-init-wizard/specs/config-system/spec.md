@@ -58,10 +58,10 @@ The system SHALL define an `IWHConfig` Pydantic model with `model_config = Confi
 - **THEN** the extra field SHALL be ignored (not raise a validation error)
 
 ### Requirement: IWHConfig re-exported from config package
-`IWHConfig` SHALL be importable from `lexibrarian.config`.
+`IWHConfig` SHALL be importable from `lexibrary.config`.
 
 #### Scenario: Import IWHConfig
-- **WHEN** running `from lexibrarian.config import IWHConfig`
+- **WHEN** running `from lexibrary.config import IWHConfig`
 - **THEN** the import SHALL succeed
 
 ### Requirement: Config template includes new sections

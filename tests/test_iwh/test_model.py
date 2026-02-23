@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from lexibrarian.iwh import IWHFile, IWHScope
+from lexibrary.iwh import IWHFile, IWHScope
 
 
 class TestIWHFile:
@@ -68,4 +68,4 @@ class TestIWHFile:
 
     def test_import_from_iwh_module(self) -> None:
         """Verify public API re-exports work."""
-        from lexibrarian.iwh import IWHFile, IWHScope, parse_iwh, serialize_iwh  # noqa: F401
+        from lexibrary.iwh import IWHFile, IWHScope, parse_iwh, serialize_iwh  # noqa: F401

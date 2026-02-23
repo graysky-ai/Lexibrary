@@ -4,15 +4,15 @@
 TBD - created by archiving change cli-split. Update Purpose after archive.
 ## Requirements
 ### Requirement: lexictl Typer app definition
-The system SHALL provide a Typer application named `lexictl` in `lexictl_app.py` with help text describing it as the maintenance CLI for Lexibrarian. It SHALL have `no_args_is_help=True`.
+The system SHALL provide a Typer application named `lexictl` in `lexictl_app.py` with help text describing it as the maintenance CLI for Lexibrary. It SHALL have `no_args_is_help=True`.
 
 #### Scenario: lexictl app is accessible
-- **WHEN** importing `from lexibrarian.cli import lexictl_app`
+- **WHEN** importing `from lexibrary.cli import lexictl_app`
 - **THEN** `lexictl_app` is a Typer instance with name "lexictl"
 
 #### Scenario: lexictl help is displayed with no arguments
 - **WHEN** running `lexictl` with no arguments
-- **THEN** the help text is displayed including "Maintenance CLI for Lexibrarian"
+- **THEN** the help text is displayed including "Maintenance CLI for Lexibrary"
 
 ### Requirement: lexictl registers maintenance commands
 The `lexictl` app SHALL register the following commands: `init`, `update`, `validate`, `status`, `setup`, `daemon`. These commands SHALL have identical signatures and behavior to their former `lexi` counterparts.
@@ -42,11 +42,11 @@ The `lexictl` app SHALL register the following commands: `init`, `update`, `vali
 - **THEN** the library health dashboard is displayed (same behavior as former `lexi status`)
 
 ### Requirement: lexictl entry point in pyproject.toml
-The `pyproject.toml` `[project.scripts]` section SHALL define `lexictl = "lexibrarian.cli:lexictl_app"`.
+The `pyproject.toml` `[project.scripts]` section SHALL define `lexictl = "lexibrary.cli:lexictl_app"`.
 
 #### Scenario: lexictl is registered as a script entry point
 - **WHEN** reading `pyproject.toml` `[project.scripts]`
-- **THEN** `lexictl` maps to `"lexibrarian.cli:lexictl_app"`
+- **THEN** `lexictl` maps to `"lexibrary.cli:lexictl_app"`
 
 ### Requirement: lexictl status quiet mode prefix
 The `lexictl status --quiet` output lines SHALL be prefixed with `"lexictl: "` (not `"lexi: "`).

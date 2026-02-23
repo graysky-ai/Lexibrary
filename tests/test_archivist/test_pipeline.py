@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lexibrarian.archivist.change_checker import ChangeLevel
-from lexibrarian.archivist.pipeline import (
+from lexibrary.archivist.change_checker import ChangeLevel
+from lexibrary.archivist.pipeline import (
     FileResult,
     UpdateStats,
     _is_binary,
@@ -19,15 +19,15 @@ from lexibrarian.archivist.pipeline import (
     update_files,
     update_project,
 )
-from lexibrarian.archivist.service import (
+from lexibrary.archivist.service import (
     ArchivistService,
     DesignFileResult,
 )
-from lexibrarian.artifacts.aindex import AIndexEntry, AIndexFile
-from lexibrarian.artifacts.aindex_serializer import serialize_aindex
-from lexibrarian.artifacts.design_file import StalenessMetadata
-from lexibrarian.baml_client.types import DesignFileOutput
-from lexibrarian.config.schema import LexibraryConfig, TokenBudgetConfig
+from lexibrary.artifacts.aindex import AIndexEntry, AIndexFile
+from lexibrary.artifacts.aindex_serializer import serialize_aindex
+from lexibrary.artifacts.design_file import StalenessMetadata
+from lexibrary.baml_client.types import DesignFileOutput
+from lexibrary.config.schema import LexibraryConfig, TokenBudgetConfig
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -89,7 +89,7 @@ def _make_design_file(
             design_hash = _sha256(body.rstrip("\n"))
 
         footer_lines = [
-            "<!-- lexibrarian:meta",
+            "<!-- lexibrary:meta",
             f"source: {source_rel}",
             f"source_hash: {source_hash}",
         ]
@@ -97,7 +97,7 @@ def _make_design_file(
             footer_lines.append(f"interface_hash: {interface_hash}")
         footer_lines.append(f"design_hash: {design_hash}")
         footer_lines.append("generated: 2026-01-01T12:00:00")
-        footer_lines.append("generator: lexibrarian-v2")
+        footer_lines.append("generator: lexibrary-v2")
         footer_lines.append("-->")
 
         text = body + "\n" + "\n".join(footer_lines) + "\n"
@@ -125,7 +125,7 @@ def _make_aindex(tmp_path: Path, dir_rel: str, entries: list[AIndexEntry]) -> Pa
             source=dir_rel,
             source_hash="dir_hash",
             generated=datetime(2026, 1, 1),
-            generator="lexibrarian-v2",
+            generator="lexibrary-v2",
         ),
     )
     serialized = serialize_aindex(aindex)
@@ -359,7 +359,7 @@ class TestUpdateFileFooterless:
         # Verify footer was added
         design_path = tmp_path / ".lexibrary" / f"{source_rel}.md"
         content = design_path.read_text()
-        assert "lexibrarian:meta" in content
+        assert "lexibrary:meta" in content
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +400,7 @@ class TestUpdateFileContentOnly:
 
         # We need interface_hash to match what compute_hashes will return
         # For this test, we mock compute_hashes
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("new_content_hash", "same_iface")
 
             _make_design_file(
@@ -412,7 +412,7 @@ class TestUpdateFileContentOnly:
             )
 
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.CONTENT_ONLY,
             ):
                 config = _make_config()
@@ -437,11 +437,11 @@ class TestUpdateFileContentChanged:
         source_rel = "docs/readme.md"
         source = _make_source_file(tmp_path, source_rel, "# Updated readme")
 
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("new_hash", None)
 
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.CONTENT_CHANGED,
             ):
                 config = _make_config()
@@ -466,11 +466,11 @@ class TestUpdateFileInterfaceChanged:
         source_rel = "src/foo.py"
         source = _make_source_file(tmp_path, source_rel, "def new_func(): pass")
 
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("new_hash", "new_iface")
 
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.INTERFACE_CHANGED,
             ):
                 config = _make_config()
@@ -527,10 +527,10 @@ class TestUpdateFileAIndexRefresh:
         config = _make_config()
         archivist = _mock_archivist(summary="Foo module.")
 
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("hash1", "iface1")
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.NEW_FILE,
             ):
                 result = await update_file(source, tmp_path, config, archivist)
@@ -538,7 +538,7 @@ class TestUpdateFileAIndexRefresh:
         assert result.aindex_refreshed is True
 
         # Check the .aindex was updated
-        from lexibrarian.artifacts.aindex_parser import parse_aindex
+        from lexibrary.artifacts.aindex_parser import parse_aindex
 
         aindex = parse_aindex(tmp_path / ".lexibrary" / "src" / ".aindex")
         assert aindex is not None
@@ -573,10 +573,10 @@ class TestUpdateFileTokenBudget:
             interface_contract="def bar(): pass\ndef baz(): pass",
         )
 
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("hash1", "iface1")
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.NEW_FILE,
             ):
                 result = await update_file(source, tmp_path, config, archivist)
@@ -604,10 +604,10 @@ class TestUpdateFileLLMError:
         config = _make_config()
         archivist = _mock_archivist(error=True)
 
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("hash1", "iface1")
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.NEW_FILE,
             ):
                 result = await update_file(source, tmp_path, config, archivist)
@@ -644,7 +644,7 @@ class TestUpdateProjectDiscovery:
             calls.append(source_path)
             return FileResult(change=ChangeLevel.UNCHANGED)
 
-        with patch("lexibrarian.archivist.pipeline.update_file", side_effect=fake_update_file):
+        with patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file):
             stats = await update_project(tmp_path, config, archivist)
 
         assert stats.files_scanned == 2
@@ -675,7 +675,7 @@ class TestUpdateProjectDiscovery:
             calls.append(source_path)
             return FileResult(change=ChangeLevel.UNCHANGED)
 
-        with patch("lexibrarian.archivist.pipeline.update_file", side_effect=fake_update_file):
+        with patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file):
             await update_project(tmp_path, config, archivist)
 
         file_names = {p.name for p in calls}
@@ -704,7 +704,7 @@ class TestUpdateProjectDiscovery:
             calls.append(source_path)
             return FileResult(change=ChangeLevel.UNCHANGED)
 
-        with patch("lexibrarian.archivist.pipeline.update_file", side_effect=fake_update_file):
+        with patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file):
             await update_project(tmp_path, config, archivist)
 
         file_names = {p.name for p in calls}
@@ -753,7 +753,7 @@ class TestUpdateProjectStats:
             call_count += 1
             return r
 
-        with patch("lexibrarian.archivist.pipeline.update_file", side_effect=fake_update_file):
+        with patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file):
             stats = await update_project(tmp_path, config, archivist)
 
         assert stats.files_scanned == 4
@@ -795,7 +795,7 @@ class TestUpdateProjectProgressCallback:
         ) -> FileResult:
             return FileResult(change=ChangeLevel.UNCHANGED)
 
-        with patch("lexibrarian.archivist.pipeline.update_file", side_effect=fake_update_file):
+        with patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file):
             await update_project(tmp_path, config, archivist, progress_callback=callback)
 
         assert len(callback_calls) == 1
@@ -826,7 +826,7 @@ class TestRefreshParentAindex:
         result = _refresh_parent_aindex(source, tmp_path, "New description")
         assert result is True
 
-        from lexibrarian.artifacts.aindex_parser import parse_aindex
+        from lexibrary.artifacts.aindex_parser import parse_aindex
 
         aindex = parse_aindex(tmp_path / ".lexibrary" / "src" / ".aindex")
         assert aindex is not None
@@ -848,7 +848,7 @@ class TestRefreshParentAindex:
         result = _refresh_parent_aindex(source, tmp_path, "Brand new file")
         assert result is True
 
-        from lexibrarian.artifacts.aindex_parser import parse_aindex
+        from lexibrary.artifacts.aindex_parser import parse_aindex
 
         aindex = parse_aindex(tmp_path / ".lexibrary" / "src" / ".aindex")
         assert aindex is not None
@@ -897,10 +897,10 @@ class TestUpdateFileAvailableConcepts:
         archivist = _mock_archivist(summary="Foo module.")
         concepts = ["Authentication", "Caching"]
 
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("hash1", "iface1")
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.NEW_FILE,
             ):
                 await update_file(
@@ -924,10 +924,10 @@ class TestUpdateFileAvailableConcepts:
         config = _make_config()
         archivist = _mock_archivist(summary="Foo module.")
 
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("hash1", "iface1")
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.NEW_FILE,
             ):
                 await update_file(source, tmp_path, config, archivist)
@@ -977,7 +977,7 @@ class TestUpdateProjectConceptLoading:
             return FileResult(change=ChangeLevel.UNCHANGED)
 
         with patch(
-            "lexibrarian.archivist.pipeline.update_file",
+            "lexibrary.archivist.pipeline.update_file",
             side_effect=fake_update_file,
         ):
             await update_project(tmp_path, config, archivist)
@@ -1006,7 +1006,7 @@ class TestUpdateProjectConceptLoading:
             return FileResult(change=ChangeLevel.UNCHANGED)
 
         with patch(
-            "lexibrarian.archivist.pipeline.update_file",
+            "lexibrary.archivist.pipeline.update_file",
             side_effect=fake_update_file,
         ):
             await update_project(tmp_path, config, archivist)
@@ -1044,7 +1044,7 @@ class TestUpdateProjectLinkGraph:
         ) -> FileResult:
             return FileResult(change=ChangeLevel.UNCHANGED)
 
-        with patch("lexibrarian.archivist.pipeline.update_file", side_effect=fake_update_file):
+        with patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file):
             stats = await update_project(tmp_path, config, archivist)
 
         # Verify index.db was created
@@ -1083,9 +1083,9 @@ class TestUpdateProjectLinkGraph:
             return r
 
         with (
-            patch("lexibrarian.archivist.pipeline.update_file", side_effect=fake_update_file),
+            patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file),
             patch(
-                "lexibrarian.archivist.pipeline.build_index",
+                "lexibrary.archivist.pipeline.build_index",
                 side_effect=RuntimeError("SQLite corruption"),
             ),
         ):
@@ -1134,11 +1134,11 @@ class TestUpdateFilesLinkGraph:
 
         with (
             patch(
-                "lexibrarian.archivist.pipeline.update_file",
+                "lexibrary.archivist.pipeline.update_file",
                 side_effect=fake_update_file,
             ),
             patch(
-                "lexibrarian.archivist.pipeline.build_index",
+                "lexibrary.archivist.pipeline.build_index",
             ) as mock_build,
         ):
             stats = await update_files(
@@ -1184,11 +1184,11 @@ class TestUpdateFilesLinkGraph:
 
         with (
             patch(
-                "lexibrarian.archivist.pipeline.update_file",
+                "lexibrary.archivist.pipeline.update_file",
                 side_effect=fake_update_file,
             ),
             patch(
-                "lexibrarian.archivist.pipeline.build_index",
+                "lexibrary.archivist.pipeline.build_index",
             ) as mock_build,
         ):
             stats = await update_files(
@@ -1239,11 +1239,11 @@ class TestUpdateFilesLinkGraph:
 
         with (
             patch(
-                "lexibrarian.archivist.pipeline.update_file",
+                "lexibrary.archivist.pipeline.update_file",
                 side_effect=fake_update_file,
             ),
             patch(
-                "lexibrarian.archivist.pipeline.build_index",
+                "lexibrary.archivist.pipeline.build_index",
                 side_effect=RuntimeError("SQLite disk full"),
             ),
         ):

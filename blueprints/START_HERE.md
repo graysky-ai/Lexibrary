@@ -1,11 +1,11 @@
-# Lexibrarian — Start Here
+# Lexibrary — Start Here
 
-> **Note:** `blueprints/` is a hand-maintained pseudo-lexibrary for agents building Lexibrarian itself — not to be confused with the `.lexibrary/` output that Lexibrarian produces for other projects.
+> **Note:** `blueprints/` is a hand-maintained pseudo-lexibrary for agents building Lexibrary itself — not to be confused with the `.lexibrary/` output that Lexibrary produces for other projects.
 
 ## Project Topology
 
 ```
-src/lexibrarian/
+src/lexibrary/
 ├── __init__.py
 ├── __main__.py
 ├── cli/                         ← CLI package — two Typer apps + shared helpers
@@ -55,7 +55,7 @@ src/lexibrarian/
 ├── daemon/                      ← Sweep + periodic watch + deprecated watchdog
 │   ├── __init__.py
 │   ├── debouncer.py             ← Coalesce rapid file-change events
-│   ├── logging.py               ← setup_daemon_logging() — RotatingFileHandler to .lexibrarian.log
+│   ├── logging.py               ← setup_daemon_logging() — RotatingFileHandler to .lexibrary.log
 │   ├── scheduler.py             ← Periodic sweep scheduler
 │   ├── service.py               ← DaemonService — run_once, run_watch, run_watchdog entry points
 │   └── watcher.py               ← watchdog filesystem event handler
@@ -153,7 +153,7 @@ src/lexibrarian/
 | `daemon` | `DaemonService` -- three entry points: `run_once` (single sweep), `run_watch` (periodic), `run_watchdog` (deprecated); `setup_daemon_logging` for rotating file logging |
 | `ignore` | `IgnoreMatcher` combining `.gitignore` + config + `.lexignore` patterns via pathspec |
 | `indexer` | Structural `.aindex` pipeline: `generate_aindex` (with design file frontmatter lookup) -> `serialize_aindex` -> `write_artifact`; no LLM |
-| `init` | `create_lexibrary_skeleton()`, `create_lexibrary_from_wizard()` -- creates `.lexibrary/` + `.lexignore` on `lexictl init`; ensures `.lexibrarian.log` and `.lexibrarian.pid` are gitignored; `detection.py` auto-discovers project name, scope roots, agent envs, LLM providers, project type; `wizard.py` runs 8-step interactive setup via `run_wizard()` → `WizardAnswers`; `rules/` subpackage generates agent environment files (Claude, Cursor, Codex) via `generate_rules()` |
+| `init` | `create_lexibrary_skeleton()`, `create_lexibrary_from_wizard()` -- creates `.lexibrary/` + `.lexignore` on `lexictl init`; ensures `.lexibrary.log` and `.lexibrary.pid` are gitignored; `detection.py` auto-discovers project name, scope roots, agent envs, LLM providers, project type; `wizard.py` runs 8-step interactive setup via `run_wizard()` → `WizardAnswers`; `rules/` subpackage generates agent environment files (Claude, Cursor, Codex) via `generate_rules()` |
 | `iwh` | IWH (I Was Here) ephemeral inter-agent signal files: `IWHFile` model, `parse_iwh`, `serialize_iwh`, `read_iwh`, `consume_iwh`, `write_iwh`; `ensure_iwh_gitignored()` for `.gitignore` integration |
 | `linkgraph` | SQLite link graph index (`.lexibrary/index.db`, gitignored, rebuilt by `lexictl update`): `IndexBuilder` with `full_build()` / `incremental_update()`; `build_index()` convenience function; `LinkGraph` read-only query class with `reverse_deps`, `search_by_tag`, `full_text_search`, `get_conventions`, `traverse`, `build_summary`; `open_index()` returns `LinkGraph \| None` for graceful degradation; `IndexHealth` + `read_index_health()` for lightweight metadata; `ensure_schema()` manages 8-table + FTS5 schema with WAL mode |
 | `llm` | `LLMService` wrapping BAML client; `RateLimiter`; `create_llm_service()` factory |
@@ -169,46 +169,46 @@ src/lexibrarian/
 
 | Task | Read first |
 | --- | --- |
-| Add / modify an agent-facing CLI command | `blueprints/src/lexibrarian/cli/lexi_app.md` |
-| Add / modify a maintenance CLI command | `blueprints/src/lexibrarian/cli/lexictl_app.md` |
-| Modify shared CLI helpers | `blueprints/src/lexibrarian/cli/_shared.md` |
-| Modify design file generation pipeline | `blueprints/src/lexibrarian/archivist/pipeline.md` |
-| Change archivist LLM service or provider routing | `blueprints/src/lexibrarian/archivist/service.md` |
-| Change change detection logic | `blueprints/src/lexibrarian/archivist/change_checker.md` |
-| Modify START_HERE generation | `blueprints/src/lexibrarian/archivist/start_here.md` |
-| Add a language parser or modify AST extraction | `blueprints/src/lexibrarian/ast_parser/` |
-| Change config keys or defaults | `blueprints/src/lexibrarian/config/` |
-| Modify crawl logic (LLM-based) | `blueprints/src/lexibrarian/crawler/engine.md` |
-| Modify structural indexing (no LLM) | `blueprints/src/lexibrarian/indexer/` |
-| Change ignore patterns or .lexignore | `blueprints/src/lexibrarian/ignore/` |
+| Add / modify an agent-facing CLI command | `blueprints/src/lexibrary/cli/lexi_app.md` |
+| Add / modify a maintenance CLI command | `blueprints/src/lexibrary/cli/lexictl_app.md` |
+| Modify shared CLI helpers | `blueprints/src/lexibrary/cli/_shared.md` |
+| Modify design file generation pipeline | `blueprints/src/lexibrary/archivist/pipeline.md` |
+| Change archivist LLM service or provider routing | `blueprints/src/lexibrary/archivist/service.md` |
+| Change change detection logic | `blueprints/src/lexibrary/archivist/change_checker.md` |
+| Modify START_HERE generation | `blueprints/src/lexibrary/archivist/start_here.md` |
+| Add a language parser or modify AST extraction | `blueprints/src/lexibrary/ast_parser/` |
+| Change config keys or defaults | `blueprints/src/lexibrary/config/` |
+| Modify crawl logic (LLM-based) | `blueprints/src/lexibrary/crawler/engine.md` |
+| Modify structural indexing (no LLM) | `blueprints/src/lexibrary/indexer/` |
+| Change ignore patterns or .lexignore | `blueprints/src/lexibrary/ignore/` |
 | Add / modify LLM prompts | `baml_src/` (source-of-truth for prompts) |
-| Change artifact data models | `blueprints/src/lexibrarian/artifacts/` |
-| Change `.aindex` file format | `blueprints/src/lexibrarian/artifacts/aindex_serializer.md` + `aindex_parser.md` |
-| Change design file format | `blueprints/src/lexibrarian/artifacts/design_file_serializer.md` + `design_file_parser.md` |
-| Modify daemon behavior | `blueprints/src/lexibrarian/daemon/service.md` |
-| Modify daemon logging | `blueprints/src/lexibrarian/daemon/logging.md` |
-| Install or modify git hooks | `blueprints/src/lexibrarian/hooks/post_commit.md` |
-| Modify atomic file writes | `blueprints/src/lexibrarian/utils/atomic.md` |
-| Modify conflict marker detection | `blueprints/src/lexibrarian/utils/conflict.md` |
-| Modify directory locking | `blueprints/src/lexibrarian/utils/locks.md` |
-| Add a tokenizer backend | `blueprints/src/lexibrarian/tokenizer/` |
-| Change `lexictl init` scaffolding | `blueprints/src/lexibrarian/init/scaffolder.md` |
-| Modify project auto-detection | `blueprints/src/lexibrarian/init/detection.md` |
-| Modify the init wizard flow | `blueprints/src/lexibrarian/init/wizard.md` |
-| Add / modify agent environment rules | `blueprints/src/lexibrarian/init/rules/` |
-| Add / modify IWH signal files | `blueprints/src/lexibrarian/iwh/` |
-| Change path utilities | `blueprints/src/lexibrarian/utils/paths.md` |
-| Raise / handle project-not-found | `blueprints/src/lexibrarian/exceptions.md` |
-| Add / modify concept wiki utilities | `blueprints/src/lexibrarian/wiki/` |
-| Add / modify Stack Q&A features | `blueprints/src/lexibrarian/stack/` |
-| Change cross-artifact search | `blueprints/src/lexibrarian/search.md` |
-| Modify link graph schema or migrations | `blueprints/src/lexibrarian/linkgraph/schema.md` |
-| Modify link graph build pipeline (full/incremental) | `blueprints/src/lexibrarian/linkgraph/builder.md` |
-| Modify link graph queries (reverse deps, tag search, FTS, traversal) | `blueprints/src/lexibrarian/linkgraph/query.md` |
-| Modify link graph health / status metadata | `blueprints/src/lexibrarian/linkgraph/health.md` |
-| Add / modify validation checks | `blueprints/src/lexibrarian/validator/checks.md` |
-| Change validation report models | `blueprints/src/lexibrarian/validator/report.md` |
-| Change validation orchestrator | `blueprints/src/lexibrarian/validator/__init__.md` |
+| Change artifact data models | `blueprints/src/lexibrary/artifacts/` |
+| Change `.aindex` file format | `blueprints/src/lexibrary/artifacts/aindex_serializer.md` + `aindex_parser.md` |
+| Change design file format | `blueprints/src/lexibrary/artifacts/design_file_serializer.md` + `design_file_parser.md` |
+| Modify daemon behavior | `blueprints/src/lexibrary/daemon/service.md` |
+| Modify daemon logging | `blueprints/src/lexibrary/daemon/logging.md` |
+| Install or modify git hooks | `blueprints/src/lexibrary/hooks/post_commit.md` |
+| Modify atomic file writes | `blueprints/src/lexibrary/utils/atomic.md` |
+| Modify conflict marker detection | `blueprints/src/lexibrary/utils/conflict.md` |
+| Modify directory locking | `blueprints/src/lexibrary/utils/locks.md` |
+| Add a tokenizer backend | `blueprints/src/lexibrary/tokenizer/` |
+| Change `lexictl init` scaffolding | `blueprints/src/lexibrary/init/scaffolder.md` |
+| Modify project auto-detection | `blueprints/src/lexibrary/init/detection.md` |
+| Modify the init wizard flow | `blueprints/src/lexibrary/init/wizard.md` |
+| Add / modify agent environment rules | `blueprints/src/lexibrary/init/rules/` |
+| Add / modify IWH signal files | `blueprints/src/lexibrary/iwh/` |
+| Change path utilities | `blueprints/src/lexibrary/utils/paths.md` |
+| Raise / handle project-not-found | `blueprints/src/lexibrary/exceptions.md` |
+| Add / modify concept wiki utilities | `blueprints/src/lexibrary/wiki/` |
+| Add / modify Stack Q&A features | `blueprints/src/lexibrary/stack/` |
+| Change cross-artifact search | `blueprints/src/lexibrary/search.md` |
+| Modify link graph schema or migrations | `blueprints/src/lexibrary/linkgraph/schema.md` |
+| Modify link graph build pipeline (full/incremental) | `blueprints/src/lexibrary/linkgraph/builder.md` |
+| Modify link graph queries (reverse deps, tag search, FTS, traversal) | `blueprints/src/lexibrary/linkgraph/query.md` |
+| Modify link graph health / status metadata | `blueprints/src/lexibrary/linkgraph/health.md` |
+| Add / modify validation checks | `blueprints/src/lexibrary/validator/checks.md` |
+| Change validation report models | `blueprints/src/lexibrary/validator/report.md` |
+| Change validation orchestrator | `blueprints/src/lexibrary/validator/__init__.md` |
 
 ## Key Constraints
 

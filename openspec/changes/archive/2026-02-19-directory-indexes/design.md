@@ -5,10 +5,10 @@ Phase 1 delivered: Pydantic config system, CLI skeleton with `lexi init` / `lexi
 Phase 2 makes indexing real. The output format is v2 `.aindex` — a structured markdown file written to the `.lexibrary/` mirror tree (e.g., `src/auth/` → `.lexibrary/src/auth/.aindex`). Generation is structural-only (no LLM): descriptions come from file extension, language detection, and line counts.
 
 **Current state of key files:**
-- `src/lexibrarian/artifacts/aindex.py` — `AIndexFile`, `AIndexEntry` (with `is_directory: bool`), `StalenessMetadata` defined
-- `src/lexibrarian/config/schema.py` — `CrawlConfig` exists with `max_file_size_kb` but no `binary_extensions`
-- `src/lexibrarian/cli.py` — `lexi index` is a stub
-- `src/lexibrarian/indexer/` — does not exist yet
+- `src/lexibrary/artifacts/aindex.py` — `AIndexFile`, `AIndexEntry` (with `is_directory: bool`), `StalenessMetadata` defined
+- `src/lexibrary/config/schema.py` — `CrawlConfig` exists with `max_file_size_kb` but no `binary_extensions`
+- `src/lexibrary/cli.py` — `lexi index` is a stub
+- `src/lexibrary/indexer/` — does not exist yet
 
 ## Goals / Non-Goals
 

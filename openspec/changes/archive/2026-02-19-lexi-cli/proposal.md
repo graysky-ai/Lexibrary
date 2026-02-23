@@ -4,7 +4,7 @@ The CLI currently has 5 placeholder commands that print "not yet implemented" me
 
 ## What Changes
 
-- **`lexi init`**: Creates `lexibrary.toml` from a provider-aware template, updates/creates `.gitignore` with Lexibrarian entries, shows next-steps guidance
+- **`lexi init`**: Creates `lexibrary.toml` from a provider-aware template, updates/creates `.gitignore` with Lexibrary entries, shows next-steps guidance
 - **`lexi crawl`**: Runs the crawler engine with Rich progress bar, supports `--full` (ignore cache), `--dry-run` (preview only), `--verbose` (debug logging), prints summary statistics table
 - **`lexi status`**: Shows config info, index counts (directories indexed, files cached, stale files), and daemon PID status in a Rich panel
 - **`lexi clean`**: Finds and removes all `.aindex` files, cache, and log files with confirmation prompt (`--yes` to skip)
@@ -25,7 +25,7 @@ The CLI currently has 5 placeholder commands that print "not yet implemented" me
 
 ## Impact
 
-- **Code**: Replaces `src/lexibrarian/cli.py` (placeholder → full implementation), adds `render_default_config()` to `src/lexibrarian/config/defaults.py`
+- **Code**: Replaces `src/lexibrary/cli.py` (placeholder → full implementation), adds `render_default_config()` to `src/lexibrary/config/defaults.py`
 - **Dependencies**: No new runtime deps (Typer and Rich already present). Phase 5 crawler engine must exist for `lexi crawl` to work; `lexi daemon` deferred to Phase 7
 - **APIs**: No external API changes. Internal: depends on `load_config()`, `create_ignore_matcher()`, `create_tokenizer()`, `create_llm_service()`, and crawler engine (Phase 5)
 - **Phase**: Touches Phase 6. Depends on Phase 1 (config, CLI skeleton) and Phase 5 (crawler engine). Daemon command depends on Phase 7

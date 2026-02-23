@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.wiki.index import ConceptIndex
+from lexibrary.wiki.index import ConceptIndex
 
 
 def _write_concept(directory: Path, filename: str, content: str) -> Path:

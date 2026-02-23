@@ -1,6 +1,6 @@
 ## Context
 
-Lexibrarian's Phase 1 established the config schema (`LLMConfig` with provider, model, API key fields) and project scaffolding. Phase 4 adds the actual LLM integration layer that consumes this config to generate file and directory summaries. The system needs to call LLMs in a provider-agnostic way, parse structured responses, and handle errors gracefully.
+Lexibrary's Phase 1 established the config schema (`LLMConfig` with provider, model, API key fields) and project scaffolding. Phase 4 adds the actual LLM integration layer that consumes this config to generate file and directory summaries. The system needs to call LLMs in a provider-agnostic way, parse structured responses, and handle errors gracefully.
 
 BAML is already specified as the prompt framework in the project architecture. It provides `.baml` prompt definitions that compile to typed Python clients, eliminating manual JSON parsing and enabling provider switching via client registry.
 
@@ -48,7 +48,7 @@ BAML is already specified as the prompt framework in the project architecture. I
 **Why**: BAML reads `env.ANTHROPIC_API_KEY` at call time. Setting env vars is the simplest approach that works across all BAML versions. Client registry API may vary by version, so we start simple and upgrade.
 
 ### D7: Generated client committed to repo
-**Choice**: Commit `src/lexibrarian/baml_client/` rather than `.gitignore` it.
+**Choice**: Commit `src/lexibrary/baml_client/` rather than `.gitignore` it.
 **Why**: Users who `pip install` the package don't need the BAML toolchain. The generated code is deterministic from `.baml` source. Developers re-run `baml-cli generate` after `.baml` changes.
 
 ## Risks / Trade-offs

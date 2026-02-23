@@ -4,7 +4,7 @@
 TBD - created by archiving change daemon. Update Purpose after archive.
 ## Requirements
 ### Requirement: File system event handling
-The system SHALL provide a `LexibrarianEventHandler` that extends watchdog's `FileSystemEventHandler` and receives all file system events within the watched project directory tree.
+The system SHALL provide a `LexibraryEventHandler` that extends watchdog's `FileSystemEventHandler` and receives all file system events within the watched project directory tree.
 
 #### Scenario: Handler receives file creation event
 - **WHEN** a new file is created in the watched directory tree
@@ -41,18 +41,18 @@ The system SHALL ignore changes to files whose name starts with `.aindex` to pre
 - **THEN** the handler does NOT notify the debouncer
 
 ### Requirement: Internal file filtering
-The system SHALL ignore changes to Lexibrarian's own operational files: the cache file (`.lexibrarian_cache.json`), log file (`.lexibrarian.log`), and PID file (`.lexibrarian.pid`).
+The system SHALL ignore changes to Lexibrary's own operational files: the cache file (`.lexibrary_cache.json`), log file (`.lexibrary.log`), and PID file (`.lexibrary.pid`).
 
 #### Scenario: Cache file change is ignored
-- **WHEN** the `.lexibrarian_cache.json` file is modified
+- **WHEN** the `.lexibrary_cache.json` file is modified
 - **THEN** the handler does NOT notify the debouncer
 
 #### Scenario: Log file change is ignored
-- **WHEN** the `.lexibrarian.log` file is modified
+- **WHEN** the `.lexibrary.log` file is modified
 - **THEN** the handler does NOT notify the debouncer
 
 #### Scenario: PID file change is ignored
-- **WHEN** the `.lexibrarian.pid` file is created or deleted
+- **WHEN** the `.lexibrary.pid` file is created or deleted
 - **THEN** the handler does NOT notify the debouncer
 
 ### Requirement: Ignore pattern filtering

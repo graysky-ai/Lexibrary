@@ -1,4 +1,4 @@
-// Lexibrarian type definitions
+// Lexibrary type definitions
 
 class FileSummary {
   summary string

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from lexibrarian.iwh import parse_iwh
+from lexibrary.iwh import parse_iwh
 
 
 class TestParseIWH:

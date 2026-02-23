@@ -4,17 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from lexibrarian.artifacts.design_file import DesignFile, DesignFileFrontmatter, StalenessMetadata
-from lexibrarian.artifacts.design_file_serializer import serialize_design_file
+from lexibrary.artifacts.design_file import DesignFile, DesignFileFrontmatter, StalenessMetadata
+from lexibrary.artifacts.design_file_serializer import serialize_design_file
 
 
 def _meta(**overrides: object) -> StalenessMetadata:
     base: dict = {
-        "source": "src/lexibrarian/cli.py",
+        "source": "src/lexibrary/cli.py",
         "source_hash": "abc123",
         "design_hash": "def456",
         "generated": datetime(2026, 1, 1, 12, 0, 0),
-        "generator": "lexibrarian-v2",
+        "generator": "lexibrary-v2",
     }
     base.update(overrides)
     return StalenessMetadata(**base)
@@ -28,7 +28,7 @@ def _frontmatter(**overrides: object) -> DesignFileFrontmatter:
 
 def _design_file(**overrides: object) -> DesignFile:
     base: dict = {
-        "source_path": "src/lexibrarian/cli.py",
+        "source_path": "src/lexibrary/cli.py",
         "frontmatter": _frontmatter(),
         "summary": "CLI entry point for the lexi command.",
         "interface_contract": "def main() -> None: ...",
@@ -63,7 +63,7 @@ class TestSerializeDesignFileFrontmatter:
 class TestSerializeDesignFileStructure:
     def test_h1_heading_with_source_path(self) -> None:
         result = serialize_design_file(_design_file())
-        assert "# src/lexibrarian/cli.py\n" in result
+        assert "# src/lexibrary/cli.py\n" in result
 
     def test_interface_contract_section(self) -> None:
         result = serialize_design_file(_design_file())
@@ -87,9 +87,9 @@ class TestSerializeDesignFileStructure:
         assert "(none)" in deps_body
 
     def test_dependencies_section_populated(self) -> None:
-        df = _design_file(dependencies=["src/lexibrarian/config/schema.py"])
+        df = _design_file(dependencies=["src/lexibrary/config/schema.py"])
         result = serialize_design_file(df)
-        assert "- src/lexibrarian/config/schema.py" in result
+        assert "- src/lexibrary/config/schema.py" in result
 
     def test_dependents_section_empty(self) -> None:
         result = serialize_design_file(_design_file())
@@ -98,9 +98,9 @@ class TestSerializeDesignFileStructure:
         assert "(none)" in dep_body
 
     def test_dependents_section_populated(self) -> None:
-        df = _design_file(dependents=["src/lexibrarian/__main__.py"])
+        df = _design_file(dependents=["src/lexibrary/__main__.py"])
         result = serialize_design_file(df)
-        assert "- src/lexibrarian/__main__.py" in result
+        assert "- src/lexibrary/__main__.py" in result
 
     def test_output_ends_with_trailing_newline(self) -> None:
         result = serialize_design_file(_design_file())
@@ -127,20 +127,20 @@ class TestSerializeDesignFileDependentsAnnotation:
 
     def test_annotation_present_with_non_empty_dependents(self) -> None:
         """Annotation appears alongside populated dependents list (task 1.3)."""
-        df = _design_file(dependents=["src/lexibrarian/__main__.py", "src/lexibrarian/cli.py"])
+        df = _design_file(dependents=["src/lexibrary/__main__.py", "src/lexibrary/cli.py"])
         result = serialize_design_file(df)
         dep_body = result.split("## Dependents")[1].split("##")[0]
         assert "*(see `lexi lookup` for live reverse references)*" in dep_body
-        assert "- src/lexibrarian/__main__.py" in dep_body
-        assert "- src/lexibrarian/cli.py" in dep_body
+        assert "- src/lexibrary/__main__.py" in dep_body
+        assert "- src/lexibrary/cli.py" in dep_body
 
     def test_annotation_before_bullet_items(self) -> None:
         """Annotation appears before the bullet items when dependents exist."""
-        df = _design_file(dependents=["src/lexibrarian/__main__.py"])
+        df = _design_file(dependents=["src/lexibrary/__main__.py"])
         result = serialize_design_file(df)
         dep_body = result.split("## Dependents")[1].split("##")[0]
         annotation_idx = dep_body.index("*(see `lexi lookup` for live reverse references)*")
-        bullet_idx = dep_body.index("- src/lexibrarian/__main__.py")
+        bullet_idx = dep_body.index("- src/lexibrary/__main__.py")
         assert annotation_idx < bullet_idx
 
 
@@ -190,16 +190,16 @@ class TestSerializeDesignFileOptionalSections:
 class TestSerializeDesignFileFooter:
     def test_footer_present(self) -> None:
         result = serialize_design_file(_design_file())
-        assert "<!-- lexibrarian:meta" in result
+        assert "<!-- lexibrary:meta" in result
         assert "-->" in result
 
     def test_footer_contains_required_fields(self) -> None:
         result = serialize_design_file(_design_file())
-        assert "source: src/lexibrarian/cli.py" in result
+        assert "source: src/lexibrary/cli.py" in result
         assert "source_hash: abc123" in result
         assert "design_hash:" in result
         assert "generated:" in result
-        assert "generator: lexibrarian-v2" in result
+        assert "generator: lexibrary-v2" in result
 
     def test_footer_interface_hash_omitted_when_none(self) -> None:
         result = serialize_design_file(_design_file())
@@ -225,7 +225,7 @@ class TestSerializeDesignFileFooter:
     def test_footer_multiline_format(self) -> None:
         result = serialize_design_file(_design_file())
         # Footer should span multiple lines (key: value pairs)
-        footer_start = result.index("<!-- lexibrarian:meta")
+        footer_start = result.index("<!-- lexibrary:meta")
         footer_end = result.index("-->", footer_start)
         footer_content = result[footer_start:footer_end]
         assert "\n" in footer_content

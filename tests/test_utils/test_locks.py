@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from lexibrarian.utils.locks import DirectoryLockManager
+from lexibrary.utils.locks import DirectoryLockManager
 
 
 def test_same_directory_returns_same_lock(tmp_path: Path) -> None:

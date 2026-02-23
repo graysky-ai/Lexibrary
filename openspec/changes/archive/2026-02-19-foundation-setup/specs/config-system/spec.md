@@ -20,14 +20,14 @@ The system SHALL define a nested Pydantic 2 model hierarchy (LexibraryConfig, LL
 - **THEN** Pydantic validates successfully and the unknown keys are ignored
 
 ### Requirement: Config file discovery
-The system SHALL search for the project config at `.lexibrary/config.yaml` relative to the project root (found via `find_project_root()`). The global config SHALL be read from `~/.config/lexibrarian/config.yaml` (XDG base directory).
+The system SHALL search for the project config at `.lexibrary/config.yaml` relative to the project root (found via `find_project_root()`). The global config SHALL be read from `~/.config/lexibrary/config.yaml` (XDG base directory).
 
 #### Scenario: Project config file is found via project root
 - **WHEN** calling `load_config()` from a directory whose project root contains `.lexibrary/config.yaml`
 - **THEN** it loads and returns the project config merged over the global config
 
 #### Scenario: Global config is read from XDG path
-- **WHEN** `~/.config/lexibrarian/config.yaml` exists and `.lexibrary/config.yaml` does not
+- **WHEN** `~/.config/lexibrary/config.yaml` exists and `.lexibrary/config.yaml` does not
 - **THEN** the global config is loaded as-is with all defaults applied
 
 #### Scenario: Neither config file exists

@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: generate_start_here function
-The system SHALL provide `async generate_start_here(project_root, config, archivist) -> Path` in `src/lexibrarian/archivist/start_here.py` that generates or updates `.lexibrary/START_HERE.md` from project topology and `.aindex` summaries.
+The system SHALL provide `async generate_start_here(project_root, config, archivist) -> Path` in `src/lexibrary/archivist/start_here.py` that generates or updates `.lexibrary/START_HERE.md` from project topology and `.aindex` summaries.
 
 The pipeline SHALL:
 1. Build directory tree string (exclude `.lexibrary/`, ignored dirs)

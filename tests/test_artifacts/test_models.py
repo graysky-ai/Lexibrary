@@ -7,9 +7,9 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from lexibrarian.artifacts.aindex import AIndexEntry, AIndexFile
-from lexibrarian.artifacts.concept import ConceptFile, ConceptFileFrontmatter
-from lexibrarian.artifacts.design_file import DesignFile, DesignFileFrontmatter, StalenessMetadata
+from lexibrary.artifacts.aindex import AIndexEntry, AIndexFile
+from lexibrary.artifacts.concept import ConceptFile, ConceptFileFrontmatter
+from lexibrary.artifacts.design_file import DesignFile, DesignFileFrontmatter, StalenessMetadata
 
 # ---------------------------------------------------------------------------
 # StalenessMetadata
@@ -22,7 +22,7 @@ def _meta(**overrides: object) -> dict:
         "source": "src/foo.py",
         "source_hash": "abc123",
         "generated": datetime(2026, 1, 1),
-        "generator": "lexibrarian-v2",
+        "generator": "lexibrary-v2",
     }
     base.update(overrides)
     return base
@@ -208,7 +208,7 @@ class TestConceptFile:
         assert cf.decision_log == ["Use RS256 algorithm"]
 
     def test_importable_from_artifacts(self) -> None:
-        from lexibrarian.artifacts import ConceptFile, ConceptFileFrontmatter
+        from lexibrary.artifacts import ConceptFile, ConceptFileFrontmatter
 
         assert ConceptFile is not None
         assert ConceptFileFrontmatter is not None

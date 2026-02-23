@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pathspec
 
-from lexibrarian.config.schema import IgnoreConfig
-from lexibrarian.ignore import create_ignore_matcher
-from lexibrarian.ignore.matcher import IgnoreMatcher
-from lexibrarian.ignore.patterns import load_config_patterns
+from lexibrary.config.schema import IgnoreConfig
+from lexibrary.ignore import create_ignore_matcher
+from lexibrary.ignore.matcher import IgnoreMatcher
+from lexibrary.ignore.patterns import load_config_patterns
 
 
 def test_config_patterns_match(tmp_path: Path) -> None:
@@ -90,7 +90,7 @@ def test_should_descend_ignores_directory(tmp_path: Path) -> None:
 
 def test_create_ignore_matcher_with_gitignore(tmp_path: Path) -> None:
     """create_ignore_matcher should load .gitignore when enabled."""
-    from lexibrarian.config.schema import LexibraryConfig
+    from lexibrary.config.schema import LexibraryConfig
 
     # Create .gitignore
     gitignore = tmp_path / ".gitignore"
@@ -108,7 +108,7 @@ def test_create_ignore_matcher_with_gitignore(tmp_path: Path) -> None:
 
 def test_create_ignore_matcher_without_gitignore(tmp_path: Path) -> None:
     """create_ignore_matcher should skip .gitignore when disabled."""
-    from lexibrarian.config.schema import LexibraryConfig
+    from lexibrary.config.schema import LexibraryConfig
 
     # Create .gitignore
     gitignore = tmp_path / ".gitignore"
@@ -127,7 +127,7 @@ def test_create_ignore_matcher_without_gitignore(tmp_path: Path) -> None:
 
 def test_lexignore_patterns_loaded(tmp_path: Path) -> None:
     """create_ignore_matcher should load .lexignore patterns when the file exists."""
-    from lexibrarian.config.schema import LexibraryConfig
+    from lexibrary.config.schema import LexibraryConfig
 
     (tmp_path / ".lexignore").write_text("**/migrations/\n")
 
@@ -141,7 +141,7 @@ def test_lexignore_patterns_loaded(tmp_path: Path) -> None:
 
 def test_lexignore_missing_is_ok(tmp_path: Path) -> None:
     """create_ignore_matcher should not raise when .lexignore is absent."""
-    from lexibrarian.config.schema import LexibraryConfig
+    from lexibrary.config.schema import LexibraryConfig
 
     config = LexibraryConfig()
     config.ignore.use_gitignore = False
@@ -153,7 +153,7 @@ def test_lexignore_missing_is_ok(tmp_path: Path) -> None:
 
 def test_three_layer_ignore_merge(tmp_path: Path) -> None:
     """A file ignored by any single layer should be excluded."""
-    from lexibrarian.config.schema import LexibraryConfig
+    from lexibrary.config.schema import LexibraryConfig
 
     # .gitignore ignores *.log
     (tmp_path / ".gitignore").write_text("*.log\n")

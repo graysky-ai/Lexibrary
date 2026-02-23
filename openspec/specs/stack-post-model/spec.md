@@ -4,7 +4,7 @@
 TBD - created by archiving change the-stack. Update Purpose after archive.
 ## Requirements
 ### Requirement: StackPostRefs model
-The system SHALL define a `StackPostRefs` Pydantic 2 model in `src/lexibrarian/stack/models.py` with fields:
+The system SHALL define a `StackPostRefs` Pydantic 2 model in `src/lexibrary/stack/models.py` with fields:
 - `concepts` (list[str]) — related concept names, default `[]`
 - `files` (list[str]) — related source file paths, default `[]`
 - `designs` (list[str]) — related design file paths, default `[]`
@@ -18,7 +18,7 @@ The system SHALL define a `StackPostRefs` Pydantic 2 model in `src/lexibrarian/s
 - **THEN** all provided values SHALL be stored correctly
 
 ### Requirement: StackPostFrontmatter model
-The system SHALL define a `StackPostFrontmatter` Pydantic 2 model in `src/lexibrarian/stack/models.py` with fields:
+The system SHALL define a `StackPostFrontmatter` Pydantic 2 model in `src/lexibrary/stack/models.py` with fields:
 - `id` (str) — auto-assigned `ST-NNN` identifier
 - `title` (str) — short problem description
 - `tags` (list[str]) — lowercase labels, minimum 1 tag required
@@ -47,7 +47,7 @@ The system SHALL define a `StackPostFrontmatter` Pydantic 2 model in `src/lexibr
 - **THEN** the model SHALL validate successfully
 
 ### Requirement: StackAnswer model
-The system SHALL define a `StackAnswer` Pydantic 2 model in `src/lexibrarian/stack/models.py` with fields:
+The system SHALL define a `StackAnswer` Pydantic 2 model in `src/lexibrary/stack/models.py` with fields:
 - `number` (int) — answer number (1, 2, 3...)
 - `date` (date) — date the answer was added
 - `author` (str) — agent session ID or human identifier
@@ -65,7 +65,7 @@ The system SHALL define a `StackAnswer` Pydantic 2 model in `src/lexibrarian/sta
 - **THEN** comments SHALL be stored as raw string lines
 
 ### Requirement: StackPost model
-The system SHALL define a `StackPost` Pydantic 2 model in `src/lexibrarian/stack/models.py` with fields:
+The system SHALL define a `StackPost` Pydantic 2 model in `src/lexibrary/stack/models.py` with fields:
 - `frontmatter` (StackPostFrontmatter) — mutable metadata
 - `problem` (str) — `## Problem` section content
 - `evidence` (list[str]) — `### Evidence` items, default `[]`
@@ -81,9 +81,9 @@ The system SHALL define a `StackPost` Pydantic 2 model in `src/lexibrarian/stack
 - **THEN** `answers` SHALL contain both answers in order
 
 ### Requirement: Stack module public API
-`src/lexibrarian/stack/__init__.py` SHALL re-export: `StackPost`, `StackAnswer`, `StackPostFrontmatter`, `StackPostRefs`.
+`src/lexibrary/stack/__init__.py` SHALL re-export: `StackPost`, `StackAnswer`, `StackPostFrontmatter`, `StackPostRefs`.
 
 #### Scenario: StackPost importable from stack module
-- **WHEN** `from lexibrarian.stack import StackPost` is used
+- **WHEN** `from lexibrary.stack import StackPost` is used
 - **THEN** the import SHALL succeed
 

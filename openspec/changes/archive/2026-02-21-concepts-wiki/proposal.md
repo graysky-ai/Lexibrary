@@ -5,7 +5,7 @@ Phase 5 delivers the Concepts Wiki — a living wiki of cross-cutting concepts t
 ## What Changes
 
 - Replace the stub `ConceptFile` model with a full model including `ConceptFileFrontmatter` (title, aliases, tags, status) and parsed body fields
-- Create new `src/lexibrarian/wiki/` module with: concept parser, serializer, template renderer, concept index (search/filter), and wikilink resolver
+- Create new `src/lexibrary/wiki/` module with: concept parser, serializer, template renderer, concept index (search/filter), and wikilink resolver
 - Implement CLI commands: `lexi concepts` (list/search), `lexi concept new` (create from template), `lexi concept link` (add wikilink to design file)
 - Update design file serializer to wrap wikilinks in `[[brackets]]`
 - Update design file parser to handle both bracketed and unbracketed wikilink formats
@@ -30,13 +30,13 @@ Phase 5 delivers the Concepts Wiki — a living wiki of cross-cutting concepts t
 
 ## Impact
 
-- **New module:** `src/lexibrarian/wiki/` (resolver.py, parser.py, serializer.py, index.py, template.py)
-- **Updated model:** `src/lexibrarian/artifacts/concept.py` — stub replaced with full model (non-breaking, no existing callers)
-- **Updated serializer:** `src/lexibrarian/artifacts/design_file_serializer.py` — wikilinks wrapped in `[[brackets]]`
-- **Updated parser:** `src/lexibrarian/artifacts/design_file_parser.py` — bracket stripping for wikilinks
+- **New module:** `src/lexibrary/wiki/` (resolver.py, parser.py, serializer.py, index.py, template.py)
+- **Updated model:** `src/lexibrary/artifacts/concept.py` — stub replaced with full model (non-breaking, no existing callers)
+- **Updated serializer:** `src/lexibrary/artifacts/design_file_serializer.py` — wikilinks wrapped in `[[brackets]]`
+- **Updated parser:** `src/lexibrary/artifacts/design_file_parser.py` — bracket stripping for wikilinks
 - **Updated BAML:** `baml_src/archivist_design_file.baml` — new optional parameter
-- **Updated pipeline:** `src/lexibrarian/archivist/pipeline.py` and `service.py` — concept awareness
-- **Updated CLI:** `src/lexibrarian/cli.py` — new commands
+- **Updated pipeline:** `src/lexibrary/archivist/pipeline.py` and `service.py` — concept awareness
+- **Updated CLI:** `src/lexibrary/cli.py` — new commands
 - **New directory at runtime:** `.lexibrary/concepts/` created by `lexi concept new`
 - **No new external dependencies** — uses existing stdlib + pydantic + rich
 - **Phase:** 5 (depends on Phase 1 Foundation + Phase 4 Archivist, both complete)

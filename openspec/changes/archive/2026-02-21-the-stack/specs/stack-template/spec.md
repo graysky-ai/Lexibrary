@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Render post template
-The system SHALL provide a `render_post_template()` function in `src/lexibrarian/stack/template.py` with parameters:
+The system SHALL provide a `render_post_template()` function in `src/lexibrary/stack/template.py` with parameters:
 - `post_id` (str) — the assigned `ST-NNN` ID
 - `title` (str) — post title
 - `tags` (list[str]) — at least one tag

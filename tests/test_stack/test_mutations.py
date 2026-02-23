@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from lexibrarian.stack.mutations import (
+from lexibrary.stack.mutations import (
     accept_answer,
     add_answer,
     mark_duplicate,
     mark_outdated,
     record_vote,
 )
-from lexibrarian.stack.parser import parse_stack_post
+from lexibrary.stack.parser import parse_stack_post
 
 # ---------------------------------------------------------------------------
 # Fixtures

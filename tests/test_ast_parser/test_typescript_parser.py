@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from lexibrarian.ast_parser.typescript_parser import extract_interface
+from lexibrary.ast_parser.typescript_parser import extract_interface
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

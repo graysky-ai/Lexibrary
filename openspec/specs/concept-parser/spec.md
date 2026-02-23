@@ -4,7 +4,7 @@
 TBD - created by archiving change concepts-wiki. Update Purpose after archive.
 ## Requirements
 ### Requirement: parse_concept_file function
-The system SHALL provide `parse_concept_file(path: Path) -> ConceptFile | None` in `src/lexibrarian/wiki/parser.py` that:
+The system SHALL provide `parse_concept_file(path: Path) -> ConceptFile | None` in `src/lexibrary/wiki/parser.py` that:
 1. Reads the file at `path`
 2. Extracts YAML frontmatter delimited by `---`
 3. Validates frontmatter into `ConceptFileFrontmatter`

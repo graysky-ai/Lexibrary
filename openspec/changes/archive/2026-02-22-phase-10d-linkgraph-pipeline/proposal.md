@@ -22,8 +22,8 @@ The link graph index (`.lexibrary/index.db`) is built by `IndexBuilder` but has 
 
 ## Impact
 
-- **Modified code:** `src/lexibrarian/archivist/pipeline.py` -- `update_project()`, `update_files()`, `UpdateStats`
-- **Dependencies (consumed):** `src/lexibrarian/linkgraph/builder.py` (Phase 10b), `src/lexibrarian/linkgraph/query.py` (Phase 10c) -- both must exist before this phase
+- **Modified code:** `src/lexibrary/archivist/pipeline.py` -- `update_project()`, `update_files()`, `UpdateStats`
+- **Dependencies (consumed):** `src/lexibrary/linkgraph/builder.py` (Phase 10b), `src/lexibrary/linkgraph/query.py` (Phase 10c) -- both must exist before this phase
 - **Config:** No new config keys required -- the builder uses project root and `.lexibrary/` path already available in the pipeline context
 - **New dependencies:** None -- `sqlite3` is stdlib
 - **Init scaffolder:** `.gitignore` update to include `index.db` pattern (may already be present from Phase 10a)

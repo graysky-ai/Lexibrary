@@ -27,14 +27,14 @@ Nested Pydantic model hierarchy (LexibraryConfig, LLMConfig, TokenizerConfig, Cr
 - **THEN** the config SHALL load without error (Pydantic `extra="ignore"` handles stale keys)
 
 ### Requirement: Config file discovery
-The system SHALL search for the project config at `.lexibrary/config.yaml` relative to the project root (found via `find_project_root()`). The global config SHALL be read from `~/.config/lexibrarian/config.yaml` (XDG base directory).
+The system SHALL search for the project config at `.lexibrary/config.yaml` relative to the project root (found via `find_project_root()`). The global config SHALL be read from `~/.config/lexibrary/config.yaml` (XDG base directory).
 
 #### Scenario: Project config file is found via project root
 - **WHEN** calling `load_config()` from a directory whose project root contains `.lexibrary/config.yaml`
 - **THEN** it loads and returns the project config merged over the global config
 
 #### Scenario: Global config is read from XDG path
-- **WHEN** `~/.config/lexibrarian/config.yaml` exists and `.lexibrary/config.yaml` does not
+- **WHEN** `~/.config/lexibrary/config.yaml` exists and `.lexibrary/config.yaml` does not
 - **THEN** the global config is loaded as-is with all defaults applied
 
 #### Scenario: Neither config file exists
@@ -83,7 +83,7 @@ The system SHALL define a `MappingConfig` Pydantic model with a `strategies` fie
 - **THEN** the config loads without error (entries stored as raw dicts until Phase 4 defines the strategy models)
 
 ### Requirement: CrawlConfig with binary extensions
-The `CrawlConfig` Pydantic model in `src/lexibrarian/config/schema.py` SHALL include a `binary_extensions: list[str]` field containing file extensions (with leading dot) that are treated as binary. Files with these extensions SHALL be described as `"Binary file (.ext)"` by the index generator rather than having their lines counted.
+The `CrawlConfig` Pydantic model in `src/lexibrary/config/schema.py` SHALL include a `binary_extensions: list[str]` field containing file extensions (with leading dot) that are treated as binary. Files with these extensions SHALL be described as `"Binary file (.ext)"` by the index generator rather than having their lines counted.
 
 The field SHALL default to a comprehensive list covering: image formats (`.png`, `.jpg`, `.jpeg`, `.gif`, `.ico`, `.svg`, `.webp`), audio/video (`.mp3`, `.mp4`, `.wav`, `.ogg`, `.webm`), fonts (`.woff`, `.woff2`, `.ttf`, `.eot`), archives (`.zip`, `.tar`, `.gz`, `.bz2`, `.7z`, `.rar`), documents (`.pdf`, `.doc`, `.docx`, `.xls`, `.xlsx`), executables/compiled (`.exe`, `.dll`, `.so`, `.dylib`, `.pyc`, `.pyo`, `.class`, `.o`, `.obj`), and database (`.sqlite`, `.db`).
 
@@ -117,10 +117,10 @@ The system SHALL define an `IWHConfig` Pydantic model with `model_config = Confi
 - **THEN** the extra field SHALL be ignored (not raise a validation error)
 
 ### Requirement: IWHConfig re-exported from config package
-`IWHConfig` SHALL be importable from `lexibrarian.config`.
+`IWHConfig` SHALL be importable from `lexibrary.config`.
 
 #### Scenario: Import IWHConfig
-- **WHEN** running `from lexibrarian.config import IWHConfig`
+- **WHEN** running `from lexibrary.config import IWHConfig`
 - **THEN** the import SHALL succeed
 
 ### Requirement: Config template includes new sections

@@ -4,7 +4,7 @@
 TBD - created by archiving change directory-indexes. Update Purpose after archive.
 ## Requirements
 ### Requirement: Atomic artifact file write
-The system SHALL provide a `write_artifact(target: Path, content: str) -> Path` function in `src/lexibrarian/artifacts/writer.py` that writes a string to a file atomically.
+The system SHALL provide a `write_artifact(target: Path, content: str) -> Path` function in `src/lexibrary/artifacts/writer.py` that writes a string to a file atomically.
 
 The function SHALL:
 - Create all parent directories if they do not exist (`parents=True`)

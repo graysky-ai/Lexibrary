@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from lexibrarian.linkgraph.builder import (
+from lexibrary.linkgraph.builder import (
     _BUILDER_ID,
     BuildResult,
     IndexBuilder,
@@ -16,7 +16,7 @@ from lexibrarian.linkgraph.builder import (
     build_index,
     open_index,
 )
-from lexibrarian.linkgraph.schema import ensure_schema, set_pragmas
+from lexibrary.linkgraph.schema import ensure_schema, set_pragmas
 
 # ---------------------------------------------------------------------------
 # _extract_wikilinks tests
@@ -560,12 +560,12 @@ def login(username: str, password: str) -> bool: ...
 
 - ST-001
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/auth/login.py
 source_hash: abc123
 design_hash: def456
 generated: 2025-06-15T12:00:00
-generator: lexibrarian-test
+generator: lexibrary-test
 -->
 """
 
@@ -941,12 +941,12 @@ def simple() -> None: ...
 
 (none)
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/simple.py
 source_hash: abc123
 design_hash: def456
 generated: 2025-06-15T12:00:00
-generator: lexibrarian-test
+generator: lexibrary-test
 -->
 """
         _create_design_file_tree(
@@ -1000,12 +1000,12 @@ def helper() -> str: ...
 
 (none)
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/utils/helpers.py
 source_hash: xyz789
 design_hash: uvw012
 generated: 2025-06-15T12:00:00
-generator: lexibrarian-test
+generator: lexibrary-test
 -->
 """
         second_source = "def helper() -> str: return 'hi'\n"
@@ -1895,8 +1895,8 @@ Authentication and authorization module for the application.
 - All endpoints must use [[Authentication]] middleware before processing requests
 - Password hashing must use bcrypt with a minimum cost factor of 12
 
-<!-- lexibrarian:meta source="src/auth" source_hash="abc123"
-generated="2025-06-15T12:00:00" generator="lexibrarian-test" -->
+<!-- lexibrary:meta source="src/auth" source_hash="abc123"
+generated="2025-06-15T12:00:00" generator="lexibrary-test" -->
 """
 
 _SAMPLE_AINDEX_WITH_WIKILINKS = """\
@@ -1916,8 +1916,8 @@ API endpoint module.
 - All responses must follow [[APIStandards]] format
 - Rate limiting via [[Security]] middleware required
 
-<!-- lexibrarian:meta source="src/api" source_hash="def456"
-generated="2025-06-15T12:00:00" generator="lexibrarian-test" -->
+<!-- lexibrary:meta source="src/api" source_hash="def456"
+generated="2025-06-15T12:00:00" generator="lexibrary-test" -->
 """
 
 _SAMPLE_AINDEX_NO_CONVENTIONS = """\
@@ -1935,8 +1935,8 @@ Utility functions.
 
 (none)
 
-<!-- lexibrarian:meta source="src/utils" source_hash="xyz789"
-generated="2025-06-15T12:00:00" generator="lexibrarian-test" -->
+<!-- lexibrary:meta source="src/utils" source_hash="xyz789"
+generated="2025-06-15T12:00:00" generator="lexibrary-test" -->
 """
 
 _SAMPLE_AINDEX_EMPTY_CONVENTIONS = """\
@@ -1950,8 +1950,8 @@ Configuration module.
 |------|------|-------------|
 | `schema.py` | file | Config schema |
 
-<!-- lexibrarian:meta source="src/config" source_hash="uvw012"
-generated="2025-06-15T12:00:00" generator="lexibrarian-test" -->
+<!-- lexibrary:meta source="src/config" source_hash="uvw012"
+generated="2025-06-15T12:00:00" generator="lexibrary-test" -->
 """
 
 
@@ -2265,8 +2265,8 @@ Simple module.
 - Use consistent indentation (4 spaces)
 - All functions must have docstrings
 
-<!-- lexibrarian:meta source="src/simple" source_hash="aaa111"
-generated="2025-06-15T12:00:00" generator="lexibrarian-test" -->
+<!-- lexibrary:meta source="src/simple" source_hash="aaa111"
+generated="2025-06-15T12:00:00" generator="lexibrary-test" -->
 """
         aindex_path = _create_aindex_file(tmp_path, ".lexibrary/src/simple/.aindex", aindex_content)
         builder = IndexBuilder(db_conn, tmp_path)
@@ -2330,8 +2330,8 @@ Long convention module.
 
 - {long_convention}
 
-<!-- lexibrarian:meta source="src/long" source_hash="bbb222"
-generated="2025-06-15T12:00:00" generator="lexibrarian-test" -->
+<!-- lexibrary:meta source="src/long" source_hash="bbb222"
+generated="2025-06-15T12:00:00" generator="lexibrary-test" -->
 """
         aindex_path = _create_aindex_file(tmp_path, ".lexibrary/src/long/.aindex", aindex_content)
         builder = IndexBuilder(db_conn, tmp_path)
@@ -3070,8 +3070,8 @@ Updated authentication module.
 - Password hashing must use bcrypt with cost factor 12
 - All auth tokens must be [[Security]] validated on every request
 
-<!-- lexibrarian:meta source="src/auth" source_hash="newdef"
-generated="2025-06-15T12:00:00" generator="lexibrarian-test" -->
+<!-- lexibrary:meta source="src/auth" source_hash="newdef"
+generated="2025-06-15T12:00:00" generator="lexibrary-test" -->
 """
         aindex_file = tmp_path / ".lexibrary" / "src" / "auth" / ".aindex"
         aindex_file.write_text(modified_aindex, encoding="utf-8")
@@ -3254,12 +3254,12 @@ def logout(session_id: str) -> None: ...
 
 - ST-001
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/auth/login.py
 source_hash: abc123
 design_hash: newdef456
 generated: 2025-06-15T12:00:00
-generator: lexibrarian-test
+generator: lexibrary-test
 -->
 """
         design_file_path = tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md"

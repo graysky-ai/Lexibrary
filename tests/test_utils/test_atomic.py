@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from lexibrarian.utils.atomic import atomic_write
+from lexibrary.utils.atomic import atomic_write
 
 
 def test_atomic_write_creates_new_file(tmp_path: Path) -> None:
@@ -47,7 +47,7 @@ def test_atomic_write_cleans_up_on_failure(tmp_path: Path) -> None:
 
     # Simulate os.replace raising an error after the temp file is written
     with (
-        patch("lexibrarian.utils.atomic.os.replace", side_effect=OSError("disk full")),
+        patch("lexibrary.utils.atomic.os.replace", side_effect=OSError("disk full")),
         pytest.raises(OSError, match="disk full"),
     ):
         atomic_write(target, "should not persist")
@@ -72,7 +72,7 @@ def test_atomic_write_temp_file_in_same_directory(tmp_path: Path) -> None:
             created_tmp_dirs.append(str(kwargs["dir"]))
         return original_mkstemp(**kwargs)
 
-    with patch("lexibrarian.utils.atomic.tempfile.mkstemp", side_effect=spy_mkstemp):
+    with patch("lexibrary.utils.atomic.tempfile.mkstemp", side_effect=spy_mkstemp):
         atomic_write(target, "content")
 
     assert len(created_tmp_dirs) == 1

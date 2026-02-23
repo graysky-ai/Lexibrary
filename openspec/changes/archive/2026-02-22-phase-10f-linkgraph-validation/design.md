@@ -1,6 +1,6 @@
 ## Context
 
-Lexibrarian's `lexictl validate` command (Phase 7) runs library consistency checks via a registry of check functions in `src/lexibrarian/validator/`. Currently, all checks operate by scanning the filesystem -- reading design files, concept files, and Stack posts directly. This is fine for checks like wikilink resolution and hash freshness, but makes certain graph-level checks impractical.
+Lexibrary's `lexictl validate` command (Phase 7) runs library consistency checks via a registry of check functions in `src/lexibrary/validator/`. Currently, all checks operate by scanning the filesystem -- reading design files, concept files, and Stack posts directly. This is fine for checks like wikilink resolution and hash freshness, but makes certain graph-level checks impractical.
 
 Bidirectional dependency consistency (D-048) was explicitly deferred from Phase 7 because it required scanning every design file to correlate dependency lists. Phase 10a introduced the SQLite link graph schema (`.lexibrary/index.db`) and Phase 10c provides a read-only query interface (`LinkGraph`). These checks are now cheap SQL queries.
 

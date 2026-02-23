@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lexibrarian.ast_parser.javascript_parser import extract_interface
+from lexibrary.ast_parser.javascript_parser import extract_interface
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 

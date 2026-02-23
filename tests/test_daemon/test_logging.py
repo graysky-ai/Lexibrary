@@ -9,13 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from lexibrarian.daemon.logging import setup_daemon_logging
+from lexibrary.daemon.logging import setup_daemon_logging
 
 
 @pytest.fixture(autouse=True)
 def _clean_logger() -> Iterator[None]:
-    """Remove all handlers from the 'lexibrarian' logger between tests."""
-    logger = logging.getLogger("lexibrarian")
+    """Remove all handlers from the 'lexibrary' logger between tests."""
+    logger = logging.getLogger("lexibrary")
     yield
     for handler in logger.handlers[:]:
         handler.close()
@@ -28,14 +28,14 @@ def test_log_file_created(tmp_path: Path) -> None:
     logger = setup_daemon_logging(tmp_path)
     logger.info("hello")
 
-    log_file = tmp_path / ".lexibrarian.log"
+    log_file = tmp_path / ".lexibrary" / "daemon.log"
     assert log_file.exists()
     contents = log_file.read_text(encoding="utf-8")
     assert "hello" in contents
 
 
 def test_rotating_file_handler_attached(tmp_path: Path) -> None:
-    """A RotatingFileHandler is attached to the lexibrarian logger."""
+    """A RotatingFileHandler is attached to the lexibrary logger."""
     logger = setup_daemon_logging(tmp_path)
 
     rotating_handlers = [h for h in logger.handlers if isinstance(h, RotatingFileHandler)]
@@ -96,7 +96,7 @@ def test_no_console_handler_added(tmp_path: Path) -> None:
     ]
     # There should be no pure StreamHandler added by our function.
     # Note: the root logger may have handlers, but we check the
-    # 'lexibrarian' logger specifically.
+    # 'lexibrary' logger specifically.
     assert len(stream_handlers) == 0
 
 

@@ -9,18 +9,18 @@ The system SHALL provide an `install_post_commit_hook(project_root)` function in
 #### Scenario: No existing hook
 - **WHEN** `install_post_commit_hook()` is called
 - **AND** no `.git/hooks/post-commit` file exists
-- **THEN** a new post-commit hook SHALL be created with the Lexibrarian hook script
+- **THEN** a new post-commit hook SHALL be created with the Lexibrary hook script
 - **AND** the file SHALL be made executable
 
-#### Scenario: Existing hook without Lexibrarian
+#### Scenario: Existing hook without Lexibrary
 - **WHEN** `install_post_commit_hook()` is called
-- **AND** an existing `.git/hooks/post-commit` file exists without the Lexibrarian marker
-- **THEN** the Lexibrarian hook section SHALL be appended to the existing hook
+- **AND** an existing `.git/hooks/post-commit` file exists without the Lexibrary marker
+- **THEN** the Lexibrary hook section SHALL be appended to the existing hook
 - **AND** the existing hook content SHALL be preserved
 
 #### Scenario: Idempotent installation
 - **WHEN** `install_post_commit_hook()` is called twice
-- **THEN** the second call SHALL detect the existing Lexibrarian marker (`# lexibrarian:post-commit`)
+- **THEN** the second call SHALL detect the existing Lexibrary marker (`# lexibrary:post-commit`)
 - **AND** the hook SHALL NOT be duplicated
 - **AND** a message SHALL indicate the hook is already installed
 
@@ -40,7 +40,7 @@ The generated hook script SHALL list changed files from the most recent commit a
 #### Scenario: Hook runs in background
 - **WHEN** the hook script invokes `lexictl update`
 - **THEN** the invocation SHALL run in the background (`&`)
-- **AND** output SHALL be redirected to `.lexibrarian.log`
+- **AND** output SHALL be redirected to `.lexibrary.log`
 
 #### Scenario: Hook uses --changed-only
 - **WHEN** the hook script passes files to lexictl

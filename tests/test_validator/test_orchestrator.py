@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from lexibrarian.utils.hashing import hash_file
-from lexibrarian.validator import AVAILABLE_CHECKS, ValidationReport, validate_library
+from lexibrary.utils.hashing import hash_file
+from lexibrary.validator import AVAILABLE_CHECKS, ValidationReport, validate_library
 
 # ---------------------------------------------------------------------------
 # Helpers -- create valid artifacts on disk
@@ -75,7 +75,7 @@ def example() -> None: ...
 
 {wiki_section}
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: {source_path}
 source_hash: {source_hash}
 design_hash: deadbeef
@@ -133,7 +133,7 @@ def _write_source_file(project_root: Path, rel_path: str, content: str = "# sour
 
 def _write_aindex(project_root: Path, lexibrary_dir: Path, rel_dir: str) -> Path:
     """Write a minimal .aindex file for a directory."""
-    from lexibrarian.utils.paths import aindex_path
+    from lexibrary.utils.paths import aindex_path
 
     aindex = aindex_path(project_root, project_root / rel_dir)
     aindex.parent.mkdir(parents=True, exist_ok=True)

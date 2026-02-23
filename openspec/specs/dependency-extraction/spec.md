@@ -4,11 +4,11 @@
 TBD - created by archiving change archivist. Update Purpose after archive.
 ## Requirements
 ### Requirement: Extract forward dependencies from source files
-The system SHALL provide `extract_dependencies(file_path, project_root) -> list[str]` in `src/lexibrarian/archivist/dependency_extractor.py` that uses tree-sitter to find import statements and resolves them to relative file paths within the project.
+The system SHALL provide `extract_dependencies(file_path, project_root) -> list[str]` in `src/lexibrary/archivist/dependency_extractor.py` that uses tree-sitter to find import statements and resolves them to relative file paths within the project.
 
 #### Scenario: Python absolute imports
-- **WHEN** `extract_dependencies()` is called on a Python file with `from lexibrarian.config.schema import LexibraryConfig`
-- **THEN** the result SHALL include `src/lexibrarian/config/schema.py` (resolved project-relative path)
+- **WHEN** `extract_dependencies()` is called on a Python file with `from lexibrary.config.schema import LexibraryConfig`
+- **THEN** the result SHALL include `src/lexibrary/config/schema.py` (resolved project-relative path)
 
 #### Scenario: Python relative imports
 - **WHEN** `extract_dependencies()` is called on a Python file with `from .module import X`
@@ -38,8 +38,8 @@ The system SHALL provide `extract_dependencies(file_path, project_root) -> list[
 The system SHALL provide `_resolve_python_import(module_path, project_root) -> str | None` that converts dotted module paths to file paths and verifies they exist under the project root.
 
 #### Scenario: Resolve dotted module path
-- **WHEN** `_resolve_python_import("lexibrarian.config.schema", project_root)` is called
-- **THEN** it SHALL return the relative path if `src/lexibrarian/config/schema.py` exists
+- **WHEN** `_resolve_python_import("lexibrary.config.schema", project_root)` is called
+- **THEN** it SHALL return the relative path if `src/lexibrary/config/schema.py` exists
 
 ### Requirement: JavaScript/TypeScript import resolution
 The system SHALL provide `_resolve_js_import(import_path, source_dir, project_root) -> str | None` that resolves relative import paths (`./ ../`) trying common extensions (`.ts`, `.js`, `.tsx`, `.jsx`, `/index.ts`, `/index.js`).

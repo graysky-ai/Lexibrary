@@ -92,14 +92,14 @@ The returned list SHALL be deduplicated.
 - **THEN** the function SHALL return an empty list
 
 ### Requirement: Check existing agent rules
-`check_existing_agent_rules(project_root: Path, environment: str) -> str | None` SHALL search the relevant rules file for an existing Lexibrarian section marker (`<!-- lexibrarian:` in the file content). It SHALL return the file path if found, `None` otherwise.
+`check_existing_agent_rules(project_root: Path, environment: str) -> str | None` SHALL search the relevant rules file for an existing Lexibrary section marker (`<!-- lexibrary:` in the file content). It SHALL return the file path if found, `None` otherwise.
 
-#### Scenario: Lexibrarian marker found in CLAUDE.md
-- **WHEN** `environment` is `"claude"` and `CLAUDE.md` contains `<!-- lexibrarian:`
+#### Scenario: Lexibrary marker found in CLAUDE.md
+- **WHEN** `environment` is `"claude"` and `CLAUDE.md` contains `<!-- lexibrary:`
 - **THEN** the function SHALL return the path to `CLAUDE.md`
 
 #### Scenario: No marker found
-- **WHEN** the rules file exists but contains no `<!-- lexibrarian:` marker
+- **WHEN** the rules file exists but contains no `<!-- lexibrary:` marker
 - **THEN** the function SHALL return `None`
 
 #### Scenario: Rules file does not exist

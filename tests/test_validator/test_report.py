@@ -6,7 +6,7 @@ from io import StringIO
 
 from rich.console import Console
 
-from lexibrarian.validator import ValidationIssue, ValidationReport, ValidationSummary
+from lexibrary.validator import ValidationIssue, ValidationReport, ValidationSummary
 
 
 def _make_issue(
@@ -368,7 +368,7 @@ class TestPublicAPI:
     """Verify that the public API is importable from the validator package."""
 
     def test_imports(self) -> None:
-        from lexibrarian.validator import (  # noqa: F401
+        from lexibrary.validator import (  # noqa: F401
             ValidationIssue,
             ValidationReport,
             ValidationSummary,
@@ -378,7 +378,7 @@ class TestPublicAPI:
     def test_validate_library_returns_report(self) -> None:
         from pathlib import Path
 
-        from lexibrarian.validator import validate_library
+        from lexibrary.validator import validate_library
 
         report = validate_library(Path("."), Path(".lexibrary"))
         assert isinstance(report, ValidationReport)

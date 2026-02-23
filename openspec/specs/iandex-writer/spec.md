@@ -4,7 +4,7 @@
 TBD - created by archiving change iandex-format. Update Purpose after archive.
 ## Requirements
 ### Requirement: Write iandex content to file
-The system SHALL provide a `write_iandex(directory: Path, content: str, filename: str = ".aindex") -> Path` function in `src/lexibrarian/indexer/writer.py` that writes the given content string to a file in the specified directory.
+The system SHALL provide a `write_iandex(directory: Path, content: str, filename: str = ".aindex") -> Path` function in `src/lexibrary/indexer/writer.py` that writes the given content string to a file in the specified directory.
 
 #### Scenario: Write creates file
 - **WHEN** `write_iandex()` is called with a valid directory and content string

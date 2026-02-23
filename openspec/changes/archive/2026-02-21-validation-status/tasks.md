@@ -1,12 +1,12 @@
 ## 1. Report Models
 
-- [x] 1.1 Create `src/lexibrarian/validator/__init__.py` with `from __future__ import annotations` and re-exports for `validate_library`, `ValidationReport`, `ValidationIssue`
-- [x] 1.2 Create `src/lexibrarian/validator/report.py` with `ValidationIssue`, `ValidationSummary`, and `ValidationReport` dataclasses — include `has_errors()`, `has_warnings()`, `exit_code()`, `to_dict()`, and `render(console)` methods
+- [x] 1.1 Create `src/lexibrary/validator/__init__.py` with `from __future__ import annotations` and re-exports for `validate_library`, `ValidationReport`, `ValidationIssue`
+- [x] 1.2 Create `src/lexibrary/validator/report.py` with `ValidationIssue`, `ValidationSummary`, and `ValidationReport` dataclasses — include `has_errors()`, `has_warnings()`, `exit_code()`, `to_dict()`, and `render(console)` methods
 - [x] 1.3 Write unit tests for `ValidationReport` — exit codes (0/1/2), `has_errors()`, `has_warnings()`, `to_dict()` serialization, empty report handling
 
 ## 2. Error-Severity Checks
 
-- [x] 2.1 Implement `check_wikilink_resolution` in `src/lexibrarian/validator/checks.py` — parse design files and Stack posts for wikilinks, use `WikilinkResolver` to verify, return errors with suggestions for unresolved links
+- [x] 2.1 Implement `check_wikilink_resolution` in `src/lexibrary/validator/checks.py` — parse design files and Stack posts for wikilinks, use `WikilinkResolver` to verify, return errors with suggestions for unresolved links
 - [x] 2.2 Implement `check_file_existence` — verify `source_path` in design files, `refs.files` and `refs.designs` in Stack posts all point to existing files
 - [x] 2.3 Implement `check_concept_frontmatter` — validate all concept files have mandatory `title`, `aliases`, `tags`, `status` fields
 - [x] 2.4 Write unit tests for error-severity checks — valid cases return empty, broken wikilinks produce errors with suggestions, missing files produce errors, invalid frontmatter produces errors
@@ -28,7 +28,7 @@
 
 ## 5. Validation Orchestrator
 
-- [x] 5.1 Implement `validate_library()` in `src/lexibrarian/validator/__init__.py` — run all checks, aggregate into `ValidationReport`, support `severity_filter` and `check_filter` parameters
+- [x] 5.1 Implement `validate_library()` in `src/lexibrary/validator/__init__.py` — run all checks, aggregate into `ValidationReport`, support `severity_filter` and `check_filter` parameters
 - [x] 5.2 Write integration tests with `tmp_path` fixtures — healthy project (no issues), mixed issues (errors + warnings + info), empty library (graceful handling), severity filter, check filter
 
 ## 6. CLI: `lexi validate` Command
@@ -50,4 +50,4 @@
 ## 9. Blueprints Update
 
 - [x] 9.1 Update `blueprints/START_HERE.md` — add `validator` to Package Map and Navigation by Intent
-- [x] 9.2 Create or update `blueprints/src/lexibrarian/validator/` design files for the new module
+- [x] 9.2 Create or update `blueprints/src/lexibrary/validator/` design files for the new module

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.artifacts.design_file_parser import (
+from lexibrary.artifacts.design_file_parser import (
     parse_design_file,
     parse_design_file_frontmatter,
     parse_design_file_metadata,
@@ -16,7 +16,7 @@ description: CLI entry point for the lexi command.
 updated_by: archivist
 ---
 
-# src/lexibrarian/cli.py
+# src/lexibrary/cli.py
 
 ## Interface Contract
 
@@ -26,18 +26,18 @@ def main() -> None: ...
 
 ## Dependencies
 
-- src/lexibrarian/config/schema.py
+- src/lexibrary/config/schema.py
 
 ## Dependents
 
 (none)
 
-<!-- lexibrarian:meta
-source: src/lexibrarian/cli.py
+<!-- lexibrary:meta
+source: src/lexibrary/cli.py
 source_hash: abc123
 design_hash: def456
 generated: 2026-01-01T12:00:00
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
 
@@ -83,13 +83,13 @@ High cyclomatic complexity.
 
 - G-01
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/foo.py
 source_hash: src123
 interface_hash: iface456
 design_hash: dsgn789
 generated: 2026-06-15T08:30:00
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
 
@@ -138,7 +138,7 @@ pass
 
 (none)
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 not_a_valid_key_value_pair
 -->
 """
@@ -150,10 +150,10 @@ class TestParseDesignFileMetadata:
         f.write_text(_FULL_DESIGN_FILE)
         meta = parse_design_file_metadata(f)
         assert meta is not None
-        assert meta.source == "src/lexibrarian/cli.py"
+        assert meta.source == "src/lexibrary/cli.py"
         assert meta.source_hash == "abc123"
         assert meta.design_hash == "def456"
-        assert meta.generator == "lexibrarian-v2"
+        assert meta.generator == "lexibrary-v2"
 
     def test_returns_none_for_nonexistent_file(self, tmp_path: Path) -> None:
         result = parse_design_file_metadata(tmp_path / "missing.md")
@@ -222,11 +222,11 @@ class TestParseDesignFileFull:
         f.write_text(_FULL_DESIGN_FILE)
         df = parse_design_file(f)
         assert df is not None
-        assert df.source_path == "src/lexibrarian/cli.py"
+        assert df.source_path == "src/lexibrary/cli.py"
         assert df.frontmatter.description == "CLI entry point for the lexi command."
         assert df.frontmatter.updated_by == "archivist"
         assert df.interface_contract == "def main() -> None: ..."
-        assert df.dependencies == ["src/lexibrarian/config/schema.py"]
+        assert df.dependencies == ["src/lexibrary/config/schema.py"]
         assert df.dependents == []
         assert df.metadata.source_hash == "abc123"
 
@@ -292,12 +292,12 @@ pass
 - [[Config]]
 - [[LLMService]]
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/example.py
 source_hash: abc123
 design_hash: def456
 generated: 2026-01-01T12:00:00
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
 
@@ -328,12 +328,12 @@ pass
 - Config
 - LLMService
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/legacy.py
 source_hash: abc123
 design_hash: def456
 generated: 2026-01-01T12:00:00
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
 
@@ -365,12 +365,12 @@ pass
 - LLMService
 - [[ErrorHandling]]
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/mixed.py
 source_hash: abc123
 design_hash: def456
 generated: 2026-01-01T12:00:00
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
 
@@ -437,12 +437,12 @@ pass
 - ST-001
 - ST-002
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/example.py
 source_hash: abc123
 design_hash: def456
 generated: 2026-01-01T12:00:00
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
 
@@ -473,12 +473,12 @@ pass
 - G-01
 - G-02
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/legacy.py
 source_hash: abc123
 design_hash: def456
 generated: 2026-01-01T12:00:00
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
 

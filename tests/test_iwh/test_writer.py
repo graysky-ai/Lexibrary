@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.iwh import parse_iwh
-from lexibrarian.iwh.writer import write_iwh
+from lexibrary.iwh import parse_iwh
+from lexibrary.iwh.writer import write_iwh
 
 
 class TestWriteIWH:

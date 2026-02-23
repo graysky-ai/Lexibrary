@@ -4,7 +4,7 @@
 TBD - created by archiving change iandex-format. Update Purpose after archive.
 ## Requirements
 ### Requirement: Generate Markdown from IandexData
-`generate_iandex(data: IandexData) -> str` function in `src/lexibrarian/indexer/generator.py`. When building file descriptions for the Child Map, the generator SHALL:
+`generate_iandex(data: IandexData) -> str` function in `src/lexibrary/indexer/generator.py`. When building file descriptions for the Child Map, the generator SHALL:
 1. Check if a design file exists at `mirror_path(project_root, file)`
 2. If yes → call `parse_design_file_frontmatter(design_file_path)` and use the `description` field
 3. If no → fall back to the structural description: `"{Language} source ({N} lines)"`
@@ -27,8 +27,8 @@ This makes `.aindex` descriptions richer as design files are created, while main
 The generated Markdown SHALL start with an H1 header (`# `) containing the directory name.
 
 #### Scenario: H1 contains directory name
-- **WHEN** `generate_iandex()` is called with `directory_name="lexibrarian/"`
-- **THEN** the first line of output SHALL be `# lexibrarian/`
+- **WHEN** `generate_iandex()` is called with `directory_name="lexibrary/"`
+- **THEN** the first line of output SHALL be `# lexibrary/`
 
 ### Requirement: Summary follows H1
 The directory summary SHALL appear as a paragraph after the H1 header, separated by a blank line.

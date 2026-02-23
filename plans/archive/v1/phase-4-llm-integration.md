@@ -15,7 +15,7 @@
 
 ### Initialize BAML
 ```bash
-cd /Users/shanngray/AI_Projects/Lexibrarian
+cd /Users/shanngray/AI_Projects/Lexibrary
 uv run baml-cli init
 ```
 This creates `baml_src/` with starter files. We'll replace/modify them.
@@ -27,12 +27,12 @@ BAML needs to know where to output the generated client. Create/modify `baml_src
 ```baml
 generator target {
   output_type "python/pydantic"
-  output_dir "../src/lexibrarian/baml_client"
+  output_dir "../src/lexibrary/baml_client"
   version "0.75.0"
 }
 ```
 
-This generates the `baml_client/` inside the package so imports work as `from lexibrarian.baml_client ...`.
+This generates the `baml_client/` inside the package so imports work as `from lexibrary.baml_client ...`.
 
 ---
 
@@ -195,9 +195,9 @@ function SummarizeDirectory(dirname: string, file_list: string, subdir_list: str
 uv run baml-cli generate
 ```
 
-This creates `src/lexibrarian/baml_client/` with:
-- `sync_client.py` — synchronous client (`from lexibrarian.baml_client.sync_client import b`)
-- `async_client.py` — async client (`from lexibrarian.baml_client.async_client import b`)
+This creates `src/lexibrary/baml_client/` with:
+- `sync_client.py` — synchronous client (`from lexibrary.baml_client.sync_client import b`)
+- `async_client.py` — async client (`from lexibrary.baml_client.async_client import b`)
 - Type definitions as Pydantic models
 - `__init__.py` with exports
 
@@ -206,7 +206,7 @@ The generated code should NOT be edited manually. Re-run `baml-cli generate` aft
 Add to `.gitignore`:
 ```
 # BAML generated client — regenerate with `baml-cli generate`
-src/lexibrarian/baml_client/
+src/lexibrary/baml_client/
 ```
 
 Or alternatively, commit it so users don't need `baml-cli` at runtime. Decision: **commit it** (users may `pip install` without BAML toolchain).
@@ -215,7 +215,7 @@ Or alternatively, commit it so users don't need `baml-cli` at runtime. Decision:
 
 ## 4.6 Python Service Wrapper
 
-### File: `src/lexibrarian/llm/service.py`
+### File: `src/lexibrary/llm/service.py`
 
 Thin wrapper that calls `baml_client` functions with rate limiting and error handling.
 
@@ -325,7 +325,7 @@ class LLMService:
 
 ## 4.7 Factory (Runtime Client Switching)
 
-### File: `src/lexibrarian/llm/factory.py`
+### File: `src/lexibrary/llm/factory.py`
 
 ```python
 from __future__ import annotations
@@ -369,7 +369,7 @@ Note: The exact mechanism for runtime client switching depends on the `baml-py` 
 
 ## 4.8 Rate Limiter
 
-### File: `src/lexibrarian/llm/rate_limiter.py`
+### File: `src/lexibrary/llm/rate_limiter.py`
 
 ```python
 import asyncio
@@ -402,7 +402,7 @@ class RateLimiter:
 
 ## 4.9 `__init__.py`
 
-### File: `src/lexibrarian/llm/__init__.py`
+### File: `src/lexibrary/llm/__init__.py`
 
 ```python
 from .service import LLMService, FileSummaryRequest, FileSummaryResult, DirectorySummaryRequest
@@ -423,7 +423,7 @@ __all__ = [
 
 The `LLMService` needs to know the programming language for each file. Add a utility:
 
-### File: `src/lexibrarian/utils/languages.py`
+### File: `src/lexibrary/utils/languages.py`
 
 ```python
 EXTENSION_MAP: dict[str, str] = {
@@ -502,8 +502,8 @@ Before writing Python tests, use the BAML VSCode playground to:
 ## Acceptance Criteria
 
 - [ ] `uv run baml-cli generate` succeeds without errors
-- [ ] `baml_client/` is generated inside `src/lexibrarian/`
-- [ ] `from lexibrarian.baml_client.async_client import b` works
+- [ ] `baml_client/` is generated inside `src/lexibrary/`
+- [ ] `from lexibrary.baml_client.async_client import b` works
 - [ ] `LLMService.summarize_file()` returns a `FileSummaryResult` with a non-empty summary
 - [ ] `LLMService.summarize_files_batch()` returns one result per input file
 - [ ] `LLMService.summarize_directory()` returns a string summary

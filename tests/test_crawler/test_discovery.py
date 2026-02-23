@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pathspec
 
-from lexibrarian.crawler.discovery import (
+from lexibrary.crawler.discovery import (
     discover_directories_bottom_up,
     list_directory_files,
 )
-from lexibrarian.ignore.matcher import IgnoreMatcher
+from lexibrary.ignore.matcher import IgnoreMatcher
 
 
 def _make_matcher(root: Path, patterns: list[str] | None = None) -> IgnoreMatcher:

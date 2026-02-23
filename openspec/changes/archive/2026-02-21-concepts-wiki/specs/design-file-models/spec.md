@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Design file serializer
-The system SHALL provide a `serialize_design_file(data: DesignFile) -> str` function in `src/lexibrarian/artifacts/design_file_serializer.py` that produces a markdown string with:
+The system SHALL provide a `serialize_design_file(data: DesignFile) -> str` function in `src/lexibrary/artifacts/design_file_serializer.py` that produces a markdown string with:
 1. YAML frontmatter delimited by `---` containing `description` and `updated_by`
 2. H1 header with source file path relative to project root
 3. `## Interface Contract` section with fenced code block (language-tagged)
@@ -23,7 +23,7 @@ The `## Wikilinks` section SHALL serialize each wikilink wrapped in `[[double br
 
 #### Scenario: Metadata footer format
 - **WHEN** `serialize_design_file()` is called
-- **THEN** the HTML comment footer SHALL use the format `<!-- lexibrarian:meta\nkey: value\n-->` with fields: source, source_hash, interface_hash, design_hash, generated, generator
+- **THEN** the HTML comment footer SHALL use the format `<!-- lexibrary:meta\nkey: value\n-->` with fields: source, source_hash, interface_hash, design_hash, generated, generator
 
 #### Scenario: Wikilinks serialized with brackets
 - **WHEN** `serialize_design_file()` is called with `wikilinks=["JWT Auth", "Rate Limiting"]`
@@ -34,7 +34,7 @@ The `## Wikilinks` section SHALL serialize each wikilink wrapped in `[[double br
 - **THEN** the output SHALL contain `- [[JWT Auth]]` (not `- [[[[JWT Auth]]]]`)
 
 ### Requirement: Design file parser
-The system SHALL provide parsing functions in `src/lexibrarian/artifacts/design_file_parser.py`:
+The system SHALL provide parsing functions in `src/lexibrary/artifacts/design_file_parser.py`:
 - `parse_design_file(path: Path) -> DesignFile | None` — full parse, returns None if file doesn't exist or is malformed
 - `parse_design_file_metadata(path: Path) -> StalenessMetadata | None` — extracts only the HTML comment footer (cheap, reads from end of file)
 - `parse_design_file_frontmatter(path: Path) -> DesignFileFrontmatter | None` — extracts only the YAML frontmatter

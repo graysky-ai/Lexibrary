@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from lexibrarian.iwh import IWHFile, serialize_iwh
+from lexibrary.iwh import IWHFile, serialize_iwh
 
 
 class TestSerializeIWH:

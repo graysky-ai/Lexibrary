@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from lexibrarian.baml_client.types import BatchFileSummary, FileSummary
-from lexibrarian.llm.rate_limiter import RateLimiter
-from lexibrarian.llm.service import (
+from lexibrary.baml_client.types import BatchFileSummary, FileSummary
+from lexibrary.llm.rate_limiter import RateLimiter
+from lexibrary.llm.service import (
     DirectorySummaryRequest,
     FileSummaryRequest,
     FileSummaryResult,
@@ -27,7 +27,7 @@ def service() -> LLMService:
 
 
 @pytest.mark.asyncio
-@patch("lexibrarian.llm.service.b")
+@patch("lexibrary.llm.service.b")
 async def test_summarize_file_success(mock_b: AsyncMock, service: LLMService) -> None:
     mock_b.SummarizeFile = AsyncMock(return_value=FileSummary(summary="A Python utility module."))
     request = FileSummaryRequest(
@@ -42,7 +42,7 @@ async def test_summarize_file_success(mock_b: AsyncMock, service: LLMService) ->
 
 
 @pytest.mark.asyncio
-@patch("lexibrarian.llm.service.b")
+@patch("lexibrary.llm.service.b")
 async def test_summarize_file_error_fallback(mock_b: AsyncMock, service: LLMService) -> None:
     mock_b.SummarizeFile = AsyncMock(side_effect=RuntimeError("API error"))
     request = FileSummaryRequest(path=Path("src/broken.py"), content="bad", language="Python")
@@ -57,7 +57,7 @@ async def test_summarize_file_error_fallback(mock_b: AsyncMock, service: LLMServ
 
 
 @pytest.mark.asyncio
-@patch("lexibrarian.llm.service.b")
+@patch("lexibrary.llm.service.b")
 async def test_summarize_files_batch_success(mock_b: AsyncMock, service: LLMService) -> None:
     mock_b.SummarizeFilesBatch = AsyncMock(
         return_value=[
@@ -83,7 +83,7 @@ async def test_summarize_files_batch_empty(service: LLMService) -> None:
 
 
 @pytest.mark.asyncio
-@patch("lexibrarian.llm.service.b")
+@patch("lexibrary.llm.service.b")
 async def test_summarize_files_batch_error_fallback(mock_b: AsyncMock, service: LLMService) -> None:
     mock_b.SummarizeFilesBatch = AsyncMock(side_effect=RuntimeError("API error"))
     requests = [
@@ -101,7 +101,7 @@ async def test_summarize_files_batch_error_fallback(mock_b: AsyncMock, service: 
 
 
 @pytest.mark.asyncio
-@patch("lexibrarian.llm.service.b")
+@patch("lexibrary.llm.service.b")
 async def test_summarize_directory_success(mock_b: AsyncMock, service: LLMService) -> None:
     mock_b.SummarizeDirectory = AsyncMock(
         return_value="Contains utility functions for the project."
@@ -117,7 +117,7 @@ async def test_summarize_directory_success(mock_b: AsyncMock, service: LLMServic
 
 
 @pytest.mark.asyncio
-@patch("lexibrarian.llm.service.b")
+@patch("lexibrary.llm.service.b")
 async def test_summarize_directory_error_fallback(mock_b: AsyncMock, service: LLMService) -> None:
     mock_b.SummarizeDirectory = AsyncMock(side_effect=RuntimeError("API error"))
     request = DirectorySummaryRequest(

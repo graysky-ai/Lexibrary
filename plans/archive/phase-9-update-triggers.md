@@ -21,7 +21,7 @@ Deliver automated library maintenance via git hooks (primary trigger), periodic 
 |-----------|------|--------|
 | `Debouncer` | `daemon/debouncer.py` | Clean, correct, reusable |
 | `PeriodicSweep` | `daemon/scheduler.py` | Clean, correct, reusable |
-| `LexibrarianEventHandler` | `daemon/watcher.py` | Clean, correct, reusable |
+| `LexibraryEventHandler` | `daemon/watcher.py` | Clean, correct, reusable |
 | `update_file()` | `archivist/pipeline.py` | Fully functional -- the correct update engine |
 | `update_project()` | `archivist/pipeline.py` | Fully functional -- full project sweep |
 | `lexictl update [path]` | `cli/lexictl_app.py` | Working CLI command |
@@ -78,7 +78,7 @@ Deliver automated library maintenance via git hooks (primary trigger), periodic 
 
 ### Config Schema Changes
 
-Update `DaemonConfig` in `src/lexibrarian/config/schema.py`:
+Update `DaemonConfig` in `src/lexibrary/config/schema.py`:
 
 ```python
 class DaemonConfig(BaseModel):
@@ -106,7 +106,7 @@ Field changes from current `DaemonConfig`:
 
 ### Config Defaults Template
 
-Update `src/lexibrarian/config/defaults.py` to reflect:
+Update `src/lexibrary/config/defaults.py` to reflect:
 
 ```yaml
 daemon:
@@ -120,7 +120,7 @@ daemon:
 
 ### Logging Setup
 
-Create `src/lexibrarian/daemon/logging.py`:
+Create `src/lexibrary/daemon/logging.py`:
 
 ```python
 """Daemon-specific logging with RotatingFileHandler."""
@@ -131,7 +131,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-_LOG_FILENAME = ".lexibrarian.log"
+_LOG_FILENAME = ".lexibrary.log"
 _MAX_BYTES = 5 * 1024 * 1024  # 5 MB
 _BACKUP_COUNT = 3
 _LOG_FORMAT = "%(asctime)s %(name)s %(levelname)s %(message)s"
@@ -143,7 +143,7 @@ def setup_daemon_logging(
 ) -> None:
     """Configure logging for daemon/sweep processes.
 
-    Writes to .lexibrarian.log in project root with rotation.
+    Writes to .lexibrary.log in project root with rotation.
     Does NOT configure console logging -- callers add their own
     console handler if needed.
     """
@@ -159,12 +159,12 @@ def setup_daemon_logging(
     handler.setLevel(level)
     handler.setFormatter(logging.Formatter(_LOG_FORMAT))
 
-    logger = logging.getLogger("lexibrarian")
+    logger = logging.getLogger("lexibrary")
     logger.setLevel(level)
     logger.addHandler(handler)
 ```
 
-The `.lexibrarian.log` file must be gitignored. `lexictl init` already creates `.gitignore` entries for `.lexibrary/` internals; verify that `.lexibrarian.log` is included. If not, add it to the scaffolder's gitignore additions.
+The `.lexibrary.log` file must be gitignored. `lexictl init` already creates `.gitignore` entries for `.lexibrary/` internals; verify that `.lexibrary.log` is included. If not, add it to the scaffolder's gitignore additions.
 
 ---
 
@@ -172,7 +172,7 @@ The `.lexibrarian.log` file must be gitignored. `lexictl init` already creates `
 
 ### Atomic Writes (D-060)
 
-Create `src/lexibrarian/utils/atomic.py`:
+Create `src/lexibrary/utils/atomic.py`:
 
 ```python
 """Atomic file write utility using temp-file + os.replace()."""
@@ -220,7 +220,7 @@ def atomic_write(target: Path, content: str, encoding: str = "utf-8") -> None:
 
 ### Conflict Marker Detection (D-063)
 
-Create `src/lexibrarian/utils/conflict.py`:
+Create `src/lexibrary/utils/conflict.py`:
 
 ```python
 """Git merge conflict marker detection."""
@@ -272,7 +272,7 @@ The `pre_llm_design_hash` is captured from `parse_design_file_metadata()` before
 
 ### `.aindex` Write Serialisation (D-064)
 
-Create `src/lexibrarian/utils/locks.py`:
+Create `src/lexibrary/utils/locks.py`:
 
 ```python
 """Per-directory write locks for .aindex serialisation."""
@@ -456,16 +456,16 @@ from types import FrameType
 
 from rich.console import Console
 
-from lexibrarian.config import find_config_file, load_config
-from lexibrarian.config.schema import LexibraryConfig
-from lexibrarian.daemon.logging import setup_daemon_logging
-from lexibrarian.daemon.scheduler import PeriodicSweep
-from lexibrarian.utils.paths import LEXIBRARY_DIR
+from lexibrary.config import find_config_file, load_config
+from lexibrary.config.schema import LexibraryConfig
+from lexibrary.daemon.logging import setup_daemon_logging
+from lexibrary.daemon.scheduler import PeriodicSweep
+from lexibrary.utils.paths import LEXIBRARY_DIR
 
 logger = logging.getLogger(__name__)
 console = Console()
 
-_PID_FILENAME = ".lexibrarian.pid"
+_PID_FILENAME = ".lexibrary.pid"
 
 
 class DaemonService:
@@ -527,9 +527,9 @@ class DaemonService:
         """Run deprecated watchdog mode (real-time file watching)."""
         from watchdog.observers import Observer  # noqa: PLC0415
 
-        from lexibrarian.daemon.debouncer import Debouncer  # noqa: PLC0415
-        from lexibrarian.daemon.watcher import LexibrarianEventHandler  # noqa: PLC0415
-        from lexibrarian.ignore import create_ignore_matcher  # noqa: PLC0415
+        from lexibrary.daemon.debouncer import Debouncer  # noqa: PLC0415
+        from lexibrary.daemon.watcher import LexibraryEventHandler  # noqa: PLC0415
+        from lexibrary.ignore import create_ignore_matcher  # noqa: PLC0415
 
         config = self._load_config()
         setup_daemon_logging(self._root, config.daemon.log_level)
@@ -554,7 +554,7 @@ class DaemonService:
             callback=lambda dirs: self._debounce_callback(config, dirs),
         )
 
-        handler = LexibrarianEventHandler(
+        handler = LexibraryEventHandler(
             debouncer=debouncer,
             ignore_matcher=ignore_matcher,
         )
@@ -605,7 +605,7 @@ class DaemonService:
 
     def _load_config(self) -> LexibraryConfig:
         """Load project config."""
-        from lexibrarian.config.loader import load_config  # noqa: PLC0415
+        from lexibrary.config.loader import load_config  # noqa: PLC0415
 
         return load_config(self._root)
 
@@ -659,9 +659,9 @@ class DaemonService:
         """Execute a full project update sweep."""
         import time  # noqa: PLC0415
 
-        from lexibrarian.archivist.pipeline import update_project  # noqa: PLC0415
-        from lexibrarian.archivist.service import ArchivistService  # noqa: PLC0415
-        from lexibrarian.llm.rate_limiter import RateLimiter  # noqa: PLC0415
+        from lexibrary.archivist.pipeline import update_project  # noqa: PLC0415
+        from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
+        from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
 
         logger.info("Sweep started")
         start = time.monotonic()
@@ -694,9 +694,9 @@ class DaemonService:
 
     def _debounce_callback(self, config: LexibraryConfig, dirs: set[Path]) -> None:
         """Watchdog debounce callback: update files in changed directories."""
-        from lexibrarian.archivist.pipeline import update_project  # noqa: PLC0415
-        from lexibrarian.archivist.service import ArchivistService  # noqa: PLC0415
-        from lexibrarian.llm.rate_limiter import RateLimiter  # noqa: PLC0415
+        from lexibrary.archivist.pipeline import update_project  # noqa: PLC0415
+        from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
+        from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
 
         logger.info("Debounce callback triggered for %d directories", len(dirs))
 
@@ -769,7 +769,7 @@ def setup(
 
 ### Hook Script
 
-Create `src/lexibrarian/hooks/post_commit.py`:
+Create `src/lexibrary/hooks/post_commit.py`:
 
 ```python
 """Git post-commit hook generation and installation."""
@@ -780,30 +780,30 @@ import os
 import stat
 from pathlib import Path
 
-_HOOK_MARKER = "# lexibrarian:post-commit"
+_HOOK_MARKER = "# lexibrary:post-commit"
 
 _HOOK_SCRIPT = """\
 #!/bin/sh
-# lexibrarian:post-commit
+# lexibrary:post-commit
 # Auto-generated by: lexictl setup --hooks
 # Updates design files for committed changes in the background.
 
 changed_files=$(git diff-tree --no-commit-id --name-only -r HEAD)
 if [ -n "$changed_files" ]; then
-    lexictl update --changed-only $changed_files >> .lexibrarian.log 2>&1 &
+    lexictl update --changed-only $changed_files >> .lexibrary.log 2>&1 &
 fi
 """
 
 
 def install_post_commit_hook(project_root: Path) -> str:
-    """Install or append Lexibrarian post-commit hook.
+    """Install or append Lexibrary post-commit hook.
 
     Returns a status message describing what was done.
 
     Handles three cases:
     1. No .git/hooks/post-commit exists -- create it
-    2. Existing hook without Lexibrarian marker -- append
-    3. Existing hook with Lexibrarian marker -- already installed
+    2. Existing hook without Lexibrary marker -- append
+    3. Existing hook with Lexibrary marker -- already installed
     """
     git_dir = project_root / ".git"
     if not git_dir.is_dir():
@@ -817,7 +817,7 @@ def install_post_commit_hook(project_root: Path) -> str:
         existing = hook_path.read_text(encoding="utf-8")
 
         if _HOOK_MARKER in existing:
-            return "Lexibrarian post-commit hook already installed."
+            return "Lexibrary post-commit hook already installed."
 
         # Append to existing hook
         hook_path.write_text(
@@ -825,7 +825,7 @@ def install_post_commit_hook(project_root: Path) -> str:
             encoding="utf-8",
         )
         _make_executable(hook_path)
-        return "Appended Lexibrarian hook to existing post-commit hook."
+        return "Appended Lexibrary hook to existing post-commit hook."
 
     # Create new hook
     hook_path.write_text(_HOOK_SCRIPT, encoding="utf-8")
@@ -844,11 +844,11 @@ def _make_executable(path: Path) -> None:
 1. `git diff-tree --no-commit-id --name-only -r HEAD` -- lists files changed in the most recent commit
 2. Passes the list to `lexictl update --changed-only`
 3. Runs in background (`&`) so the user's terminal is not blocked
-4. Output goes to `.lexibrarian.log`
+4. Output goes to `.lexibrary.log`
 
 ### Uninstall
 
-No `--remove-hooks` command in MVP. Users can manually delete the hook or remove the `# lexibrarian:post-commit` section. Document this in help text.
+No `--remove-hooks` command in MVP. Users can manually delete the hook or remove the `# lexibrary:post-commit` section. Document this in help text.
 
 ---
 
@@ -866,7 +866,7 @@ def sweep(
     ] = False,
 ) -> None:
     """Run a library update sweep."""
-    from lexibrarian.daemon.service import DaemonService  # noqa: PLC0415
+    from lexibrary.daemon.service import DaemonService  # noqa: PLC0415
 
     project_root = require_project_root()
     service = DaemonService(project_root)
@@ -890,7 +890,7 @@ def daemon(
     ] = "start",
 ) -> None:
     """[Deprecated] Real-time file watcher. Use 'lexictl sweep --watch' instead."""
-    from lexibrarian.daemon.service import DaemonService  # noqa: PLC0415
+    from lexibrary.daemon.service import DaemonService  # noqa: PLC0415
 
     project_root = require_project_root()
     service = DaemonService(project_root)
@@ -912,7 +912,7 @@ The `_stop_daemon()` and `_daemon_status()` helpers read the PID file and send s
 ```python
 def _stop_daemon(project_root: Path) -> None:
     """Stop a running daemon by PID file."""
-    pid_path = project_root / ".lexibrarian.pid"
+    pid_path = project_root / ".lexibrary.pid"
     if not pid_path.exists():
         console.print("[yellow]No daemon running (no PID file found).[/yellow]")
         return
@@ -928,7 +928,7 @@ def _stop_daemon(project_root: Path) -> None:
 
 def _daemon_status(project_root: Path) -> None:
     """Check if a daemon is running via PID file."""
-    pid_path = project_root / ".lexibrarian.pid"
+    pid_path = project_root / ".lexibrary.pid"
     if not pid_path.exists():
         console.print("No daemon running.")
         return
@@ -954,12 +954,12 @@ As specified in 9c. The `--changed-only` option accepts a list of file paths rel
 
 | File | Purpose |
 |------|---------|
-| `src/lexibrarian/daemon/logging.py` | `RotatingFileHandler` setup for `.lexibrarian.log` |
-| `src/lexibrarian/utils/atomic.py` | `atomic_write()` -- temp file + `os.replace()` |
-| `src/lexibrarian/utils/conflict.py` | `has_conflict_markers()` -- merge conflict detection |
-| `src/lexibrarian/utils/locks.py` | `DirectoryLockManager` -- per-directory `.aindex` write locks |
-| `src/lexibrarian/hooks/__init__.py` | Hooks package init |
-| `src/lexibrarian/hooks/post_commit.py` | Git post-commit hook generation and installation |
+| `src/lexibrary/daemon/logging.py` | `RotatingFileHandler` setup for `.lexibrary.log` |
+| `src/lexibrary/utils/atomic.py` | `atomic_write()` -- temp file + `os.replace()` |
+| `src/lexibrary/utils/conflict.py` | `has_conflict_markers()` -- merge conflict detection |
+| `src/lexibrary/utils/locks.py` | `DirectoryLockManager` -- per-directory `.aindex` write locks |
+| `src/lexibrary/hooks/__init__.py` | Hooks package init |
+| `src/lexibrary/hooks/post_commit.py` | Git post-commit hook generation and installation |
 | `tests/test_daemon/test_logging.py` | Tests for daemon logging setup |
 | `tests/test_daemon/test_service_rewrite.py` | Tests for rewritten `DaemonService` |
 | `tests/test_hooks/__init__.py` | Hooks test package init |
@@ -972,14 +972,14 @@ As specified in 9c. The `--changed-only` option accepts a list of file paths rel
 
 | File | Change |
 |------|--------|
-| `src/lexibrarian/config/schema.py` | Update `DaemonConfig` fields |
-| `src/lexibrarian/config/defaults.py` | Update default config template |
-| `src/lexibrarian/archivist/pipeline.py` | Add `update_files()`, adopt `atomic_write()`, add conflict marker check, add D-061 re-check |
-| `src/lexibrarian/daemon/service.py` | Complete rewrite |
-| `src/lexibrarian/daemon/__init__.py` | Update exports if needed |
-| `src/lexibrarian/cli/lexictl_app.py` | Add `--changed-only` to `update`, add `--hooks` to `setup`, replace `daemon` stub, add `sweep` command |
-| `src/lexibrarian/utils/logging.py` | May need minor updates to coexist with daemon-specific logging |
-| `src/lexibrarian/init/scaffolder.py` | Ensure `.lexibrarian.log` and `.lexibrarian.pid` are in `.gitignore` additions |
+| `src/lexibrary/config/schema.py` | Update `DaemonConfig` fields |
+| `src/lexibrary/config/defaults.py` | Update default config template |
+| `src/lexibrary/archivist/pipeline.py` | Add `update_files()`, adopt `atomic_write()`, add conflict marker check, add D-061 re-check |
+| `src/lexibrary/daemon/service.py` | Complete rewrite |
+| `src/lexibrary/daemon/__init__.py` | Update exports if needed |
+| `src/lexibrary/cli/lexictl_app.py` | Add `--changed-only` to `update`, add `--hooks` to `setup`, replace `daemon` stub, add `sweep` command |
+| `src/lexibrary/utils/logging.py` | May need minor updates to coexist with daemon-specific logging |
+| `src/lexibrary/init/scaffolder.py` | Ensure `.lexibrary.log` and `.lexibrary.pid` are in `.gitignore` additions |
 | `tests/test_config/test_schema.py` | Update `DaemonConfig` field tests |
 | `tests/test_config/test_defaults.py` | Update default config assertions |
 | `tests/test_daemon/test_service.py` | Rename or replace with `test_service_rewrite.py` |
@@ -1030,7 +1030,7 @@ As specified in 9c. The `--changed-only` option accepts a list of file paths rel
 
 - `test_install_creates_hook` -- no existing hook, creates new file
 - `test_install_hook_is_executable` -- file permissions include execute
-- `test_install_appends_to_existing_hook` -- existing hook preserved, Lexibrarian section appended
+- `test_install_appends_to_existing_hook` -- existing hook preserved, Lexibrary section appended
 - `test_install_idempotent` -- running twice doesn't duplicate
 - `test_install_no_git_dir` -- returns error message, doesn't crash
 - `test_hook_script_contains_changed_only` -- script text includes `--changed-only`
@@ -1066,9 +1066,9 @@ As specified in 9c. The `--changed-only` option accepts a list of file paths rel
 
 ### Step 1: Config & Logging (9a)
 
-1. Update `DaemonConfig` in `src/lexibrarian/config/schema.py`
-2. Update default config template in `src/lexibrarian/config/defaults.py`
-3. Create `src/lexibrarian/daemon/logging.py`
+1. Update `DaemonConfig` in `src/lexibrary/config/schema.py`
+2. Update default config template in `src/lexibrary/config/defaults.py`
+3. Create `src/lexibrary/daemon/logging.py`
 4. Update config tests in `tests/test_config/test_schema.py` and `tests/test_config/test_defaults.py`
 5. Create `tests/test_daemon/test_logging.py`
 
@@ -1076,9 +1076,9 @@ As specified in 9c. The `--changed-only` option accepts a list of file paths rel
 
 ### Step 2: Safety Mechanisms (9b)
 
-1. Create `src/lexibrarian/utils/atomic.py`
-2. Create `src/lexibrarian/utils/conflict.py`
-3. Create `src/lexibrarian/utils/locks.py`
+1. Create `src/lexibrary/utils/atomic.py`
+2. Create `src/lexibrary/utils/conflict.py`
+3. Create `src/lexibrary/utils/locks.py`
 4. Create tests: `test_atomic.py`, `test_conflict.py`, `test_locks.py`
 
 **Verify:** `uv run pytest tests/test_utils/ -v`
@@ -1096,18 +1096,18 @@ As specified in 9c. The `--changed-only` option accepts a list of file paths rel
 
 ### Step 4: DaemonService Rewrite (9d)
 
-1. Rewrite `src/lexibrarian/daemon/service.py`
-2. Update `src/lexibrarian/daemon/__init__.py`
+1. Rewrite `src/lexibrary/daemon/service.py`
+2. Update `src/lexibrary/daemon/__init__.py`
 3. Create `tests/test_daemon/test_service_rewrite.py`
 4. Remove `ignore_errors = true` for `daemon.service` in `pyproject.toml` mypy overrides
 
-**Verify:** `uv run pytest tests/test_daemon/ -v && uv run mypy src/lexibrarian/daemon/`
+**Verify:** `uv run pytest tests/test_daemon/ -v && uv run mypy src/lexibrary/daemon/`
 
 ### Step 5: Git Hook Installation (9e)
 
-1. Create `src/lexibrarian/hooks/__init__.py` and `post_commit.py`
+1. Create `src/lexibrary/hooks/__init__.py` and `post_commit.py`
 2. Create `tests/test_hooks/test_post_commit.py`
-3. Update `src/lexibrarian/init/scaffolder.py` -- ensure `.lexibrarian.log` and `.lexibrarian.pid` in gitignore
+3. Update `src/lexibrary/init/scaffolder.py` -- ensure `.lexibrary.log` and `.lexibrary.pid` in gitignore
 
 **Verify:** `uv run pytest tests/test_hooks/ -v`
 
@@ -1123,21 +1123,21 @@ As specified in 9c. The `--changed-only` option accepts a list of file paths rel
 
 ### Step 7: Full Verification
 
-1. `uv run pytest --cov=lexibrarian` -- all tests pass
+1. `uv run pytest --cov=lexibrary` -- all tests pass
 2. `uv run ruff check src/ tests/` -- no lint issues
 3. `uv run ruff format src/ tests/` -- formatting clean
 4. `uv run mypy src/` -- type checks pass (no more `ignore_errors` for daemon.service)
 5. Manual smoke test: `uv run lexictl sweep` runs and exits
 6. Manual smoke test: `uv run lexictl setup --hooks` creates git hook
-7. Manual smoke test: `uv run lexictl update --changed-only src/lexibrarian/__init__.py` processes one file
+7. Manual smoke test: `uv run lexictl update --changed-only src/lexibrary/__init__.py` processes one file
 
 ### Step 8: Blueprints
 
-1. Update `blueprints/src/lexibrarian/daemon/service.md` -- document rewritten service
-2. Create `blueprints/src/lexibrarian/daemon/logging.md`
-3. Create `blueprints/src/lexibrarian/hooks/` design files
-4. Create `blueprints/src/lexibrarian/utils/atomic.md`
-5. Create `blueprints/src/lexibrarian/utils/conflict.md`
+1. Update `blueprints/src/lexibrary/daemon/service.md` -- document rewritten service
+2. Create `blueprints/src/lexibrary/daemon/logging.md`
+3. Create `blueprints/src/lexibrary/hooks/` design files
+4. Create `blueprints/src/lexibrary/utils/atomic.md`
+5. Create `blueprints/src/lexibrary/utils/conflict.md`
 6. Update `blueprints/START_HERE.md` with new module descriptions
 
 ---
@@ -1147,12 +1147,12 @@ As specified in 9c. The `--changed-only` option accepts a list of file paths rel
 | Risk | Mitigation |
 |------|------------|
 | `asyncio.run()` nested in threading callback | Each callback creates a fresh event loop. This is the documented pattern and matches `lexictl update` CLI usage. No nested `asyncio.run()` risk as long as callbacks don't call each other. |
-| Git hook background process (`&`) fails silently | Output goes to `.lexibrarian.log`. `lexictl status` surfaces stale artifacts. Periodic sweep catches anything hooks miss. |
-| Hook appending to existing complex hook (e.g., `husky`) | Marker-based detection prevents duplication. If the existing hook uses a framework, appending is safe -- the Lexibrarian section runs independently. Document that `husky` users should add Lexibrarian to their `.husky/post-commit` instead. |
+| Git hook background process (`&`) fails silently | Output goes to `.lexibrary.log`. `lexictl status` surfaces stale artifacts. Periodic sweep catches anything hooks miss. |
+| Hook appending to existing complex hook (e.g., `husky`) | Marker-based detection prevents duplication. If the existing hook uses a framework, appending is safe -- the Lexibrary section runs independently. Document that `husky` users should add Lexibrary to their `.husky/post-commit` instead. |
 | `os.replace()` not truly atomic on Windows | Near-atomic on Windows (NTFS supports atomic rename). Acceptable for a dev tool; partial reads are extremely unlikely. |
 | Temp file left behind on crash | `finally` block in `atomic_write()` cleans up. `.tmp` suffix files in `.lexibrary/` can be cleaned by future `lexictl validate --fix`. |
 | Watchdog import when `watchdog` not installed | Lazy import in `run_watchdog()` means the sweep modes never load `watchdog`. If `watchdog` is missing and user tries daemon mode, they get a clear `ImportError`. |
-| `.lexibrarian.log` grows unbounded | `RotatingFileHandler` caps at 5MB with 3 backups (20MB max). |
+| `.lexibrary.log` grows unbounded | `RotatingFileHandler` caps at 5MB with 3 backups (20MB max). |
 | Sweep detects changes in `.lexibrary/` causing infinite loop | `_has_changes()` explicitly skips `.lexibrary/` directory. |
 | Design hash re-check creates false positives | The re-check only fires when the design file existed before the LLM call AND has a `design_hash` that changed. If the design file was created during the LLM call (by an agent), `pre_llm_design_hash` is `None` and re-check is skipped. |
 | `--changed-only` with paths outside scope_root | `update_file()` already checks scope; out-of-scope files return `UNCHANGED` harmlessly. |
@@ -1186,7 +1186,7 @@ As specified in 9c. The `--changed-only` option accepts a list of file paths rel
 
 6. **The periodic sweep's `_has_changes()` uses `os.scandir()` recursively.** For very large projects, this stat walk itself could be slow. However, it's always cheaper than hashing files, and the early return on first changed file limits worst-case traversal.
 
-7. **`.lexibrarian.log` and `.lexibrarian.pid` must be gitignored.** Verify that `lexictl init` scaffolding adds these patterns. If not, the gitignore section in the scaffolder needs updating.
+7. **`.lexibrary.log` and `.lexibrary.pid` must be gitignored.** Verify that `lexictl init` scaffolding adds these patterns. If not, the gitignore section in the scaffolder needs updating.
 
 8. **Existing daemon tests (`tests/test_daemon/test_service.py`)** test the broken `DaemonService`. These tests should be replaced rather than updated, since the class interface changes significantly (no more `foreground` parameter, three separate entry points instead of `start()`).
 

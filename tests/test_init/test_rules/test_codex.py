@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.init.rules.codex import generate_codex_rules
-from lexibrarian.init.rules.markers import MARKER_END, MARKER_START
+from lexibrary.init.rules.codex import generate_codex_rules
+from lexibrary.init.rules.markers import MARKER_END, MARKER_START
 
 # ---------------------------------------------------------------------------
 # Create from scratch
@@ -28,7 +28,7 @@ class TestCreateFromScratch:
         assert MARKER_END in content
 
     def test_agents_md_has_core_rules(self, tmp_path: Path) -> None:
-        """Created AGENTS.md contains core Lexibrarian rules."""
+        """Created AGENTS.md contains core Lexibrary rules."""
         generate_codex_rules(tmp_path)
         content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
         assert "START_HERE.md" in content
@@ -62,7 +62,7 @@ class TestAppendToExisting:
     """Existing AGENTS.md without markers gets section appended."""
 
     def test_preserves_existing_content(self, tmp_path: Path) -> None:
-        """User content before the Lexibrarian section is preserved."""
+        """User content before the Lexibrary section is preserved."""
         agents_md = tmp_path / "AGENTS.md"
         user_content = "# My Agent Instructions\n\nDo important things.\n"
         agents_md.write_text(user_content, encoding="utf-8")
@@ -111,7 +111,7 @@ class TestUpdateExistingSection:
         old_content = (
             f"# Custom Header\n\n"
             f"{MARKER_START}\n"
-            f"outdated lexibrarian rules\n"
+            f"outdated lexibrary rules\n"
             f"{MARKER_END}\n\n"
             f"# Custom Footer"
         )
@@ -120,7 +120,7 @@ class TestUpdateExistingSection:
         generate_codex_rules(tmp_path)
 
         content = agents_md.read_text(encoding="utf-8")
-        assert "outdated lexibrarian rules" not in content
+        assert "outdated lexibrary rules" not in content
         assert "START_HERE.md" in content
 
     def test_preserves_surrounding_content(self, tmp_path: Path) -> None:

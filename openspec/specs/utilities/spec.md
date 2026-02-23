@@ -46,7 +46,7 @@ The system SHALL provide a function to configure logging with Rich handler for c
 - **THEN** logging level is set to DEBUG
 
 #### Scenario: File logging is enabled
-- **WHEN** calling `setup_logging(log_file=".lexibrarian.log")`
+- **WHEN** calling `setup_logging(log_file=".lexibrary.log")`
 - **THEN** a FileHandler is added that writes to the specified file
 
 #### Scenario: Log messages are formatted correctly
@@ -77,7 +77,7 @@ The system SHALL find the project root by walking upward from a start directory,
 - **THEN** it walks upward and returns the first directory containing `.git` or `lexibrary.toml`
 
 ### Requirement: IWH path computation
-The system SHALL provide `iwh_path(project_root: Path, source_directory: Path) -> Path` in `src/lexibrarian/utils/paths.py` that computes the `.iwh` file path in the `.lexibrary/` mirror tree.
+The system SHALL provide `iwh_path(project_root: Path, source_directory: Path) -> Path` in `src/lexibrary/utils/paths.py` that computes the `.iwh` file path in the `.lexibrary/` mirror tree.
 
 #### Scenario: Subdirectory IWH path
 - **WHEN** calling `iwh_path(project_root, project_root / "src" / "auth")`

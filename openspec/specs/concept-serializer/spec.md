@@ -4,7 +4,7 @@
 TBD - created by archiving change concepts-wiki. Update Purpose after archive.
 ## Requirements
 ### Requirement: serialize_concept_file function
-The system SHALL provide `serialize_concept_file(concept: ConceptFile) -> str` in `src/lexibrarian/wiki/serializer.py` that produces a markdown string with:
+The system SHALL provide `serialize_concept_file(concept: ConceptFile) -> str` in `src/lexibrary/wiki/serializer.py` that produces a markdown string with:
 1. YAML frontmatter delimited by `---` containing `title`, `aliases`, `tags`, `status`, and `superseded_by` (only if not None)
 2. The raw `body` content as-is (no modification)
 3. A trailing newline

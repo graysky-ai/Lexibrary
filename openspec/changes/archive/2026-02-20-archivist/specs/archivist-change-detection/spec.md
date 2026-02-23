@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: ChangeLevel enumeration
-The system SHALL define a `ChangeLevel` enum in `src/lexibrarian/archivist/change_checker.py` with values:
+The system SHALL define a `ChangeLevel` enum in `src/lexibrary/archivist/change_checker.py` with values:
 - `UNCHANGED` — source file has not changed
 - `AGENT_UPDATED` — agent already updated the design file (or created it from scratch without footer)
 - `CONTENT_ONLY` — source content changed but interface unchanged

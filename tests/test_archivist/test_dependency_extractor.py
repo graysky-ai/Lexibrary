@@ -8,14 +8,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.archivist.dependency_extractor import (
+from lexibrary.archivist.dependency_extractor import (
     _resolve_js_import,
     _resolve_python_import,
     extract_dependencies,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
-PROJECT_ROOT = Path(__file__).parent.parent.parent  # → Lexibrarian project root
+PROJECT_ROOT = Path(__file__).parent.parent.parent  # → Lexibrary project root
 
 
 # ---------------------------------------------------------------------------
@@ -67,10 +67,10 @@ class TestPythonAbsoluteImports:
         assert deps.count("src/pkg/utils.py") == 1
 
     def test_fixture_project_imports(self) -> None:
-        """sample_source.py fixture resolves lexibrarian imports against real project."""
+        """sample_source.py fixture resolves lexibrary imports against real project."""
         deps = extract_dependencies(FIXTURES / "sample_source.py", PROJECT_ROOT)
-        assert "src/lexibrarian/config/schema.py" in deps
-        assert "src/lexibrarian/ast_parser/registry.py" in deps
+        assert "src/lexibrary/config/schema.py" in deps
+        assert "src/lexibrary/ast_parser/registry.py" in deps
 
     def test_fixture_third_party_excluded(self) -> None:
         """sample_source.py fixture does not include third-party imports."""

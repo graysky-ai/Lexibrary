@@ -5,7 +5,7 @@ from __future__ import annotations
 import stat
 from pathlib import Path
 
-from lexibrarian.hooks.post_commit import (
+from lexibrary.hooks.post_commit import (
     HOOK_MARKER,
     HOOK_SCRIPT_TEMPLATE,
     install_post_commit_hook,
@@ -97,7 +97,7 @@ def test_appends_to_existing_hook(tmp_path: Path) -> None:
     assert result.installed is True
     content = hook_path.read_text()
     assert "pre-existing hook" in content, "Original content preserved"
-    assert HOOK_MARKER in content, "Lexibrarian marker added"
+    assert HOOK_MARKER in content, "Lexibrary marker added"
 
 
 def test_existing_content_preserved_on_append(tmp_path: Path) -> None:
@@ -214,16 +214,16 @@ def test_script_runs_in_background(tmp_path: Path) -> None:
 
 
 def test_script_redirects_to_log(tmp_path: Path) -> None:
-    """Hook script redirects output to .lexibrarian.log."""
+    """Hook script redirects output to .lexibrary/daemon.log."""
     root = _make_git_repo(tmp_path)
     install_post_commit_hook(root)
 
     content = (root / ".git" / "hooks" / "post-commit").read_text()
-    assert ".lexibrarian.log" in content
+    assert ".lexibrary/daemon.log" in content
 
 
 def test_hook_marker_present(tmp_path: Path) -> None:
-    """The hook script contains the Lexibrarian marker comment."""
+    """The hook script contains the Lexibrary marker comment."""
     root = _make_git_repo(tmp_path)
     install_post_commit_hook(root)
 

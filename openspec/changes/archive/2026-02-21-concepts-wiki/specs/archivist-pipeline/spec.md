@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: update_file function
-The system SHALL provide `async update_file(source_path, project_root, config, archivist, available_concepts: list[str] | None = None) -> ChangeLevel` in `src/lexibrarian/archivist/pipeline.py` that generates or updates the design file for a single source file.
+The system SHALL provide `async update_file(source_path, project_root, config, archivist, available_concepts: list[str] | None = None) -> ChangeLevel` in `src/lexibrary/archivist/pipeline.py` that generates or updates the design file for a single source file.
 
 The pipeline for a single file SHALL:
 1. Check `scope_root` — skip if file is outside scope

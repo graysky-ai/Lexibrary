@@ -3,9 +3,9 @@
 The current codebase has a single `cli.py` file (~1,340 lines) that defines one Typer app exposing all commands under `lexi`. The architecture overview (sections 8-9) and decisions D-051, D-052, D-056 call for two CLIs: `lexi` (agent-facing) and `lexictl` (maintenance). This change is purely structural — no new functionality, no new dependencies.
 
 Current state:
-- `src/lexibrarian/cli.py` — monolithic file with all commands
-- `pyproject.toml` — two entry points (`lexi`, `lexibrarian`) both pointing to `lexibrarian.cli:app`
-- `src/lexibrarian/__main__.py` — imports `app` from `lexibrarian.cli`
+- `src/lexibrary/cli.py` — monolithic file with all commands
+- `pyproject.toml` — two entry points (`lexi`, `lexibrary`) both pointing to `lexibrary.cli:app`
+- `src/lexibrary/__main__.py` — imports `app` from `lexibrary.cli`
 - `tests/test_cli.py` — single test file for all CLI tests
 
 ## Goals / Non-Goals
@@ -22,7 +22,7 @@ Current state:
 - No changes to command signatures or behavior (beyond help text/messages)
 - No init wizard (Phase 8b)
 - No agent rules or IWH system (Phase 8c)
-- No backwards-compatibility aliases for `from lexibrarian.cli import app`
+- No backwards-compatibility aliases for `from lexibrary.cli import app`
 
 ## Decisions
 
@@ -39,13 +39,13 @@ Split into a `cli/` package with four files rather than keeping two apps in one 
 
 `_stack_dir()`, `_next_stack_id()`, `_slugify()`, `_find_post_path()` are used exclusively by stack commands. They move to `lexi_app.py` as private functions, not to `_shared.py`.
 
-### D3: Drop the `lexibrarian` command alias
+### D3: Drop the `lexibrary` command alias
 
 Pre-1.0, no backwards-compatibility obligation. Two CLIs (`lexi`, `lexictl`) provide clear naming. A third name adds confusion.
 
 ### D4: `__main__.py` runs `lexi_app`
 
-`python -m lexibrarian` runs the agent-facing CLI since that is the primary use case.
+`python -m lexibrary` runs the agent-facing CLI since that is the primary use case.
 
 ### D5: Drop leading underscores on shared helpers
 
@@ -57,7 +57,7 @@ Pre-1.0, no backwards-compatibility obligation. Two CLIs (`lexi`, `lexictl`) pro
 
 ## Risks / Trade-offs
 
-- **Import path break** → `from lexibrarian.cli import app` no longer works. Pre-1.0, acceptable. Mitigation: clear error at import time (AttributeError on missing `app`).
+- **Import path break** → `from lexibrary.cli import app` no longer works. Pre-1.0, acceptable. Mitigation: clear error at import time (AttributeError on missing `app`).
 - **`lexi init` no longer exists** → Running `lexi init` produces Typer "No such command" error. Mitigation: `require_project_root()` error message directs to `lexictl init`.
 - **Test runner discovery** → Moving from `test_cli.py` to `test_cli/` package requires `__init__.py`. Pytest with `testpaths = ["tests"]` discovers automatically.
 - **Stale mental models** → Contributors accustomed to `lexi update` or `lexi validate`. Mitigation: error messages consistently reference `lexictl`.

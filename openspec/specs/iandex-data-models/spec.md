@@ -4,7 +4,7 @@
 TBD - created by archiving change iandex-format. Update Purpose after archive.
 ## Requirements
 ### Requirement: AIndexEntry Pydantic model
-The system SHALL provide an `AIndexEntry` Pydantic 2 model in `src/lexibrarian/artifacts/aindex.py` with the following fields:
+The system SHALL provide an `AIndexEntry` Pydantic 2 model in `src/lexibrary/artifacts/aindex.py` with the following fields:
 - `name` (str): The entry name — filename (e.g., `"cli.py"`) or subdirectory name (e.g., `"config"`)
 - `entry_type` (Literal["file", "dir"]): Whether this entry is a file or directory
 - `description` (str): A structural description of the entry

@@ -57,7 +57,7 @@ The `DaemonService` SHALL handle SIGTERM and SIGINT signals for graceful shutdow
 - **THEN** the daemon SHALL stop all components and remove the PID file
 
 ### Requirement: PID file management
-The `DaemonService` SHALL write and manage a PID file at `<root>/.lexibrarian.pid` in watchdog mode only.
+The `DaemonService` SHALL write and manage a PID file at `<root>/.lexibrary.pid` in watchdog mode only.
 
 #### Scenario: PID file written on watchdog start
 - **WHEN** `run_watchdog()` starts successfully

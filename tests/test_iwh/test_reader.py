@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from lexibrarian.iwh import IWHFile, serialize_iwh
-from lexibrarian.iwh.reader import consume_iwh, read_iwh
+from lexibrary.iwh import IWHFile, serialize_iwh
+from lexibrary.iwh.reader import consume_iwh, read_iwh
 
 
 class TestReadIWH:

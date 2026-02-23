@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.wiki.parser import parse_concept_file
+from lexibrary.wiki.parser import parse_concept_file
 
 VALID_CONCEPT = """\
 ---

@@ -1,6 +1,6 @@
 ## Context
 
-v1 Lexibrarian has a single-file TOML config (`lexibrary.toml`), a single `crawl` command, and produces `.aindex` files directly in the source tree. v2 replaces all three with a two-tier YAML config, a richer CLI surface, and a mirrored `.lexibrary/` output directory. This design document covers the Phase 1 architectural decisions that every later phase inherits.
+v1 Lexibrary has a single-file TOML config (`lexibrary.toml`), a single `crawl` command, and produces `.aindex` files directly in the source tree. v2 replaces all three with a two-tier YAML config, a richer CLI surface, and a mirrored `.lexibrary/` output directory. This design document covers the Phase 1 architectural decisions that every later phase inherits.
 
 Existing modules to keep unchanged: `ignore/`, `tokenizer/`, `utils/hashing.py`, `llm/rate_limiter.py`, `daemon/watcher.py`, `daemon/debouncer.py`, `daemon/scheduler.py`. Modules to retire: `indexer/` (temporary). Modules to rewrite: `config/schema.py`, `config/loader.py`, `cli.py`. Module to add: `artifacts/`.
 
@@ -31,7 +31,7 @@ v1 used `lexibrary.toml` via `stdlib tomllib`. v2 switches to YAML because:
 
 ### D2: Two-tier loading — explicit merge, project wins
 
-Global config (`~/.config/lexibrarian/config.yaml`, XDG) provides defaults so `lexi init` works without manual setup. Project config (`.lexibrary/config.yaml`) overrides only the fields it declares. Merge strategy: load global → load project → `model_validate(global.model_dump() | project_partial_dict)`.
+Global config (`~/.config/lexibrary/config.yaml`, XDG) provides defaults so `lexi init` works without manual setup. Project config (`.lexibrary/config.yaml`) overrides only the fields it declares. Merge strategy: load global → load project → `model_validate(global.model_dump() | project_partial_dict)`.
 
 **Why not deep merge?** Pydantic models have a flat structure at each level. Shallow merge (top-level keys) is sufficient; nested dicts within a key (e.g., `mapping.strategies`) are replaced wholesale to avoid partial-merge surprises.
 
@@ -82,10 +82,10 @@ It does NOT write agent environment rules — that is `lexi setup` (Phase 8). Th
 
 ## Migration Plan
 
-1. Delete `src/lexibrarian/config/schema.py` and `config/loader.py`; write new versions
-2. Delete `src/lexibrarian/cli.py`; write new version
-3. Delete `src/lexibrarian/indexer/` (or move to `indexer/_v1_retired/` if tests need phased migration)
-4. Create `src/lexibrarian/artifacts/` with data models
+1. Delete `src/lexibrary/config/schema.py` and `config/loader.py`; write new versions
+2. Delete `src/lexibrary/cli.py`; write new version
+3. Delete `src/lexibrary/indexer/` (or move to `indexer/_v1_retired/` if tests need phased migration)
+4. Create `src/lexibrary/artifacts/` with data models
 5. Add `PyYAML>=6.0.0,<7.0.0` to `pyproject.toml`; run `uv sync`
 6. Update `.gitignore`: add `.lexibrary/START_HERE.md`, `.lexibrary/HANDOFF.md`, `.lexibrary/**/*.md`, `.lexibrary/**/.aindex`; keep `.lexibrary/config.yaml` tracked
 7. Run `uv run pytest` to confirm test suite passes; update any tests that import retired modules
