@@ -21,10 +21,10 @@ from unittest.mock import patch
 import yaml
 from typer.testing import CliRunner
 
-from lexibrarian.cli import lexi_app
-from lexibrarian.linkgraph.query import LinkGraph
-from lexibrarian.linkgraph.schema import SCHEMA_VERSION, ensure_schema
-from lexibrarian.search import unified_search
+from lexibrary.cli import lexi_app
+from lexibrary.linkgraph.query import LinkGraph
+from lexibrary.linkgraph.schema import SCHEMA_VERSION, ensure_schema
+from lexibrary.search import unified_search
 
 runner = CliRunner()
 
@@ -74,12 +74,12 @@ def hello(): ...
 
 - (none)
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: {source_rel}
 source_hash: {content_hash}
 design_hash: placeholder
 generated: {now}
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
     design_path.write_text(design_content, encoding="utf-8")
@@ -276,12 +276,12 @@ def placeholder(): ...
 
 {tags_section}
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: {source_rel}
 source_hash: {content_hash}
 design_hash: placeholder
 generated: {now}
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
     design_path.write_text(design_content, encoding="utf-8")

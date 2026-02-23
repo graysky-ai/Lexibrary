@@ -9,10 +9,10 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from lexibrarian.linkgraph.schema import SCHEMA_VERSION, ensure_schema
-from lexibrarian.utils.hashing import hash_file
-from lexibrarian.utils.paths import LEXIBRARY_DIR
-from lexibrarian.validator.checks import (
+from lexibrary.linkgraph.schema import SCHEMA_VERSION, ensure_schema
+from lexibrary.utils.hashing import hash_file
+from lexibrary.utils.paths import LEXIBRARY_DIR
+from lexibrary.validator.checks import (
     check_aindex_coverage,
     check_bidirectional_deps,
     check_dangling_links,
@@ -47,12 +47,12 @@ def example() -> None: ...
 
 (none)
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: {source_path}
 source_hash: {source_hash}
 design_hash: deadbeef
 generated: 2026-01-01T12:00:00
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
 
@@ -82,8 +82,8 @@ The fix is to do X.
 """
 
 _AINDEX_META = (
-    '<!-- lexibrarian:meta source="{dir}" source_hash="abc123"'
-    ' generated="2026-01-01T12:00:00" generator="lexibrarian-v2" -->'
+    '<!-- lexibrary:meta source="{dir}" source_hash="abc123"'
+    ' generated="2026-01-01T12:00:00" generator="lexibrary-v2" -->'
 )
 
 _AINDEX_TEMPLATE = """\

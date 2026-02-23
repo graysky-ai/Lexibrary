@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from lexibrarian.init.scaffolder import (
+from lexibrary.init.scaffolder import (
     LEXIGNORE_HEADER,
     START_HERE_PLACEHOLDER,
     _generate_config_yaml,
@@ -14,8 +14,8 @@ from lexibrarian.init.scaffolder import (
     create_lexibrary_from_wizard,
     create_lexibrary_skeleton,
 )
-from lexibrarian.init.wizard import WizardAnswers
-from lexibrarian.iwh.gitignore import IWH_GITIGNORE_PATTERN
+from lexibrary.init.wizard import WizardAnswers
+from lexibrary.iwh.gitignore import IWH_GITIGNORE_PATTERN
 
 # ---------------------------------------------------------------------------
 # Original create_lexibrary_skeleton tests (preserved)
@@ -148,7 +148,7 @@ def test_generate_config_yaml_has_header() -> None:
     """Generated config starts with a descriptive header comment."""
     answers = _make_answers()
     output = _generate_config_yaml(answers)
-    assert output.startswith("# Lexibrarian project configuration")
+    assert output.startswith("# Lexibrary project configuration")
 
 
 # ---------------------------------------------------------------------------
@@ -262,8 +262,8 @@ def test_wizard_creates_start_here(tmp_path: Path) -> None:
 
 
 def test_wizard_import_from_init_package() -> None:
-    """create_lexibrary_from_wizard is importable from lexibrarian.init."""
-    from lexibrarian.init import create_lexibrary_from_wizard as fn
+    """create_lexibrary_from_wizard is importable from lexibrary.init."""
+    from lexibrary.init import create_lexibrary_from_wizard as fn
 
     assert callable(fn)
 

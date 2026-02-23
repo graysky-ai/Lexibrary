@@ -80,11 +80,11 @@ mechanism for package directories.
 
 ### Phase 0: Pre-flight
 
-- [ ] Commit all uncommitted work on `main` (checkpoint)
-- [ ] Run `uv run pytest` — confirm green baseline
-- [ ] Run `uv run ruff check src/ tests/` — confirm clean
-- [ ] Run `uv run mypy src/` — confirm clean
-- [ ] Create branch: `git checkout -b rename/lexibrarian-to-lexibrary`
+- [x] Commit all uncommitted work on `main` (checkpoint)
+- [x] Run `uv run pytest` — confirm green baseline (1853 passed)
+- [x] Run `uv run ruff check src/ tests/` — confirm clean
+- [x] Run `uv run mypy src/` — confirm clean (125 source files)
+- [x] Create branch: `git checkout -b rename/lexibrarian-to-lexibrary`
 
 ### Phase 1: Core package rename (single atomic commit)
 

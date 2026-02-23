@@ -13,18 +13,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lexibrarian.archivist.change_checker import ChangeLevel
-from lexibrarian.archivist.pipeline import (
+from lexibrary.archivist.change_checker import ChangeLevel
+from lexibrary.archivist.pipeline import (
     FileResult,
     update_file,
     update_files,
 )
-from lexibrarian.archivist.service import (
+from lexibrary.archivist.service import (
     ArchivistService,
     DesignFileResult,
 )
-from lexibrarian.baml_client.types import DesignFileOutput
-from lexibrarian.config.schema import LexibraryConfig, TokenBudgetConfig
+from lexibrary.baml_client.types import DesignFileOutput
+from lexibrary.config.schema import LexibraryConfig, TokenBudgetConfig
 
 # ---------------------------------------------------------------------------
 # Helpers (shared with test_pipeline.py patterns)
@@ -86,7 +86,7 @@ def _make_design_file(
             design_hash = _sha256(body.rstrip("\n"))
 
         footer_lines = [
-            "<!-- lexibrarian:meta",
+            "<!-- lexibrary:meta",
             f"source: {source_rel}",
             f"source_hash: {source_hash}",
         ]
@@ -94,7 +94,7 @@ def _make_design_file(
             footer_lines.append(f"interface_hash: {interface_hash}")
         footer_lines.append(f"design_hash: {design_hash}")
         footer_lines.append("generated: 2026-01-01T12:00:00")
-        footer_lines.append("generator: lexibrarian-v2")
+        footer_lines.append("generator: lexibrary-v2")
         footer_lines.append("-->")
 
         text = body + "\n" + "\n".join(footer_lines) + "\n"
@@ -161,10 +161,10 @@ class TestConflictMarkerSkip:
         config = _make_config()
         archivist = _mock_archivist()
 
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("new_hash", "new_iface")
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.CONTENT_CHANGED,
             ):
                 result = await update_file(source, tmp_path, config, archivist)
@@ -182,10 +182,10 @@ class TestConflictMarkerSkip:
         config = _make_config()
         archivist = _mock_archivist(summary="Clean module.")
 
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("hash1", "iface1")
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.NEW_FILE,
             ):
                 result = await update_file(source, tmp_path, config, archivist)
@@ -249,12 +249,12 @@ class TestDesignHashRecheck:
             edited_body = body + "\n\nAgent added this line.\n"
             # Rewrite the design file with different content
             footer_lines = [
-                "<!-- lexibrarian:meta",
+                "<!-- lexibrary:meta",
                 f"source: {source_rel}",
                 "source_hash: old_hash",
                 f"design_hash: {original_design_hash}",
                 "generated: 2026-01-01T12:00:00",
-                "generator: lexibrarian-v2",
+                "generator: lexibrary-v2",
                 "-->",
             ]
             new_text = edited_body + "\n" + "\n".join(footer_lines) + "\n"
@@ -264,10 +264,10 @@ class TestDesignHashRecheck:
 
         archivist.generate_design_file = AsyncMock(side_effect=edit_during_generation)
 
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("new_content_hash", "new_iface")
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.CONTENT_CHANGED,
             ):
                 result = await update_file(source, tmp_path, config, archivist)
@@ -315,10 +315,10 @@ class TestDesignHashRecheck:
         config = _make_config()
         archivist = _mock_archivist(summary="Updated module.")
 
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("new_content_hash", "new_iface")
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.CONTENT_CHANGED,
             ):
                 result = await update_file(source, tmp_path, config, archivist)
@@ -381,11 +381,11 @@ class TestDesignHashRecheck:
 
         # Footer without design_hash
         footer = (
-            "<!-- lexibrarian:meta\n"
+            "<!-- lexibrary:meta\n"
             f"source: {source_rel}\n"
             "source_hash: old_hash\n"
             "generated: 2026-01-01T12:00:00\n"
-            "generator: lexibrarian-v2\n"
+            "generator: lexibrary-v2\n"
             "-->"
         )
         design_path.write_text(body + "\n" + footer + "\n", encoding="utf-8")
@@ -393,10 +393,10 @@ class TestDesignHashRecheck:
         config = _make_config()
         archivist = _mock_archivist(summary="Updated module.")
 
-        with patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes:
+        with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("new_hash", "new_iface")
             with patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.CONTENT_CHANGED,
             ):
                 result = await update_file(source, tmp_path, config, archivist)
@@ -424,10 +424,10 @@ class TestAtomicWriteUsage:
         archivist = _mock_archivist(summary="Foo module.")
 
         with (
-            patch("lexibrarian.archivist.pipeline.atomic_write") as mock_atomic,
-            patch("lexibrarian.archivist.pipeline.compute_hashes") as mock_hashes,
+            patch("lexibrary.archivist.pipeline.atomic_write") as mock_atomic,
+            patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes,
             patch(
-                "lexibrarian.archivist.pipeline.check_change",
+                "lexibrary.archivist.pipeline.check_change",
                 return_value=ChangeLevel.NEW_FILE,
             ),
         ):
@@ -457,7 +457,7 @@ class TestAtomicWriteUsage:
         config = _make_config()
         archivist = _mock_archivist()
 
-        with patch("lexibrarian.archivist.pipeline.atomic_write") as mock_atomic:
+        with patch("lexibrary.archivist.pipeline.atomic_write") as mock_atomic:
             result = await update_file(source, tmp_path, config, archivist)
 
         assert result.change == ChangeLevel.AGENT_UPDATED
@@ -495,7 +495,7 @@ class TestUpdateFiles:
             return FileResult(change=ChangeLevel.NEW_FILE)
 
         with patch(
-            "lexibrarian.archivist.pipeline.update_file",
+            "lexibrary.archivist.pipeline.update_file",
             side_effect=fake_update_file,
         ):
             stats = await update_files([source_a, source_b], tmp_path, config, archivist)
@@ -526,7 +526,7 @@ class TestUpdateFiles:
             return FileResult(change=ChangeLevel.UNCHANGED)
 
         with patch(
-            "lexibrarian.archivist.pipeline.update_file",
+            "lexibrary.archivist.pipeline.update_file",
             side_effect=fake_update_file,
         ):
             stats = await update_files([existing, deleted], tmp_path, config, archivist)
@@ -560,7 +560,7 @@ class TestUpdateFiles:
             return FileResult(change=ChangeLevel.UNCHANGED)
 
         with patch(
-            "lexibrarian.archivist.pipeline.update_file",
+            "lexibrary.archivist.pipeline.update_file",
             side_effect=fake_update_file,
         ):
             stats = await update_files([source, binary], tmp_path, config, archivist)
@@ -594,7 +594,7 @@ class TestUpdateFiles:
             return FileResult(change=ChangeLevel.UNCHANGED)
 
         with patch(
-            "lexibrarian.archivist.pipeline.update_file",
+            "lexibrary.archivist.pipeline.update_file",
             side_effect=fake_update_file,
         ):
             stats = await update_files([source, lexi_file], tmp_path, config, archivist)
@@ -623,10 +623,10 @@ class TestUpdateFiles:
 
         with (
             patch(
-                "lexibrarian.archivist.pipeline.update_file",
+                "lexibrary.archivist.pipeline.update_file",
                 side_effect=fake_update_file,
             ),
-            patch("lexibrarian.archivist.pipeline.generate_start_here") as mock_start_here,
+            patch("lexibrary.archivist.pipeline.generate_start_here") as mock_start_here,
         ):
             await update_files([source], tmp_path, config, archivist)
 
@@ -657,7 +657,7 @@ class TestUpdateFiles:
             return FileResult(change=ChangeLevel.UNCHANGED)
 
         with patch(
-            "lexibrarian.archivist.pipeline.update_file",
+            "lexibrary.archivist.pipeline.update_file",
             side_effect=flaky_update_file,
         ):
             stats = await update_files([source_a, source_b], tmp_path, config, archivist)
@@ -689,7 +689,7 @@ class TestUpdateFiles:
             return FileResult(change=ChangeLevel.UNCHANGED)
 
         with patch(
-            "lexibrarian.archivist.pipeline.update_file",
+            "lexibrary.archivist.pipeline.update_file",
             side_effect=fake_update_file,
         ):
             await update_files([source], tmp_path, config, archivist, progress_callback=callback)

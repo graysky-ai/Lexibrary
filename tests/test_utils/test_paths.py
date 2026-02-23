@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from lexibrarian.exceptions import LexibraryNotFoundError
-from lexibrarian.utils.paths import aindex_path, iwh_path, mirror_path
-from lexibrarian.utils.root import find_project_root
+from lexibrary.exceptions import LexibraryNotFoundError
+from lexibrary.utils.paths import aindex_path, iwh_path, mirror_path
+from lexibrary.utils.root import find_project_root
 
 
 def test_find_project_root_in_cwd(tmp_path: Path) -> None:

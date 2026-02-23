@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.utils.hashing import hash_file
-from lexibrarian.validator.checks import (
+from lexibrary.utils.hashing import hash_file
+from lexibrary.validator.checks import (
     check_deprecated_concept_usage,
     check_hash_freshness,
     check_orphan_concepts,
@@ -46,12 +46,12 @@ def example() -> None: ...
 
 {wikilinks}
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: {source_path}
 source_hash: {source_hash}
 design_hash: deadbeef
 generated: 2026-01-01T12:00:00
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.artifacts.writer import write_artifact
+from lexibrary.artifacts.writer import write_artifact
 
 
 class TestWriteArtifact:

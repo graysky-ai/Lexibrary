@@ -1,4 +1,4 @@
-"""Tests for the LexibrarianEventHandler."""
+"""Tests for the LexibraryEventHandler."""
 
 from __future__ import annotations
 
@@ -8,22 +8,22 @@ from unittest.mock import MagicMock, create_autospec
 import pathspec
 from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileModifiedEvent
 
-from lexibrarian.daemon.debouncer import Debouncer
-from lexibrarian.daemon.watcher import LexibrarianEventHandler
-from lexibrarian.ignore.matcher import IgnoreMatcher
+from lexibrary.daemon.debouncer import Debouncer
+from lexibrary.daemon.watcher import LexibraryEventHandler
+from lexibrary.ignore.matcher import IgnoreMatcher
 
 
 def _make_handler(
     ignore_patterns: list[str] | None = None,
     root: Path | None = None,
-) -> tuple[LexibrarianEventHandler, MagicMock]:
+) -> tuple[LexibraryEventHandler, MagicMock]:
     """Create handler with a mock debouncer and optional ignore patterns."""
     debouncer = create_autospec(Debouncer, instance=True)
     r = root or Path("/project")
     patterns = ignore_patterns or []
     config_spec = pathspec.PathSpec.from_lines("gitignore", patterns)
     matcher = IgnoreMatcher(r, config_spec, [])
-    handler = LexibrarianEventHandler(debouncer=debouncer, ignore_matcher=matcher)
+    handler = LexibraryEventHandler(debouncer=debouncer, ignore_matcher=matcher)
     return handler, debouncer
 
 
@@ -50,7 +50,7 @@ def test_ignores_cache_log_pid_files() -> None:
     """Internal files (cache, log, PID) are ignored."""
     handler, debouncer = _make_handler()
 
-    for name in [".lexibrarian_cache.json", ".lexibrarian.log", ".lexibrarian.pid"]:
+    for name in ["cache.json", "daemon.log", "daemon.pid"]:
         event = FileModifiedEvent(src_path=f"/project/{name}")
         handler.on_any_event(event)
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.iwh.gitignore import ensure_iwh_gitignored
+from lexibrary.iwh.gitignore import ensure_iwh_gitignored
 
 
 class TestEnsureIWHGitignored:

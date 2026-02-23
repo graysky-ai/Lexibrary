@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from lexibrarian.validator.checks import (
+from lexibrary.validator.checks import (
     check_concept_frontmatter,
     check_file_existence,
     check_wikilink_resolution,
@@ -62,7 +62,7 @@ def example(): ...
 
 (none)
 {wiki_section}
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: {source_path}
 source_hash: abc123
 design_hash: def456

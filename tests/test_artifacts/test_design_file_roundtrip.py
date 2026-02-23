@@ -6,18 +6,18 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 
-from lexibrarian.artifacts.design_file import DesignFile, DesignFileFrontmatter, StalenessMetadata
-from lexibrarian.artifacts.design_file_parser import parse_design_file
-from lexibrarian.artifacts.design_file_serializer import serialize_design_file
+from lexibrary.artifacts.design_file import DesignFile, DesignFileFrontmatter, StalenessMetadata
+from lexibrary.artifacts.design_file_parser import parse_design_file
+from lexibrary.artifacts.design_file_serializer import serialize_design_file
 
 
 def _meta(**overrides: object) -> StalenessMetadata:
     base: dict = {
-        "source": "src/lexibrarian/cli.py",
+        "source": "src/lexibrary/cli.py",
         "source_hash": "src_hash_abc",
         "design_hash": "placeholder",
         "generated": datetime(2026, 3, 1, 10, 0, 0),
-        "generator": "lexibrarian-v2",
+        "generator": "lexibrary-v2",
     }
     base.update(overrides)
     return StalenessMetadata(**base)
@@ -31,7 +31,7 @@ def _frontmatter(**overrides: object) -> DesignFileFrontmatter:
 
 def _design_file(**overrides: object) -> DesignFile:
     base: dict = {
-        "source_path": "src/lexibrarian/cli.py",
+        "source_path": "src/lexibrary/cli.py",
         "frontmatter": _frontmatter(),
         "summary": "CLI entry point for the lexi command.",
         "interface_contract": "def main() -> None: ...",
@@ -63,8 +63,8 @@ class TestDesignFileRoundtrip:
 
     def test_roundtrip_with_all_optional_sections(self, tmp_path: Path) -> None:
         df = _design_file(
-            dependencies=["src/lexibrarian/config/schema.py", "src/lexibrarian/utils/paths.py"],
-            dependents=["src/lexibrarian/__main__.py"],
+            dependencies=["src/lexibrary/config/schema.py", "src/lexibrary/utils/paths.py"],
+            dependents=["src/lexibrary/__main__.py"],
             tests="See tests/test_cli.py for full coverage.",
             complexity_warning="High cyclomatic complexity — 12 branches.",
             wikilinks=["Config", "LLMService"],
@@ -78,10 +78,10 @@ class TestDesignFileRoundtrip:
         parsed = parse_design_file(f)
         assert parsed is not None
         assert parsed.dependencies == [
-            "src/lexibrarian/config/schema.py",
-            "src/lexibrarian/utils/paths.py",
+            "src/lexibrary/config/schema.py",
+            "src/lexibrary/utils/paths.py",
         ]
-        assert parsed.dependents == ["src/lexibrarian/__main__.py"]
+        assert parsed.dependents == ["src/lexibrary/__main__.py"]
         assert parsed.tests == "See tests/test_cli.py for full coverage."
         assert parsed.complexity_warning == "High cyclomatic complexity — 12 branches."
         assert parsed.wikilinks == ["Config", "LLMService"]
@@ -121,7 +121,7 @@ class TestDesignFileRoundtrip:
         content = serialize_design_file(df)
 
         # Extract the design_hash stored in footer
-        footer_match_start = content.index("<!-- lexibrarian:meta")
+        footer_match_start = content.index("<!-- lexibrary:meta")
         footer_body = content[footer_match_start:]
         original_hash = None
         for line in footer_body.splitlines():
@@ -133,7 +133,7 @@ class TestDesignFileRoundtrip:
         # Simulate agent edit: modify the body
         modified_body = content.replace("def main() -> None: ...", "def main() -> int: ...")
         # Hash the modified content (excluding footer)
-        modified_footer_start = modified_body.index("<!-- lexibrarian:meta")
+        modified_footer_start = modified_body.index("<!-- lexibrary:meta")
         modified_pre_footer = modified_body[:modified_footer_start]
         new_hash = hashlib.sha256(modified_pre_footer.encode()).hexdigest()
 
@@ -142,7 +142,7 @@ class TestDesignFileRoundtrip:
     def test_roundtrip_annotation_not_in_dependents_list(self, tmp_path: Path) -> None:
         """D-070: Annotation line is present in serialized output but does not
         appear in parsed dependents list after round-trip (task 1.4)."""
-        df = _design_file(dependents=["src/lexibrarian/__main__.py"])
+        df = _design_file(dependents=["src/lexibrary/__main__.py"])
         content = serialize_design_file(df)
         # Verify annotation is present in the raw serialized text
         assert "*(see `lexi lookup` for live reverse references)*" in content
@@ -151,7 +151,7 @@ class TestDesignFileRoundtrip:
         parsed = parse_design_file(f)
         assert parsed is not None
         # Annotation must NOT be in the parsed dependents list
-        assert parsed.dependents == ["src/lexibrarian/__main__.py"]
+        assert parsed.dependents == ["src/lexibrary/__main__.py"]
         for dep in parsed.dependents:
             assert "lexi lookup" not in dep
             assert "reverse references" not in dep
@@ -171,10 +171,10 @@ class TestDesignFileRoundtrip:
     def test_metadata_source_fields_preserved(self, tmp_path: Path) -> None:
         df = _design_file(
             metadata=_meta(
-                source="src/lexibrarian/cli.py",
+                source="src/lexibrary/cli.py",
                 source_hash="src_hash_abc",
                 generated=datetime(2026, 3, 1, 10, 0, 0),
-                generator="lexibrarian-v2",
+                generator="lexibrary-v2",
             )
         )
         content = serialize_design_file(df)
@@ -182,7 +182,7 @@ class TestDesignFileRoundtrip:
         f.write_text(content)
         parsed = parse_design_file(f)
         assert parsed is not None
-        assert parsed.metadata.source == "src/lexibrarian/cli.py"
+        assert parsed.metadata.source == "src/lexibrary/cli.py"
         assert parsed.metadata.source_hash == "src_hash_abc"
-        assert parsed.metadata.generator == "lexibrarian-v2"
+        assert parsed.metadata.generator == "lexibrary-v2"
         assert parsed.metadata.generated == datetime(2026, 3, 1, 10, 0, 0)

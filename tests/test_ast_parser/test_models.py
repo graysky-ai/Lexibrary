@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lexibrarian.ast_parser.models import (
+from lexibrary.ast_parser.models import (
     ClassSig,
     ConstantSig,
     FunctionSig,

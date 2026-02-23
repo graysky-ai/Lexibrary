@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lexibrarian.init.detection import (
+from lexibrary.init.detection import (
     DetectedLLMProvider,
     DetectedProject,
     check_existing_agent_rules,
@@ -211,7 +211,7 @@ class TestDetectAgentEnvironments:
 class TestCheckExistingAgentRules:
     def test_marker_found_in_claude_md(self, tmp_path: Path) -> None:
         rules = tmp_path / "CLAUDE.md"
-        rules.write_text("# Rules\n<!-- lexibrarian: managed -->\n", encoding="utf-8")
+        rules.write_text("# Rules\n<!-- lexibrary: managed -->\n", encoding="utf-8")
         result = check_existing_agent_rules(tmp_path, "claude")
         assert result == str(rules)
 
@@ -229,7 +229,7 @@ class TestCheckExistingAgentRules:
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir()
         rules = claude_dir / "CLAUDE.md"
-        rules.write_text("<!-- lexibrarian: v1 -->\n", encoding="utf-8")
+        rules.write_text("<!-- lexibrary: v1 -->\n", encoding="utf-8")
         result = check_existing_agent_rules(tmp_path, "claude")
         assert result == str(rules)
 
@@ -239,7 +239,7 @@ class TestCheckExistingAgentRules:
 
     def test_marker_found_in_agents_md(self, tmp_path: Path) -> None:
         rules = tmp_path / "AGENTS.md"
-        rules.write_text("<!-- lexibrarian: section -->\n", encoding="utf-8")
+        rules.write_text("<!-- lexibrary: section -->\n", encoding="utf-8")
         result = check_existing_agent_rules(tmp_path, "codex")
         assert result == str(rules)
 

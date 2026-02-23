@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import yaml
 
-from lexibrarian.stack.template import render_post_template
+from lexibrary.stack.template import render_post_template
 
 
 def _parse_frontmatter(text: str) -> dict:
@@ -143,7 +143,7 @@ class TestRenderPostTemplateCreatedDate:
 
     def test_created_date_uses_mock(self) -> None:
         mock_date = date(2025, 6, 15)
-        with patch("lexibrarian.stack.template.date") as mock:
+        with patch("lexibrary.stack.template.date") as mock:
             mock.today.return_value = mock_date
             result = render_post_template(
                 post_id="ST-007",

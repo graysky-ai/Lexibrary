@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lexibrarian.stack.index import StackIndex
+from lexibrary.stack.index import StackIndex
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lexibrarian.crawler.change_detector import ChangeDetector
+from lexibrary.crawler.change_detector import ChangeDetector
 
 
 def test_new_file_detected_as_changed(tmp_path: Path) -> None:
@@ -23,7 +23,7 @@ def test_unchanged_file_not_changed(tmp_path: Path) -> None:
     f.write_text("pass\n")
 
     detector = ChangeDetector(tmp_path / "cache.json")
-    from lexibrarian.utils.hashing import hash_file
+    from lexibrary.utils.hashing import hash_file
 
     detector.update(f, hash_file(f), tokens=5, summary="A module")
     assert detector.has_changed(f) is False

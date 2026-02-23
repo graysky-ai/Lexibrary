@@ -9,8 +9,8 @@ import os
 
 import requests
 
-from lexibrarian.ast_parser.registry import get_parser
-from lexibrarian.config.schema import LexibraryConfig
+from lexibrary.ast_parser.registry import get_parser
+from lexibrary.config.schema import LexibraryConfig
 
 
 def sample_function(config: LexibraryConfig) -> None:

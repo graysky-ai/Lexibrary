@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from lexibrarian.daemon.debouncer import Debouncer
+from lexibrary.daemon.debouncer import Debouncer
 
 
 def test_callback_fires_after_delay() -> None:

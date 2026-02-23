@@ -6,7 +6,7 @@ import os
 import signal
 from pathlib import Path
 
-from lexibrarian.daemon.service import _PID_FILENAME, DaemonService
+from lexibrary.daemon.service import _PID_FILENAME, DaemonService
 
 
 def test_pid_file_created_on_start(tmp_path: Path) -> None:
@@ -14,7 +14,7 @@ def test_pid_file_created_on_start(tmp_path: Path) -> None:
     svc = DaemonService(root=tmp_path)
 
     svc._write_pid_file()
-    pid_path = tmp_path / _PID_FILENAME
+    pid_path = tmp_path / ".lexibrary" / _PID_FILENAME
     assert pid_path.exists()
     assert pid_path.read_text(encoding="utf-8") == str(os.getpid())
 
@@ -24,7 +24,8 @@ def test_pid_file_created_on_start(tmp_path: Path) -> None:
 
 def test_pid_file_removed_on_stop(tmp_path: Path) -> None:
     """PID file is removed when the daemon stops."""
-    pid_path = tmp_path / _PID_FILENAME
+    (tmp_path / ".lexibrary").mkdir(parents=True, exist_ok=True)
+    pid_path = tmp_path / ".lexibrary" / _PID_FILENAME
     pid_path.write_text("12345", encoding="utf-8")
 
     svc = DaemonService(root=tmp_path)

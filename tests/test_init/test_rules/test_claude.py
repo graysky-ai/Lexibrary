@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.init.rules.claude import generate_claude_rules
-from lexibrarian.init.rules.markers import MARKER_END, MARKER_START
+from lexibrary.init.rules.claude import generate_claude_rules
+from lexibrary.init.rules.markers import MARKER_END, MARKER_START
 
 # ---------------------------------------------------------------------------
 # Create from scratch
@@ -28,7 +28,7 @@ class TestCreateFromScratch:
         assert MARKER_END in content
 
     def test_claude_md_has_core_rules(self, tmp_path: Path) -> None:
-        """Created CLAUDE.md contains core Lexibrarian rules."""
+        """Created CLAUDE.md contains core Lexibrary rules."""
         generate_claude_rules(tmp_path)
         content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
         assert "START_HERE.md" in content
@@ -53,7 +53,7 @@ class TestAppendToExisting:
     """Existing CLAUDE.md without markers gets section appended."""
 
     def test_preserves_existing_content(self, tmp_path: Path) -> None:
-        """User content before the Lexibrarian section is preserved."""
+        """User content before the Lexibrary section is preserved."""
         claude_md = tmp_path / "CLAUDE.md"
         user_content = "# My Project\n\nCustom rules here.\n"
         claude_md.write_text(user_content, encoding="utf-8")
@@ -100,14 +100,14 @@ class TestUpdateExistingSection:
         """Old content between markers is replaced."""
         claude_md = tmp_path / "CLAUDE.md"
         old_content = (
-            f"# My Rules\n\n{MARKER_START}\nold lexibrarian rules\n{MARKER_END}\n\n# My Other Rules"
+            f"# My Rules\n\n{MARKER_START}\nold lexibrary rules\n{MARKER_END}\n\n# My Other Rules"
         )
         claude_md.write_text(old_content, encoding="utf-8")
 
         generate_claude_rules(tmp_path)
 
         content = claude_md.read_text(encoding="utf-8")
-        assert "old lexibrarian rules" not in content
+        assert "old lexibrary rules" not in content
         assert "START_HERE.md" in content
 
     def test_preserves_surrounding_content(self, tmp_path: Path) -> None:

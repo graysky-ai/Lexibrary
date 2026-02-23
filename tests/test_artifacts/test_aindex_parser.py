@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from lexibrarian.artifacts.aindex import AIndexEntry, AIndexFile
-from lexibrarian.artifacts.aindex_parser import parse_aindex, parse_aindex_metadata
-from lexibrarian.artifacts.aindex_serializer import serialize_aindex
-from lexibrarian.artifacts.design_file import StalenessMetadata
+from lexibrary.artifacts.aindex import AIndexEntry, AIndexFile
+from lexibrary.artifacts.aindex_parser import parse_aindex, parse_aindex_metadata
+from lexibrary.artifacts.aindex_serializer import serialize_aindex
+from lexibrary.artifacts.design_file import StalenessMetadata
 
 
 def _meta(**overrides: object) -> StalenessMetadata:
@@ -16,7 +16,7 @@ def _meta(**overrides: object) -> StalenessMetadata:
         "source": "src",
         "source_hash": "abc123",
         "generated": datetime(2026, 1, 1, 12, 0, 0),
-        "generator": "lexibrarian-v2",
+        "generator": "lexibrary-v2",
     }
     base.update(overrides)
     return StalenessMetadata(**base)
@@ -72,7 +72,7 @@ class TestParseAIndex:
         content = (
             "# src/\n\nBillboard.\n\n## Child Map\n\n(none)\n\n"
             "## Local Conventions\n\n(none)\n\n"
-            '<!-- lexibrarian:meta source="src" source_hash="abc"'
+            '<!-- lexibrary:meta source="src" source_hash="abc"'
             ' generated="2026-01-01T00:00:00" generator="g" -->\n'
         )
         p = _write_aindex(tmp_path, ".aindex", content)
@@ -137,7 +137,7 @@ class TestParseAIndex:
         assert result.metadata.source == "src"
         assert result.metadata.source_hash == "abc123"
         assert result.metadata.generated == datetime(2026, 1, 1, 12, 0, 0)
-        assert result.metadata.generator == "lexibrarian-v2"
+        assert result.metadata.generator == "lexibrary-v2"
         assert result.metadata.interface_hash is None
 
     def test_parse_metadata_with_interface_hash(self, tmp_path: Path) -> None:
@@ -156,7 +156,7 @@ class TestParseAIndex:
             "(none)\n\n\n"
             "## Local Conventions\n\n\n"
             "(none)\n\n\n"
-            '<!-- lexibrarian:meta source="src" source_hash="h" '
+            '<!-- lexibrary:meta source="src" source_hash="h" '
             'generated="2026-01-01T00:00:00" generator="g" -->\n'
         )
         p = _write_aindex(tmp_path, ".aindex", content)
@@ -183,7 +183,7 @@ class TestParseAIndexMetadata:
         assert result.source == "src"
         assert result.source_hash == "abc123"
         assert result.generated == datetime(2026, 1, 1, 12, 0, 0)
-        assert result.generator == "lexibrarian-v2"
+        assert result.generator == "lexibrary-v2"
 
     def test_parse_metadata_matches_full_parse(self, tmp_path: Path) -> None:
         model = _aindex()
@@ -199,7 +199,7 @@ class TestParseAIndexMetadata:
         content = (
             "# src\n\nBillboard.\n\n## Child Map\n\n(none)\n\n"
             "## Local Conventions\n\n(none)\n\n"
-            '<!-- lexibrarian:meta source="s" source_hash="h" '
+            '<!-- lexibrary:meta source="s" source_hash="h" '
             'generated="2026-06-01T10:00:00" generator="gen" -->\n'
         )
         p = _write_aindex(tmp_path, ".aindex", content)

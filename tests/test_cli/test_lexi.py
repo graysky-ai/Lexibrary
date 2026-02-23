@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 from typer.testing import CliRunner
 
-from lexibrarian.cli import lexi_app
+from lexibrary.cli import lexi_app
 
 runner = CliRunner()
 
@@ -104,12 +104,12 @@ def hello(): ...
 
 - (none)
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: {source_rel}
 source_hash: {content_hash}
 design_hash: placeholder
 generated: {now}
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
     design_path.write_text(design_content, encoding="utf-8")
@@ -137,8 +137,8 @@ def _create_aindex(tmp_path: Path, directory_rel: str, billboard: str) -> Path:
 
 (none)
 
-<!-- lexibrarian:meta source="{directory_rel}" source_hash="abc123" """
-    content += f"""generated="{now}" generator="lexibrarian-v2" -->
+<!-- lexibrary:meta source="{directory_rel}" source_hash="abc123" """
+    content += f"""generated="{now}" generator="lexibrary-v2" -->
 """
     aindex_path.write_text(content, encoding="utf-8")
     return aindex_path
@@ -277,9 +277,9 @@ def _create_aindex_with_conventions(
     conv_section = "\n".join(f"- {c}" for c in conventions) if conventions else "(none)"
 
     meta = (
-        f'<!-- lexibrarian:meta source="{directory_rel}" '
+        f'<!-- lexibrary:meta source="{directory_rel}" '
         f'source_hash="abc123" generated="{now}" '
-        f'generator="lexibrarian-v2" -->'
+        f'generator="lexibrary-v2" -->'
     )
     content = f"""# {directory_rel}/
 
@@ -338,12 +338,12 @@ def placeholder(): ...
 
 {tags_section}
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: {source_rel}
 source_hash: {content_hash}
 design_hash: placeholder
 generated: {now}
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
     design_path.write_text(design_content, encoding="utf-8")

@@ -15,9 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from lexibrarian.linkgraph.health import IndexHealth, read_index_health
-from lexibrarian.linkgraph.schema import SCHEMA_VERSION, ensure_schema
-from lexibrarian.utils.paths import LEXIBRARY_DIR
+from lexibrary.linkgraph.health import IndexHealth, read_index_health
+from lexibrary.linkgraph.schema import SCHEMA_VERSION, ensure_schema
+from lexibrary.utils.paths import LEXIBRARY_DIR
 
 # ---------------------------------------------------------------------------
 # Fixtures

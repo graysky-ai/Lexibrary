@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, patch
 import yaml
 from typer.testing import CliRunner
 
-from lexibrarian.archivist.change_checker import ChangeLevel
-from lexibrarian.archivist.pipeline import FileResult, UpdateStats
-from lexibrarian.cli import lexictl_app
+from lexibrary.archivist.change_checker import ChangeLevel
+from lexibrary.archivist.pipeline import FileResult, UpdateStats
+from lexibrary.cli import lexictl_app
 
 runner = CliRunner()
 
@@ -107,12 +107,12 @@ def hello(): ...
 
 - (none)
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: {source_rel}
 source_hash: {content_hash}
 design_hash: placeholder
 generated: {now}
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
     design_path.write_text(design_content, encoding="utf-8")
@@ -283,7 +283,7 @@ class TestUpdateCommand:
         os.chdir(project)
         try:
             with patch(
-                "lexibrarian.archivist.pipeline.update_file",
+                "lexibrary.archivist.pipeline.update_file",
                 mock_update_file,
             ):
                 result = runner.invoke(lexictl_app, ["update", "src/main.py"])
@@ -310,7 +310,7 @@ class TestUpdateCommand:
         os.chdir(project)
         try:
             with patch(
-                "lexibrarian.archivist.pipeline.update_project",
+                "lexibrary.archivist.pipeline.update_project",
                 mock_update_project,
             ):
                 result = runner.invoke(lexictl_app, ["update", "src"])
@@ -334,11 +334,11 @@ class TestUpdateCommand:
         try:
             with (
                 patch(
-                    "lexibrarian.archivist.pipeline.update_project",
+                    "lexibrary.archivist.pipeline.update_project",
                     mock_update_project,
                 ),
                 patch(
-                    "lexibrarian.archivist.start_here.generate_start_here",
+                    "lexibrary.archivist.start_here.generate_start_here",
                     mock_start_here,
                 ),
             ):
@@ -373,7 +373,7 @@ class TestUpdateCommand:
         os.chdir(project)
         try:
             with patch(
-                "lexibrarian.archivist.pipeline.update_file",
+                "lexibrary.archivist.pipeline.update_file",
                 mock_update_file,
             ):
                 result = runner.invoke(lexictl_app, ["update", "src/main.py"])
@@ -432,12 +432,12 @@ def hello(): ...
 
 - (none)
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/main.py
 source_hash: {source_hash}
 design_hash: placeholder
 generated: 2026-01-01T00:00:00
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
     (design_dir / "main.py.md").write_text(design_content, encoding="utf-8")
@@ -498,12 +498,12 @@ def hello(): ...
 
 - (none)
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/main.py
 source_hash: 0000000000000000000000000000000000000000000000000000000000000000
 design_hash: placeholder
 generated: 2026-01-01T00:00:00
-generator: lexibrarian-v2
+generator: lexibrary-v2
 -->
 """
     (design_dir / "main.py.md").write_text(design_content, encoding="utf-8")
@@ -545,7 +545,7 @@ Source directory
 
 (none)
 
-<!-- lexibrarian:meta source="src" source_hash="abc" generated="{now}" -->
+<!-- lexibrary:meta source="src" source_hash="abc" generated="{now}" -->
 """,
             encoding="utf-8",
         )
@@ -566,7 +566,7 @@ Project root
 
 (none)
 
-<!-- lexibrarian:meta source="." source_hash="abc" generated="{now}" generator="lexibrarian-v2" -->
+<!-- lexibrary:meta source="." source_hash="abc" generated="{now}" generator="lexibrary-v2" -->
 """,
             encoding="utf-8",
         )
@@ -696,7 +696,7 @@ class TestStatusCommand:
         output = result.output  # type: ignore[union-attr]
 
         # Dashboard header
-        assert "Lexibrarian Status" in output
+        assert "Lexibrary Status" in output
         # File counts
         assert "Files:" in output
         assert "1 tracked" in output
@@ -835,7 +835,7 @@ class TestStatusCommand:
         """When index.db exists with data, status shows link graph health line."""
         import sqlite3
 
-        from lexibrarian.linkgraph.schema import ensure_schema
+        from lexibrary.linkgraph.schema import ensure_schema
 
         project = _setup_status_project(tmp_path)
         db_path = project / ".lexibrary" / "index.db"
@@ -883,7 +883,7 @@ class TestStatusCommand:
         """Quiet mode does not include the link graph health line."""
         import sqlite3
 
-        from lexibrarian.linkgraph.schema import ensure_schema
+        from lexibrary.linkgraph.schema import ensure_schema
 
         project = _setup_status_project(tmp_path)
         db_path = project / ".lexibrary" / "index.db"
@@ -959,7 +959,7 @@ class TestSetupCommand:
         assert "Setup complete" in output
         # Verify files were actually created
         assert (tmp_path / "CLAUDE.md").exists()
-        assert (tmp_path / ".cursor" / "rules" / "lexibrarian.mdc").exists()
+        assert (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").exists()
 
     def test_setup_update_explicit_env_arg(self, tmp_path: Path) -> None:
         """``--env`` overrides config-persisted environments."""
@@ -1103,7 +1103,7 @@ class TestUpdateChangedOnly:
         mock_update_files = AsyncMock(return_value=mock_stats)
 
         with patch(
-            "lexibrarian.archivist.pipeline.update_files",
+            "lexibrary.archivist.pipeline.update_files",
             mock_update_files,
         ):
             result = self._invoke(project, ["update", "--changed-only", "src/main.py"])
@@ -1121,7 +1121,7 @@ class TestUpdateChangedOnly:
         mock_update_files = AsyncMock(return_value=mock_stats)
 
         with patch(
-            "lexibrarian.archivist.pipeline.update_files",
+            "lexibrary.archivist.pipeline.update_files",
             mock_update_files,
         ):
             result = self._invoke(
@@ -1150,7 +1150,7 @@ class TestUpdateChangedOnly:
         mock_update_files = AsyncMock(return_value=mock_stats)
 
         with patch(
-            "lexibrarian.archivist.pipeline.update_files",
+            "lexibrary.archivist.pipeline.update_files",
             mock_update_files,
         ):
             result = self._invoke(project, ["update", "--changed-only", "src/main.py"])
@@ -1181,7 +1181,7 @@ class TestSweepCommand:
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
 
-        with patch("lexibrarian.daemon.service.DaemonService") as mock_cls:
+        with patch("lexibrary.daemon.service.DaemonService") as mock_cls:
             mock_svc = mock_cls.return_value
             result = self._invoke(tmp_path, ["sweep"])
 
@@ -1194,7 +1194,7 @@ class TestSweepCommand:
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
 
-        with patch("lexibrarian.daemon.service.DaemonService") as mock_cls:
+        with patch("lexibrary.daemon.service.DaemonService") as mock_cls:
             mock_svc = mock_cls.return_value
             result = self._invoke(tmp_path, ["sweep", "--watch"])
 
@@ -1328,7 +1328,7 @@ class TestDaemonCommand:
         """``daemon stop`` reads PID and sends SIGTERM."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-        (tmp_path / ".lexibrarian.pid").write_text("12345")
+        (tmp_path / ".lexibrary" / "daemon.pid").write_text("12345")
 
         with patch("os.kill") as mock_kill:
             result = self._invoke(tmp_path, ["daemon", "stop"])
@@ -1343,7 +1343,7 @@ class TestDaemonCommand:
         """``daemon stop`` with stale PID cleans up PID file."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-        (tmp_path / ".lexibrarian.pid").write_text("99999")
+        (tmp_path / ".lexibrary" / "daemon.pid").write_text("99999")
 
         with patch(
             "os.kill",
@@ -1355,7 +1355,7 @@ class TestDaemonCommand:
         output = result.output  # type: ignore[union-attr]
         assert "not found" in output.lower() or "stale" in output.lower()
         # PID file should be cleaned up
-        assert not (tmp_path / ".lexibrarian.pid").exists()
+        assert not (tmp_path / ".lexibrary" / "daemon.pid").exists()
 
     def test_daemon_status_no_pid_file(self, tmp_path: Path) -> None:
         """``daemon status`` with no PID file shows no daemon running."""
@@ -1371,7 +1371,7 @@ class TestDaemonCommand:
         """``daemon status`` with valid PID reports running."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-        (tmp_path / ".lexibrarian.pid").write_text("12345")
+        (tmp_path / ".lexibrary" / "daemon.pid").write_text("12345")
 
         with patch("os.kill"):
             result = self._invoke(tmp_path, ["daemon", "status"])
@@ -1385,7 +1385,7 @@ class TestDaemonCommand:
         """``daemon status`` with stale PID cleans up."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-        (tmp_path / ".lexibrarian.pid").write_text("99999")
+        (tmp_path / ".lexibrary" / "daemon.pid").write_text("99999")
 
         with patch(
             "os.kill",
@@ -1396,7 +1396,7 @@ class TestDaemonCommand:
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Stale" in output or "stale" in output.lower()
-        assert not (tmp_path / ".lexibrarian.pid").exists()
+        assert not (tmp_path / ".lexibrary" / "daemon.pid").exists()
 
     def test_daemon_no_project_root(self, tmp_path: Path) -> None:
         """daemon without .lexibrary/ exits 1."""

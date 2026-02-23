@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.utils.conflict import has_conflict_markers
+from lexibrary.utils.conflict import has_conflict_markers
 
 
 def test_clean_file_returns_false(tmp_path: Path) -> None:

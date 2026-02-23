@@ -12,8 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 from textwrap import dedent
 
-from lexibrarian.ast_parser import compute_hashes, hash_interface, parse_interface
-from lexibrarian.ast_parser.models import (
+from lexibrary.ast_parser import compute_hashes, hash_interface, parse_interface
+from lexibrary.ast_parser.models import (
     ConstantSig,
     FunctionSig,
     InterfaceSkeleton,

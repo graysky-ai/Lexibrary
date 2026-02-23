@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.init.rules.cursor import generate_cursor_rules
+from lexibrary.init.rules.cursor import generate_cursor_rules
 
 # ---------------------------------------------------------------------------
 # MDC rules file
@@ -15,15 +15,15 @@ class TestMDCRulesFile:
     """Cursor MDC rules file generation."""
 
     def test_creates_mdc_file(self, tmp_path: Path) -> None:
-        """generate_cursor_rules() creates .cursor/rules/lexibrarian.mdc."""
+        """generate_cursor_rules() creates .cursor/rules/lexibrary.mdc."""
         generate_cursor_rules(tmp_path)
-        mdc = tmp_path / ".cursor" / "rules" / "lexibrarian.mdc"
+        mdc = tmp_path / ".cursor" / "rules" / "lexibrary.mdc"
         assert mdc.exists()
 
     def test_mdc_has_yaml_frontmatter(self, tmp_path: Path) -> None:
         """MDC file starts with YAML frontmatter delimiters."""
         generate_cursor_rules(tmp_path)
-        mdc = tmp_path / ".cursor" / "rules" / "lexibrarian.mdc"
+        mdc = tmp_path / ".cursor" / "rules" / "lexibrary.mdc"
         content = mdc.read_text(encoding="utf-8")
         assert content.startswith("---\n")
         # Should have closing frontmatter delimiter
@@ -32,35 +32,35 @@ class TestMDCRulesFile:
     def test_mdc_has_always_apply(self, tmp_path: Path) -> None:
         """MDC frontmatter includes alwaysApply: true."""
         generate_cursor_rules(tmp_path)
-        mdc = tmp_path / ".cursor" / "rules" / "lexibrarian.mdc"
+        mdc = tmp_path / ".cursor" / "rules" / "lexibrary.mdc"
         content = mdc.read_text(encoding="utf-8")
         assert "alwaysApply: true" in content
 
     def test_mdc_has_description(self, tmp_path: Path) -> None:
         """MDC frontmatter includes a description field."""
         generate_cursor_rules(tmp_path)
-        mdc = tmp_path / ".cursor" / "rules" / "lexibrarian.mdc"
+        mdc = tmp_path / ".cursor" / "rules" / "lexibrary.mdc"
         content = mdc.read_text(encoding="utf-8")
         assert "description:" in content
 
     def test_mdc_has_globs(self, tmp_path: Path) -> None:
         """MDC frontmatter includes a globs field."""
         generate_cursor_rules(tmp_path)
-        mdc = tmp_path / ".cursor" / "rules" / "lexibrarian.mdc"
+        mdc = tmp_path / ".cursor" / "rules" / "lexibrary.mdc"
         content = mdc.read_text(encoding="utf-8")
         assert "globs:" in content
 
     def test_mdc_has_core_rules(self, tmp_path: Path) -> None:
-        """MDC file body contains core Lexibrarian rules."""
+        """MDC file body contains core Lexibrary rules."""
         generate_cursor_rules(tmp_path)
-        mdc = tmp_path / ".cursor" / "rules" / "lexibrarian.mdc"
+        mdc = tmp_path / ".cursor" / "rules" / "lexibrary.mdc"
         content = mdc.read_text(encoding="utf-8")
         assert "START_HERE.md" in content
         assert "lexi lookup" in content
 
     def test_mdc_overwritten_on_update(self, tmp_path: Path) -> None:
         """MDC file is overwritten when regenerated."""
-        mdc = tmp_path / ".cursor" / "rules" / "lexibrarian.mdc"
+        mdc = tmp_path / ".cursor" / "rules" / "lexibrary.mdc"
         mdc.parent.mkdir(parents=True, exist_ok=True)
         mdc.write_text("old cursor rules", encoding="utf-8")
 
@@ -139,7 +139,7 @@ class TestReturnValue:
         """Return value includes the MDC file path."""
         result = generate_cursor_rules(tmp_path)
         filenames = [p.name for p in result]
-        assert "lexibrarian.mdc" in filenames
+        assert "lexibrary.mdc" in filenames
 
     def test_returns_skills_path(self, tmp_path: Path) -> None:
         """Return value includes the skills file path."""

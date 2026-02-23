@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lexibrarian.config.defaults import DEFAULT_PROJECT_CONFIG_TEMPLATE
+from lexibrary.config.defaults import DEFAULT_PROJECT_CONFIG_TEMPLATE
 
 
 def test_template_is_nonempty_yaml() -> None:

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from lexibrarian.artifacts.aindex import AIndexEntry, AIndexFile
-from lexibrarian.artifacts.aindex_serializer import serialize_aindex
-from lexibrarian.artifacts.design_file import StalenessMetadata
+from lexibrary.artifacts.aindex import AIndexEntry, AIndexFile
+from lexibrary.artifacts.aindex_serializer import serialize_aindex
+from lexibrary.artifacts.design_file import StalenessMetadata
 
 
 def _meta(**overrides: object) -> StalenessMetadata:
@@ -14,7 +14,7 @@ def _meta(**overrides: object) -> StalenessMetadata:
         "source": "src/",
         "source_hash": "abc123",
         "generated": datetime(2026, 1, 1, 12, 0, 0),
-        "generator": "lexibrarian-v2",
+        "generator": "lexibrary-v2",
     }
     base.update(overrides)
     return StalenessMetadata(**base)
@@ -129,11 +129,11 @@ class TestSerializeAIndex:
 
     def test_metadata_footer_required_fields(self) -> None:
         result = serialize_aindex(_aindex())
-        assert "<!-- lexibrarian:meta" in result
+        assert "<!-- lexibrary:meta" in result
         assert 'source="src/"' in result
         assert 'source_hash="abc123"' in result
         assert 'generated="2026-01-01T12:00:00"' in result
-        assert 'generator="lexibrarian-v2"' in result
+        assert 'generator="lexibrary-v2"' in result
         assert "-->" in result
 
     def test_metadata_footer_interface_hash_omitted_when_none(self) -> None:

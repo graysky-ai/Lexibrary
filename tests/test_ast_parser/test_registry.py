@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from lexibrarian.ast_parser.registry import (
+from lexibrary.ast_parser.registry import (
     GRAMMAR_MAP,
     clear_caches,
     get_grammar_info,
@@ -200,13 +200,13 @@ class TestGracefulFallback:
     """Tests for behavior when grammar packages are not installed."""
 
     def test_missing_grammar_returns_none_for_language(self) -> None:
-        with patch("lexibrarian.ast_parser.registry.importlib") as mock_importlib:
+        with patch("lexibrary.ast_parser.registry.importlib") as mock_importlib:
             mock_importlib.import_module.side_effect = ImportError("no module")
             lang = get_language(".py")
             assert lang is None
 
     def test_missing_grammar_returns_none_for_parser(self) -> None:
-        with patch("lexibrarian.ast_parser.registry.importlib") as mock_importlib:
+        with patch("lexibrary.ast_parser.registry.importlib") as mock_importlib:
             mock_importlib.import_module.side_effect = ImportError("no module")
             parser = get_parser(".py")
             assert parser is None
@@ -219,7 +219,7 @@ class TestGracefulFallback:
 
     def test_warning_emitted_once_per_language(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Warning for missing grammar should only be printed once per language."""
-        with patch("lexibrarian.ast_parser.registry.importlib") as mock_importlib:
+        with patch("lexibrary.ast_parser.registry.importlib") as mock_importlib:
             mock_importlib.import_module.side_effect = ImportError("no module")
 
             # First call: should warn
@@ -231,14 +231,14 @@ class TestGracefulFallback:
 
         # We can't easily capture rich console output to stderr in tests,
         # but we can verify the warned set contains the language
-        from lexibrarian.ast_parser.registry import _warned_languages
+        from lexibrary.ast_parser.registry import _warned_languages
 
         assert "python" in _warned_languages
 
     def test_warning_not_emitted_for_unknown_extension(self) -> None:
         """No warning should be emitted for unsupported extensions."""
         get_language(".rs")
-        from lexibrarian.ast_parser.registry import _warned_languages
+        from lexibrary.ast_parser.registry import _warned_languages
 
         assert len(_warned_languages) == 0
 

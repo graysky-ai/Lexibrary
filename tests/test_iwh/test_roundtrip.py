@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from lexibrarian.iwh import IWHFile, IWHScope, parse_iwh, serialize_iwh
+from lexibrary.iwh import IWHFile, IWHScope, parse_iwh, serialize_iwh
 
 
 class TestIWHRoundtrip:

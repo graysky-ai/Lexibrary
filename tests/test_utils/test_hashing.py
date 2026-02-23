@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.utils.hashing import hash_file
+from lexibrary.utils.hashing import hash_file
 
 
 def test_hash_file_returns_consistent_hash(tmp_path: Path) -> None:

@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from lexibrarian.config.schema import LexibraryConfig
-from lexibrarian.indexer.orchestrator import IndexStats, index_directory, index_recursive
+from lexibrary.config.schema import LexibraryConfig
+from lexibrary.indexer.orchestrator import IndexStats, index_directory, index_recursive
 
 
 def _setup_project(tmp_path: Path) -> Path:

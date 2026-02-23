@@ -7,13 +7,13 @@ from datetime import date
 
 import yaml
 
-from lexibrarian.stack.models import (
+from lexibrary.stack.models import (
     StackAnswer,
     StackPost,
     StackPostFrontmatter,
     StackPostRefs,
 )
-from lexibrarian.stack.serializer import serialize_stack_post
+from lexibrary.stack.serializer import serialize_stack_post
 
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 

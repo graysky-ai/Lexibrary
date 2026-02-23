@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from lexibrarian.llm.rate_limiter import RateLimiter
+from lexibrary.llm.rate_limiter import RateLimiter
 
 
 @pytest.mark.asyncio

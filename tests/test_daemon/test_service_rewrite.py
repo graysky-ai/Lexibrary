@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from lexibrarian.daemon.service import DaemonService, _has_changes
+from lexibrary.daemon.service import DaemonService, _has_changes
 
 # ---------------------------------------------------------------------------
 # _has_changes tests
@@ -87,9 +87,9 @@ class TestRunOnce:
         config.scope_root = "."
         return config
 
-    @patch("lexibrarian.daemon.service.update_project")
-    @patch("lexibrarian.daemon.service.setup_daemon_logging")
-    @patch("lexibrarian.daemon.service.load_config")
+    @patch("lexibrary.daemon.service.update_project")
+    @patch("lexibrary.daemon.service.setup_daemon_logging")
+    @patch("lexibrary.daemon.service.load_config")
     def test_run_once_skips_when_no_changes(
         self,
         mock_load_config: MagicMock,
@@ -109,10 +109,10 @@ class TestRunOnce:
 
         mock_update_project.assert_not_called()
 
-    @patch("lexibrarian.daemon.service._current_time", return_value=1000.0)
-    @patch("lexibrarian.daemon.service.update_project")
-    @patch("lexibrarian.daemon.service.setup_daemon_logging")
-    @patch("lexibrarian.daemon.service.load_config")
+    @patch("lexibrary.daemon.service._current_time", return_value=1000.0)
+    @patch("lexibrary.daemon.service.update_project")
+    @patch("lexibrary.daemon.service.setup_daemon_logging")
+    @patch("lexibrary.daemon.service.load_config")
     def test_run_once_runs_when_changes_detected(
         self,
         mock_load_config: MagicMock,
@@ -132,17 +132,17 @@ class TestRunOnce:
         mock_stats = MagicMock()
         mock_update_project.return_value = mock_stats
 
-        with patch("lexibrarian.daemon.service.asyncio.run", return_value=mock_stats):
+        with patch("lexibrary.daemon.service.asyncio.run", return_value=mock_stats):
             svc = DaemonService(root=tmp_path)
             svc.run_once()
 
         # _last_sweep should have been updated
         assert svc._last_sweep == 1000.0
 
-    @patch("lexibrarian.daemon.service._current_time", return_value=2000.0)
-    @patch("lexibrarian.daemon.service.update_project")
-    @patch("lexibrarian.daemon.service.setup_daemon_logging")
-    @patch("lexibrarian.daemon.service.load_config")
+    @patch("lexibrary.daemon.service._current_time", return_value=2000.0)
+    @patch("lexibrary.daemon.service.update_project")
+    @patch("lexibrary.daemon.service.setup_daemon_logging")
+    @patch("lexibrary.daemon.service.load_config")
     def test_run_once_always_runs_when_skip_disabled(
         self,
         mock_load_config: MagicMock,
@@ -156,7 +156,7 @@ class TestRunOnce:
         mock_load_config.return_value = config
 
         mock_stats = MagicMock()
-        with patch("lexibrarian.daemon.service.asyncio.run", return_value=mock_stats):
+        with patch("lexibrary.daemon.service.asyncio.run", return_value=mock_stats):
             svc = DaemonService(root=tmp_path)
             # Even with last_sweep in the future, skip is disabled
             svc._last_sweep = time.time() + 100
@@ -165,9 +165,9 @@ class TestRunOnce:
         # _last_sweep should have been updated (sweep ran)
         assert svc._last_sweep == 2000.0
 
-    @patch("lexibrarian.daemon.service.update_project")
-    @patch("lexibrarian.daemon.service.setup_daemon_logging")
-    @patch("lexibrarian.daemon.service.load_config")
+    @patch("lexibrary.daemon.service.update_project")
+    @patch("lexibrary.daemon.service.setup_daemon_logging")
+    @patch("lexibrary.daemon.service.load_config")
     def test_run_once_first_run_always_sweeps(
         self,
         mock_load_config: MagicMock,
@@ -180,7 +180,7 @@ class TestRunOnce:
         mock_load_config.return_value = config
 
         mock_stats = MagicMock()
-        with patch("lexibrarian.daemon.service.asyncio.run", return_value=mock_stats):
+        with patch("lexibrary.daemon.service.asyncio.run", return_value=mock_stats):
             svc = DaemonService(root=tmp_path)
             assert svc._last_sweep == 0.0
             svc.run_once()
@@ -224,8 +224,8 @@ class TestDaemonServiceInterface:
 class TestRunWatchdog:
     """Tests for DaemonService.run_watchdog()."""
 
-    @patch("lexibrarian.daemon.service.setup_daemon_logging")
-    @patch("lexibrarian.daemon.service.load_config")
+    @patch("lexibrary.daemon.service.setup_daemon_logging")
+    @patch("lexibrary.daemon.service.load_config")
     def test_run_watchdog_disabled_returns_immediately(
         self,
         mock_load_config: MagicMock,
@@ -255,49 +255,49 @@ class TestModuleImports:
 
     def test_no_full_crawl_import(self) -> None:
         """The service module does not import full_crawl."""
-        import lexibrarian.daemon.service as mod
+        import lexibrary.daemon.service as mod
 
         source = inspect_source(mod)
         assert "full_crawl" not in source
 
     def test_no_change_detector_import(self) -> None:
         """The service module does not import ChangeDetector."""
-        import lexibrarian.daemon.service as mod
+        import lexibrary.daemon.service as mod
 
         source = inspect_source(mod)
         assert "ChangeDetector" not in source
 
     def test_no_create_llm_service_import(self) -> None:
         """The service module does not import create_llm_service."""
-        import lexibrarian.daemon.service as mod
+        import lexibrary.daemon.service as mod
 
         source = inspect_source(mod)
         assert "create_llm_service" not in source
 
     def test_no_create_tokenizer_import(self) -> None:
         """The service module does not import create_tokenizer."""
-        import lexibrarian.daemon.service as mod
+        import lexibrary.daemon.service as mod
 
         source = inspect_source(mod)
         assert "create_tokenizer" not in source
 
     def test_no_find_config_file_import(self) -> None:
         """The service module does not import find_config_file."""
-        import lexibrarian.daemon.service as mod
+        import lexibrary.daemon.service as mod
 
         source = inspect_source(mod)
         assert "find_config_file" not in source
 
     def test_no_config_output_reference(self) -> None:
         """The service module does not reference config.output."""
-        import lexibrarian.daemon.service as mod
+        import lexibrary.daemon.service as mod
 
         source = inspect_source(mod)
         assert "config.output" not in source
 
     def test_no_config_tokenizer_reference(self) -> None:
         """The service module does not reference config.tokenizer."""
-        import lexibrarian.daemon.service as mod
+        import lexibrary.daemon.service as mod
 
         source = inspect_source(mod)
         assert "config.tokenizer" not in source

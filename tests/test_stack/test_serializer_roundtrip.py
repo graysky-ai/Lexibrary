@@ -9,14 +9,14 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from lexibrarian.stack.models import (
+from lexibrary.stack.models import (
     StackAnswer,
     StackPost,
     StackPostFrontmatter,
     StackPostRefs,
 )
-from lexibrarian.stack.parser import parse_stack_post
-from lexibrarian.stack.serializer import serialize_stack_post
+from lexibrary.stack.parser import parse_stack_post
+from lexibrary.stack.serializer import serialize_stack_post
 
 # ---------------------------------------------------------------------------
 # Helpers

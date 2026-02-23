@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.wiki.template import concept_file_path, render_concept_template
+from lexibrary.wiki.template import concept_file_path, render_concept_template
 
 
 class TestRenderConceptTemplate:

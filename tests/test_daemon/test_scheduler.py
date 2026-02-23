@@ -6,7 +6,7 @@ import threading
 import time
 from unittest.mock import MagicMock
 
-from lexibrarian.daemon.scheduler import PeriodicSweep
+from lexibrary.daemon.scheduler import PeriodicSweep
 
 
 def test_sweep_fires_on_schedule() -> None:

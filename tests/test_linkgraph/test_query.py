@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from lexibrarian.linkgraph.query import (
+from lexibrary.linkgraph.query import (
     ArtifactResult,
     BuildSummaryEntry,
     ConventionResult,
@@ -21,7 +21,7 @@ from lexibrarian.linkgraph.query import (
     LinkResult,
     TraversalNode,
 )
-from lexibrarian.linkgraph.schema import SCHEMA_VERSION, ensure_schema
+from lexibrary.linkgraph.schema import SCHEMA_VERSION, ensure_schema
 
 # ---------------------------------------------------------------------------
 # Fixtures

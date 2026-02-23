@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pathspec
 
-from lexibrarian.artifacts.aindex_serializer import serialize_aindex
-from lexibrarian.ignore.matcher import IgnoreMatcher
-from lexibrarian.indexer.generator import generate_aindex
+from lexibrary.artifacts.aindex_serializer import serialize_aindex
+from lexibrary.ignore.matcher import IgnoreMatcher
+from lexibrary.indexer.generator import generate_aindex
 
 _BINARY_EXTS: set[str] = {".png", ".jpg", ".gif", ".pdf", ".exe", ".zip"}
 
@@ -107,8 +107,8 @@ class TestGenerateAIndexDirectories:
     def test_subdir_with_child_aindex_uses_entry_counts(self, tmp_path: Path) -> None:
         from datetime import datetime
 
-        from lexibrarian.artifacts.aindex import AIndexEntry, AIndexFile
-        from lexibrarian.artifacts.design_file import StalenessMetadata
+        from lexibrary.artifacts.aindex import AIndexEntry, AIndexFile
+        from lexibrary.artifacts.design_file import StalenessMetadata
 
         src = tmp_path / "src"
         src.mkdir()
@@ -120,7 +120,7 @@ class TestGenerateAIndexDirectories:
             source="src/utils",
             source_hash="abc",
             generated=datetime(2026, 1, 1),
-            generator="lexibrarian-v2",
+            generator="lexibrary-v2",
         )
         child_model = AIndexFile(
             directory_path="src/utils",
@@ -143,8 +143,8 @@ class TestGenerateAIndexDirectories:
     def test_subdir_with_files_only_aindex_omits_subdir_count(self, tmp_path: Path) -> None:
         from datetime import datetime
 
-        from lexibrarian.artifacts.aindex import AIndexEntry, AIndexFile
-        from lexibrarian.artifacts.design_file import StalenessMetadata
+        from lexibrary.artifacts.aindex import AIndexEntry, AIndexFile
+        from lexibrary.artifacts.design_file import StalenessMetadata
 
         src = tmp_path / "src"
         src.mkdir()
@@ -155,7 +155,7 @@ class TestGenerateAIndexDirectories:
             source="src/utils",
             source_hash="abc",
             generated=datetime(2026, 1, 1),
-            generator="lexibrarian-v2",
+            generator="lexibrary-v2",
         )
         child_model = AIndexFile(
             directory_path="src/utils",
@@ -218,7 +218,7 @@ class TestGenerateAIndexMetadata:
         src = tmp_path / "src"
         src.mkdir()
         result = generate_aindex(src, tmp_path, _matcher(tmp_path), _BINARY_EXTS)
-        assert result.metadata.generator == "lexibrarian-v2"
+        assert result.metadata.generator == "lexibrary-v2"
 
     def test_metadata_generated_is_datetime(self, tmp_path: Path) -> None:
         from datetime import datetime
@@ -263,12 +263,12 @@ def _create_design_file(tmp_path: Path, rel_source: str, description: str) -> No
         "\n"
         "(none)\n"
         "\n"
-        "<!-- lexibrarian:meta\n"
+        "<!-- lexibrary:meta\n"
         f"source: {rel_source}\n"
         "source_hash: abc123\n"
         "design_hash: def456\n"
         "generated: 2026-01-01T00:00:00\n"
-        "generator: lexibrarian-v2\n"
+        "generator: lexibrary-v2\n"
         "-->\n"
     )
     design_path.write_text(frontmatter, encoding="utf-8")

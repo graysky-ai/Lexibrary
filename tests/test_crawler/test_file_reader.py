@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.crawler.file_reader import (
+from lexibrary.crawler.file_reader import (
     is_binary_file,
     read_file_for_indexing,
 )

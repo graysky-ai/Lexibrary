@@ -1,7 +1,5 @@
-# Lexibrarian-specific
+# Lexibrary-specific
 .aindex
-.lexibrarian_cache.json
-.lexibrarian.log
 baml_client/
 
 # .lexibrary/ generated artifacts (config.yaml is tracked)
@@ -66,7 +64,7 @@ dmypy.json
 .DS_Store
 Thumbs.db
 CLAUDE.md
-Lexibrarian.code-workspace
+Lexibrary.code-workspace
 
 .claude/
 .cursor/

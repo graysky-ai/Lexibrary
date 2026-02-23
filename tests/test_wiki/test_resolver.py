@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrarian.wiki.index import ConceptIndex
-from lexibrarian.wiki.resolver import (
+from lexibrary.wiki.index import ConceptIndex
+from lexibrary.wiki.resolver import (
     ResolvedLink,
     UnresolvedLink,
     WikilinkResolver,

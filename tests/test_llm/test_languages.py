@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from lexibrarian.utils.languages import detect_language
+from lexibrary.utils.languages import detect_language
 
 
 @pytest.mark.parametrize(

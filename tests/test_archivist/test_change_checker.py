@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from lexibrarian.archivist.change_checker import (
+from lexibrary.archivist.change_checker import (
     ChangeLevel,
     _compute_design_content_hash,
     _design_file_path,
@@ -68,7 +68,7 @@ def _make_design_file(
             design_hash = _sha256(body.rstrip("\n"))
 
         footer_lines = [
-            "<!-- lexibrarian:meta",
+            "<!-- lexibrary:meta",
             f"source: {source_rel}",
             f"source_hash: {source_hash}",
         ]
@@ -76,7 +76,7 @@ def _make_design_file(
             footer_lines.append(f"interface_hash: {interface_hash}")
         footer_lines.append(f"design_hash: {design_hash}")
         footer_lines.append("generated: 2026-01-01T12:00:00")
-        footer_lines.append("generator: lexibrarian-v2")
+        footer_lines.append("generator: lexibrary-v2")
         footer_lines.append("-->")
 
         text = body + "\n" + "\n".join(footer_lines) + "\n"

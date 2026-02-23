@@ -8,22 +8,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lexibrarian.archivist.service import (
+from lexibrary.archivist.service import (
     ArchivistService,
 )
-from lexibrarian.archivist.start_here import (
+from lexibrary.archivist.start_here import (
     _build_directory_tree,
     _collect_aindex_summaries,
     _count_tokens_approx,
     generate_start_here,
 )
-from lexibrarian.artifacts.aindex import AIndexEntry, AIndexFile
-from lexibrarian.artifacts.aindex_serializer import serialize_aindex
-from lexibrarian.artifacts.design_file import StalenessMetadata
-from lexibrarian.baml_client.types import StartHereOutput
-from lexibrarian.config.schema import LexibraryConfig, TokenBudgetConfig
-from lexibrarian.llm.rate_limiter import RateLimiter
-from lexibrarian.utils.paths import LEXIBRARY_DIR
+from lexibrary.artifacts.aindex import AIndexEntry, AIndexFile
+from lexibrary.artifacts.aindex_serializer import serialize_aindex
+from lexibrary.artifacts.design_file import StalenessMetadata
+from lexibrary.baml_client.types import StartHereOutput
+from lexibrary.config.schema import LexibraryConfig, TokenBudgetConfig
+from lexibrary.llm.rate_limiter import RateLimiter
+from lexibrary.utils.paths import LEXIBRARY_DIR
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -116,7 +116,7 @@ def config() -> LexibraryConfig:
 def archivist_service() -> ArchivistService:
     """Archivist service with mocked internals."""
     limiter = RateLimiter(requests_per_minute=6000)
-    from lexibrarian.config.schema import LLMConfig
+    from lexibrary.config.schema import LLMConfig
 
     return ArchivistService(rate_limiter=limiter, config=LLMConfig())
 
@@ -278,7 +278,7 @@ class TestGenerateStartHere:
         import logging
 
         with (
-            caplog.at_level(logging.WARNING, logger="lexibrarian.archivist.start_here"),
+            caplog.at_level(logging.WARNING, logger="lexibrary.archivist.start_here"),
             patch.object(archivist_service, "_get_baml_client", return_value=mock_client),
         ):
             await generate_start_here(project_dir, config, archivist_service)
