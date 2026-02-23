@@ -13,9 +13,9 @@
 
 ## Dependents
 
-- `lexibrarian.tokenizer.__init__` — re-exports
-- `lexibrarian.tokenizer.factory` — used as return type
-- `lexibrarian.crawler.engine` — typed parameter
+- `lexibrary.tokenizer.__init__` — re-exports
+- `lexibrary.tokenizer.factory` — used as return type
+- `lexibrary.crawler.engine` — typed parameter
 
 ## Key Concepts
 

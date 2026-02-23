@@ -10,9 +10,9 @@
 
 ## Dependencies
 
-- `lexibrarian.exceptions` — raises `LexibraryNotFoundError` if not found
+- `lexibrary.exceptions` — raises `LexibraryNotFoundError` if not found
 
 ## Dependents
 
-- `lexibrarian.utils.__init__` — re-exports
-- `lexibrarian.cli` — calls via `_require_project_root()`
+- `lexibrary.utils.__init__` — re-exports
+- `lexibrary.cli` — calls via `_require_project_root()`

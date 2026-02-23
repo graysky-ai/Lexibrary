@@ -1,6 +1,6 @@
 ## Context
 
-Lexibrarian's crawler engine (Phase 5) performs bottom-up directory traversal, generating `.aindex` summary files using LLM calls with SHA-256 change detection. Currently this runs only via the manual `lexi crawl` command. The CLI already has a placeholder `daemon` command (Phase 6) and config schema with `DaemonConfig` (`debounce_seconds`, `sweep_interval_seconds`).
+Lexibrary's crawler engine (Phase 5) performs bottom-up directory traversal, generating `.aindex` summary files using LLM calls with SHA-256 change detection. Currently this runs only via the manual `lexi crawl` command. The CLI already has a placeholder `daemon` command (Phase 6) and config schema with `DaemonConfig` (`debounce_seconds`, `sweep_interval_seconds`).
 
 The daemon needs to bridge file system events to the existing crawl engine, keeping `.aindex` files automatically up to date.
 

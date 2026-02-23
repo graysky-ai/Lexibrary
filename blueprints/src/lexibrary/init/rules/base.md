@@ -6,7 +6,7 @@
 
 | Name | Signature | Purpose |
 | --- | --- | --- |
-| `get_core_rules` | `() -> str` | Return shared Lexibrarian agent rules: session start, before/after editing, architectural decisions, debugging, leaving work incomplete, prohibited commands |
+| `get_core_rules` | `() -> str` | Return shared Lexibrary agent rules: session start, before/after editing, architectural decisions, debugging, leaving work incomplete, prohibited commands |
 | `get_orient_skill_content` | `() -> str` | Return `/lexi-orient` session-start skill: read START_HERE.md, check `.iwh`, run `lexi status` |
 | `get_search_skill_content` | `() -> str` | Return `/lexi-search` cross-artifact search skill: wraps `lexi search` for concept, Stack, and design file results |
 
@@ -16,9 +16,9 @@
 
 ## Dependents
 
-- `lexibrarian.init.rules.claude` -- calls all three functions
-- `lexibrarian.init.rules.cursor` -- calls all three functions
-- `lexibrarian.init.rules.codex` -- calls all three functions
+- `lexibrary.init.rules.claude` -- calls all three functions
+- `lexibrary.init.rules.cursor` -- calls all three functions
+- `lexibrary.init.rules.codex` -- calls all three functions
 
 ## Key Concepts
 

@@ -8,5 +8,5 @@
 
 ## Dependents
 
-- `lexibrarian.cli.lexictl_app` -- imports `create_lexibrary_from_wizard` from `lexibrarian.init`
-- `lexibrarian.cli.lexictl_app` -- imports `generate_rules` from `lexibrarian.init.rules`
+- `lexibrary.cli.lexictl_app` -- imports `create_lexibrary_from_wizard` from `lexibrary.init`
+- `lexibrary.cli.lexictl_app` -- imports `generate_rules` from `lexibrary.init.rules`

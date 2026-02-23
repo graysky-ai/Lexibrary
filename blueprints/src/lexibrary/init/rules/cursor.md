@@ -1,20 +1,20 @@
 # init/rules/cursor
 
-**Summary:** Cursor environment rule generator -- produces `.cursor/rules/lexibrarian.mdc` (MDC format with YAML frontmatter) and `.cursor/skills/lexi.md` (combined orient and search skills).
+**Summary:** Cursor environment rule generator -- produces `.cursor/rules/lexibrary.mdc` (MDC format with YAML frontmatter) and `.cursor/skills/lexi.md` (combined orient and search skills).
 
 ## Interface
 
 | Name | Signature | Purpose |
 | --- | --- | --- |
-| `generate_cursor_rules` | `(project_root: Path) -> list[Path]` | Create/overwrite `.cursor/rules/lexibrarian.mdc` and `.cursor/skills/lexi.md`; returns list of created file paths |
+| `generate_cursor_rules` | `(project_root: Path) -> list[Path]` | Create/overwrite `.cursor/rules/lexibrary.mdc` and `.cursor/skills/lexi.md`; returns list of created file paths |
 
 ## Dependencies
 
-- `lexibrarian.init.rules.base` -- `get_core_rules`, `get_orient_skill_content`, `get_search_skill_content`
+- `lexibrary.init.rules.base` -- `get_core_rules`, `get_orient_skill_content`, `get_search_skill_content`
 
 ## Dependents
 
-- `lexibrarian.init.rules.__init__` -- registered in `_GENERATORS` dict as `"cursor"`
+- `lexibrary.init.rules.__init__` -- registered in `_GENERATORS` dict as `"cursor"`
 
 ## Key Concepts
 

@@ -12,15 +12,15 @@ The system SHALL provide a `DaemonService` that orchestrates startup of the file
 - **THEN** a message including the PID and "Press Ctrl+C to stop" is output via Rich console
 
 ### Requirement: PID file management
-The system SHALL write a PID file (`.lexibrarian.pid`) containing the current process ID on startup and remove it on shutdown.
+The system SHALL write a PID file (`.lexibrary.pid`) containing the current process ID on startup and remove it on shutdown.
 
 #### Scenario: PID file created on start
 - **WHEN** the daemon starts
-- **THEN** a `.lexibrarian.pid` file is created in the project root containing the current process ID
+- **THEN** a `.lexibrary.pid` file is created in the project root containing the current process ID
 
 #### Scenario: PID file removed on stop
 - **WHEN** the daemon shuts down
-- **THEN** the `.lexibrarian.pid` file is removed from the project root
+- **THEN** the `.lexibrary.pid` file is removed from the project root
 
 #### Scenario: PID file removal tolerates missing file
 - **WHEN** the daemon shuts down but the PID file has already been deleted

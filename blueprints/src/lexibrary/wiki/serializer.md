@@ -16,8 +16,8 @@
 
 ## Dependencies
 
-- `lexibrarian.artifacts.concept` — `ConceptFile`
+- `lexibrary.artifacts.concept` — `ConceptFile`
 
 ## Dependents
 
-- `lexibrarian.wiki.__init__` — re-exports
+- `lexibrary.wiki.__init__` — re-exports

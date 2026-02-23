@@ -13,8 +13,8 @@
 
 ## Dependents
 
-- `lexibrarian.daemon.service` — creates instance and passes as debouncer callback target
-- `lexibrarian.daemon.watcher` — calls `notify()` on valid events
+- `lexibrary.daemon.service` — creates instance and passes as debouncer callback target
+- `lexibrary.daemon.watcher` — calls `notify()` on valid events
 
 ## Key Concepts
 

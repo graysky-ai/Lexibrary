@@ -14,5 +14,5 @@
 
 ## Dependents
 
-- `lexibrarian.daemon.service` — calls `create_ignore_matcher`
+- `lexibrary.daemon.service` — calls `create_ignore_matcher`
 - Crawler setup code will call this too once implemented

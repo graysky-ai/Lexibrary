@@ -33,7 +33,7 @@ Agents solving non-trivial bugs repeat work because there's no codebase-embedded
 
 ## Impact
 
-- **New module:** `src/lexibrarian/stack/` (6 files)
+- **New module:** `src/lexibrary/stack/` (6 files)
 - **Modified files:** `artifacts/design_file.py`, `artifacts/design_file_serializer.py`, `artifacts/design_file_parser.py`, `wiki/resolver.py`, `cli.py`, `init/scaffolder.py`
 - **Removed:** `artifacts/guardrail.py` (model replaced by `stack/models.py`)
 - **New directory:** `.lexibrary/stack/` created by `lexi init`

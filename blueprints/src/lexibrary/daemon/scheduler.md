@@ -13,7 +13,7 @@
 
 ## Dependents
 
-- `lexibrarian.daemon.service` — creates instance; callback runs `full_crawl`
+- `lexibrary.daemon.service` — creates instance; callback runs `full_crawl`
 
 ## Key Concepts
 

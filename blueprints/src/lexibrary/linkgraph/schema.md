@@ -65,8 +65,8 @@ The drop order respects foreign key dependencies: build_log, conventions, aliase
 
 ## Dependents
 
-- `lexibrarian.linkgraph.__init__` -- re-exports `SCHEMA_VERSION`, `check_schema_version`, `ensure_schema`
-- `lexibrarian.linkgraph.builder` -- calls `ensure_schema()` and `set_pragmas()` during builds
-- `lexibrarian.linkgraph.query` -- imports `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas` for `LinkGraph.open()` validation
-- `lexibrarian.linkgraph.health` -- imports `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas` for `read_index_health()`
-- `lexibrarian.validator.checks` -- link-graph validation checks import `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas`
+- `lexibrary.linkgraph.__init__` -- re-exports `SCHEMA_VERSION`, `check_schema_version`, `ensure_schema`
+- `lexibrary.linkgraph.builder` -- calls `ensure_schema()` and `set_pragmas()` during builds
+- `lexibrary.linkgraph.query` -- imports `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas` for `LinkGraph.open()` validation
+- `lexibrary.linkgraph.health` -- imports `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas` for `read_index_health()`
+- `lexibrary.validator.checks` -- link-graph validation checks import `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas`

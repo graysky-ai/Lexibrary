@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Serialize AIndexFile to v2 markdown format
-The system SHALL provide a `serialize_aindex(data: AIndexFile) -> str` function in `src/lexibrarian/artifacts/aindex_serializer.py` that converts an `AIndexFile` Pydantic model into a v2 `.aindex` markdown string.
+The system SHALL provide a `serialize_aindex(data: AIndexFile) -> str` function in `src/lexibrary/artifacts/aindex_serializer.py` that converts an `AIndexFile` Pydantic model into a v2 `.aindex` markdown string.
 
 The output format SHALL follow these rules:
 1. H1 heading = `directory_path` with trailing `/`
@@ -12,7 +12,7 @@ The output format SHALL follow these rules:
 6. `Type` column: `file` or `dir`
 7. Empty Child Map shows `(none)` instead of a table
 8. Local Conventions section always present — empty renders as `(none)`, non-empty renders as bullet list
-9. Staleness metadata as an HTML comment footer: `<!-- lexibrarian:meta ... -->`
+9. Staleness metadata as an HTML comment footer: `<!-- lexibrary:meta ... -->`
 10. Output ends with a single trailing newline
 
 #### Scenario: Serialize basic directory with files and subdirs
@@ -41,7 +41,7 @@ The output format SHALL follow these rules:
 
 #### Scenario: Metadata footer serialized as HTML comment
 - **WHEN** `serialize_aindex()` is called with a `StalenessMetadata` in the model
-- **THEN** the output SHALL end with `<!-- lexibrarian:meta` ... `-->` containing source, source_hash, generated, and generator fields
+- **THEN** the output SHALL end with `<!-- lexibrary:meta` ... `-->` containing source, source_hash, generated, and generator fields
 
 #### Scenario: Output ends with trailing newline
 - **WHEN** `serialize_aindex()` is called with any valid input

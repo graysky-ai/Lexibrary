@@ -1,9 +1,9 @@
 # Blueprint Library — Setup Instructions
 
-**Purpose:** A hand-maintained knowledge layer for the Lexibrarian codebase, used by agents building Lexibrarian itself. This is a simplified pseudo-lexibrary with a different name and location so agents don't confuse it with the `.lexibrary/` output that Lexibrarian *produces*.
+**Purpose:** A hand-maintained knowledge layer for the Lexibrary codebase, used by agents building Lexibrary itself. This is a simplified pseudo-lexibrary with a different name and location so agents don't confuse it with the `.lexibrary/` output that Lexibrary *produces*.
 
 **Root:** `blueprints/` (this directory)
-**NOT** `.lexibrary/` — that name is reserved for Lexibrarian's own output format.
+**NOT** `.lexibrary/` — that name is reserved for Lexibrary's own output format.
 
 ---
 
@@ -15,7 +15,7 @@ blueprints/
   START_HERE.md               ← bootloader: topology + navigation by intent
   HANDOFF.md                  ← session relay: overwrite on every handoff
   src/
-    lexibrarian/
+    lexibrary/
       cli.md
       config/
         __init__.md
@@ -88,12 +88,12 @@ Each `.md` file in `blueprints/src/` follows this template. Keep it tight — ai
 | `FunctionOrClass` | `(args) -> return` | What it does |
 
 ## Dependencies
-<!-- Lexibrarian-internal imports only. List as bullet paths. -->
-- `lexibrarian.config.schema` — LexibraryConfig
+<!-- Lexibrary-internal imports only. List as bullet paths. -->
+- `lexibrary.config.schema` — LexibraryConfig
 
 ## Dependents
 <!-- Which modules import THIS one. -->
-- `lexibrarian.crawler.engine`
+- `lexibrary.crawler.engine`
 
 ## Key Concepts
 <!-- Wikilink-style references to cross-cutting ideas. No graph infra — just names. -->
@@ -114,13 +114,13 @@ Omit any section that would be empty. `__init__.md` files only need Summary + wh
 `blueprints/START_HERE.md` is the bootloader. Keep it under 600 tokens.
 
 Required sections:
-1. **Project Topology** — ASCII tree or Mermaid of the `src/lexibrarian/` package structure.
+1. **Project Topology** — ASCII tree or Mermaid of the `src/lexibrary/` package structure.
 2. **Package Map** — one-line description per subpackage.
 3. **Navigation by Intent** — task → file mapping table. Examples:
-   - "Add a CLI command" → `blueprints/src/lexibrarian/cli.md`
-   - "Change ignore patterns" → `blueprints/src/lexibrarian/ignore/`
+   - "Add a CLI command" → `blueprints/src/lexibrary/cli.md`
+   - "Change ignore patterns" → `blueprints/src/lexibrary/ignore/`
    - "Modify LLM prompts" → `baml_src/`
-   - "Change .aindex output format" → `blueprints/src/lexibrarian/indexer/`
+   - "Change .aindex output format" → `blueprints/src/lexibrary/indexer/`
 4. **Key Constraints** — pull the most critical constraints from `CLAUDE.md` (e.g., `from __future__ import annotations`, pathspec pattern name, no bare `print()`).
 5. **Navigation Protocol** — one-line instructions: "Before editing a file, read its design file in `blueprints/src/`."
 
@@ -150,7 +150,7 @@ Use these summaries as starting points. Read the actual source before writing �
 | --- | --- |
 | `cli.py` | Typer app entry point. All `lexi` subcommands (`init`, `update`, `daemon`, `status`). Wires config loading → crawler/daemon. |
 | `config/schema.py` | Pydantic 2 models for the full config hierarchy: `LexibraryConfig`, `LLMConfig`, `CrawlConfig`, `TokenizerConfig`, etc. |
-| `config/loader.py` | Loads and merges global (`~/.config/lexibrarian/`) + project (`.lexibrary/config.yaml`) configs. Returns validated `LexibraryConfig`. |
+| `config/loader.py` | Loads and merges global (`~/.config/lexibrary/`) + project (`.lexibrary/config.yaml`) configs. Returns validated `LexibraryConfig`. |
 | `config/defaults.py` | Renders the default `config.yaml` template for `lexi init`. |
 | `crawler/engine.py` | Main orchestrator. Wires discovery → file reader → change detector → LLM → indexer writer. Bottom-up crawl logic lives here. |
 | `crawler/discovery.py` | Filesystem traversal. `discover_directories_bottom_up()` + `list_directory_files()`. Respects ignore rules. |
@@ -186,6 +186,6 @@ Use these summaries as starting points. Read the actual source before writing �
 
 1. Create `blueprints/START_HERE.md` first — it's the entry point.
 2. Create `blueprints/HANDOFF.md` (blank template is fine on first pass).
-3. For each source file in the table above: read the actual source, then write its design file in `blueprints/src/lexibrarian/`.
+3. For each source file in the table above: read the actual source, then write its design file in `blueprints/src/lexibrary/`.
 4. Start with the modules you're actively working on — no need to do all at once.
 5. Keep design files updated as you change source files. The source is truth; the design file is the explanation.

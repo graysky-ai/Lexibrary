@@ -63,7 +63,7 @@ The current state:
 
 ## Risks / Trade-offs
 
-- **[Annotation breaks third-party parsers]** Any external tool that parses the `## Dependents` section by reading all non-blank lines (not just `- ` lines) would pick up the annotation as content. **Mitigation:** The annotation uses markdown italic format (`*...*`) which is visually and syntactically distinct from bullet items. The risk is low since the design file format is Lexibrarian-internal.
+- **[Annotation breaks third-party parsers]** Any external tool that parses the `## Dependents` section by reading all non-blank lines (not just `- ` lines) would pick up the annotation as content. **Mitigation:** The annotation uses markdown italic format (`*...*`) which is visually and syntactically distinct from bullet items. The risk is low since the design file format is Lexibrary-internal.
 
 - **[Stale blueprints if linkgraph modules change]** Blueprints for `builder.py` and `query.py` describe modules that may still be under development (10b, 10c). **Mitigation:** Blueprints are written based on the current implementation state and the master plan specifications. They can be updated as modules evolve.
 

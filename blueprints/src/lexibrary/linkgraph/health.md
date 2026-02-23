@@ -22,10 +22,10 @@ The connection is always closed in a `finally` block with `contextlib.suppress(E
 
 ## Dependencies
 
-- `lexibrarian.linkgraph.schema` -- `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas`
-- `lexibrarian.utils.paths` -- `LEXIBRARY_DIR`
+- `lexibrary.linkgraph.schema` -- `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas`
+- `lexibrary.utils.paths` -- `LEXIBRARY_DIR`
 
 ## Dependents
 
-- `lexibrarian.linkgraph.__init__` -- eagerly re-exports `IndexHealth`, `read_index_health`
-- `lexibrarian.cli.lexictl_app` -- `status` command imports `read_index_health` for dashboard display
+- `lexibrary.linkgraph.__init__` -- eagerly re-exports `IndexHealth`, `read_index_health`
+- `lexibrary.cli.lexictl_app` -- `status` command imports `read_index_health` for dashboard display

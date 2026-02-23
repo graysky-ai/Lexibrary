@@ -21,7 +21,7 @@ Phase 3 is a **library module only** — no new CLI commands. Phase 4's Archivis
 | D-007 | Supported languages at launch | Python, TypeScript, JavaScript (3 languages, 6 extensions) |
 | D-008 | CLI surface | None. Internal library module only. Phase 4 wires it into `lexi update`. |
 | D-009 | Skeleton detail level | Signatures only — names, parameters, type annotations, return types, class names, module-level constants. No decorators, no docstrings, no body logic. |
-| D-010 | Grammar management | Optional extras group: `pip install lexibrarian[ast]`. Grammars are not in base deps. |
+| D-010 | Grammar management | Optional extras group: `pip install lexibrary[ast]`. Grammars are not in base deps. |
 
 ---
 
@@ -52,7 +52,7 @@ ast = [
 ## Module Structure
 
 ```
-src/lexibrarian/ast_parser/
+src/lexibrary/ast_parser/
 ├── __init__.py          # Public API: parse_interface(), hash_interface()
 ├── models.py            # InterfaceSkeleton, FunctionSig, ClassSig, ConstantSig
 ├── registry.py          # Grammar registry: extension → Language + query
@@ -164,7 +164,7 @@ For TypeScript, the grammar package exposes two sub-grammars (TypeScript and TSX
 **Graceful fallback:** If a grammar package is not installed (`ImportError`), the registry returns `None` and `parse_interface()` returns `None`. A clear warning is emitted via `rich.console.Console`:
 
 ```
-⚠ tree-sitter-python not installed. Run: pip install lexibrarian[ast]
+⚠ tree-sitter-python not installed. Run: pip install lexibrary[ast]
 ```
 
 **Caching:** Language objects and Parser instances are cached at module level (created once per process). Grammars are immutable — no invalidation needed.
@@ -299,8 +299,8 @@ def compute_hashes(file_path: Path) -> tuple[str, str | None]:
 ### How Phase 4 uses this
 
 ```python
-from lexibrarian.ast_parser import compute_hashes
-from lexibrarian.utils.hashing import hash_file
+from lexibrary.ast_parser import compute_hashes
+from lexibrary.utils.hashing import hash_file
 
 content_hash, interface_hash = compute_hashes(source_path)
 
@@ -587,7 +587,7 @@ print(f'MIN_COMPATIBLE: {tree_sitter.MIN_COMPATIBLE_LANGUAGE_VERSION}')
 
 | Impact | Mitigation |
 |--------|------------|
-| Changing the canonical rendering format invalidates every existing interface hash in every project using Lexibrarian. All design files would appear "interface changed" on next `lexi update`, triggering unnecessary full regenerations. | Version the rendering format. Prefix the canonical text with a format version line (e.g., `skeleton:v1\n`) before hashing. When the format changes, bump to `v2`. Phase 4's change detector can then distinguish "format changed" from "interface changed" and handle the migration (one-time full regen is acceptable on version bump, false "changed" on every file is not). |
+| Changing the canonical rendering format invalidates every existing interface hash in every project using Lexibrary. All design files would appear "interface changed" on next `lexi update`, triggering unnecessary full regenerations. | Version the rendering format. Prefix the canonical text with a format version line (e.g., `skeleton:v1\n`) before hashing. When the format changes, bump to `v2`. Phase 4's change detector can then distinguish "format changed" from "interface changed" and handle the migration (one-time full regen is acceptable on version bump, false "changed" on every file is not). |
 
 ### Risk: `__all__` parsing is imprecise
 
@@ -612,7 +612,7 @@ These were raised before planning and have been settled:
 | Which languages at launch? | Python + TypeScript + JavaScript (D-007) |
 | CLI command? | No — library module only (D-008) |
 | Skeleton detail level? | Signatures only (D-009) |
-| Grammar distribution? | Optional extras group `lexibrarian[ast]` (D-010) |
+| Grammar distribution? | Optional extras group `lexibrary[ast]` (D-010) |
 
 ---
 

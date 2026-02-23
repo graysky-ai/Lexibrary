@@ -14,7 +14,7 @@
 
 ## Dependents
 
-- `lexibrarian.cli` -- `stack_post` command
+- `lexibrary.cli` -- `stack_post` command
 
 ## Key Concepts
 

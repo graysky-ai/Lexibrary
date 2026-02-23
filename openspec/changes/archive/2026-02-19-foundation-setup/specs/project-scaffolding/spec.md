@@ -1,14 +1,14 @@
 ## MODIFIED Requirements
 
 ### Requirement: Project directory structure
-The system SHALL have a Python package structure with source code under `src/lexibrarian/` and test code under `tests/`. Supporting directories for BAML and fixtures SHALL exist. The `indexer/` module is temporarily retired; the `artifacts/` module is added.
+The system SHALL have a Python package structure with source code under `src/lexibrary/` and test code under `tests/`. Supporting directories for BAML and fixtures SHALL exist. The `indexer/` module is temporarily retired; the `artifacts/` module is added.
 
 #### Scenario: Directory structure exists after initialization
 - **WHEN** running `uv sync` in the project root
-- **THEN** the following directories exist: `src/lexibrarian/`, `src/lexibrarian/config/`, `src/lexibrarian/ignore/`, `src/lexibrarian/utils/`, `src/lexibrarian/artifacts/`, `src/lexibrarian/crawler/`, `src/lexibrarian/llm/`, `src/lexibrarian/tokenizer/`, `src/lexibrarian/daemon/`, `tests/`, `baml_src/`
+- **THEN** the following directories exist: `src/lexibrary/`, `src/lexibrary/config/`, `src/lexibrary/ignore/`, `src/lexibrary/utils/`, `src/lexibrary/artifacts/`, `src/lexibrary/crawler/`, `src/lexibrary/llm/`, `src/lexibrary/tokenizer/`, `src/lexibrary/daemon/`, `tests/`, `baml_src/`
 
 #### Scenario: indexer/ module is absent
-- **WHEN** inspecting `src/lexibrarian/`
+- **WHEN** inspecting `src/lexibrary/`
 - **THEN** there is no `indexer/` directory (it has been retired)
 
 ### Requirement: Project metadata in pyproject.toml
@@ -20,7 +20,7 @@ The system SHALL declare the project name as "lexibrary", version "1.2.0" (or cu
 
 #### Scenario: CLI entry points are configured
 - **WHEN** reading `pyproject.toml` project.scripts
-- **THEN** both "lexi" and "lexibrarian" commands map to "lexibrarian.cli:app"
+- **THEN** both "lexi" and "lexibrary" commands map to "lexibrary.cli:app"
 
 ### Requirement: .gitignore is configured
 The system SHALL exclude Python artifacts, virtual environments, generated BAML code, and `.lexibrary/` generated artifacts while keeping `.lexibrary/config.yaml` tracked.
@@ -36,19 +36,19 @@ The system SHALL exclude Python artifacts, virtual environments, generated BAML 
 ## ADDED Requirements
 
 ### Requirement: artifacts module structure
-The system SHALL have `src/lexibrarian/artifacts/` as a proper Python package with `__init__.py` re-exporting all public model classes.
+The system SHALL have `src/lexibrary/artifacts/` as a proper Python package with `__init__.py` re-exporting all public model classes.
 
 #### Scenario: artifacts package is importable
-- **WHEN** importing `from lexibrarian.artifacts import DesignFile`
+- **WHEN** importing `from lexibrary.artifacts import DesignFile`
 - **THEN** the import succeeds without error
 
 #### Scenario: artifacts package has module files
-- **WHEN** inspecting `src/lexibrarian/artifacts/`
+- **WHEN** inspecting `src/lexibrary/artifacts/`
 - **THEN** it contains `__init__.py`, `design_file.py`, `aindex.py`, `concept.py`, and `guardrail.py`
 
 ### Requirement: exceptions module
-The system SHALL have `src/lexibrarian/exceptions.py` containing all project-level exception classes, starting with `LexibraryNotFoundError`.
+The system SHALL have `src/lexibrary/exceptions.py` containing all project-level exception classes, starting with `LexibraryNotFoundError`.
 
 #### Scenario: exceptions module is importable
-- **WHEN** importing `from lexibrarian.exceptions import LexibraryNotFoundError`
+- **WHEN** importing `from lexibrary.exceptions import LexibraryNotFoundError`
 - **THEN** the import succeeds without error

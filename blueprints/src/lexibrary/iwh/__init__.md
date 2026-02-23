@@ -8,6 +8,6 @@
 
 ## Dependents
 
-- `lexibrarian.init.scaffolder` -- imports `ensure_iwh_gitignored` for gitignore integration during `lexictl init`
-- `lexibrarian.cli.lexictl_app` -- `setup` command calls `ensure_iwh_gitignored`
-- `lexibrarian.utils.paths` -- `iwh_path()` computes `.iwh` file locations inside `.lexibrary/`
+- `lexibrary.init.scaffolder` -- imports `ensure_iwh_gitignored` for gitignore integration during `lexictl init`
+- `lexibrary.cli.lexictl_app` -- `setup` command calls `ensure_iwh_gitignored`
+- `lexibrary.utils.paths` -- `iwh_path()` computes `.iwh` file locations inside `.lexibrary/`

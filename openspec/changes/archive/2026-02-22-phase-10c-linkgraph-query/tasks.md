@@ -38,7 +38,7 @@
 
 ## 6. Public API Export
 
-- [x] 6.1 Update `src/lexibrarian/linkgraph/__init__.py` to import and export `LinkGraph` and all result dataclasses in `__all__`
+- [x] 6.1 Update `src/lexibrary/linkgraph/__init__.py` to import and export `LinkGraph` and all result dataclasses in `__all__`
 
 ## 7. Tests
 
@@ -57,4 +57,4 @@
 - [x] 7.13 Write tests for `traverse()` cycle detection (A->B->A does not loop)
 - [x] 7.14 Write tests for `traverse()` max_depth clamping to 10
 - [x] 7.15 Write tests for read-only enforcement (write attempt raises OperationalError)
-- [x] 7.16 Run full test suite (`uv run pytest --cov=lexibrarian`), lint (`uv run ruff check src/ tests/`), and type check (`uv run mypy src/`)
+- [x] 7.16 Run full test suite (`uv run pytest --cov=lexibrary`), lint (`uv run ruff check src/ tests/`), and type check (`uv run mypy src/`)

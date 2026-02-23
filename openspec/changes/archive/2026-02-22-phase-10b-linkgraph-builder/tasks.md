@@ -1,6 +1,6 @@
 ## 1. Data Models and Utilities
 
-- [x] 1.1 Create `src/lexibrarian/linkgraph/builder.py` with `from __future__ import annotations`, module docstring, and imports for sqlite3, logging, pathlib, datetime, and all artifact parsers
+- [x] 1.1 Create `src/lexibrary/linkgraph/builder.py` with `from __future__ import annotations`, module docstring, and imports for sqlite3, logging, pathlib, datetime, and all artifact parsers
 - [x] 1.2 Define `BuildResult` dataclass with fields: `artifact_count: int`, `link_count: int`, `duration_ms: int`, `errors: list[str]`, `build_type: str`
 - [x] 1.3 Implement `_extract_wikilinks(text: str) -> list[str]` utility function using regex to find `[[...]]` patterns and return deduplicated names
 - [x] 1.4 Write unit tests for `_extract_wikilinks` covering: multiple wikilinks, duplicates, no wikilinks, nested brackets edge case
@@ -73,12 +73,12 @@
 
 - [x] 9.1 Implement `build_index(project_root: Path, changed_paths: list[Path] | None = None) -> BuildResult` module-level function that opens/creates the database, constructs IndexBuilder, and delegates to full_build or incremental_update
 - [x] 9.2 Implement `open_index(project_root: Path) -> sqlite3.Connection | None` that opens `.lexibrary/index.db` with pragmas, returns None if missing or corrupt
-- [x] 9.3 Update `src/lexibrarian/linkgraph/__init__.py` to export `IndexBuilder`, `BuildResult`, `build_index`, and `open_index`
+- [x] 9.3 Update `src/lexibrary/linkgraph/__init__.py` to export `IndexBuilder`, `BuildResult`, `build_index`, and `open_index`
 - [x] 9.4 Write integration tests for `build_index()` and `open_index()` public API functions
 
 ## 10. Final Validation
 
-- [x] 10.1 Run full test suite: `uv run pytest --cov=lexibrarian tests/`
+- [x] 10.1 Run full test suite: `uv run pytest --cov=lexibrary tests/`
 - [x] 10.2 Run linter: `uv run ruff check src/ tests/`
 - [x] 10.3 Run formatter: `uv run ruff format src/ tests/`
 - [x] 10.4 Run type checker: `uv run mypy src/`

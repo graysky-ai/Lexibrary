@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Generate Markdown from IandexData
-The system SHALL provide a `generate_iandex(data: IandexData) -> str` function in `src/lexibrarian/indexer/generator.py` that transforms an `IandexData` object into a Markdown string following the `.aindex` format specification.
+The system SHALL provide a `generate_iandex(data: IandexData) -> str` function in `src/lexibrary/indexer/generator.py` that transforms an `IandexData` object into a Markdown string following the `.aindex` format specification.
 
 #### Scenario: Generate complete iandex content
 - **WHEN** `generate_iandex()` is called with an `IandexData` containing files and subdirectories
@@ -11,8 +11,8 @@ The system SHALL provide a `generate_iandex(data: IandexData) -> str` function i
 The generated Markdown SHALL start with an H1 header (`# `) containing the directory name.
 
 #### Scenario: H1 contains directory name
-- **WHEN** `generate_iandex()` is called with `directory_name="lexibrarian/"`
-- **THEN** the first line of output SHALL be `# lexibrarian/`
+- **WHEN** `generate_iandex()` is called with `directory_name="lexibrary/"`
+- **THEN** the first line of output SHALL be `# lexibrary/`
 
 ### Requirement: Summary follows H1
 The directory summary SHALL appear as a paragraph after the H1 header, separated by a blank line.

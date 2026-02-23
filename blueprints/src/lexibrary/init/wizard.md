@@ -11,15 +11,15 @@
 
 ## Dependencies
 
-- `lexibrarian.init.detection` -- all detection functions for auto-discovery
+- `lexibrary.init.detection` -- all detection functions for auto-discovery
 - `rich.console.Console` -- output rendering
 - `rich.prompt.Prompt`, `rich.prompt.Confirm` -- interactive prompts
 - `rich.table.Table` -- summary display in step 8
 
 ## Dependents
 
-- `lexibrarian.cli.lexictl_app` -- `init` command calls `run_wizard()`
-- `lexibrarian.init.scaffolder` -- consumes `WizardAnswers` in `create_lexibrary_from_wizard()`
+- `lexibrary.cli.lexictl_app` -- `init` command calls `run_wizard()`
+- `lexibrary.init.scaffolder` -- consumes `WizardAnswers` in `create_lexibrary_from_wizard()`
 
 ## Key Concepts
 

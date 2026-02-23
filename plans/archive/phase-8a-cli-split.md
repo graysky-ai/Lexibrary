@@ -20,10 +20,10 @@ This is a purely structural change. No new functionality is introduced. Command 
 
 ### Decision: Package with Shared Helpers
 
-The current `src/lexibrarian/cli.py` is a single 1,340-line file. Rather than keeping two Typer apps in one file (which would remain a monolith and be difficult to navigate), split into a `cli/` package with three modules:
+The current `src/lexibrary/cli.py` is a single 1,340-line file. Rather than keeping two Typer apps in one file (which would remain a monolith and be difficult to navigate), split into a `cli/` package with three modules:
 
 ```
-src/lexibrarian/cli/
+src/lexibrary/cli/
     __init__.py          # Re-exports: lexi_app, lexictl_app
     _shared.py           # Shared helpers: console, require_project_root(), stub()
     lexi_app.py          # Agent-facing Typer app + all agent commands
@@ -39,20 +39,20 @@ src/lexibrarian/cli/
 
 ### Migration Steps
 
-**Step 1: Create `src/lexibrarian/cli/__init__.py`**
+**Step 1: Create `src/lexibrary/cli/__init__.py`**
 
 ```python
-"""CLI package for Lexibrarian — two entry points."""
+"""CLI package for Lexibrary — two entry points."""
 
 from __future__ import annotations
 
-from lexibrarian.cli.lexi_app import app as lexi_app
-from lexibrarian.cli.lexictl_app import app as lexictl_app
+from lexibrary.cli.lexi_app import app as lexi_app
+from lexibrary.cli.lexictl_app import app as lexictl_app
 
 __all__ = ["lexi_app", "lexictl_app"]
 ```
 
-**Step 2: Create `src/lexibrarian/cli/_shared.py`**
+**Step 2: Create `src/lexibrary/cli/_shared.py`**
 
 Extract from the current `cli.py`:
 - `console = Console()` (module-level Rich console)
@@ -70,8 +70,8 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-from lexibrarian.exceptions import LexibraryNotFoundError
-from lexibrarian.utils.root import find_project_root
+from lexibrary.exceptions import LexibraryNotFoundError
+from lexibrary.utils.root import find_project_root
 
 console = Console()
 
@@ -98,7 +98,7 @@ Note the two changes from current code:
 1. The error message in `require_project_root()` changes from `"Run [cyan]lexi init[/cyan]"` to `"Run [cyan]lexictl init[/cyan]"` (init moves to `lexictl`).
 2. The leading underscore is dropped from the function names (`require_project_root` and `stub`) since they are now module-level exports in a shared module rather than private functions within a single file.
 
-**Step 3: Create `src/lexibrarian/cli/lexi_app.py`**
+**Step 3: Create `src/lexibrary/cli/lexi_app.py`**
 
 Move from current `cli.py`:
 - `lookup` command
@@ -116,14 +116,14 @@ The Typer app definition:
 app = typer.Typer(
     name="lexi",
     help=(
-        "Agent-facing CLI for Lexibrarian. "
+        "Agent-facing CLI for Lexibrary. "
         "Lookups, search, concepts, and Stack Q&A for day-to-day coding."
     ),
     no_args_is_help=True,
 )
 ```
 
-**Step 4: Create `src/lexibrarian/cli/lexictl_app.py`**
+**Step 4: Create `src/lexibrary/cli/lexictl_app.py`**
 
 Move from current `cli.py`:
 - `init` command
@@ -139,28 +139,28 @@ The Typer app definition:
 app = typer.Typer(
     name="lexictl",
     help=(
-        "Maintenance CLI for Lexibrarian. "
+        "Maintenance CLI for Lexibrary. "
         "Project setup, design file generation, validation, and daemon management."
     ),
     no_args_is_help=True,
 )
 ```
 
-**Step 5: Delete `src/lexibrarian/cli.py`**
+**Step 5: Delete `src/lexibrary/cli.py`**
 
 The old file is fully replaced by the package.
 
-**Step 6: Update `src/lexibrarian/__main__.py`**
+**Step 6: Update `src/lexibrary/__main__.py`**
 
 Change to:
 ```python
-from lexibrarian.cli import lexi_app
+from lexibrary.cli import lexi_app
 
 if __name__ == "__main__":
     lexi_app()
 ```
 
-The `__main__.py` module (invoked via `python -m lexibrarian`) should run the agent-facing CLI, since that is the primary use case.
+The `__main__.py` module (invoked via `python -m lexibrary`) should run the agent-facing CLI, since that is the primary use case.
 
 ---
 
@@ -170,25 +170,25 @@ The `__main__.py` module (invoked via `python -m lexibrarian`) should run the ag
 
 ```toml
 [project.scripts]
-lexi = "lexibrarian.cli:app"
-lexibrarian = "lexibrarian.cli:app"
+lexi = "lexibrary.cli:app"
+lexibrary = "lexibrary.cli:app"
 ```
 
 ### New
 
 ```toml
 [project.scripts]
-lexi = "lexibrarian.cli:lexi_app"
-lexictl = "lexibrarian.cli:lexictl_app"
+lexi = "lexibrary.cli:lexi_app"
+lexictl = "lexibrary.cli:lexictl_app"
 ```
 
-### Decision: Drop the `lexibrarian` Alias
+### Decision: Drop the `lexibrary` Alias
 
-The `lexibrarian` alias currently maps to the same app as `lexi`. It should be **dropped**:
+The `lexibrary` alias currently maps to the same app as `lexi`. It should be **dropped**:
 - Pre-1.0, no backwards-compatibility obligation.
 - Two CLIs already provide clear naming (`lexi` for agents, `lexictl` for maintenance).
 - A third name adds confusion with no benefit.
-- The overview document and master plan never reference a `lexibrarian` command -- only `lexi` and `lexictl`.
+- The overview document and master plan never reference a `lexibrary` command -- only `lexi` and `lexictl`.
 
 After changing `pyproject.toml`, run `uv sync` to re-register entry points.
 
@@ -238,10 +238,10 @@ Every place in the codebase where a command name is referenced in help text, err
 
 | File | Current Text | New Text |
 |---|---|---|
-| `src/lexibrarian/validator/checks.py` line 366 | `suggestion="Run \`lexi update\`..."` | `suggestion="Run \`lexictl update\`..."` |
-| `src/lexibrarian/init/scaffolder.py` line 23 | `Run \`lexi update\` to crawl the project` | `Run \`lexictl update\` to crawl the project` |
-| `src/lexibrarian/config/defaults.py` line 7 | `# This file is created by \`lexi init\`` | `# This file is created by \`lexictl init\`` |
-| `src/lexibrarian/daemon/service.py` line 49 | `Use [cyan]lexi daemon --foreground[/cyan]` | `Use [cyan]lexictl daemon --foreground[/cyan]` |
+| `src/lexibrary/validator/checks.py` line 366 | `suggestion="Run \`lexi update\`..."` | `suggestion="Run \`lexictl update\`..."` |
+| `src/lexibrary/init/scaffolder.py` line 23 | `Run \`lexi update\` to crawl the project` | `Run \`lexictl update\` to crawl the project` |
+| `src/lexibrary/config/defaults.py` line 7 | `# This file is created by \`lexi init\`` | `# This file is created by \`lexictl init\`` |
+| `src/lexibrary/daemon/service.py` line 49 | `Use [cyan]lexi daemon --foreground[/cyan]` | `Use [cyan]lexictl daemon --foreground[/cyan]` |
 
 Note: `checks.py` line 838 suggests `"Run 'lexi index' to generate .aindex files"` — `lexi index` stays on `lexi`, so this is correct and needs no change.
 
@@ -268,7 +268,7 @@ console.print("lexictl: " + ", ".join(parts) + " — run `lexictl validate`")
 Both apps import from `_shared.py`:
 
 ```python
-from lexibrarian.cli._shared import console, require_project_root, stub
+from lexibrary.cli._shared import console, require_project_root, stub
 ```
 
 ### Lazy Imports Preserved
@@ -279,17 +279,17 @@ The current `cli.py` uses lazy imports inside command functions to keep CLI star
 
 **`_shared.py`** (eager, unavoidable):
 - `typer`, `rich.console.Console`, `pathlib.Path`
-- `lexibrarian.exceptions.LexibraryNotFoundError`
-- `lexibrarian.utils.root.find_project_root`
+- `lexibrary.exceptions.LexibraryNotFoundError`
+- `lexibrary.utils.root.find_project_root`
 
 **`lexi_app.py`** (eager):
 - `typer`, `pathlib.Path`, `typing.Annotated`
-- `lexibrarian.cli._shared` (console, require_project_root)
+- `lexibrary.cli._shared` (console, require_project_root)
 
 **`lexictl_app.py`** (eager):
 - `typer`, `pathlib.Path`, `typing.Annotated`, `asyncio`, `hashlib`
-- `lexibrarian.cli._shared` (console, require_project_root, stub)
-- `lexibrarian.init.scaffolder.create_lexibrary_skeleton`
+- `lexibrary.cli._shared` (console, require_project_root, stub)
+- `lexibrary.init.scaffolder.create_lexibrary_skeleton`
 
 ---
 
@@ -297,7 +297,7 @@ The current `cli.py` uses lazy imports inside command functions to keep CLI star
 
 ### Current State
 
-All CLI tests live in `tests/test_cli.py`. They import `from lexibrarian.cli import app` and use a single `CliRunner` instance.
+All CLI tests live in `tests/test_cli.py`. They import `from lexibrary.cli import app` and use a single `CliRunner` instance.
 
 ### Plan: Split into Two Test Files
 
@@ -312,7 +312,7 @@ tests/test_cli/
 
 **`test_lexi.py`** imports and tests `lexi_app`:
 ```python
-from lexibrarian.cli import lexi_app
+from lexibrary.cli import lexi_app
 runner = CliRunner()
 ```
 
@@ -325,7 +325,7 @@ Test classes that move here:
 
 **`test_lexictl.py`** imports and tests `lexictl_app`:
 ```python
-from lexibrarian.cli import lexictl_app
+from lexibrary.cli import lexictl_app
 runner = CliRunner()
 ```
 
@@ -367,12 +367,12 @@ All steps are within a single logical change (one PR). Order keeps tests passing
 
 ### Step 1: Create the `cli/` Package Structure
 
-1. Create directory `src/lexibrarian/cli/`
-2. Create `src/lexibrarian/cli/__init__.py` with re-exports
-3. Create `src/lexibrarian/cli/_shared.py` with shared helpers
-4. Create `src/lexibrarian/cli/lexi_app.py` with agent-facing commands
-5. Create `src/lexibrarian/cli/lexictl_app.py` with maintenance commands
-6. Delete `src/lexibrarian/cli.py`
+1. Create directory `src/lexibrary/cli/`
+2. Create `src/lexibrary/cli/__init__.py` with re-exports
+3. Create `src/lexibrary/cli/_shared.py` with shared helpers
+4. Create `src/lexibrary/cli/lexi_app.py` with agent-facing commands
+5. Create `src/lexibrary/cli/lexictl_app.py` with maintenance commands
+6. Delete `src/lexibrary/cli.py`
 
 ### Step 2: Update Cross-References in Source Code
 
@@ -382,19 +382,19 @@ All steps are within a single logical change (one PR). Order keeps tests passing
 4. Update `lexi_app.py` `concept_link` command: `lexi update` → `lexictl update`
 5. Update `lexictl_app.py` `status` command: `lexi validate` → `lexictl validate` (four places)
 6. Update `lexictl_app.py` `status` quiet prefix: `lexi:` → `lexictl:`
-7. Update `src/lexibrarian/validator/checks.py`: `lexi update` → `lexictl update`
-8. Update `src/lexibrarian/init/scaffolder.py`: `lexi update` → `lexictl update`
-9. Update `src/lexibrarian/config/defaults.py`: `lexi init` → `lexictl init`
-10. Update `src/lexibrarian/daemon/service.py`: `lexi daemon` → `lexictl daemon`
+7. Update `src/lexibrary/validator/checks.py`: `lexi update` → `lexictl update`
+8. Update `src/lexibrary/init/scaffolder.py`: `lexi update` → `lexictl update`
+9. Update `src/lexibrary/config/defaults.py`: `lexi init` → `lexictl init`
+10. Update `src/lexibrary/daemon/service.py`: `lexi daemon` → `lexictl daemon`
 
 ### Step 3: Update Entry Points
 
 1. Update `pyproject.toml` `[project.scripts]`:
    ```toml
-   lexi = "lexibrarian.cli:lexi_app"
-   lexictl = "lexibrarian.cli:lexictl_app"
+   lexi = "lexibrary.cli:lexi_app"
+   lexictl = "lexibrary.cli:lexictl_app"
    ```
-2. Update `src/lexibrarian/__main__.py` to import `lexi_app`
+2. Update `src/lexibrary/__main__.py` to import `lexi_app`
 3. Run `uv sync` to re-register entry points
 
 ### Step 4: Update Tests
@@ -410,15 +410,15 @@ All steps are within a single logical change (one PR). Order keeps tests passing
 ### Step 5: Update Blueprints
 
 1. Update `blueprints/START_HERE.md` to reflect `cli/` package structure
-2. Replace `blueprints/src/lexibrarian/cli.md` with package-level design files:
-   - `blueprints/src/lexibrarian/cli/__init__.md`
-   - `blueprints/src/lexibrarian/cli/_shared.md`
-   - `blueprints/src/lexibrarian/cli/lexi_app.md`
-   - `blueprints/src/lexibrarian/cli/lexictl_app.md`
+2. Replace `blueprints/src/lexibrary/cli.md` with package-level design files:
+   - `blueprints/src/lexibrary/cli/__init__.md`
+   - `blueprints/src/lexibrary/cli/_shared.md`
+   - `blueprints/src/lexibrary/cli/lexi_app.md`
+   - `blueprints/src/lexibrary/cli/lexictl_app.md`
 
 ### Step 6: Verify
 
-1. `uv run pytest --cov=lexibrarian` -- all tests pass
+1. `uv run pytest --cov=lexibrary` -- all tests pass
 2. `uv run ruff check src/ tests/` -- no lint issues
 3. `uv run ruff format src/ tests/` -- formatting clean
 4. `uv run mypy src/` -- type checks pass
@@ -433,7 +433,7 @@ All steps are within a single logical change (one PR). Order keeps tests passing
 
 ### 8.1 Import Path Change for `app`
 
-The current import `from lexibrarian.cli import app` is used in tests and `__main__.py`. After the change, `app` no longer exists — `__init__.py` exports `lexi_app` and `lexictl_app`. No backwards-compatible alias needed (pre-1.0).
+The current import `from lexibrary.cli import app` is used in tests and `__main__.py`. After the change, `app` no longer exists — `__init__.py` exports `lexi_app` and `lexictl_app`. No backwards-compatible alias needed (pre-1.0).
 
 ### 8.2 Stack Helpers are `lexi`-Only
 
@@ -470,10 +470,10 @@ Every new module must include this import at the top.
 ### New Files Created
 | File | Purpose |
 |---|---|
-| `src/lexibrarian/cli/__init__.py` | Package init, re-exports `lexi_app` and `lexictl_app` |
-| `src/lexibrarian/cli/_shared.py` | Shared helpers: `console`, `require_project_root()`, `stub()` |
-| `src/lexibrarian/cli/lexi_app.py` | Agent-facing Typer app + commands |
-| `src/lexibrarian/cli/lexictl_app.py` | Maintenance Typer app + commands |
+| `src/lexibrary/cli/__init__.py` | Package init, re-exports `lexi_app` and `lexictl_app` |
+| `src/lexibrary/cli/_shared.py` | Shared helpers: `console`, `require_project_root()`, `stub()` |
+| `src/lexibrary/cli/lexi_app.py` | Agent-facing Typer app + commands |
+| `src/lexibrary/cli/lexictl_app.py` | Maintenance Typer app + commands |
 | `tests/test_cli/__init__.py` | Test package init |
 | `tests/test_cli/test_lexi.py` | Tests for `lexi` commands |
 | `tests/test_cli/test_lexictl.py` | Tests for `lexictl` commands |
@@ -481,19 +481,19 @@ Every new module must include this import at the top.
 ### Files Deleted
 | File | Reason |
 |---|---|
-| `src/lexibrarian/cli.py` | Replaced by `cli/` package |
+| `src/lexibrary/cli.py` | Replaced by `cli/` package |
 | `tests/test_cli.py` | Replaced by `tests/test_cli/` package |
 
 ### Files Modified
 | File | Change |
 |---|---|
-| `pyproject.toml` | Entry points: `lexi` and `lexictl`, drop `lexibrarian` alias |
-| `src/lexibrarian/__main__.py` | Import `lexi_app` instead of `app` |
-| `src/lexibrarian/validator/checks.py` | `"lexi update"` → `"lexictl update"` in suggestion string |
-| `src/lexibrarian/init/scaffolder.py` | `"lexi update"` → `"lexictl update"` in START_HERE placeholder |
-| `src/lexibrarian/config/defaults.py` | `"lexi init"` → `"lexictl init"` in config comment |
-| `src/lexibrarian/daemon/service.py` | `"lexi daemon"` → `"lexictl daemon"` in error message |
+| `pyproject.toml` | Entry points: `lexi` and `lexictl`, drop `lexibrary` alias |
+| `src/lexibrary/__main__.py` | Import `lexi_app` instead of `app` |
+| `src/lexibrary/validator/checks.py` | `"lexi update"` → `"lexictl update"` in suggestion string |
+| `src/lexibrary/init/scaffolder.py` | `"lexi update"` → `"lexictl update"` in START_HERE placeholder |
+| `src/lexibrary/config/defaults.py` | `"lexi init"` → `"lexictl init"` in config comment |
+| `src/lexibrary/daemon/service.py` | `"lexi daemon"` → `"lexictl daemon"` in error message |
 | `tests/test_validator/test_warning_checks.py` | `"lexi update"` → `"lexictl update"` in assertion |
 | `tests/test_validator/test_report.py` | `"lexi update"` → `"lexictl update"` in test data |
 | `blueprints/START_HERE.md` | Update topology tree and references |
-| `blueprints/src/lexibrarian/cli.md` | Replace with package-level design files |
+| `blueprints/src/lexibrary/cli.md` | Replace with package-level design files |

@@ -12,15 +12,15 @@
 
 ## Dependencies
 
-- `lexibrarian.artifacts.aindex_serializer` — `serialize_aindex`
-- `lexibrarian.artifacts.writer` — `write_artifact`
-- `lexibrarian.config.schema` — `LexibraryConfig`
-- `lexibrarian.ignore` — `create_ignore_matcher`
-- `lexibrarian.indexer.generator` — `generate_aindex`
+- `lexibrary.artifacts.aindex_serializer` — `serialize_aindex`
+- `lexibrary.artifacts.writer` — `write_artifact`
+- `lexibrary.config.schema` — `LexibraryConfig`
+- `lexibrary.ignore` — `create_ignore_matcher`
+- `lexibrary.indexer.generator` — `generate_aindex`
 
 ## Dependents
 
-- `lexibrarian.cli` — `index` command calls both `index_directory` and `index_recursive`
+- `lexibrary.cli` — `index` command calls both `index_directory` and `index_recursive`
 
 ## Key Concepts
 

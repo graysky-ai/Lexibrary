@@ -44,11 +44,11 @@ author: user
 
 ## Dependencies
 
-- `lexibrarian.stack.models` -- `StackPost`
+- `lexibrary.stack.models` -- `StackPost`
 
 ## Dependents
 
-- `lexibrarian.stack.mutations` -- `_save_post()` calls `serialize_stack_post`
+- `lexibrary.stack.mutations` -- `_save_post()` calls `serialize_stack_post`
 
 ## Key Concepts
 

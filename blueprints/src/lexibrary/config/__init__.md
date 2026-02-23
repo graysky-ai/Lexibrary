@@ -8,4 +8,4 @@
 
 ## Dependents
 
-- `lexibrarian.daemon.service` — imports `load_config`, `find_config_file`, `LexibraryConfig`
+- `lexibrary.daemon.service` — imports `load_config`, `find_config_file`, `LexibraryConfig`

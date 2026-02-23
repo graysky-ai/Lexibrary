@@ -8,7 +8,7 @@
 
 ## 6.1 CLI Structure
 
-### File: `src/lexibrarian/cli.py`
+### File: `src/lexibrary/cli.py`
 
 Replace the Phase 1 placeholder commands with full implementations. The Typer app stays the same; the command bodies change.
 
@@ -51,7 +51,7 @@ def init(
 
     # Update .gitignore
     gitignore_path = root / ".gitignore"
-    entries_to_add = [".aindex", ".lexibrarian_cache.json", ".lexibrarian.log", ".lexibrarian.pid"]
+    entries_to_add = [".aindex", ".lexibrary_cache.json", ".lexibrary.log", ".lexibrary.pid"]
     if gitignore_path.exists():
         existing = gitignore_path.read_text()
         additions = [e for e in entries_to_add if e not in existing]
@@ -121,7 +121,7 @@ additional_patterns = [
 [daemon]
 debounce_seconds = 2.0
 full_sweep_interval_minutes = 30
-log_file = ".lexibrarian.log"
+log_file = ".lexibrary.log"
 
 [output]
 filename = ".aindex"
@@ -150,7 +150,7 @@ def crawl(
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be indexed"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
-    """Run the Lexibrarian crawler. Generates .aindex files for all directories."""
+    """Run the Lexibrary crawler. Generates .aindex files for all directories."""
     root = path.resolve()
 
     # Load config
@@ -171,7 +171,7 @@ def crawl(
     tokenizer = create_tokenizer(config.tokenizer)
     llm_service = create_llm_service(config.llm)
 
-    cache_path = root / ".lexibrarian_cache.json"
+    cache_path = root / ".lexibrary_cache.json"
     change_detector = ChangeDetector(cache_path)
     change_detector.load()
     if full:
@@ -241,7 +241,7 @@ def status(
 
     # Load cache
     from .crawler.change_detector import ChangeDetector
-    cache_path = root / ".lexibrarian_cache.json"
+    cache_path = root / ".lexibrary_cache.json"
     change_detector = ChangeDetector(cache_path)
     change_detector.load()
     cached_files = len(change_detector._cache.files)
@@ -254,7 +254,7 @@ def status(
             stale += 1
 
     # Check daemon
-    pid_file = root / ".lexibrarian.pid"
+    pid_file = root / ".lexibrary.pid"
     daemon_status = "not running"
     if pid_file.exists():
         try:
@@ -276,7 +276,7 @@ def status(
 
 [bold]Daemon:[/bold]       {daemon_status}"""
 
-    console.print(Panel(panel_content, title="Lexibrarian Status", border_style="blue"))
+    console.print(Panel(panel_content, title="Lexibrary Status", border_style="blue"))
 
     if stale > 0:
         console.print(f"\n[yellow]Run 'lexi crawl' to update {stale} stale files.[/yellow]")
@@ -302,7 +302,7 @@ def clean(
 
     # Find all .aindex files
     iandex_files = list(root.rglob(config.output.filename))
-    cache_file = root / ".lexibrarian_cache.json"
+    cache_file = root / ".lexibrary_cache.json"
     log_file = root / config.daemon.log_file
 
     targets = iandex_files[:]
@@ -339,7 +339,7 @@ def daemon(
     path: Path = typer.Argument(Path("."), help="Project root directory"),
     foreground: bool = typer.Option(False, "--foreground", "-f", help="Run in foreground"),
 ):
-    """Start the Lexibrarian background daemon for live re-indexing."""
+    """Start the Lexibrary background daemon for live re-indexing."""
     root = path.resolve()
 
     from .config.loader import load_config
@@ -360,7 +360,7 @@ Use Typer's `CliRunner` for testing.
 
 ```python
 from typer.testing import CliRunner
-from lexibrarian.cli import app
+from lexibrary.cli import app
 
 runner = CliRunner()
 ```
@@ -392,5 +392,5 @@ runner = CliRunner()
 - [ ] `lexi status` shows config, counts, and daemon status
 - [ ] `lexi clean --yes` removes all `.aindex` files and cache
 - [ ] `lexi clean` prompts for confirmation without `--yes`
-- [ ] Both `lexi` and `lexibrarian` aliases work identically
+- [ ] Both `lexi` and `lexibrary` aliases work identically
 - [ ] All tests pass: `uv run pytest tests/test_cli.py -v`

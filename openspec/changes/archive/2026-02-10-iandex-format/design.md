@@ -1,6 +1,6 @@
 ## Context
 
-Lexibrarian produces `.aindex` Markdown files — one per directory — that serve as navigational maps for AI agents. These files contain a directory summary, a table of files with token counts and descriptions, and a table of subdirectories with summaries. The indexer package is the component responsible for the in-memory representation, serialization, deserialization, and persistence of these files.
+Lexibrary produces `.aindex` Markdown files — one per directory — that serve as navigational maps for AI agents. These files contain a directory summary, a table of files with token counts and descriptions, and a table of subdirectories with summaries. The indexer package is the component responsible for the in-memory representation, serialization, deserialization, and persistence of these files.
 
 This is a pure data-format layer with no LLM or crawler dependencies. It sits between the crawler (which decides *what* to index) and the LLM layer (which produces summaries). The indexer only cares about structured data in, Markdown out, and vice versa.
 

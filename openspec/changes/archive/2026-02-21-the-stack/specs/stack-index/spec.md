@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: StackIndex class
-The system SHALL provide a `StackIndex` class in `src/lexibrarian/stack/index.py` with a `build(cls, project_root: Path) -> StackIndex` classmethod that scans the `.lexibrary/stack/` directory, parses each `ST-NNN-*.md` file, and builds an in-memory searchable index.
+The system SHALL provide a `StackIndex` class in `src/lexibrary/stack/index.py` with a `build(cls, project_root: Path) -> StackIndex` classmethod that scans the `.lexibrary/stack/` directory, parses each `ST-NNN-*.md` file, and builds an in-memory searchable index.
 
 #### Scenario: Build index from stack directory
 - **WHEN** `StackIndex.build(project_root)` is called and `.lexibrary/stack/` contains 3 post files

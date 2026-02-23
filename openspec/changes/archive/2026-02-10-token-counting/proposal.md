@@ -1,6 +1,6 @@
 ## Why
 
-Lexibrarian needs to count tokens in files to build context efficiently. Different use cases require different trade-offs: tiktoken for offline speed, Anthropic API for Claude-accurate counts, and an approximate fallback when libraries aren't available. A pluggable backend system enables users to choose the right tool for their needs.
+Lexibrary needs to count tokens in files to build context efficiently. Different use cases require different trade-offs: tiktoken for offline speed, Anthropic API for Claude-accurate counts, and an approximate fallback when libraries aren't available. A pluggable backend system enables users to choose the right tool for their needs.
 
 ## What Changes
 
@@ -22,7 +22,7 @@ Lexibrarian needs to count tokens in files to build context efficiently. Differe
 
 ## Impact
 
-- New module: `src/lexibrarian/tokenizer/` with protocol, backends, and factory
+- New module: `src/lexibrary/tokenizer/` with protocol, backends, and factory
 - Depends on `TokenizerConfig` from Phase 1 config schema
 - Optional dependencies: `tiktoken` and `anthropic` SDK (approximate backend has zero deps)
 - Test suite: `tests/test_tokenizer/`

@@ -1,17 +1,17 @@
 ## 1. Config Template Renderer
 
-- [x] 1.1 Add `render_default_config(provider: str)` function to `src/lexibrarian/config/defaults.py` that formats `DEFAULT_CONFIG_TEMPLATE` with provider-specific values (model, api_key_env) using a provider defaults mapping for anthropic, openai, and ollama
+- [x] 1.1 Add `render_default_config(provider: str)` function to `src/lexibrary/config/defaults.py` that formats `DEFAULT_CONFIG_TEMPLATE` with provider-specific values (model, api_key_env) using a provider defaults mapping for anthropic, openai, and ollama
 - [x] 1.2 Add unit test for `render_default_config()` verifying each provider produces correct values and unknown providers fall back to anthropic
 
 ## 2. CLI Module Setup
 
-- [x] 2.1 Replace `typer.echo()` imports in `src/lexibrarian/cli.py` with `rich.console.Console` and `rich.progress`, `rich.table`, `rich.panel` imports; create module-level `console = Console()` instance
+- [x] 2.1 Replace `typer.echo()` imports in `src/lexibrary/cli.py` with `rich.console.Console` and `rich.progress`, `rich.table`, `rich.panel` imports; create module-level `console = Console()` instance
 - [x] 2.2 Add `from __future__ import annotations` if not already present in cli.py
 
 ## 3. Init Command
 
 - [x] 3.1 Implement `lexi init` command: accept `--provider` option, call `render_default_config()`, write `lexibrary.toml`, exit with code 1 if config already exists
-- [x] 3.2 Implement `.gitignore` management in init: create or update `.gitignore` with entries for `.aindex`, `.lexibrarian_cache.json`, `.lexibrarian.log`, `.lexibrarian.pid`
+- [x] 3.2 Implement `.gitignore` management in init: create or update `.gitignore` with entries for `.aindex`, `.lexibrary_cache.json`, `.lexibrary.log`, `.lexibrary.pid`
 - [x] 3.3 Add "Next steps" output after successful init
 - [x] 3.4 Write tests: `test_init_creates_config`, `test_init_already_exists`, `test_init_provider_openai`, `test_init_updates_gitignore`, `test_init_creates_gitignore`
 
@@ -26,8 +26,8 @@
 ## 5. Status Command
 
 - [x] 5.1 Implement `lexi status` command: load config (with fallback to defaults), count `.aindex` files, load cache and count entries, detect stale files
-- [x] 5.2 Add daemon PID detection: check `.lexibrarian.pid`, verify process exists with `os.kill(pid, 0)`, handle stale PID files
-- [x] 5.3 Display results in a Rich Panel with title "Lexibrarian Status"
+- [x] 5.2 Add daemon PID detection: check `.lexibrary.pid`, verify process exists with `os.kill(pid, 0)`, handle stale PID files
+- [x] 5.3 Display results in a Rich Panel with title "Lexibrary Status"
 - [x] 5.4 Write tests: `test_status_no_config`, `test_status_with_cache`
 
 ## 6. Clean Command
@@ -44,4 +44,4 @@
 
 - [x] 8.1 Write `test_help` verifying `lexi --help` lists all 5 commands with descriptions
 - [x] 8.2 Run full test suite (`uv run pytest tests/test_cli.py -v`) and fix any failures
-- [x] 8.3 Run linting and type checking (`uv run ruff check src/lexibrarian/cli.py` and `uv run mypy src/lexibrarian/cli.py`) and fix any issues
+- [x] 8.3 Run linting and type checking (`uv run ruff check src/lexibrary/cli.py` and `uv run mypy src/lexibrary/cli.py`) and fix any issues

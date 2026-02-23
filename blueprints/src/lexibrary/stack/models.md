@@ -18,11 +18,11 @@
 
 ## Dependents
 
-- `lexibrarian.stack.index` -- queries `StackPost` fields
-- `lexibrarian.stack.mutations` -- modifies `StackPost` and `StackAnswer` in-place
-- `lexibrarian.stack.parser` -- constructs models from parsed markdown
-- `lexibrarian.stack.serializer` -- serializes models to markdown
-- `lexibrarian.search` -- reads frontmatter fields for search results
+- `lexibrary.stack.index` -- queries `StackPost` fields
+- `lexibrary.stack.mutations` -- modifies `StackPost` and `StackAnswer` in-place
+- `lexibrary.stack.parser` -- constructs models from parsed markdown
+- `lexibrary.stack.serializer` -- serializes models to markdown
+- `lexibrary.search` -- reads frontmatter fields for search results
 
 ## Key Concepts
 

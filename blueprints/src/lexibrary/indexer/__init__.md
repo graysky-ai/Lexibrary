@@ -8,4 +8,4 @@ Nothing re-exported; package is empty. Import directly from submodules.
 
 ## Dependents
 
-- `lexibrarian.cli` — imports `index_directory`, `index_recursive` from `indexer.orchestrator`
+- `lexibrary.cli` — imports `index_directory`, `index_recursive` from `indexer.orchestrator`

@@ -14,13 +14,13 @@
 
 ## Dependencies
 
-- `lexibrarian.stack.models` -- `StackAnswer`, `StackPost`
-- `lexibrarian.stack.parser` -- `parse_stack_post`
-- `lexibrarian.stack.serializer` -- `serialize_stack_post`
+- `lexibrary.stack.models` -- `StackAnswer`, `StackPost`
+- `lexibrary.stack.parser` -- `parse_stack_post`
+- `lexibrary.stack.serializer` -- `serialize_stack_post`
 
 ## Dependents
 
-- `lexibrarian.cli` -- `stack_answer`, `stack_vote`, `stack_accept` commands
+- `lexibrary.cli` -- `stack_answer`, `stack_vote`, `stack_accept` commands
 
 ## Key Concepts
 

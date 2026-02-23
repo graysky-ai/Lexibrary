@@ -10,13 +10,13 @@
 
 ## Dependencies
 
-- `lexibrarian.iwh.model` -- `IWHFile`
+- `lexibrary.iwh.model` -- `IWHFile`
 - `yaml` (PyYAML) -- frontmatter parsing
 - `re` -- `_FRONTMATTER_RE` regex for `---` delimited frontmatter
 
 ## Dependents
 
-- `lexibrarian.iwh.reader` -- `read_iwh()` and `consume_iwh()` delegate to `parse_iwh()`
+- `lexibrary.iwh.reader` -- `read_iwh()` and `consume_iwh()` delegate to `parse_iwh()`
 
 ## Key Concepts
 

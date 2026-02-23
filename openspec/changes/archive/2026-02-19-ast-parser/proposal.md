@@ -1,6 +1,6 @@
 ## Why
 
-Phase 4 (Archivist) needs to detect whether a file's **public interface** changed or only its internals, so it can skip expensive LLM regeneration when signatures are unchanged. Currently, Lexibrarian only has content-level SHA-256 hashing — any byte change triggers a full update. Adding AST-based interface extraction and a second "interface hash" enables two-tier change detection: content hash for "did anything change?" and interface hash for "did the public API change?"
+Phase 4 (Archivist) needs to detect whether a file's **public interface** changed or only its internals, so it can skip expensive LLM regeneration when signatures are unchanged. Currently, Lexibrary only has content-level SHA-256 hashing — any byte change triggers a full update. Adding AST-based interface extraction and a second "interface hash" enables two-tier change detection: content hash for "did anything change?" and interface hash for "did the public API change?"
 
 ## What Changes
 
@@ -9,7 +9,7 @@ Phase 4 (Archivist) needs to detect whether a file's **public interface** change
 - Compute interface hashes from deterministic skeleton renderings for two-tier change detection
 - Add `hash_string()` utility and consolidate existing inline hashing
 - Add `ASTConfig` to the project configuration schema
-- Add optional dependency group `lexibrarian[ast]` for tree-sitter grammar packages
+- Add optional dependency group `lexibrary[ast]` for tree-sitter grammar packages
 - **No new CLI commands** — this is a library module consumed by Phase 4
 
 ## Capabilities
@@ -29,7 +29,7 @@ Phase 4 (Archivist) needs to detect whether a file's **public interface** change
 
 ## Impact
 
-- **New package**: `src/lexibrarian/ast_parser/` (7 modules)
+- **New package**: `src/lexibrary/ast_parser/` (7 modules)
 - **Dependencies**: `tree-sitter>=0.25.0,<0.26.0`, `tree-sitter-python>=0.25.0,<0.26.0`, `tree-sitter-javascript>=0.25.0,<0.26.0`, `tree-sitter-typescript>=0.23.0,<0.24.0` — all under optional `[ast]` extras group
 - **Config**: New `ast:` section in `.lexibrary/config.yaml` and default template
 - **Existing code**: `utils/hashing.py` gains `hash_string()`; `indexer/generator.py` inline hash consolidated

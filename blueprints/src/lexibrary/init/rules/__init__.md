@@ -11,13 +11,13 @@
 
 ## Dependencies
 
-- `lexibrarian.init.rules.claude` -- `generate_claude_rules`
-- `lexibrarian.init.rules.cursor` -- `generate_cursor_rules`
-- `lexibrarian.init.rules.codex` -- `generate_codex_rules`
+- `lexibrary.init.rules.claude` -- `generate_claude_rules`
+- `lexibrary.init.rules.cursor` -- `generate_cursor_rules`
+- `lexibrary.init.rules.codex` -- `generate_codex_rules`
 
 ## Dependents
 
-- `lexibrarian.cli.lexictl_app` -- `setup --update` command calls `generate_rules()`
+- `lexibrary.cli.lexictl_app` -- `setup --update` command calls `generate_rules()`
 
 ## Key Concepts
 

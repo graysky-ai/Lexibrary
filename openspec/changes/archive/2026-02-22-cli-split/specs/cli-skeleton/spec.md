@@ -4,11 +4,11 @@
 The system SHALL provide two Typer applications: `lexi_app` (agent-facing, name "lexi") and `lexictl_app` (maintenance, name "lexictl"), both with help text and `no_args_is_help=True`. Running either command without arguments SHALL display its respective help.
 
 #### Scenario: lexi app is accessible
-- **WHEN** importing `from lexibrarian.cli import lexi_app`
+- **WHEN** importing `from lexibrary.cli import lexi_app`
 - **THEN** `lexi_app` is a Typer instance with name "lexi"
 
 #### Scenario: lexictl app is accessible
-- **WHEN** importing `from lexibrarian.cli import lexictl_app`
+- **WHEN** importing `from lexibrary.cli import lexictl_app`
 - **THEN** `lexictl_app` is a Typer instance with name "lexictl"
 
 #### Scenario: Help is displayed when no arguments given
@@ -40,7 +40,7 @@ The `lexictl` CLI SHALL provide an `init` command that accepts an optional `--ag
 
 #### Scenario: Init command has help text
 - **WHEN** running `lexictl init --help`
-- **THEN** the help text describes "Initialize Lexibrarian in a project. Creates .lexibrary/ directory."
+- **THEN** the help text describes "Initialize Lexibrary in a project. Creates .lexibrary/ directory."
 
 ### Requirement: Daemon command
 The `lexictl` CLI SHALL provide a `daemon` command that accepts a path argument (default ".") and prints a "not yet implemented" stub message via `rich.console.Console`.
@@ -82,7 +82,7 @@ All commands on `lexictl` that are not yet implemented SHALL print a yellow "Not
 ## REMOVED Requirements
 
 ### Requirement: Command aliases
-**Reason**: The `lexibrarian` command alias is dropped. Pre-1.0, no backwards-compatibility obligation. Two CLIs (`lexi`, `lexictl`) provide clear naming; a third name adds confusion.
+**Reason**: The `lexibrary` command alias is dropped. Pre-1.0, no backwards-compatibility obligation. Two CLIs (`lexi`, `lexictl`) provide clear naming; a third name adds confusion.
 **Migration**: Use `lexi` for agent-facing commands, `lexictl` for maintenance commands.
 
 ### Requirement: Lookup command stub

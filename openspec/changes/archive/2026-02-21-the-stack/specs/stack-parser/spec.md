@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Parse stack post from file
-The system SHALL provide a `parse_stack_post(path: Path) -> StackPost | None` function in `src/lexibrarian/stack/parser.py` that:
+The system SHALL provide a `parse_stack_post(path: Path) -> StackPost | None` function in `src/lexibrary/stack/parser.py` that:
 - Extracts YAML frontmatter between `---` delimiters into `StackPostFrontmatter`
 - Extracts `## Problem` section content into `problem` field
 - Extracts `### Evidence` items (bullet list) into `evidence` field

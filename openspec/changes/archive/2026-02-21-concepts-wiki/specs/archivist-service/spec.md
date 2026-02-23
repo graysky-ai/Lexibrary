@@ -26,7 +26,7 @@ The system SHALL provide a `DesignFileRequest` dataclass with fields:
 - **THEN** `available_concepts` SHALL default to None
 
 ### Requirement: ArchivistService class
-The system SHALL provide an `ArchivistService` class in `src/lexibrarian/archivist/service.py` with:
+The system SHALL provide an `ArchivistService` class in `src/lexibrary/archivist/service.py` with:
 - Constructor accepting `rate_limiter: RateLimiter` and `config: LLMConfig`
 - `async generate_design_file(request: DesignFileRequest) -> DesignFileResult`
 - `async generate_start_here(request: StartHereRequest) -> StartHereResult`

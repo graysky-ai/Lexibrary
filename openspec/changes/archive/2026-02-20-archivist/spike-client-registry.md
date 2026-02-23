@@ -17,7 +17,7 @@ Every generated BAML function accepts `baml_options: BamlCallOptions` as the las
 Use the `client` option for per-call routing based on `LLMConfig.provider`:
 
 ```python
-from lexibrarian.baml_client.async_client import b
+from lexibrary.baml_client.async_client import b
 
 # Route to a specific named client at runtime
 result = await b.ArchivistGenerateDesignFile(

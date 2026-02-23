@@ -32,8 +32,8 @@ Phase 1 delivered the foundational data models, config system, CLI skeleton, and
 
 ## Impact
 
-- **Files changed**: `src/lexibrarian/artifacts/aindex.py`, `src/lexibrarian/config/schema.py`, `src/lexibrarian/cli.py`
-- **Files added**: `src/lexibrarian/artifacts/aindex_serializer.py`, `src/lexibrarian/artifacts/aindex_parser.py`, `src/lexibrarian/artifacts/writer.py`, `src/lexibrarian/indexer/generator.py`, `src/lexibrarian/indexer/orchestrator.py`
+- **Files changed**: `src/lexibrary/artifacts/aindex.py`, `src/lexibrary/config/schema.py`, `src/lexibrary/cli.py`
+- **Files added**: `src/lexibrary/artifacts/aindex_serializer.py`, `src/lexibrary/artifacts/aindex_parser.py`, `src/lexibrary/artifacts/writer.py`, `src/lexibrary/indexer/generator.py`, `src/lexibrary/indexer/orchestrator.py`
 - **Test files added**: `tests/test_artifacts/test_aindex_serializer.py`, `tests/test_artifacts/test_aindex_parser.py`, `tests/test_artifacts/test_aindex_roundtrip.py`, `tests/test_artifacts/test_writer.py`, `tests/test_indexer/test_generator.py`, `tests/test_indexer/test_orchestrator.py`
 - **Dependencies**: No new external deps — uses existing `pathspec`, `pydantic`, `rich`, `typer`, `hashlib` (stdlib)
 - **Breaking change**: `AIndexEntry.is_directory` removed; all code referencing it updated in same change

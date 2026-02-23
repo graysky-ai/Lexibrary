@@ -1,6 +1,6 @@
 # crawler/change_detector
 
-**Summary:** SHA-256 hash-based file change detection with a JSON cache persisted at `.lexibrary/.lexibrarian_cache.json`.
+**Summary:** SHA-256 hash-based file change detection with a JSON cache persisted at `.lexibrary/.lexibrary_cache.json`.
 
 ## Interface
 
@@ -19,12 +19,12 @@
 
 ## Dependencies
 
-- `lexibrarian.utils.hashing` — `hash_file`
+- `lexibrary.utils.hashing` — `hash_file`
 
 ## Dependents
 
-- `lexibrarian.crawler.engine` — instantiates and drives `ChangeDetector`
-- `lexibrarian.daemon.service` — instantiates and passes to `full_crawl`
+- `lexibrary.crawler.engine` — instantiates and drives `ChangeDetector`
+- `lexibrary.daemon.service` — instantiates and passes to `full_crawl`
 
 ## Key Concepts
 

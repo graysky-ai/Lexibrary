@@ -12,8 +12,8 @@
 
 ## Dependents
 
-- `lexibrarian.llm.service` — calls `await self._rate_limiter.acquire()` before every LLM call
-- `lexibrarian.llm.factory` — creates a `RateLimiter()` with default 50 RPM
+- `lexibrary.llm.service` — calls `await self._rate_limiter.acquire()` before every LLM call
+- `lexibrary.llm.factory` — creates a `RateLimiter()` with default 50 RPM
 
 ## Key Concepts
 

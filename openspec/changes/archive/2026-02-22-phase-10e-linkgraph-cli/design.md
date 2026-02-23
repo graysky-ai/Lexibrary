@@ -1,6 +1,6 @@
 ## Context
 
-Lexibrarian's Phase 10 builds a SQLite-backed link graph index (`index.db`) that tracks all cross-artifact relationships. The schema (10a) and query interface (10c) are prerequisites for this change. The builder (10b) and pipeline integration (10d) populate the index during `lexictl update`.
+Lexibrary's Phase 10 builds a SQLite-backed link graph index (`index.db`) that tracks all cross-artifact relationships. The schema (10a) and query interface (10c) are prerequisites for this change. The builder (10b) and pipeline integration (10d) populate the index during `lexictl update`.
 
 Currently, agents using `lexi lookup` see the design file and inherited conventions but have no visibility into what depends on a file. The `lexi search` command performs O(N) file scanning for both tag and free-text queries. Phase 10e closes the loop by surfacing link graph data through existing CLI commands.
 

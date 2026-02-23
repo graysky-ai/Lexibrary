@@ -10,13 +10,13 @@
 
 ## Dependencies
 
-- `lexibrarian.config.schema` — `TokenizerConfig` (**not yet defined in schema**)
-- `lexibrarian.tokenizer.base` — `TokenCounter`
+- `lexibrary.config.schema` — `TokenizerConfig` (**not yet defined in schema**)
+- `lexibrary.tokenizer.base` — `TokenCounter`
 
 ## Dependents
 
-- `lexibrarian.tokenizer.__init__` — re-exports
-- `lexibrarian.daemon.service` — calls `create_tokenizer(config.tokenizer)`
+- `lexibrary.tokenizer.__init__` — re-exports
+- `lexibrary.daemon.service` — calls `create_tokenizer(config.tokenizer)`
 
 ## Dragons
 

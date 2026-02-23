@@ -1,6 +1,6 @@
 # config/schema
 
-**Summary:** Pydantic 2 models for the full Lexibrarian configuration hierarchy, validated from `.lexibrary/config.yaml`.
+**Summary:** Pydantic 2 models for the full Lexibrary configuration hierarchy, validated from `.lexibrary/config.yaml`.
 
 ## Interface
 
@@ -23,16 +23,16 @@
 
 ## Dependents
 
-- `lexibrarian.config.loader` -- validates merged YAML into `LexibraryConfig`
-- `lexibrarian.config.__init__` -- re-exports all models
-- `lexibrarian.ignore.patterns` -- consumes `IgnoreConfig`
-- `lexibrarian.llm.factory` -- consumes `LLMConfig`
-- `lexibrarian.indexer.orchestrator` -- consumes `LexibraryConfig`
-- `lexibrarian.archivist.pipeline` -- uses `LexibraryConfig` for scope_root, token_budgets, crawl settings
-- `lexibrarian.archivist.service` -- uses `LLMConfig` for provider routing
-- `lexibrarian.init.scaffolder` -- validates wizard answers through `LexibraryConfig.model_validate()`
-- `lexibrarian.cli.lexictl_app` -- `setup` command reads `agent_environment` from config
-- `lexibrarian.daemon.service` -- reads `DaemonConfig` fields for sweep, watchdog, and logging behaviour
+- `lexibrary.config.loader` -- validates merged YAML into `LexibraryConfig`
+- `lexibrary.config.__init__` -- re-exports all models
+- `lexibrary.ignore.patterns` -- consumes `IgnoreConfig`
+- `lexibrary.llm.factory` -- consumes `LLMConfig`
+- `lexibrary.indexer.orchestrator` -- consumes `LexibraryConfig`
+- `lexibrary.archivist.pipeline` -- uses `LexibraryConfig` for scope_root, token_budgets, crawl settings
+- `lexibrary.archivist.service` -- uses `LLMConfig` for provider routing
+- `lexibrary.init.scaffolder` -- validates wizard answers through `LexibraryConfig.model_validate()`
+- `lexibrary.cli.lexictl_app` -- `setup` command reads `agent_environment` from config
+- `lexibrary.daemon.service` -- reads `DaemonConfig` fields for sweep, watchdog, and logging behaviour
 
 ## Key Concepts
 

@@ -14,7 +14,7 @@
 
 ## Dependents
 
-- `lexibrarian.indexer.orchestrator` — writes `.aindex` files
+- `lexibrary.indexer.orchestrator` — writes `.aindex` files
 
 ## Key Concepts
 

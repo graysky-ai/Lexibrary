@@ -79,15 +79,15 @@ if graph is None:
 
 ## Dependencies
 
-- `lexibrarian.linkgraph.schema` -- `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas`
-- `lexibrarian.utils.paths` -- `LEXIBRARY_DIR` (imported inside `open_index()`)
+- `lexibrary.linkgraph.schema` -- `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas`
+- `lexibrary.utils.paths` -- `LEXIBRARY_DIR` (imported inside `open_index()`)
 
 ## Dependents
 
-- `lexibrarian.linkgraph.__init__` -- eagerly re-exports `LinkGraph`, `open_index`, all result dataclasses
-- `lexibrarian.cli.lexi_app` -- `lookup` and `search` commands use `open_index()` to get a `LinkGraph`
-- `lexibrarian.search` -- `unified_search()` accepts `LinkGraph` for index-accelerated tag and FTS search
-- `lexibrarian.validator.checks` -- validation checks query the link graph for consistency checks
+- `lexibrary.linkgraph.__init__` -- eagerly re-exports `LinkGraph`, `open_index`, all result dataclasses
+- `lexibrary.cli.lexi_app` -- `lookup` and `search` commands use `open_index()` to get a `LinkGraph`
+- `lexibrary.search` -- `unified_search()` accepts `LinkGraph` for index-accelerated tag and FTS search
+- `lexibrary.validator.checks` -- validation checks query the link graph for consistency checks
 
 ## Key Concepts
 

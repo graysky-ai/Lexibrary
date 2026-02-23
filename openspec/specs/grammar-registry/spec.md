@@ -42,7 +42,7 @@ The system SHALL handle missing grammar packages gracefully. When a grammar pack
 
 #### Scenario: Warning is emitted for missing grammar
 - **WHEN** a grammar package is not installed and the registry is queried
-- **THEN** a warning is printed: "tree-sitter-python not installed. Run: pip install lexibrarian[ast]"
+- **THEN** a warning is printed: "tree-sitter-python not installed. Run: pip install lexibrary[ast]"
 
 #### Scenario: Warning is emitted only once per language
 - **WHEN** querying for `.py` twice with the grammar missing

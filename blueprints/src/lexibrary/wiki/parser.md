@@ -18,9 +18,9 @@
 
 ## Dependencies
 
-- `lexibrarian.artifacts.concept` — `ConceptFile`, `ConceptFileFrontmatter`
+- `lexibrary.artifacts.concept` — `ConceptFile`, `ConceptFileFrontmatter`
 
 ## Dependents
 
-- `lexibrarian.wiki.__init__` — re-exports
-- `lexibrarian.wiki.index` — `ConceptIndex.load` calls `parse_concept_file`
+- `lexibrary.wiki.__init__` — re-exports
+- `lexibrary.wiki.index` — `ConceptIndex.load` calls `parse_concept_file`

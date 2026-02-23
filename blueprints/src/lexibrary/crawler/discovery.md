@@ -11,11 +11,11 @@
 
 ## Dependencies
 
-- `lexibrarian.ignore.matcher` — `IgnoreMatcher`
+- `lexibrary.ignore.matcher` — `IgnoreMatcher`
 
 ## Dependents
 
-- `lexibrarian.crawler.engine` — calls both functions
+- `lexibrary.crawler.engine` — calls both functions
 
 ## Key Concepts
 

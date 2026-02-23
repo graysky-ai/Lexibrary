@@ -12,12 +12,12 @@
 
 ## Dependencies
 
-- `lexibrarian.iwh.model` -- `IWHFile`
-- `lexibrarian.iwh.parser` -- `parse_iwh`
+- `lexibrary.iwh.model` -- `IWHFile`
+- `lexibrary.iwh.parser` -- `parse_iwh`
 
 ## Dependents
 
-- `lexibrarian.iwh.__init__` -- re-exports both functions
+- `lexibrary.iwh.__init__` -- re-exports both functions
 
 ## Key Concepts
 

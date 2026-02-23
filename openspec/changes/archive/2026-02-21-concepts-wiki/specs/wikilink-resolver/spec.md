@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: ResolvedLink dataclass
-The system SHALL define a `ResolvedLink` dataclass in `src/lexibrarian/wiki/resolver.py` with fields:
+The system SHALL define a `ResolvedLink` dataclass in `src/lexibrary/wiki/resolver.py` with fields:
 - `raw` (str) — original link text including brackets
 - `name` (str) — stripped link name
 - `kind` (Literal["concept", "guardrail"]) — type of resolved link
@@ -12,7 +12,7 @@ The system SHALL define a `ResolvedLink` dataclass in `src/lexibrarian/wiki/reso
 - **THEN** all fields SHALL be stored correctly
 
 ### Requirement: UnresolvedLink dataclass
-The system SHALL define an `UnresolvedLink` dataclass in `src/lexibrarian/wiki/resolver.py` with fields:
+The system SHALL define an `UnresolvedLink` dataclass in `src/lexibrary/wiki/resolver.py` with fields:
 - `raw` (str) — original link text including brackets
 - `name` (str) — stripped link name
 - `suggestions` (list[str]) — suggested concept names from fuzzy matching
@@ -22,7 +22,7 @@ The system SHALL define an `UnresolvedLink` dataclass in `src/lexibrarian/wiki/r
 - **THEN** `suggestions` SHALL contain the provided suggestions
 
 ### Requirement: WikilinkResolver class
-The system SHALL provide a `WikilinkResolver` class in `src/lexibrarian/wiki/resolver.py` that:
+The system SHALL provide a `WikilinkResolver` class in `src/lexibrary/wiki/resolver.py` that:
 - Is constructed with `concept_index: ConceptIndex`
 - Provides `resolve(link_text: str) -> ResolvedLink | UnresolvedLink`
 

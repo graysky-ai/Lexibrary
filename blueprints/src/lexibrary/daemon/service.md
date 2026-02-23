@@ -15,22 +15,22 @@
 
 ## Dependencies
 
-- `lexibrarian.archivist.pipeline` -- `update_project`
-- `lexibrarian.archivist.service` -- `ArchivistService`
-- `lexibrarian.config.loader` -- `load_config`
-- `lexibrarian.config.schema` -- `LexibraryConfig`
-- `lexibrarian.daemon.logging` -- `setup_daemon_logging`
-- `lexibrarian.daemon.scheduler` -- `PeriodicSweep`
-- `lexibrarian.ignore` -- `create_ignore_matcher`
-- `lexibrarian.llm.rate_limiter` -- `RateLimiter`
-- `lexibrarian.utils.paths` -- `LEXIBRARY_DIR`
-- `lexibrarian.daemon.debouncer` -- `Debouncer` (lazy, watchdog only)
-- `lexibrarian.daemon.watcher` -- `LexibrarianEventHandler` (lazy, watchdog only)
+- `lexibrary.archivist.pipeline` -- `update_project`
+- `lexibrary.archivist.service` -- `ArchivistService`
+- `lexibrary.config.loader` -- `load_config`
+- `lexibrary.config.schema` -- `LexibraryConfig`
+- `lexibrary.daemon.logging` -- `setup_daemon_logging`
+- `lexibrary.daemon.scheduler` -- `PeriodicSweep`
+- `lexibrary.ignore` -- `create_ignore_matcher`
+- `lexibrary.llm.rate_limiter` -- `RateLimiter`
+- `lexibrary.utils.paths` -- `LEXIBRARY_DIR`
+- `lexibrary.daemon.debouncer` -- `Debouncer` (lazy, watchdog only)
+- `lexibrary.daemon.watcher` -- `LexibraryEventHandler` (lazy, watchdog only)
 - `watchdog.observers` -- `Observer` (lazy, watchdog only)
 
 ## Dependents
 
-- `lexibrarian.cli.lexictl_app` -- `sweep` command calls `run_once` / `run_watch`; `daemon` command calls `run_watchdog`
+- `lexibrary.cli.lexictl_app` -- `sweep` command calls `run_once` / `run_watch`; `daemon` command calls `run_watchdog`
 
 ## Key Concepts
 
@@ -40,7 +40,7 @@
   - `run_watchdog()` -- deprecated; requires `daemon.watchdog_enabled: true`; lazy-imports watchdog
 - `_has_changes()` does a fast recursive mtime scan with `os.scandir()`, skipping `.lexibrary/`
 - Sweep callback uses `asyncio.run(update_project(...))` via `ArchivistService` + `RateLimiter`
-- PID file (`<root>/.lexibrarian.pid`) written only in watchdog mode; removed on `stop()`
+- PID file (`<root>/.lexibrary.pid`) written only in watchdog mode; removed on `stop()`
 - SIGTERM/SIGINT both trigger `_shutdown_event.set()` for graceful shutdown
 - Watchdog imports are lazy -- `run_once` and `run_watch` work without the `watchdog` package installed
 - `_current_time()` is extracted as a function for testability

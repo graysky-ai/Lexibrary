@@ -1,6 +1,6 @@
 ## Context
 
-Lexibrarian has completed Phases 4–6: design files (Archivist), concepts wiki, and the Stack are all functional. However, there is no automated way to detect inconsistencies — broken wikilinks, missing source files, stale design files, orphan concepts. The `validate` and `status` CLI commands are currently stubs. Additionally, `lexi lookup` doesn't surface Local Conventions from parent directories, meaning agents who jump directly to a file miss scoped conventions they didn't traverse through.
+Lexibrary has completed Phases 4–6: design files (Archivist), concepts wiki, and the Stack are all functional. However, there is no automated way to detect inconsistencies — broken wikilinks, missing source files, stale design files, orphan concepts. The `validate` and `status` CLI commands are currently stubs. Additionally, `lexi lookup` doesn't surface Local Conventions from parent directories, meaning agents who jump directly to a file miss scoped conventions they didn't traverse through.
 
 The existing codebase provides all the parsing infrastructure needed:
 - `parse_design_file_metadata()` — lightweight footer-only parser for hash checks
@@ -32,7 +32,7 @@ The existing codebase provides all the parsing infrastructure needed:
 
 ### D1: Validator module structure — flat package with three files
 
-The validator lives at `src/lexibrarian/validator/` with:
+The validator lives at `src/lexibrary/validator/` with:
 - `report.py` — `ValidationIssue`, `ValidationSummary`, `ValidationReport` dataclasses
 - `checks.py` — 10 individual check functions, each `check_*(project_root, lexibrary_dir) -> list[ValidationIssue]`
 - `__init__.py` — public API: `validate_library()` orchestrator, re-exports

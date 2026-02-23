@@ -4,11 +4,11 @@
 The system SHALL provide a Typer application with help text and a `no_args_is_help=True` setting so that running the command without arguments displays help.
 
 #### Scenario: CLI app is accessible
-- **WHEN** importing `from lexibrarian.cli import app`
-- **THEN** app is a Typer instance with name "lexibrarian"
+- **WHEN** importing `from lexibrary.cli import app`
+- **THEN** app is a Typer instance with name "lexibrary"
 
 #### Scenario: Help is displayed when no arguments given
-- **WHEN** running `lexi` or `lexibrarian` with no arguments
+- **WHEN** running `lexi` or `lexibrary` with no arguments
 - **THEN** the help text is displayed (not an error)
 
 #### Scenario: Application has descriptive help text
@@ -32,7 +32,7 @@ The system SHALL provide an `init` command that accepts an optional `--agent` op
 
 #### Scenario: Init command has help text
 - **WHEN** running `lexi init --help`
-- **THEN** the help text describes "Initialize Lexibrarian in a project. Creates .lexibrary/ directory."
+- **THEN** the help text describes "Initialize Lexibrary in a project. Creates .lexibrary/ directory."
 
 ### Requirement: Daemon command
 The system SHALL provide a `daemon` command that accepts a path argument (default ".") and prints a "not yet implemented" stub message via `rich.console.Console`. Full implementation comes in Phase 9.
@@ -65,10 +65,10 @@ The system SHALL provide a `status` command that accepts a path argument (defaul
 - **THEN** the help text says "Show library health and staleness summary."
 
 ### Requirement: Command aliases
-The system SHALL support both `lexi` and `lexibrarian` as command entry points that execute the same application.
+The system SHALL support both `lexi` and `lexibrary` as command entry points that execute the same application.
 
 #### Scenario: Both command names work
-- **WHEN** running `lexi --help` and `lexibrarian --help`
+- **WHEN** running `lexi --help` and `lexibrary --help`
 - **THEN** both produce identical output listing all registered commands
 
 ## REMOVED Requirements

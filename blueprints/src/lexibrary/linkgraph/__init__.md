@@ -28,18 +28,18 @@ Builder symbols (`BuildResult`, `IndexBuilder`, `build_index`) are listed in `__
 
 ## Dependencies
 
-- `lexibrarian.linkgraph.health` -- eagerly imported for `IndexHealth`, `read_index_health`
-- `lexibrarian.linkgraph.query` -- eagerly imported for `open_index`, `LinkGraph`, result dataclasses
-- `lexibrarian.linkgraph.schema` -- eagerly imported for `SCHEMA_VERSION`, `check_schema_version`, `ensure_schema`
-- `lexibrarian.linkgraph.builder` -- lazily imported via `__getattr__` for `BuildResult`, `IndexBuilder`, `build_index`
+- `lexibrary.linkgraph.health` -- eagerly imported for `IndexHealth`, `read_index_health`
+- `lexibrary.linkgraph.query` -- eagerly imported for `open_index`, `LinkGraph`, result dataclasses
+- `lexibrary.linkgraph.schema` -- eagerly imported for `SCHEMA_VERSION`, `check_schema_version`, `ensure_schema`
+- `lexibrary.linkgraph.builder` -- lazily imported via `__getattr__` for `BuildResult`, `IndexBuilder`, `build_index`
 
 ## Dependents
 
-- `lexibrarian.cli.lexi_app` -- `lookup` and `search` commands import `open_index` from this package
-- `lexibrarian.cli.lexictl_app` -- `status` command imports `read_index_health` for link graph health display
-- `lexibrarian.search` -- `unified_search()` accepts `LinkGraph` (TYPE_CHECKING import from `linkgraph.query`)
-- `lexibrarian.archivist.pipeline` -- imports builder symbols for index rebuilds
-- `lexibrarian.validator.checks` -- link-graph checks import `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas` from `linkgraph.schema`
+- `lexibrary.cli.lexi_app` -- `lookup` and `search` commands import `open_index` from this package
+- `lexibrary.cli.lexictl_app` -- `status` command imports `read_index_health` for link graph health display
+- `lexibrary.search` -- `unified_search()` accepts `LinkGraph` (TYPE_CHECKING import from `linkgraph.query`)
+- `lexibrary.archivist.pipeline` -- imports builder symbols for index rebuilds
+- `lexibrary.validator.checks` -- link-graph checks import `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas` from `linkgraph.schema`
 
 ## Key Concepts
 

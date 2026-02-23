@@ -11,13 +11,13 @@
 
 ## Dependencies
 
-- `lexibrarian.artifacts.design_file_parser` -- `_FOOTER_RE`, `parse_design_file_metadata`
+- `lexibrary.artifacts.design_file_parser` -- `_FOOTER_RE`, `parse_design_file_metadata`
 - `hashlib` (stdlib)
 
 ## Dependents
 
-- `lexibrarian.archivist.pipeline` -- uses `check_change` and `ChangeLevel` for per-file update decisions
-- `lexibrarian.archivist.__init__` -- re-exports `ChangeLevel`, `check_change`
+- `lexibrary.archivist.pipeline` -- uses `check_change` and `ChangeLevel` for per-file update decisions
+- `lexibrary.archivist.__init__` -- re-exports `ChangeLevel`, `check_change`
 
 ## Key Concepts
 

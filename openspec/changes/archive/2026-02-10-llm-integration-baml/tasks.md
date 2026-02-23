@@ -1,7 +1,7 @@
 ## 1. BAML Setup and Configuration
 
 - [x] 1.1 Run `uv run baml init` to scaffold `baml_src/` directory
-- [x] 1.2 Create/update `baml_src/generators.baml` with output_type "python/pydantic" targeting `../src/lexibrarian/baml_client`
+- [x] 1.2 Create/update `baml_src/generators.baml` with output_type "python/pydantic" targeting `../src/lexibrary/baml_client`
 
 ## 2. BAML Definitions
 
@@ -14,28 +14,28 @@
 ## 3. Generate BAML Client
 
 - [x] 3.1 Run `uv run baml generate` and verify it succeeds
-- [x] 3.2 Verify `src/lexibrarian/baml_client/` is created with async_client.py, sync_client.py, and type definitions
+- [x] 3.2 Verify `src/lexibrary/baml_client/` is created with async_client.py, sync_client.py, and type definitions
 
 ## 4. Rate Limiter
 
-- [x] 4.1 Create `src/lexibrarian/llm/` package with `__init__.py`
-- [x] 4.2 Implement `src/lexibrarian/llm/rate_limiter.py` with async token-bucket RateLimiter class (configurable RPM, asyncio.Lock serialization)
+- [x] 4.1 Create `src/lexibrary/llm/` package with `__init__.py`
+- [x] 4.2 Implement `src/lexibrary/llm/rate_limiter.py` with async token-bucket RateLimiter class (configurable RPM, asyncio.Lock serialization)
 
 ## 5. LLM Service
 
-- [x] 5.1 Implement `src/lexibrarian/llm/service.py` with LLMService class, FileSummaryRequest, FileSummaryResult, and DirectorySummaryRequest dataclasses
+- [x] 5.1 Implement `src/lexibrary/llm/service.py` with LLMService class, FileSummaryRequest, FileSummaryResult, and DirectorySummaryRequest dataclasses
 - [x] 5.2 Implement `summarize_file()` async method with rate limiting and error fallback
 - [x] 5.3 Implement `summarize_files_batch()` async method with rate limiting and error fallback
 - [x] 5.4 Implement `summarize_directory()` async method with rate limiting and error fallback
 
 ## 6. Factory and Provider Switching
 
-- [x] 6.1 Implement `src/lexibrarian/llm/factory.py` with `create_llm_service()` that configures env vars based on LLMConfig provider
-- [x] 6.2 Update `src/lexibrarian/llm/__init__.py` with public exports
+- [x] 6.1 Implement `src/lexibrary/llm/factory.py` with `create_llm_service()` that configures env vars based on LLMConfig provider
+- [x] 6.2 Update `src/lexibrary/llm/__init__.py` with public exports
 
 ## 7. Language Detection Utility
 
-- [x] 7.1 Implement `src/lexibrarian/utils/languages.py` with EXTENSION_MAP and `detect_language()` function
+- [x] 7.1 Implement `src/lexibrary/utils/languages.py` with EXTENSION_MAP and `detect_language()` function
 
 ## 8. Tests
 
@@ -46,6 +46,6 @@
 
 ## 9. Validation
 
-- [x] 9.1 Verify `from lexibrarian.baml_client.async_client import b` import works
+- [x] 9.1 Verify `from lexibrary.baml_client.async_client import b` import works
 - [x] 9.2 Run `uv run ruff check src/ tests/` and fix any lint issues
 - [x] 9.3 Run `uv run mypy src/` and fix any type errors

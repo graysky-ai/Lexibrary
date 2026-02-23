@@ -8,4 +8,4 @@
 
 ## Dependents
 
-- `lexibrarian.daemon.service` — imports `full_crawl`
+- `lexibrary.daemon.service` — imports `full_crawl`

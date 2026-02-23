@@ -10,8 +10,8 @@
 
 ## Dependents
 
-- `lexibrarian.config.__init__` -- re-exports it
-- `lexibrarian.init.scaffolder` -- writes it to `.lexibrary/config.yaml` on `create_lexibrary_skeleton()`
+- `lexibrary.config.__init__` -- re-exports it
+- `lexibrary.init.scaffolder` -- writes it to `.lexibrary/config.yaml` on `create_lexibrary_skeleton()`
 
 ## Key Concepts
 

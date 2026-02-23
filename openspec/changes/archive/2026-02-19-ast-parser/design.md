@@ -1,6 +1,6 @@
 ## Context
 
-Lexibrarian currently detects file changes via SHA-256 content hashing. Any byte change — even a comment edit or function body refactor — triggers a full design file regeneration in Phase 4. This is wasteful: most edits don't change the public interface. Phase 3 adds AST-based interface extraction so Phase 4 can distinguish "interface changed" from "internals only changed."
+Lexibrary currently detects file changes via SHA-256 content hashing. Any byte change — even a comment edit or function body refactor — triggers a full design file regeneration in Phase 4. This is wasteful: most edits don't change the public interface. Phase 3 adds AST-based interface extraction so Phase 4 can distinguish "interface changed" from "internals only changed."
 
 The project uses tree-sitter for parsing because it handles syntax errors gracefully (partial trees), supports multiple languages through a unified API, and is already a well-established choice for this kind of structural analysis.
 
@@ -24,7 +24,7 @@ The project uses tree-sitter for parsing because it handles syntax errors gracef
 ## Decisions
 
 ### D-007: Three languages at launch (Python, TypeScript, JavaScript)
-These cover the majority of codebases Lexibrarian targets. Each maps to established tree-sitter grammar packages. Adding more languages later follows the same pattern (new parser module + registry entry).
+These cover the majority of codebases Lexibrary targets. Each maps to established tree-sitter grammar packages. Adding more languages later follows the same pattern (new parser module + registry entry).
 
 **Alternatives considered:** Python-only (too limited), adding Go/Rust (delays delivery without proportional value for MVP).
 
@@ -37,7 +37,7 @@ The skeleton captures the **calling convention**: function names, parameter name
 **Alternative considered:** Including decorator names (e.g., `@cached_property`). Rejected because decorator semantics vary wildly and including them would cause false "interface changed" signals when decorators are added/removed for non-API reasons.
 
 ### D-010: Optional extras group for grammars
-Grammar packages are C extensions (~5-10MB each). They should not be in base deps since many users won't need AST parsing. `pip install lexibrarian[ast]` installs them. The registry returns `None` gracefully when grammars are missing.
+Grammar packages are C extensions (~5-10MB each). They should not be in base deps since many users won't need AST parsing. `pip install lexibrary[ast]` installs them. The registry returns `None` gracefully when grammars are missing.
 
 ### Skeleton rendering is versioned
 The canonical text format is prefixed with `skeleton:v1\n`. This means changing the format in the future bumps to `v2` and Phase 4 can distinguish "format changed" from "interface changed," avoiding false mass-regeneration.

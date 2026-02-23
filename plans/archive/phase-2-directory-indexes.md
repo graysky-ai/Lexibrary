@@ -83,11 +83,11 @@ Authentication and authorization modules for the application.
 
 (none)
 
-<!-- lexibrarian:meta
+<!-- lexibrary:meta
 source: src/auth
 source_hash: d4e5f6a7
 generated: 2026-02-19T10:30:00Z
-generator: lexibrarian v0.2.0
+generator: lexibrary v0.2.0
 -->
 ```
 
@@ -120,7 +120,7 @@ These will be replaced by LLM-generated prose in Phase 4.
 
 ### 2.1 Add `CrawlConfig` to config schema
 
-**File:** `src/lexibrarian/config/schema.py`
+**File:** `src/lexibrary/config/schema.py`
 
 Add a `CrawlConfig` model to `LexibraryConfig`:
 
@@ -152,7 +152,7 @@ class LexibraryConfig(BaseModel):
     crawl: CrawlConfig = Field(default_factory=CrawlConfig)
 ```
 
-Update `src/lexibrarian/config/defaults.py` if the default YAML template needs a `crawl:` section.
+Update `src/lexibrary/config/defaults.py` if the default YAML template needs a `crawl:` section.
 
 **Tests:** `tests/test_config/test_schema.py` — validate defaults, override, extra-field tolerance.
 
@@ -160,7 +160,7 @@ Update `src/lexibrarian/config/defaults.py` if the default YAML template needs a
 
 ### 2.2 Update `AIndexEntry` model — add `entry_type` field
 
-**File:** `src/lexibrarian/artifacts/aindex.py`
+**File:** `src/lexibrary/artifacts/aindex.py`
 
 The current model uses `is_directory: bool`. The new format has an explicit `Type` column. Replace with a string field for clarity and future extensibility:
 
@@ -182,7 +182,7 @@ Drop `is_directory`. This is a breaking change to the model but Phase 1 only has
 
 ### 2.3 `.aindex` markdown serializer
 
-**File:** `src/lexibrarian/artifacts/aindex_serializer.py` (new)
+**File:** `src/lexibrary/artifacts/aindex_serializer.py` (new)
 
 ```python
 def serialize_aindex(data: AIndexFile) -> str:
@@ -195,7 +195,7 @@ Converts an `AIndexFile` Pydantic model into the markdown string per the format 
 - Entries sorted: files first (alphabetical), then dirs (alphabetical)
 - Names wrapped in backticks; dir names get trailing `/`
 - Empty `local_conventions` renders as `(none)`
-- Metadata footer serialized as `<!-- lexibrarian:meta ... -->`
+- Metadata footer serialized as `<!-- lexibrary:meta ... -->`
 
 **Tests:** `tests/test_artifacts/test_aindex_serializer.py`
 
@@ -214,7 +214,7 @@ Converts an `AIndexFile` Pydantic model into the markdown string per the format 
 
 ### 2.4 `.aindex` markdown parser
 
-**File:** `src/lexibrarian/artifacts/aindex_parser.py` (new)
+**File:** `src/lexibrary/artifacts/aindex_parser.py` (new)
 
 ```python
 def parse_aindex(path: Path) -> AIndexFile | None:
@@ -269,7 +269,7 @@ Regex-based parser matching the v2 format. Tolerant of minor whitespace differen
 
 ### 2.6 Atomic file writer
 
-**File:** `src/lexibrarian/artifacts/writer.py` (new)
+**File:** `src/lexibrary/artifacts/writer.py` (new)
 
 ```python
 def write_artifact(target: Path, content: str) -> Path:
@@ -298,7 +298,7 @@ This replaces the v1 `indexer/writer.py` (retired in Phase 1) with a more genera
 
 ### 2.7 Index generator (core logic)
 
-**File:** `src/lexibrarian/indexer/generator.py` (new — in new `indexer/` module)
+**File:** `src/lexibrary/indexer/generator.py` (new — in new `indexer/` module)
 
 ```python
 def generate_aindex(
@@ -338,7 +338,7 @@ def generate_aindex(
 
 ### 2.8 Index orchestrator
 
-**File:** `src/lexibrarian/indexer/orchestrator.py` (new)
+**File:** `src/lexibrary/indexer/orchestrator.py` (new)
 
 ```python
 def index_directory(
@@ -393,7 +393,7 @@ class IndexStats:
 
 ### 2.9 Wire `lexi index` CLI command
 
-**File:** `src/lexibrarian/cli.py`
+**File:** `src/lexibrary/cli.py`
 
 Replace the stub with the real implementation:
 

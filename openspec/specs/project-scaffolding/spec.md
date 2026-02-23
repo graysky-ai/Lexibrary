@@ -4,26 +4,26 @@
 TBD - created by archiving change phase-1-foundation. Update Purpose after archive.
 ## Requirements
 ### Requirement: Project directory structure
-The system SHALL have a Python package structure with source code under `src/lexibrarian/` and test code under `tests/`. The CLI SHALL be a package at `src/lexibrarian/cli/` (not a single file).
+The system SHALL have a Python package structure with source code under `src/lexibrary/` and test code under `tests/`. The CLI SHALL be a package at `src/lexibrary/cli/` (not a single file).
 
 #### Scenario: CLI is a package directory
-- **WHEN** inspecting `src/lexibrarian/cli/`
+- **WHEN** inspecting `src/lexibrary/cli/`
 - **THEN** it is a directory containing `__init__.py`, `_shared.py`, `lexi_app.py`, and `lexictl_app.py`
 
 #### Scenario: No cli.py file exists
-- **WHEN** inspecting `src/lexibrarian/`
+- **WHEN** inspecting `src/lexibrary/`
 - **THEN** there is no `cli.py` file
 
 ### Requirement: Project metadata in pyproject.toml
-The `[project.scripts]` section SHALL define two entry points: `lexi` mapping to `"lexibrarian.cli:lexi_app"` and `lexictl` mapping to `"lexibrarian.cli:lexictl_app"`. The `lexibrarian` alias SHALL NOT exist.
+The `[project.scripts]` section SHALL define two entry points: `lexi` mapping to `"lexibrary.cli:lexi_app"` and `lexictl` mapping to `"lexibrary.cli:lexictl_app"`. The `lexibrary` alias SHALL NOT exist.
 
 #### Scenario: CLI entry points are configured
 - **WHEN** reading `pyproject.toml` `[project.scripts]`
-- **THEN** `lexi` maps to `"lexibrarian.cli:lexi_app"` and `lexictl` maps to `"lexibrarian.cli:lexictl_app"`
+- **THEN** `lexi` maps to `"lexibrary.cli:lexi_app"` and `lexictl` maps to `"lexibrary.cli:lexictl_app"`
 
-#### Scenario: No lexibrarian alias exists
+#### Scenario: No lexibrary alias exists
 - **WHEN** reading `pyproject.toml` `[project.scripts]`
-- **THEN** there is no `lexibrarian` entry
+- **THEN** there is no `lexibrary` entry
 
 ### Requirement: Python version is pinned
 The system SHALL require Python 3.11+ and pin to Python 3.12 via `.python-version` file.
@@ -48,32 +48,32 @@ The system SHALL exclude Python artifacts, virtual environments, generated BAML 
 - **THEN** `config.yaml` is tracked (not in .gitignore), because project config is version-controlled
 
 ### Requirement: Module initialization
-The `__main__.py` SHALL import and run `lexi_app` (the agent-facing CLI) when invoked via `python -m lexibrarian`.
+The `__main__.py` SHALL import and run `lexi_app` (the agent-facing CLI) when invoked via `python -m lexibrary`.
 
 #### Scenario: Root module can be run as a script
-- **WHEN** running `python -m lexibrarian`
+- **WHEN** running `python -m lexibrary`
 - **THEN** it runs the `lexi_app` (agent-facing CLI)
 
 ### Requirement: artifacts module structure
-The system SHALL have `src/lexibrarian/artifacts/` as a proper Python package with `__init__.py` re-exporting all public model classes.
+The system SHALL have `src/lexibrary/artifacts/` as a proper Python package with `__init__.py` re-exporting all public model classes.
 
 #### Scenario: artifacts package is importable
-- **WHEN** importing `from lexibrarian.artifacts import DesignFile`
+- **WHEN** importing `from lexibrary.artifacts import DesignFile`
 - **THEN** the import succeeds without error
 
 #### Scenario: artifacts package has module files
-- **WHEN** inspecting `src/lexibrarian/artifacts/`
+- **WHEN** inspecting `src/lexibrary/artifacts/`
 - **THEN** it contains `__init__.py`, `design_file.py`, `aindex.py`, and `concept.py` (guardrail.py removed)
 
 #### Scenario: stack module exists
-- **WHEN** inspecting `src/lexibrarian/stack/`
+- **WHEN** inspecting `src/lexibrary/stack/`
 - **THEN** it contains `__init__.py`, `models.py`, `parser.py`, `serializer.py`, `template.py`, `index.py`, and `mutations.py`
 
 ### Requirement: exceptions module
-The system SHALL have `src/lexibrarian/exceptions.py` containing all project-level exception classes, starting with `LexibraryNotFoundError`.
+The system SHALL have `src/lexibrary/exceptions.py` containing all project-level exception classes, starting with `LexibraryNotFoundError`.
 
 #### Scenario: exceptions module is importable
-- **WHEN** importing `from lexibrarian.exceptions import LexibraryNotFoundError`
+- **WHEN** importing `from lexibrary.exceptions import LexibraryNotFoundError`
 - **THEN** the import succeeds without error
 
 ### Requirement: Stack directory in scaffolding
@@ -181,9 +181,9 @@ The scaffolder SHALL generate a `.lexignore` file with a header comment and any 
 - **THEN** it SHALL create the same structure as before (including HANDOFF.md)
 
 ### Requirement: Wizard scaffolder exported from init package
-`create_lexibrary_from_wizard` SHALL be importable from `lexibrarian.init`.
+`create_lexibrary_from_wizard` SHALL be importable from `lexibrary.init`.
 
 #### Scenario: Import create_lexibrary_from_wizard
-- **WHEN** running `from lexibrarian.init import create_lexibrary_from_wizard`
+- **WHEN** running `from lexibrary.init import create_lexibrary_from_wizard`
 - **THEN** the import SHALL succeed
 

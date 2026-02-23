@@ -8,7 +8,7 @@
 
 ## 3.1 Data Models
 
-### File: `src/lexibrarian/indexer/__init__.py`
+### File: `src/lexibrary/indexer/__init__.py`
 
 Shared dataclasses used by the generator and parser:
 
@@ -32,7 +32,7 @@ class DirEntry:
 @dataclass
 class IandexData:
     """Complete contents of a single .aindex file."""
-    directory_name: str         # e.g. "lexibrarian/"
+    directory_name: str         # e.g. "lexibrary/"
     summary: str                # 1-3 sentence directory summary
     files: list[FileEntry] = field(default_factory=list)
     subdirectories: list[DirEntry] = field(default_factory=list)
@@ -42,7 +42,7 @@ class IandexData:
 
 ## 3.2 Generator
 
-### File: `src/lexibrarian/indexer/generator.py`
+### File: `src/lexibrary/indexer/generator.py`
 
 Transforms an `IandexData` object into the Markdown string for a `.aindex` file.
 
@@ -103,7 +103,7 @@ def generate_iandex(data: IandexData) -> str:
 
 ## 3.3 Writer
 
-### File: `src/lexibrarian/indexer/writer.py`
+### File: `src/lexibrary/indexer/writer.py`
 
 Atomic file writes — prevents corruption if the process is interrupted mid-write.
 
@@ -147,7 +147,7 @@ Key considerations:
 
 ## 3.4 Parser
 
-### File: `src/lexibrarian/indexer/parser.py`
+### File: `src/lexibrary/indexer/parser.py`
 
 Reads existing `.aindex` files to extract cached data. Used during incremental crawls to reuse unchanged file summaries.
 

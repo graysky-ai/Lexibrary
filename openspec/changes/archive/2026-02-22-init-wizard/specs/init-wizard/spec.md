@@ -63,7 +63,7 @@ The wizard SHALL detect scope roots using `detect_scope_roots()`, display sugges
 - **THEN** `answers.scope_root` SHALL be `"."`
 
 ### Requirement: Step 3 — Agent Environment
-The wizard SHALL detect agent environments using `detect_agent_environments()`, display detected environments, and allow multi-select via comma-separated input. It SHALL check for existing Lexibrarian sections via `check_existing_agent_rules()` and advise the user if found. If a selected agent environment directory doesn't exist, the wizard SHALL ask before creating it.
+The wizard SHALL detect agent environments using `detect_agent_environments()`, display detected environments, and allow multi-select via comma-separated input. It SHALL check for existing Lexibrary sections via `check_existing_agent_rules()` and advise the user if found. If a selected agent environment directory doesn't exist, the wizard SHALL ask before creating it.
 
 #### Scenario: Detected environments accepted
 - **WHEN** `.claude/` is detected and user accepts

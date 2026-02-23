@@ -22,7 +22,7 @@
 - **THEN** the system SHALL update all changed files and regenerate START_HERE.md
 
 #### Scenario: No project found
-- **WHEN** `lexi update` is run outside a Lexibrarian project (no `.lexibrary/`)
+- **WHEN** `lexi update` is run outside a Lexibrary project (no `.lexibrary/`)
 - **THEN** the system SHALL print an error and exit with code 1
 
 ### Requirement: Lookup command returns design file

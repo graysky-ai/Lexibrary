@@ -10,5 +10,5 @@
 
 ## Dependents
 
-- `lexibrarian.crawler.change_detector` — calls `hash_file` to check/store state
-- `lexibrarian.crawler.engine` — calls `hash_file` directly on changed files
+- `lexibrary.crawler.change_detector` — calls `hash_file` to check/store state
+- `lexibrary.crawler.engine` — calls `hash_file` directly on changed files

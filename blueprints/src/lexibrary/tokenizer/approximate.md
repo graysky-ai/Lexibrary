@@ -13,4 +13,4 @@
 
 ## Dependents
 
-- `lexibrarian.tokenizer.factory` — selected when `config.backend == "approximate"`
+- `lexibrary.tokenizer.factory` — selected when `config.backend == "approximate"`

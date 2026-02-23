@@ -14,7 +14,7 @@
 
 ## Dependents
 
-- `lexibrarian.archivist.pipeline` -- all design file writes (`update_file`, `_refresh_footer_hashes`, `_refresh_parent_aindex`) use `atomic_write` instead of `Path.write_text()`
+- `lexibrary.archivist.pipeline` -- all design file writes (`update_file`, `_refresh_footer_hashes`, `_refresh_parent_aindex`) use `atomic_write` instead of `Path.write_text()`
 
 ## Key Concepts
 

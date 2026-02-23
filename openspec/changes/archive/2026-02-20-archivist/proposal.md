@@ -1,6 +1,6 @@
 ## Why
 
-The Lexibrarian library currently generates structural `.aindex` files (language + line count descriptions) and v1 LLM summaries, but has no mechanism for producing rich, per-file **design files** — the core artifact that explains *intent*, interface contracts, dependencies, and architectural context. Phase 4 (Archivist) closes this gap by introducing LLM-powered design file generation with an **agent-first authoring model**: agents write design files during coding sessions, and the Archivist LLM pipeline acts as a safety net for files agents forgot to document.
+The Lexibrary library currently generates structural `.aindex` files (language + line count descriptions) and v1 LLM summaries, but has no mechanism for producing rich, per-file **design files** — the core artifact that explains *intent*, interface contracts, dependencies, and architectural context. Phase 4 (Archivist) closes this gap by introducing LLM-powered design file generation with an **agent-first authoring model**: agents write design files during coding sessions, and the Archivist LLM pipeline acts as a safety net for files agents forgot to document.
 
 ## What Changes
 
@@ -8,7 +8,7 @@ The Lexibrarian library currently generates structural `.aindex` files (language
 - **Agent-first change detection** — `design_hash` in the metadata footer detects when an agent has already updated a design file, avoiding unnecessary LLM regeneration. Footer-less design files (agent-authored from scratch) are trusted, not overwritten.
 - **BAML Archivist functions** — New `ArchivistGenerateDesignFile` and `ArchivistGenerateStartHere` BAML functions with per-provider client routing via `ClientRegistry`.
 - **Dependency extraction** — Tree-sitter AST-based import extraction resolves forward dependencies to project-relative file paths.
-- **`.lexignore` support** — New `.lexignore` file (gitignore format) layered on `.gitignore` + config patterns for Lexibrarian-specific exclusions.
+- **`.lexignore` support** — New `.lexignore` file (gitignore format) layered on `.gitignore` + config patterns for Lexibrary-specific exclusions.
 - **`scope_root` configuration** — Files within `scope_root` get design files; files outside appear in `.aindex` only.
 - **`START_HERE.md` generation** — Project-level synthesis from topology and `.aindex` summaries.
 - **`.aindex` enrichment** — Child Map descriptions pulled from design file YAML frontmatter when available, with structural fallback.
@@ -37,9 +37,9 @@ The Lexibrarian library currently generates structural `.aindex` files (language
 
 ## Impact
 
-- **New module**: `src/lexibrarian/archivist/` (change_checker, dependency_extractor, pipeline, service, start_here)
-- **New module**: `src/lexibrarian/artifacts/design_file_serializer.py`, `design_file_parser.py`
-- **Modified**: `src/lexibrarian/ignore/matcher.py` (lexignore loading), `src/lexibrarian/config/schema.py` (scope_root, max_file_size_kb), `src/lexibrarian/cli.py` (new commands), `src/lexibrarian/indexer/generator.py` (frontmatter descriptions)
+- **New module**: `src/lexibrary/archivist/` (change_checker, dependency_extractor, pipeline, service, start_here)
+- **New module**: `src/lexibrary/artifacts/design_file_serializer.py`, `design_file_parser.py`
+- **Modified**: `src/lexibrary/ignore/matcher.py` (lexignore loading), `src/lexibrary/config/schema.py` (scope_root, max_file_size_kb), `src/lexibrary/cli.py` (new commands), `src/lexibrary/indexer/generator.py` (frontmatter descriptions)
 - **New BAML files**: `baml_src/archivist_design_file.baml`, `baml_src/archivist_start_here.baml`, updates to `baml_src/types.baml` and `baml_src/clients.baml`
 - **New dependencies**: None expected beyond existing tree-sitter and BAML packages
 - **Phase**: 4 (depends on Phases 1-3 complete)

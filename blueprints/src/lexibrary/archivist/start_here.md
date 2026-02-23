@@ -10,15 +10,15 @@
 
 ## Dependencies
 
-- `lexibrarian.archivist.service` -- `ArchivistService`, `StartHereRequest`
-- `lexibrarian.artifacts.aindex_parser` -- `parse_aindex`
-- `lexibrarian.config.schema` -- `LexibraryConfig`
-- `lexibrarian.ignore` -- `create_ignore_matcher`
-- `lexibrarian.utils.paths` -- `LEXIBRARY_DIR`
+- `lexibrary.archivist.service` -- `ArchivistService`, `StartHereRequest`
+- `lexibrary.artifacts.aindex_parser` -- `parse_aindex`
+- `lexibrary.config.schema` -- `LexibraryConfig`
+- `lexibrary.ignore` -- `create_ignore_matcher`
+- `lexibrary.utils.paths` -- `LEXIBRARY_DIR`
 
 ## Dependents
 
-- `lexibrarian.cli` -- `update` command calls `generate_start_here` when no path argument given
+- `lexibrary.cli` -- `update` command calls `generate_start_here` when no path argument given
 
 ## Key Concepts
 

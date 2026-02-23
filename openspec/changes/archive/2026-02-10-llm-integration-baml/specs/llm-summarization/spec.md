@@ -31,14 +31,14 @@ The system SHALL define BAML client configurations for Anthropic, OpenAI, and Ol
 - **THEN** an `OllamaClient` exists using the `openai` provider with base_url `http://localhost:11434/v1` and max_tokens of 200
 
 ### Requirement: Generated BAML client importable from package
-The system SHALL generate the BAML client into `src/lexibrarian/baml_client/` so that it is importable as `from lexibrarian.baml_client.async_client import b`.
+The system SHALL generate the BAML client into `src/lexibrary/baml_client/` so that it is importable as `from lexibrary.baml_client.async_client import b`.
 
 #### Scenario: BAML client generation succeeds
 - **WHEN** running `uv run baml-cli generate`
-- **THEN** the command succeeds and creates `src/lexibrarian/baml_client/` with async_client.py, sync_client.py, and type definitions
+- **THEN** the command succeeds and creates `src/lexibrary/baml_client/` with async_client.py, sync_client.py, and type definitions
 
 #### Scenario: Generated client is importable
-- **WHEN** importing `from lexibrarian.baml_client.async_client import b`
+- **WHEN** importing `from lexibrary.baml_client.async_client import b`
 - **THEN** the import succeeds and `b` has methods `SummarizeFile`, `SummarizeFilesBatch`, and `SummarizeDirectory`
 
 ### Requirement: Single file summarization via LLMService

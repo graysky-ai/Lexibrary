@@ -10,9 +10,9 @@
 
 ## Dependencies
 
-- `lexibrarian.config.schema` — `IgnoreConfig`
+- `lexibrary.config.schema` — `IgnoreConfig`
 - `pathspec` (third-party)
 
 ## Dependents
 
-- `lexibrarian.ignore.__init__` — called by `create_ignore_matcher`
+- `lexibrary.ignore.__init__` — called by `create_ignore_matcher`

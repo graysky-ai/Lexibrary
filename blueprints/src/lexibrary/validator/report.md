@@ -41,6 +41,6 @@
 
 ## Dependents
 
-- `lexibrarian.validator.__init__` -- imports and re-exports all models
-- `lexibrarian.validator.checks` -- imports `ValidationIssue` to create findings
-- `lexibrarian.cli` -- renders report and uses exit codes
+- `lexibrary.validator.__init__` -- imports and re-exports all models
+- `lexibrary.validator.checks` -- imports `ValidationIssue` to create findings
+- `lexibrary.cli` -- renders report and uses exit codes

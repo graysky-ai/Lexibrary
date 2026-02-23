@@ -41,12 +41,12 @@ The codebase already has well-established patterns for YAML frontmatter parsing 
 **Alternative:** Leave corrupt files for manual cleanup — rejected because IWH files are gitignored and invisible to most tooling.
 
 ### Marker-based section management for CLAUDE.md/AGENTS.md
-**Decision:** Use `<!-- lexibrarian:start -->` / `<!-- lexibrarian:end -->` HTML comment markers to delimit Lexibrarian's section in shared files.
+**Decision:** Use `<!-- lexibrary:start -->` / `<!-- lexibrary:end -->` HTML comment markers to delimit Lexibrary's section in shared files.
 **Why:** Users may have their own content in CLAUDE.md/AGENTS.md. Markers let us safely update our section without touching user content. HTML comments are invisible in rendered markdown.
 **Alternative:** Separate file (e.g., `CLAUDE_LEXI.md`) — rejected because agents load CLAUDE.md automatically; a separate file requires manual inclusion.
 
 ### Cursor uses dedicated `.mdc` file, not marker-based append
-**Decision:** Write `.cursor/rules/lexibrarian.mdc` as a standalone file (overwritten on update) rather than appending to existing rules files.
+**Decision:** Write `.cursor/rules/lexibrary.mdc` as a standalone file (overwritten on update) rather than appending to existing rules files.
 **Why:** Cursor's MDC format uses YAML frontmatter with `alwaysApply: true`. It's a self-contained file in a directory Cursor scans. No user content to preserve.
 
 ### Skills content defined in `base.py`, placed by environment modules
@@ -67,11 +67,11 @@ The codebase already has well-established patterns for YAML frontmatter parsing 
 
 **[Risk] Same-directory `.iwh` race condition** → Two agents in the same directory may overwrite each other's signal. **Mitigation:** Accepted per Q-014. IWH is advisory. Document in docstrings. Agents in parallel workflows should coordinate through task systems (Beads).
 
-**[Risk] Marker detection edge cases** → Users may accidentally place text between markers, or markers may get corrupted by editor formatting. **Mitigation:** Thorough test coverage for whitespace, trailing newlines, extra content between markers. `replace_lexibrarian_section()` is robust to surrounding whitespace.
+**[Risk] Marker detection edge cases** → Users may accidentally place text between markers, or markers may get corrupted by editor formatting. **Mitigation:** Thorough test coverage for whitespace, trailing newlines, extra content between markers. `replace_lexibrary_section()` is robust to surrounding whitespace.
 
 **[Risk] Agent environment detection fails** → Auto-detection may miss environments or false-positive. **Mitigation:** `lexictl setup` accepts explicit environment argument. Config persists the selection for future updates.
 
-**[Risk] Rule content becomes stale** → As Lexibrarian evolves, rules may reference commands that have changed. **Mitigation:** `lexictl setup --update` regenerates rules from current templates. Rule content lives in code (not config), so updates ship with new versions.
+**[Risk] Rule content becomes stale** → As Lexibrary evolves, rules may reference commands that have changed. **Mitigation:** `lexictl setup --update` regenerates rules from current templates. Rule content lives in code (not config), so updates ship with new versions.
 
 ## Open Questions
 

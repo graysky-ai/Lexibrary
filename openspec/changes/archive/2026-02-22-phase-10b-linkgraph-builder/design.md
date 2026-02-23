@@ -1,6 +1,6 @@
 ## Context
 
-Phase 10a delivered the SQLite schema (`src/lexibrarian/linkgraph/schema.py`) with 8 tables, an FTS5 virtual table, 13 indexes, and `ensure_schema()` / `check_schema_version()` utilities. The database file lives at `.lexibrary/index.db` and is gitignored -- it is always rebuildable from source artifacts.
+Phase 10a delivered the SQLite schema (`src/lexibrary/linkgraph/schema.py`) with 8 tables, an FTS5 virtual table, 13 indexes, and `ensure_schema()` / `check_schema_version()` utilities. The database file lives at `.lexibrary/index.db` and is gitignored -- it is always rebuildable from source artifacts.
 
 The builder must populate this schema by reading four distinct artifact families:
 1. **Design files** (`.lexibrary/src/**/*.md`) -- each corresponds to a source file; yields source artifacts, design artifacts, `design_source` links, `ast_import` links, `wikilink` links, `design_stack_ref` links, tags, and FTS content.

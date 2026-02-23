@@ -10,14 +10,14 @@
 
 ## Dependencies
 
-- `lexibrarian.config.schema` — `LLMConfig`
-- `lexibrarian.llm.rate_limiter` — `RateLimiter`
-- `lexibrarian.llm.service` — `LLMService`
+- `lexibrary.config.schema` — `LLMConfig`
+- `lexibrary.llm.rate_limiter` — `RateLimiter`
+- `lexibrary.llm.service` — `LLMService`
 
 ## Dependents
 
-- `lexibrarian.llm.__init__` — re-exports `create_llm_service`
-- `lexibrarian.daemon.service` — calls `create_llm_service(config.llm)`
+- `lexibrary.llm.__init__` — re-exports `create_llm_service`
+- `lexibrary.daemon.service` — calls `create_llm_service(config.llm)`
 
 ## Key Concepts
 

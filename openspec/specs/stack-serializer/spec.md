@@ -4,7 +4,7 @@
 TBD - created by archiving change the-stack. Update Purpose after archive.
 ## Requirements
 ### Requirement: Serialize stack post to markdown
-The system SHALL provide a `serialize_stack_post(post: StackPost) -> str` function in `src/lexibrarian/stack/serializer.py` that produces a markdown string with:
+The system SHALL provide a `serialize_stack_post(post: StackPost) -> str` function in `src/lexibrary/stack/serializer.py` that produces a markdown string with:
 1. YAML frontmatter delimited by `---` containing all `StackPostFrontmatter` fields
 2. `## Problem` section with the problem description
 3. `### Evidence` section with evidence items as a bullet list

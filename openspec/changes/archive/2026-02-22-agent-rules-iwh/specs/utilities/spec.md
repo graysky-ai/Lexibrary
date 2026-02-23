@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: IWH path computation
-The system SHALL provide `iwh_path(project_root: Path, source_directory: Path) -> Path` in `src/lexibrarian/utils/paths.py` that computes the `.iwh` file path in the `.lexibrary/` mirror tree.
+The system SHALL provide `iwh_path(project_root: Path, source_directory: Path) -> Path` in `src/lexibrary/utils/paths.py` that computes the `.iwh` file path in the `.lexibrary/` mirror tree.
 
 #### Scenario: Subdirectory IWH path
 - **WHEN** calling `iwh_path(project_root, project_root / "src" / "auth")`

@@ -14,7 +14,7 @@
 
 ## Dependents
 
-- `lexibrarian.ignore.__init__` — called by `create_ignore_matcher` when `config.ignore.use_gitignore` is True
+- `lexibrary.ignore.__init__` — called by `create_ignore_matcher` when `config.ignore.use_gitignore` is True
 
 ## Key Concepts
 

@@ -12,7 +12,7 @@
 
 ## Parser Behaviour
 
-- Footer regex: `<!-- lexibrarian:meta\n...\n-->` (multiline, DOTALL)
+- Footer regex: `<!-- lexibrary:meta\n...\n-->` (multiline, DOTALL)
 - Frontmatter regex: `^---\n...\n---\n` (matched at start of file)
 - Footer fields are YAML-style `key: value` lines (not `key="value"` — that's .aindex format)
 - `design_hash` required in design file footer; absent → `None` from `_parse_footer` → parse returns `None`
@@ -27,13 +27,13 @@
 
 ## Dependencies
 
-- `lexibrarian.artifacts.design_file` -- `DesignFile`, `DesignFileFrontmatter`, `StalenessMetadata`
+- `lexibrary.artifacts.design_file` -- `DesignFile`, `DesignFileFrontmatter`, `StalenessMetadata`
 - `yaml` (PyYAML)
 - `re`, `pathlib`, `datetime` (stdlib)
 
 ## Dependents
 
-- `lexibrarian.archivist.change_checker` -- imports `_FOOTER_RE`, `parse_design_file_metadata`
-- `lexibrarian.archivist.pipeline` -- imports `parse_design_file`, `parse_design_file_frontmatter`, `parse_design_file_metadata`, `_FOOTER_RE`
-- `lexibrarian.indexer.generator` -- imports `parse_design_file_frontmatter`
-- `lexibrarian.cli` -- `lookup` command imports `parse_design_file_metadata`
+- `lexibrary.archivist.change_checker` -- imports `_FOOTER_RE`, `parse_design_file_metadata`
+- `lexibrary.archivist.pipeline` -- imports `parse_design_file`, `parse_design_file_frontmatter`, `parse_design_file_metadata`, `_FOOTER_RE`
+- `lexibrary.indexer.generator` -- imports `parse_design_file_frontmatter`
+- `lexibrary.cli` -- `lookup` command imports `parse_design_file_metadata`

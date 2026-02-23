@@ -14,7 +14,7 @@
 
 ## Dependents
 
-- `lexibrarian.archivist.pipeline` -- `update_file` skips files with conflict markers (returns `FileResult(failed=True)`)
+- `lexibrary.archivist.pipeline` -- `update_file` skips files with conflict markers (returns `FileResult(failed=True)`)
 
 ## Key Concepts
 

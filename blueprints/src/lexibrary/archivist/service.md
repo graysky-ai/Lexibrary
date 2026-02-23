@@ -17,16 +17,16 @@
 
 ## Dependencies
 
-- `lexibrarian.baml_client.async_client` -- `BamlAsyncClient`, `b` (default client)
-- `lexibrarian.baml_client.types` -- `DesignFileOutput`, `StartHereOutput`
-- `lexibrarian.config.schema` -- `LLMConfig`
-- `lexibrarian.llm.rate_limiter` -- `RateLimiter`
+- `lexibrary.baml_client.async_client` -- `BamlAsyncClient`, `b` (default client)
+- `lexibrary.baml_client.types` -- `DesignFileOutput`, `StartHereOutput`
+- `lexibrary.config.schema` -- `LLMConfig`
+- `lexibrary.llm.rate_limiter` -- `RateLimiter`
 
 ## Dependents
 
-- `lexibrarian.archivist.pipeline` -- uses `ArchivistService.generate_design_file`
-- `lexibrarian.archivist.start_here` -- uses `ArchivistService.generate_start_here`
-- `lexibrarian.cli` -- instantiates `ArchivistService` in `update` command
+- `lexibrary.archivist.pipeline` -- uses `ArchivistService.generate_design_file`
+- `lexibrary.archivist.start_here` -- uses `ArchivistService.generate_start_here`
+- `lexibrary.cli` -- instantiates `ArchivistService` in `update` command
 
 ## Key Concepts
 

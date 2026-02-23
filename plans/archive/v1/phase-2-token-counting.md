@@ -8,7 +8,7 @@
 
 ## 2.1 TokenCounter Protocol
 
-### File: `src/lexibrarian/tokenizer/base.py`
+### File: `src/lexibrary/tokenizer/base.py`
 
 ```python
 from __future__ import annotations
@@ -41,7 +41,7 @@ Design notes:
 
 ## 2.2 tiktoken Backend
 
-### File: `src/lexibrarian/tokenizer/tiktoken_counter.py`
+### File: `src/lexibrary/tokenizer/tiktoken_counter.py`
 
 ```python
 import tiktoken
@@ -80,7 +80,7 @@ Key considerations:
 
 ## 2.3 Anthropic API Backend
 
-### File: `src/lexibrarian/tokenizer/anthropic_counter.py`
+### File: `src/lexibrary/tokenizer/anthropic_counter.py`
 
 ```python
 import anthropic
@@ -123,7 +123,7 @@ Key considerations:
 
 ## 2.4 Approximate Fallback
 
-### File: `src/lexibrarian/tokenizer/approximate.py`
+### File: `src/lexibrary/tokenizer/approximate.py`
 
 ```python
 from pathlib import Path
@@ -154,7 +154,7 @@ class ApproximateCounter:
 
 ## 2.5 Factory
 
-### File: `src/lexibrarian/tokenizer/factory.py`
+### File: `src/lexibrary/tokenizer/factory.py`
 
 ```python
 from ..config.schema import TokenizerConfig
@@ -178,7 +178,7 @@ def create_tokenizer(config: TokenizerConfig) -> TokenCounter:
 
 Lazy imports keep startup fast — only the chosen backend's dependencies are loaded.
 
-### File: `src/lexibrarian/tokenizer/__init__.py`
+### File: `src/lexibrary/tokenizer/__init__.py`
 
 ```python
 from .base import TokenCounter

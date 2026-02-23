@@ -4,7 +4,7 @@
 TBD - created by archiving change iandex-format. Update Purpose after archive.
 ## Requirements
 ### Requirement: Parse iandex file into IandexData
-The system SHALL provide a `parse_iandex(path: Path) -> IandexData | None` function in `src/lexibrarian/indexer/parser.py` that reads an existing `.aindex` file and returns a populated `IandexData` object.
+The system SHALL provide a `parse_iandex(path: Path) -> IandexData | None` function in `src/lexibrary/indexer/parser.py` that reads an existing `.aindex` file and returns a populated `IandexData` object.
 
 #### Scenario: Parse well-formed iandex
 - **WHEN** `parse_iandex()` is called with a path to a valid `.aindex` file
@@ -58,8 +58,8 @@ The parser SHALL NOT raise exceptions for missing files, unreadable files, or ma
 The parser SHALL extract the directory name from the H1 header line (everything after `# `, stripped of whitespace).
 
 #### Scenario: Directory name extraction
-- **WHEN** a `.aindex` file starts with `# lexibrarian/`
-- **THEN** the returned `IandexData.directory_name` SHALL be `"lexibrarian/"`
+- **WHEN** a `.aindex` file starts with `# lexibrary/`
+- **THEN** the returned `IandexData.directory_name` SHALL be `"lexibrary/"`
 
 ### Requirement: Parse summary from lines between H1 and first H2
 The parser SHALL collect all non-empty lines between the H1 header and the first `##` header as the summary, joined with spaces.

@@ -10,18 +10,18 @@
 
 ## Dependencies
 
-- `lexibrarian.artifacts.aindex` -- `AIndexEntry`, `AIndexFile`
-- `lexibrarian.artifacts.aindex_parser` -- `parse_aindex` (reads child `.aindex` for subdir descriptions)
-- `lexibrarian.artifacts.design_file` -- `StalenessMetadata`
-- `lexibrarian.artifacts.design_file_parser` -- `parse_design_file_frontmatter` (reads design file descriptions)
-- `lexibrarian.ignore.matcher` -- `IgnoreMatcher`
-- `lexibrarian.utils.hashing` -- `hash_string`
-- `lexibrarian.utils.languages` -- `EXTENSION_MAP`
-- `lexibrarian.utils.paths` -- `mirror_path`
+- `lexibrary.artifacts.aindex` -- `AIndexEntry`, `AIndexFile`
+- `lexibrary.artifacts.aindex_parser` -- `parse_aindex` (reads child `.aindex` for subdir descriptions)
+- `lexibrary.artifacts.design_file` -- `StalenessMetadata`
+- `lexibrary.artifacts.design_file_parser` -- `parse_design_file_frontmatter` (reads design file descriptions)
+- `lexibrary.ignore.matcher` -- `IgnoreMatcher`
+- `lexibrary.utils.hashing` -- `hash_string`
+- `lexibrary.utils.languages` -- `EXTENSION_MAP`
+- `lexibrary.utils.paths` -- `mirror_path`
 
 ## Dependents
 
-- `lexibrarian.indexer.orchestrator` -- calls `generate_aindex` as first step
+- `lexibrary.indexer.orchestrator` -- calls `generate_aindex` as first step
 
 ## Key Concepts
 
@@ -29,4 +29,4 @@
 - Subdir description: reads child `.aindex` from `.lexibrary` mirror if available; falls back to filesystem item count
 - Billboard: auto-generated sentence from detected languages (e.g. `"Mixed-language directory (Python, TOML)."`)
 - Staleness hash: SHA-256 of sorted directory listing (entry names only, not file contents)
-- `_GENERATOR_ID = "lexibrarian-v2"` stamped into metadata
+- `_GENERATOR_ID = "lexibrary-v2"` stamped into metadata

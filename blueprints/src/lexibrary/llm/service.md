@@ -16,14 +16,14 @@
 
 ## Dependencies
 
-- `lexibrarian.baml_client.async_client` — `b` (BAML async client)
-- `lexibrarian.baml_client.types` — `FileInput`
-- `lexibrarian.llm.rate_limiter` — `RateLimiter`
+- `lexibrary.baml_client.async_client` — `b` (BAML async client)
+- `lexibrary.baml_client.types` — `FileInput`
+- `lexibrary.llm.rate_limiter` — `RateLimiter`
 
 ## Dependents
 
-- `lexibrarian.crawler.engine` — calls all three methods
-- `lexibrarian.llm.__init__` — re-exports dataclasses and class
+- `lexibrary.crawler.engine` — calls all three methods
+- `lexibrary.llm.__init__` — re-exports dataclasses and class
 
 ## Dragons
 

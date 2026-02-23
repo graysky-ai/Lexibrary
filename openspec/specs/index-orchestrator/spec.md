@@ -4,7 +4,7 @@
 TBD - created by archiving change directory-indexes. Update Purpose after archive.
 ## Requirements
 ### Requirement: Index a single directory
-The system SHALL provide an `index_directory(directory: Path, project_root: Path, config: LexibraryConfig) -> Path` function in `src/lexibrarian/indexer/orchestrator.py` that generates and writes a `.aindex` file for one directory.
+The system SHALL provide an `index_directory(directory: Path, project_root: Path, config: LexibraryConfig) -> Path` function in `src/lexibrary/indexer/orchestrator.py` that generates and writes a `.aindex` file for one directory.
 
 The function SHALL:
 - Construct an `IgnoreMatcher` from the project config
@@ -28,7 +28,7 @@ The `.aindex` output path SHALL be: `project_root / ".lexibrary" / relative_dire
 - **THEN** it SHALL return the path to the written `.aindex` file
 
 ### Requirement: Recursively index a directory tree bottom-up
-The system SHALL provide an `index_recursive(directory: Path, project_root: Path, config: LexibraryConfig, *, progress_callback: Callable[[int, int, str], None] | None = None) -> IndexStats` function in `src/lexibrarian/indexer/orchestrator.py` that indexes all directories in a tree in bottom-up order.
+The system SHALL provide an `index_recursive(directory: Path, project_root: Path, config: LexibraryConfig, *, progress_callback: Callable[[int, int, str], None] | None = None) -> IndexStats` function in `src/lexibrary/indexer/orchestrator.py` that indexes all directories in a tree in bottom-up order.
 
 The function SHALL:
 - Discover all directories using `discover_directories_bottom_up()` (deepest-first)
@@ -64,7 +64,7 @@ Bottom-up ordering SHALL ensure that child `.aindex` files exist before their pa
 - **THEN** the returned `IndexStats.directories_indexed` SHALL be 5
 
 ### Requirement: IndexStats dataclass
-The system SHALL provide an `IndexStats` dataclass in `src/lexibrarian/indexer/orchestrator.py` with fields:
+The system SHALL provide an `IndexStats` dataclass in `src/lexibrary/indexer/orchestrator.py` with fields:
 - `directories_indexed: int = 0`
 - `files_found: int = 0`
 - `errors: int = 0`

@@ -15,10 +15,10 @@
 
 ## Dependents
 
-- `lexibrarian.iwh.parser` -- validates parsed frontmatter into `IWHFile`
-- `lexibrarian.iwh.serializer` -- serializes `IWHFile` to markdown with YAML frontmatter
-- `lexibrarian.iwh.reader` -- returns `IWHFile | None`
-- `lexibrarian.iwh.writer` -- constructs `IWHFile` instances for writing
+- `lexibrary.iwh.parser` -- validates parsed frontmatter into `IWHFile`
+- `lexibrary.iwh.serializer` -- serializes `IWHFile` to markdown with YAML frontmatter
+- `lexibrary.iwh.reader` -- returns `IWHFile | None`
+- `lexibrary.iwh.writer` -- constructs `IWHFile` instances for writing
 
 ## Key Concepts
 

@@ -17,26 +17,26 @@
 
 ## Dependencies
 
-- `lexibrarian.cli._shared` -- `console`, `require_project_root`
-- `lexibrarian.init.wizard` -- `run_wizard` (lazy import in `init`)
-- `lexibrarian.init.scaffolder` -- `create_lexibrary_from_wizard` (lazy import in `init`)
-- `lexibrarian.archivist.pipeline` -- `UpdateStats`, `update_file`, `update_files`, `update_project` (lazy import in `update`)
-- `lexibrarian.archivist.service` -- `ArchivistService` (lazy import in `update`)
-- `lexibrarian.config.loader` -- `load_config` (lazy import in `update`, `status`, `setup`, `daemon`)
-- `lexibrarian.llm.rate_limiter` -- `RateLimiter` (lazy import in `update`)
-- `lexibrarian.validator` -- `AVAILABLE_CHECKS`, `validate_library` (lazy imports in `validate`, `status`)
-- `lexibrarian.artifacts.design_file_parser` -- `parse_design_file_metadata` (lazy import in `status`)
-- `lexibrarian.stack.parser` -- `parse_stack_post` (lazy import in `status`)
-- `lexibrarian.wiki.parser` -- `parse_concept_file` (lazy import in `status`)
-- `lexibrarian.linkgraph.health` -- `read_index_health` (lazy import in `status`)
-- `lexibrarian.init.rules` -- `generate_rules`, `supported_environments` (lazy import in `setup`)
-- `lexibrarian.iwh.gitignore` -- `ensure_iwh_gitignored` (lazy import in `setup`)
-- `lexibrarian.hooks.post_commit` -- `install_post_commit_hook` (lazy import in `setup`)
-- `lexibrarian.daemon.service` -- `DaemonService` (lazy import in `sweep`, `daemon`)
+- `lexibrary.cli._shared` -- `console`, `require_project_root`
+- `lexibrary.init.wizard` -- `run_wizard` (lazy import in `init`)
+- `lexibrary.init.scaffolder` -- `create_lexibrary_from_wizard` (lazy import in `init`)
+- `lexibrary.archivist.pipeline` -- `UpdateStats`, `update_file`, `update_files`, `update_project` (lazy import in `update`)
+- `lexibrary.archivist.service` -- `ArchivistService` (lazy import in `update`)
+- `lexibrary.config.loader` -- `load_config` (lazy import in `update`, `status`, `setup`, `daemon`)
+- `lexibrary.llm.rate_limiter` -- `RateLimiter` (lazy import in `update`)
+- `lexibrary.validator` -- `AVAILABLE_CHECKS`, `validate_library` (lazy imports in `validate`, `status`)
+- `lexibrary.artifacts.design_file_parser` -- `parse_design_file_metadata` (lazy import in `status`)
+- `lexibrary.stack.parser` -- `parse_stack_post` (lazy import in `status`)
+- `lexibrary.wiki.parser` -- `parse_concept_file` (lazy import in `status`)
+- `lexibrary.linkgraph.health` -- `read_index_health` (lazy import in `status`)
+- `lexibrary.init.rules` -- `generate_rules`, `supported_environments` (lazy import in `setup`)
+- `lexibrary.iwh.gitignore` -- `ensure_iwh_gitignored` (lazy import in `setup`)
+- `lexibrary.hooks.post_commit` -- `install_post_commit_hook` (lazy import in `setup`)
+- `lexibrary.daemon.service` -- `DaemonService` (lazy import in `sweep`, `daemon`)
 
 ## Dependents
 
-- `lexibrarian.cli.__init__` -- re-exports `lexictl_app`
+- `lexibrary.cli.__init__` -- re-exports `lexictl_app`
 - `pyproject.toml` -- `lexictl` entry point
 
 ## Key Concepts
@@ -58,6 +58,6 @@
 
 - `validate` exits non-zero when errors are found via `report.exit_code()`; `status` mirrors this behavior
 - `status` quiet-mode output changes based on whether there are errors, warnings, both, or neither
-- `daemon stop` reads PID from `.lexibrarian.pid`, sends `SIGTERM`, and cleans up stale PID files
+- `daemon stop` reads PID from `.lexibrary.pid`, sends `SIGTERM`, and cleans up stale PID files
 - `daemon status` checks process liveness via `os.kill(pid, 0)`; handles `ProcessLookupError` and `PermissionError`
 - `update` for a directory argument falls through to the full project update path (pipeline respects `scope_root`)

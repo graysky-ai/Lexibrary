@@ -1,6 +1,6 @@
 ## Why
 
-Lexibrarian has no way to detect library inconsistencies (broken wikilinks, missing source files, stale design files) or give agents a quick health snapshot at session start. Phases 4–6 built the artifacts; Phase 7 builds the inspection tools that keep them honest. Without validation, library rot accumulates silently and agents work with outdated or broken references.
+Lexibrary has no way to detect library inconsistencies (broken wikilinks, missing source files, stale design files) or give agents a quick health snapshot at session start. Phases 4–6 built the artifacts; Phase 7 builds the inspection tools that keep them honest. Without validation, library rot accumulates silently and agents work with outdated or broken references.
 
 ## What Changes
 
@@ -23,8 +23,8 @@ Lexibrarian has no way to detect library inconsistencies (broken wikilinks, miss
 
 ## Impact
 
-- **New code:** `src/lexibrarian/validator/` package (3 files: `__init__.py`, `checks.py`, `report.py`)
-- **Modified code:** `src/lexibrarian/cli.py` — replace `validate`/`status` stubs, enhance `lookup`
+- **New code:** `src/lexibrary/validator/` package (3 files: `__init__.py`, `checks.py`, `report.py`)
+- **Modified code:** `src/lexibrary/cli.py` — replace `validate`/`status` stubs, enhance `lookup`
 - **Dependencies on existing modules:** `artifacts.design_file_parser` (metadata + full parse), `artifacts.aindex_parser`, `wiki.resolver`, `stack.parser`, `config.loader`, `tokenizer.factory`, `artifacts.concept` (ConceptIndex)
 - **No new external dependencies** — uses existing Rich, Pydantic, pathlib
 - **Exit codes (CI-facing):** 0 = clean, 1 = errors, 2 = warnings only — must be reliable for pipeline gating

@@ -15,9 +15,9 @@
 
 ## Dependents
 
-- `lexibrarian.iwh.__init__` -- re-exports `ensure_iwh_gitignored`
-- `lexibrarian.init.scaffolder` -- calls during `create_lexibrary_skeleton()` and `create_lexibrary_from_wizard()`
-- `lexibrarian.cli.lexictl_app` -- `setup --update` calls it
+- `lexibrary.iwh.__init__` -- re-exports `ensure_iwh_gitignored`
+- `lexibrary.init.scaffolder` -- calls during `create_lexibrary_skeleton()` and `create_lexibrary_from_wizard()`
+- `lexibrary.cli.lexictl_app` -- `setup --update` calls it
 
 ## Key Concepts
 

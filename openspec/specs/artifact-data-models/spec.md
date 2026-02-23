@@ -46,18 +46,18 @@ The system SHALL define a `ConceptFile` Pydantic 2 model representing a concept 
 - **THEN** the model validates successfully with list fields defaulting to empty lists and metadata defaulting to None
 
 ### Requirement: Artifacts module exports
-`src/lexibrarian/artifacts/__init__.py` SHALL re-export: DesignFile, DesignFileFrontmatter, AIndexFile, ConceptFile, StalenessMetadata. The `GuardrailThread` export SHALL be removed.
+`src/lexibrary/artifacts/__init__.py` SHALL re-export: DesignFile, DesignFileFrontmatter, AIndexFile, ConceptFile, StalenessMetadata. The `GuardrailThread` export SHALL be removed.
 
 #### Scenario: DesignFileFrontmatter importable from artifacts
-- **WHEN** `from lexibrarian.artifacts import DesignFileFrontmatter` is used
+- **WHEN** `from lexibrary.artifacts import DesignFileFrontmatter` is used
 - **THEN** the import SHALL succeed
 
 #### Scenario: GuardrailThread no longer exported
-- **WHEN** `from lexibrarian.artifacts import GuardrailThread` is attempted
+- **WHEN** `from lexibrary.artifacts import GuardrailThread` is attempted
 - **THEN** the import SHALL raise `ImportError`
 
 ### Requirement: DesignFileFrontmatter model
-The `src/lexibrarian/artifacts/design_file.py` module SHALL export a `DesignFileFrontmatter` Pydantic 2 model with fields:
+The `src/lexibrary/artifacts/design_file.py` module SHALL export a `DesignFileFrontmatter` Pydantic 2 model with fields:
 - `description` (str) — single sentence summary
 - `updated_by` (Literal["archivist", "agent"]) — default "archivist"
 

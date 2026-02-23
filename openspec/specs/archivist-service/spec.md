@@ -4,7 +4,7 @@
 TBD - created by archiving change archivist. Update Purpose after archive.
 ## Requirements
 ### Requirement: ArchivistService class
-The system SHALL provide an `ArchivistService` class in `src/lexibrarian/archivist/service.py` with:
+The system SHALL provide an `ArchivistService` class in `src/lexibrary/archivist/service.py` with:
 - Constructor accepting `rate_limiter: RateLimiter` and `config: LLMConfig`
 - `async generate_design_file(request: DesignFileRequest) -> DesignFileResult`
 - `async generate_start_here(request: StartHereRequest) -> StartHereResult`

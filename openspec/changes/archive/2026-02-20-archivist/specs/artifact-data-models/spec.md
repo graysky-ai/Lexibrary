@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: DesignFileFrontmatter model
-The `src/lexibrarian/artifacts/design_file.py` module SHALL export a `DesignFileFrontmatter` Pydantic 2 model with fields:
+The `src/lexibrary/artifacts/design_file.py` module SHALL export a `DesignFileFrontmatter` Pydantic 2 model with fields:
 - `description` (str) — single sentence summary
 - `updated_by` (Literal["archivist", "agent"]) — default "archivist"
 
@@ -34,8 +34,8 @@ Pydantic 2 model with fields: `source_path` (str), `frontmatter` (DesignFileFron
 - **THEN** those fields SHALL be None
 
 ### Requirement: Artifacts module exports
-`src/lexibrarian/artifacts/__init__.py` SHALL re-export: DesignFile, DesignFileFrontmatter, AIndexFile, ConceptFile, GuardrailThread, StalenessMetadata.
+`src/lexibrary/artifacts/__init__.py` SHALL re-export: DesignFile, DesignFileFrontmatter, AIndexFile, ConceptFile, GuardrailThread, StalenessMetadata.
 
 #### Scenario: DesignFileFrontmatter importable from artifacts
-- **WHEN** `from lexibrarian.artifacts import DesignFileFrontmatter` is used
+- **WHEN** `from lexibrary.artifacts import DesignFileFrontmatter` is used
 - **THEN** the import SHALL succeed

@@ -1,13 +1,13 @@
 ## Context
 
-Lexibrarian must have working project scaffolding and core infrastructure before any feature work. This phase establishes the foundation: Python package structure, configuration management, CLI interface, and utility modules that all future features depend on.
+Lexibrary must have working project scaffolding and core infrastructure before any feature work. This phase establishes the foundation: Python package structure, configuration management, CLI interface, and utility modules that all future features depend on.
 
 Current state: Bare directory with no project structure.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Establish modular package structure under `src/lexibrarian/` with logical subpackages (config, ignore, utils, cli, crawler, indexer, llm, tokenizer, daemon)
+- Establish modular package structure under `src/lexibrary/` with logical subpackages (config, ignore, utils, cli, crawler, indexer, llm, tokenizer, daemon)
 - Implement configuration system that discovers and validates `lexibrary.toml` via upward traversal with sensible defaults
 - Build ignore-pattern system supporting hierarchical `.gitignore` files + config-based patterns with directory pruning
 - Create reusable utilities for file hashing, logging setup, and project root detection
@@ -23,10 +23,10 @@ Current state: Bare directory with no project structure.
 ## Decisions
 
 ### 1. **Package Structure**: Subpackages organized by concern
-- `src/lexibrarian/config/` — Configuration loading and validation
-- `src/lexibrarian/ignore/` — Ignore pattern matching
-- `src/lexibrarian/utils/` — Shared utilities (hashing, logging, paths)
-- `src/lexibrarian/cli.py` — CLI entry point
+- `src/lexibrary/config/` — Configuration loading and validation
+- `src/lexibrary/ignore/` — Ignore pattern matching
+- `src/lexibrary/utils/` — Shared utilities (hashing, logging, paths)
+- `src/lexibrary/cli.py` — CLI entry point
 - Future: `crawler/`, `indexer/`, `llm/`, `tokenizer/`, `daemon/`
 
 **Rationale**: Clear separation of concerns makes testing and future expansion straightforward.
@@ -38,7 +38,7 @@ Current state: Bare directory with no project structure.
 - Return full defaults if no config file found
 - Cache config at module level after first load
 
-**Rationale**: Pydantic provides validation and type safety; tomllib is zero-dependency; upward traversal matches common developer expectations (like .gitignore). Defaults ensure Lexibrarian works without config.
+**Rationale**: Pydantic provides validation and type safety; tomllib is zero-dependency; upward traversal matches common developer expectations (like .gitignore). Defaults ensure Lexibrary works without config.
 
 **Alternative considered**: Environment variables only → rejected because config is hierarchical and complex; .toml is more scalable.
 

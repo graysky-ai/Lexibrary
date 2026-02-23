@@ -40,27 +40,27 @@
 
 ### Implementation
 
-Add a `src/lexibrarian/utils/errors.py` file:
+Add a `src/lexibrary/utils/errors.py` file:
 
 ```python
-class LexibrarianError(Exception):
+class LexibraryError(Exception):
     """Base exception for Lexibrary errors."""
     pass
 
-class ConfigError(LexibrarianError):
+class ConfigError(LexibraryError):
     """Configuration-related error."""
     pass
 
-class CrawlError(LexibrarianError):
+class CrawlError(LexibraryError):
     """Crawl-related error."""
     pass
 
-class LLMError(LexibrarianError):
+class LLMError(LexibraryError):
     """LLM-related error."""
     pass
 ```
 
-Wrap key CLI commands in try/except blocks that catch `LexibrarianError` subclasses and print user-friendly messages (no tracebacks for expected errors).
+Wrap key CLI commands in try/except blocks that catch `LexibraryError` subclasses and print user-friendly messages (no tracebacks for expected errors).
 
 ---
 
@@ -184,7 +184,7 @@ def sample_project(tmp_path) -> Path:
 @pytest.fixture
 def mock_llm_service():
     """Mock LLMService that returns deterministic summaries."""
-    from lexibrarian.llm.service import LLMService, FileSummaryResult
+    from lexibrary.llm.service import LLMService, FileSummaryResult
     service = AsyncMock(spec=LLMService)
     service.summarize_file.return_value = FileSummaryResult(
         path=Path("test.py"), summary="Test file summary."
@@ -201,7 +201,7 @@ def mock_llm_service():
 
 ### Running tests
 ```bash
-uv run pytest --cov=lexibrarian --cov-report=term-missing -v
+uv run pytest --cov=lexibrary --cov-report=term-missing -v
 ```
 
 ---
@@ -281,7 +281,7 @@ uv run lexi clean --yes
 ls -la .aindex  # should not exist
 
 # 14. Run tests
-uv run pytest --cov=lexibrarian --cov-report=term-missing -v
+uv run pytest --cov=lexibrary --cov-report=term-missing -v
 ```
 
 ---

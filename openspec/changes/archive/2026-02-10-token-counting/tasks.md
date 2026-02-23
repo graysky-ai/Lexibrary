@@ -1,13 +1,13 @@
 ## 1. Module Setup
 
-- [x] 1.1 Create `src/lexibrarian/tokenizer/` directory structure
-- [x] 1.2 Create `src/lexibrarian/tokenizer/__init__.py` with exports for `TokenCounter` and `create_tokenizer`
+- [x] 1.1 Create `src/lexibrary/tokenizer/` directory structure
+- [x] 1.2 Create `src/lexibrary/tokenizer/__init__.py` with exports for `TokenCounter` and `create_tokenizer`
 - [x] 1.3 Create `tests/test_tokenizer/` directory
 - [x] 1.4 Create `tests/test_tokenizer/__init__.py`
 
 ## 2. Protocol Definition
 
-- [x] 2.1 Create `src/lexibrarian/tokenizer/base.py` with `TokenCounter` protocol
+- [x] 2.1 Create `src/lexibrary/tokenizer/base.py` with `TokenCounter` protocol
 - [x] 2.2 Define `count(text: str) -> int` method signature
 - [x] 2.3 Define `count_file(path: Path) -> int` method signature
 - [x] 2.4 Define `name` property signature returning `str`
@@ -15,7 +15,7 @@
 
 ## 3. Approximate Backend
 
-- [x] 3.1 Create `src/lexibrarian/tokenizer/approximate.py`
+- [x] 3.1 Create `src/lexibrary/tokenizer/approximate.py`
 - [x] 3.2 Implement `ApproximateCounter` class with `CHARS_PER_TOKEN = 4.0` constant
 - [x] 3.3 Implement `count()` method using `max(1, int(len(text) / CHARS_PER_TOKEN))`
 - [x] 3.4 Implement `count_file()` method with UTF-8 reading and `errors="replace"`
@@ -23,7 +23,7 @@
 
 ## 4. Tiktoken Backend
 
-- [x] 4.1 Create `src/lexibrarian/tokenizer/tiktoken_counter.py`
+- [x] 4.1 Create `src/lexibrary/tokenizer/tiktoken_counter.py`
 - [x] 4.2 Implement `TiktokenCounter.__init__()` with `model` parameter (default "cl100k_base")
 - [x] 4.3 Initialize tiktoken encoding via `tiktoken.get_encoding(model)` in `__init__`
 - [x] 4.4 Implement `count()` method using `len(self._encoding.encode(text))`
@@ -32,7 +32,7 @@
 
 ## 5. Anthropic Backend
 
-- [x] 5.1 Create `src/lexibrarian/tokenizer/anthropic_counter.py`
+- [x] 5.1 Create `src/lexibrary/tokenizer/anthropic_counter.py`
 - [x] 5.2 Implement `AnthropicCounter.__init__()` with `model` parameter (default "claude-sonnet-4-5-20250514")
 - [x] 5.3 Initialize Anthropic client via `anthropic.Anthropic()` in `__init__`
 - [x] 5.4 Implement `count()` method calling `self._client.messages.count_tokens()` and returning `input_tokens`
@@ -41,7 +41,7 @@
 
 ## 6. Factory Implementation
 
-- [x] 6.1 Create `src/lexibrarian/tokenizer/factory.py`
+- [x] 6.1 Create `src/lexibrary/tokenizer/factory.py`
 - [x] 6.2 Implement `create_tokenizer(config: TokenizerConfig)` function signature
 - [x] 6.3 Add match statement routing "tiktoken", "anthropic_api", "approximate" backends
 - [x] 6.4 Use lazy imports inside match cases (import only when backend is selected)

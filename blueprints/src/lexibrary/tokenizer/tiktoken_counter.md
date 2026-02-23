@@ -14,7 +14,7 @@
 
 ## Dependents
 
-- `lexibrarian.tokenizer.factory` — selected when `config.backend == "tiktoken"`
+- `lexibrary.tokenizer.factory` — selected when `config.backend == "tiktoken"`
 
 ## Key Concepts
 

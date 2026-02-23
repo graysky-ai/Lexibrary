@@ -1,6 +1,6 @@
 # baml_src
 
-**Summary:** BAML prompt definitions for all LLM functions used by Lexibrarian; compiled by the BAML toolchain into `baml_client/` (auto-generated, do not edit).
+**Summary:** BAML prompt definitions for all LLM functions used by Lexibrary; compiled by the BAML toolchain into `baml_client/` (auto-generated, do not edit).
 
 ## Functions Defined
 
@@ -27,7 +27,7 @@
 
 ## Generator (`generators.baml`)
 
-Outputs to `../src/lexibrarian` (Python/Pydantic), async mode.
+Outputs to `../src/lexibrary` (Python/Pydantic), async mode.
 
 ## Key Concepts
 

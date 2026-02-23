@@ -15,8 +15,8 @@
 
 ## Dependents
 
-- `lexibrarian.artifacts.__init__` — re-exports
-- `lexibrarian.wiki.parser` — parses markdown into `ConceptFile` / `ConceptFileFrontmatter`
-- `lexibrarian.wiki.serializer` — serializes `ConceptFile` back to markdown
-- `lexibrarian.wiki.index` — indexes by `frontmatter.title`
-- `lexibrarian.wiki.resolver` — `ResolvedLink.concept: ConceptFile | None`
+- `lexibrary.artifacts.__init__` — re-exports
+- `lexibrary.wiki.parser` — parses markdown into `ConceptFile` / `ConceptFileFrontmatter`
+- `lexibrary.wiki.serializer` — serializes `ConceptFile` back to markdown
+- `lexibrary.wiki.index` — indexes by `frontmatter.title`
+- `lexibrary.wiki.resolver` — `ResolvedLink.concept: ConceptFile | None`

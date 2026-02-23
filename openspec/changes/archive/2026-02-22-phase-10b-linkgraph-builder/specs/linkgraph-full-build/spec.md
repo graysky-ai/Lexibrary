@@ -155,7 +155,7 @@ For each `.aindex` file, the builder SHALL process each entry in `AIndexFile.loc
 ### Requirement: Full build updates meta table
 After all artifacts and links are inserted, `full_build()` SHALL update the `meta` table with:
 - `built_at`: current ISO 8601 timestamp
-- `builder`: identifier string (e.g., `"lexibrarian-v2"`)
+- `builder`: identifier string (e.g., `"lexibrary-v2"`)
 - `artifact_count`: total number of rows in `artifacts`
 - `link_count`: total number of rows in `links`
 

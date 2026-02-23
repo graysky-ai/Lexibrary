@@ -35,28 +35,28 @@
 
 ## Dependencies
 
-- `lexibrarian.cli._shared` -- `console`, `require_project_root`
-- `lexibrarian.config.loader` -- `load_config` (lazy import)
-- `lexibrarian.indexer.orchestrator` -- `index_directory`, `index_recursive` (lazy import)
-- `lexibrarian.artifacts.design_file_parser` -- `parse_design_file_metadata`, `parse_design_file` (lazy imports)
-- `lexibrarian.artifacts.design_file_serializer` -- `serialize_design_file` (lazy import in `concept_link`)
-- `lexibrarian.artifacts.aindex_parser` -- `parse_aindex` (lazy import in `describe`, `lookup`)
-- `lexibrarian.artifacts.aindex_serializer` -- `serialize_aindex` (lazy import in `describe`)
-- `lexibrarian.utils.paths` -- `mirror_path`, `aindex_path` (lazy imports)
-- `lexibrarian.wiki.index` -- `ConceptIndex` (lazy import in `concepts`, `concept_link`)
-- `lexibrarian.wiki.template` -- `render_concept_template`, `concept_file_path` (lazy import in `concept_new`)
-- `lexibrarian.stack.template` -- `render_post_template` (lazy import in `stack_post`)
-- `lexibrarian.stack.index` -- `StackIndex` (lazy import in `stack_search`, `stack_list`)
-- `lexibrarian.stack.mutations` -- `add_answer`, `record_vote`, `accept_answer` (lazy imports)
-- `lexibrarian.stack.parser` -- `parse_stack_post` (lazy import in `stack_view`)
-- `lexibrarian.search` -- `unified_search` (lazy import in `search`)
-- `lexibrarian.linkgraph` -- `open_index` (lazy import in `lookup` and `search`)
+- `lexibrary.cli._shared` -- `console`, `require_project_root`
+- `lexibrary.config.loader` -- `load_config` (lazy import)
+- `lexibrary.indexer.orchestrator` -- `index_directory`, `index_recursive` (lazy import)
+- `lexibrary.artifacts.design_file_parser` -- `parse_design_file_metadata`, `parse_design_file` (lazy imports)
+- `lexibrary.artifacts.design_file_serializer` -- `serialize_design_file` (lazy import in `concept_link`)
+- `lexibrary.artifacts.aindex_parser` -- `parse_aindex` (lazy import in `describe`, `lookup`)
+- `lexibrary.artifacts.aindex_serializer` -- `serialize_aindex` (lazy import in `describe`)
+- `lexibrary.utils.paths` -- `mirror_path`, `aindex_path` (lazy imports)
+- `lexibrary.wiki.index` -- `ConceptIndex` (lazy import in `concepts`, `concept_link`)
+- `lexibrary.wiki.template` -- `render_concept_template`, `concept_file_path` (lazy import in `concept_new`)
+- `lexibrary.stack.template` -- `render_post_template` (lazy import in `stack_post`)
+- `lexibrary.stack.index` -- `StackIndex` (lazy import in `stack_search`, `stack_list`)
+- `lexibrary.stack.mutations` -- `add_answer`, `record_vote`, `accept_answer` (lazy imports)
+- `lexibrary.stack.parser` -- `parse_stack_post` (lazy import in `stack_view`)
+- `lexibrary.search` -- `unified_search` (lazy import in `search`)
+- `lexibrary.linkgraph` -- `open_index` (lazy import in `lookup` and `search`)
 
 ## Dependents
 
-- `lexibrarian.cli.__init__` -- re-exports `lexi_app`
+- `lexibrary.cli.__init__` -- re-exports `lexi_app`
 - `pyproject.toml` -- `lexi` entry point
-- `lexibrarian.__main__` -- runs `lexi_app` for `python -m lexibrarian`
+- `lexibrary.__main__` -- runs `lexi_app` for `python -m lexibrary`
 
 ## Key Concepts
 

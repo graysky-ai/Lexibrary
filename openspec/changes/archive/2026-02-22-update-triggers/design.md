@@ -4,7 +4,7 @@ The archivist pipeline (`update_file()`, `update_project()` in `archivist/pipeli
 
 Currently, the only way to trigger library updates is manual `lexictl update`. There is no automated trigger — no git hooks, no working periodic sweep, no CI integration. The pipeline also lacks safety mechanisms: writes to `.lexibrary/` use direct `Path.write_text()` (non-atomic), there is no conflict marker detection, and no protection against overwriting agent edits during LLM generation.
 
-The existing `Debouncer`, `PeriodicSweep`, and `LexibrarianEventHandler` in the daemon package are clean and reusable. The `DaemonConfig` schema needs updating: `enabled` replaced with `watchdog_enabled` (default `False`), new fields for sweep-skip-if-unchanged, git suppression, and logging.
+The existing `Debouncer`, `PeriodicSweep`, and `LexibraryEventHandler` in the daemon package are clean and reusable. The `DaemonConfig` schema needs updating: `enabled` replaced with `watchdog_enabled` (default `False`), new fields for sweep-skip-if-unchanged, git suppression, and logging.
 
 ## Goals / Non-Goals
 
@@ -85,10 +85,10 @@ The `watchdog` library SHALL only be imported when `run_watchdog()` is called. S
 | Risk | Mitigation |
 |------|------------|
 | `asyncio.run()` nested in threading callback | Each callback creates a fresh event loop. This is the documented pattern and matches `lexictl update` CLI usage. No nested `asyncio.run()` risk as long as callbacks don't call each other. |
-| Git hook background process (`&`) fails silently | Output goes to `.lexibrarian.log`. `lexictl status` surfaces stale artifacts. Periodic sweep catches anything hooks miss. |
-| Hook appending to existing complex hook (e.g., husky) | Marker-based detection prevents duplication. If the existing hook uses a framework, appending is safe. Document that `husky` users should add Lexibrarian to their `.husky/post-commit` instead. |
+| Git hook background process (`&`) fails silently | Output goes to `.lexibrary.log`. `lexictl status` surfaces stale artifacts. Periodic sweep catches anything hooks miss. |
+| Hook appending to existing complex hook (e.g., husky) | Marker-based detection prevents duplication. If the existing hook uses a framework, appending is safe. Document that `husky` users should add Lexibrary to their `.husky/post-commit` instead. |
 | Temp file left behind on crash | `finally` block in `atomic_write()` cleans up. `.tmp` suffix files in `.lexibrary/` can be cleaned by future `lexictl validate --fix`. |
-| `.lexibrarian.log` grows unbounded | `RotatingFileHandler` caps at 5MB with 3 backups (20MB max). |
+| `.lexibrary.log` grows unbounded | `RotatingFileHandler` caps at 5MB with 3 backups (20MB max). |
 | Sweep detects changes in `.lexibrary/` causing infinite loop | `_has_changes()` explicitly skips `.lexibrary/` directory. |
 | `--changed-only` with paths outside scope_root | `update_file()` already checks scope; out-of-scope files return `UNCHANGED` harmlessly. |
 | Hook script uses bare `lexictl` command | Requires `lexictl` on PATH (installed via `pipx` or `uv tool`). Document this requirement. |

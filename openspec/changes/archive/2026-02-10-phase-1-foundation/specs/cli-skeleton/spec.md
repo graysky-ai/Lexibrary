@@ -4,11 +4,11 @@
 The system SHALL provide a Typer application with help text and a `no_args_is_help=True` setting so that running the command without arguments displays help.
 
 #### Scenario: CLI app is accessible
-- **WHEN** importing `from lexibrarian.cli import app`
-- **THEN** app is a Typer instance with name "lexibrarian"
+- **WHEN** importing `from lexibrary.cli import app`
+- **THEN** app is a Typer instance with name "lexibrary"
 
 #### Scenario: Help is displayed when no arguments given
-- **WHEN** running `lexi` or `lexibrarian` with no arguments
+- **WHEN** running `lexi` or `lexibrary` with no arguments
 - **THEN** the help text is displayed (not an error)
 
 #### Scenario: Application has descriptive help text
@@ -43,7 +43,7 @@ The system SHALL provide a `crawl` command that takes a path argument (default "
 
 #### Scenario: Crawl command has help text
 - **WHEN** running `lexi crawl --help`
-- **THEN** the help text says "Run the Lexibrarian crawler."
+- **THEN** the help text says "Run the Lexibrary crawler."
 
 ### Requirement: Daemon command
 The system SHALL provide a `daemon` command that takes a path argument (default ".") and prints a placeholder message. Full implementation comes in a later phase.
@@ -91,8 +91,8 @@ The system SHALL provide a `clean` command that takes a path argument (default "
 - **THEN** the help text says "Remove all .aindex files and cache."
 
 ### Requirement: Command aliases
-The system SHALL support both `lexi` and `lexibrarian` as command entry points that execute the same application.
+The system SHALL support both `lexi` and `lexibrary` as command entry points that execute the same application.
 
 #### Scenario: Both command names work
-- **WHEN** running `lexi --help` and `lexibrarian --help`
+- **WHEN** running `lexi --help` and `lexibrary --help`
 - **THEN** both produce identical output listing all 5 commands

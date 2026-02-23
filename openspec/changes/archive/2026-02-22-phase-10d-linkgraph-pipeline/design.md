@@ -1,6 +1,6 @@
 ## Context
 
-The Lexibrarian archivist pipeline (`archivist/pipeline.py`) orchestrates design file generation. It currently has two entry points:
+The Lexibrary archivist pipeline (`archivist/pipeline.py`) orchestrates design file generation. It currently has two entry points:
 
 - `update_project()` -- full project scan, processes all in-scope files, regenerates START_HERE.md
 - `update_files()` -- batch processing of specific changed files (used by git hooks, `--changed-only`)

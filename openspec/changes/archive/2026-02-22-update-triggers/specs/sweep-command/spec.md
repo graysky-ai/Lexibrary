@@ -15,5 +15,5 @@ The system SHALL provide a `lexictl sweep` command for running library update sw
 - **AND** the sweep SHALL use `DaemonService.run_watch()`
 
 #### Scenario: Requires project root
-- **WHEN** `lexictl sweep` is run outside a Lexibrarian project (no `.lexibrary/` directory)
+- **WHEN** `lexictl sweep` is run outside a Lexibrary project (no `.lexibrary/` directory)
 - **THEN** the command SHALL exit with an error via `require_project_root()`

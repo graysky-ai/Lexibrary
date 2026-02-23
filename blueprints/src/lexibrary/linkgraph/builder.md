@@ -75,27 +75,27 @@ The builder uses `_get_or_create_artifact()` to handle forward references. When 
 
 ## Dependencies
 
-- `lexibrarian.linkgraph.schema` -- `ensure_schema`, `set_pragmas`
-- `lexibrarian.archivist.dependency_extractor` -- `extract_dependencies` for AST import extraction
-- `lexibrarian.artifacts.design_file_parser` -- `parse_design_file`
-- `lexibrarian.artifacts.aindex_parser` -- `parse_aindex`
-- `lexibrarian.wiki.parser` -- `parse_concept_file`
-- `lexibrarian.stack.parser` -- `parse_stack_post`
-- `lexibrarian.utils.hashing` -- `hash_file`
-- `lexibrarian.utils.paths` -- `LEXIBRARY_DIR`
+- `lexibrary.linkgraph.schema` -- `ensure_schema`, `set_pragmas`
+- `lexibrary.archivist.dependency_extractor` -- `extract_dependencies` for AST import extraction
+- `lexibrary.artifacts.design_file_parser` -- `parse_design_file`
+- `lexibrary.artifacts.aindex_parser` -- `parse_aindex`
+- `lexibrary.wiki.parser` -- `parse_concept_file`
+- `lexibrary.stack.parser` -- `parse_stack_post`
+- `lexibrary.utils.hashing` -- `hash_file`
+- `lexibrary.utils.paths` -- `LEXIBRARY_DIR`
 
 ## Dependents
 
-- `lexibrarian.linkgraph.__init__` -- lazy-imports `BuildResult`, `IndexBuilder`, `build_index` via `__getattr__`
-- `lexibrarian.archivist.pipeline` -- calls `build_index()` after design file generation
-- `lexibrarian.cli.lexictl_app` -- `update` command invokes `build_index()` for full or incremental builds
+- `lexibrary.linkgraph.__init__` -- lazy-imports `BuildResult`, `IndexBuilder`, `build_index` via `__getattr__`
+- `lexibrary.archivist.pipeline` -- calls `build_index()` after design file generation
+- `lexibrary.cli.lexictl_app` -- `update` command invokes `build_index()` for full or incremental builds
 
 ## Key Concepts
 
 - The builder is the **write path** for the link graph; `query.py` is the read path
 - `build_index()` is the preferred entry point for callers who do not need to manage the database connection
 - The full build is wrapped in a single transaction for atomicity; on failure, the transaction is rolled back leaving the DB empty rather than partially populated
-- `_BUILDER_ID = "lexibrarian-v2"` is stored in the `meta` table for provenance
+- `_BUILDER_ID = "lexibrary-v2"` is stored in the `meta` table for provenance
 - `_STALE_LOG_DAYS = 30` controls build log retention
 - FTS5 is managed manually (standalone table with no content sync); the builder handles all inserts/deletes/updates directly
 - Alias uniqueness uses first-writer-wins semantics with COLLATE NOCASE; sorted file processing ensures deterministic winners

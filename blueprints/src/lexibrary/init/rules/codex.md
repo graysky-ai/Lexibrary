@@ -1,6 +1,6 @@
 # init/rules/codex
 
-**Summary:** Codex (OpenAI) environment rule generator -- produces `AGENTS.md` with marker-delimited Lexibrarian section containing core rules plus embedded orient and search skills.
+**Summary:** Codex (OpenAI) environment rule generator -- produces `AGENTS.md` with marker-delimited Lexibrary section containing core rules plus embedded orient and search skills.
 
 ## Interface
 
@@ -10,12 +10,12 @@
 
 ## Dependencies
 
-- `lexibrarian.init.rules.base` -- `get_core_rules`, `get_orient_skill_content`, `get_search_skill_content`
-- `lexibrarian.init.rules.markers` -- `has_lexibrarian_section`, `replace_lexibrarian_section`, `append_lexibrarian_section`
+- `lexibrary.init.rules.base` -- `get_core_rules`, `get_orient_skill_content`, `get_search_skill_content`
+- `lexibrary.init.rules.markers` -- `has_lexibrary_section`, `replace_lexibrary_section`, `append_lexibrary_section`
 
 ## Dependents
 
-- `lexibrarian.init.rules.__init__` -- registered in `_GENERATORS` dict as `"codex"`
+- `lexibrary.init.rules.__init__` -- registered in `_GENERATORS` dict as `"codex"`
 
 ## Key Concepts
 

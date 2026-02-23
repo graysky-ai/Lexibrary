@@ -1,11 +1,11 @@
 ## 1. Data Models
 
-- [x] 1.1 Create `src/lexibrarian/indexer/__init__.py` with `FileEntry`, `DirEntry`, and `IandexData` dataclasses
+- [x] 1.1 Create `src/lexibrary/indexer/__init__.py` with `FileEntry`, `DirEntry`, and `IandexData` dataclasses
 - [x] 1.2 Create `tests/test_indexer/__init__.py` (empty, makes it a test package)
 
 ## 2. Generator
 
-- [x] 2.1 Create `src/lexibrarian/indexer/generator.py` with `generate_iandex()` function
+- [x] 2.1 Create `src/lexibrary/indexer/generator.py` with `generate_iandex()` function
 - [x] 2.2 Implement H1 header, summary paragraph, and section structure with blank line separation
 - [x] 2.3 Implement Files table with backtick-wrapped names, token counts, descriptions
 - [x] 2.4 Implement Subdirectories table with backtick-wrapped names (enforce trailing `/`) and descriptions
@@ -17,7 +17,7 @@
 
 ## 3. Writer
 
-- [x] 3.1 Create `src/lexibrarian/indexer/writer.py` with `write_iandex()` function
+- [x] 3.1 Create `src/lexibrary/indexer/writer.py` with `write_iandex()` function
 - [x] 3.2 Implement atomic write via temp-file-then-rename with `os.replace()`
 - [x] 3.3 Implement cleanup of temp file on failure
 - [x] 3.4 Implement UTF-8 encoding and custom filename support
@@ -25,7 +25,7 @@
 
 ## 4. Parser
 
-- [x] 4.1 Create `src/lexibrarian/indexer/parser.py` with `parse_iandex()` function
+- [x] 4.1 Create `src/lexibrary/indexer/parser.py` with `parse_iandex()` function
 - [x] 4.2 Implement H1 parsing for directory name
 - [x] 4.3 Implement summary extraction (lines between H1 and first H2, joined with spaces)
 - [x] 4.4 Implement Files table row parsing via regex

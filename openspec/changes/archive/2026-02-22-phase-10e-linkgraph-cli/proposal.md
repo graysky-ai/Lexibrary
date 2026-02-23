@@ -23,11 +23,11 @@ The link graph index (Phase 10a schema, 10b builder, 10c query interface) provid
 ## Impact
 
 - **Modified files:**
-  - `src/lexibrarian/cli/lexi_app.py` -- `lookup` command gains reverse-link display; `search` command gains FTS/tag acceleration dispatch
-  - `src/lexibrarian/search.py` -- `unified_search()` gains `link_graph` parameter and index-accelerated code paths
-  - `src/lexibrarian/linkgraph/__init__.py` -- re-exports `open_index` from query module
+  - `src/lexibrary/cli/lexi_app.py` -- `lookup` command gains reverse-link display; `search` command gains FTS/tag acceleration dispatch
+  - `src/lexibrary/search.py` -- `unified_search()` gains `link_graph` parameter and index-accelerated code paths
+  - `src/lexibrary/linkgraph/__init__.py` -- re-exports `open_index` from query module
 - **Depends on (must exist before implementation):**
-  - `src/lexibrarian/linkgraph/query.py` (Phase 10c) -- `LinkGraph` class with `reverse_deps()`, `references_to()`, `search_tag()`, `search_fts()` methods
-  - `src/lexibrarian/linkgraph/schema.py` (Phase 10a) -- already complete
+  - `src/lexibrary/linkgraph/query.py` (Phase 10c) -- `LinkGraph` class with `reverse_deps()`, `references_to()`, `search_tag()`, `search_fts()` methods
+  - `src/lexibrary/linkgraph/schema.py` (Phase 10a) -- already complete
 - **No new dependencies** -- `sqlite3` is in Python's standard library
 - **Reference decisions:** D-070 (graceful degradation), D-071 (reverse links in lookup), D-075 (FTS5 search)

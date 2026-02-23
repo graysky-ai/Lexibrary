@@ -17,10 +17,10 @@
 
 ## Dependents
 
-- `lexibrarian.artifacts.__init__` -- re-exports all three models
-- `lexibrarian.artifacts.aindex_parser` -- imports `StalenessMetadata`
-- `lexibrarian.artifacts.concept` -- imports `StalenessMetadata`
-- `lexibrarian.artifacts.design_file_serializer` -- serializes `DesignFile`
-- `lexibrarian.artifacts.design_file_parser` -- parses `DesignFile` from disk
-- `lexibrarian.archivist.pipeline` -- builds `DesignFile` and `DesignFileFrontmatter` models for serialization
-- `lexibrarian.archivist.change_checker` -- reads `StalenessMetadata` for hash comparison
+- `lexibrary.artifacts.__init__` -- re-exports all three models
+- `lexibrary.artifacts.aindex_parser` -- imports `StalenessMetadata`
+- `lexibrary.artifacts.concept` -- imports `StalenessMetadata`
+- `lexibrary.artifacts.design_file_serializer` -- serializes `DesignFile`
+- `lexibrary.artifacts.design_file_parser` -- parses `DesignFile` from disk
+- `lexibrary.archivist.pipeline` -- builds `DesignFile` and `DesignFileFrontmatter` models for serialization
+- `lexibrary.archivist.change_checker` -- reads `StalenessMetadata` for hash comparison

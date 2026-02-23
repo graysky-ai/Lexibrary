@@ -8,4 +8,4 @@
 
 ## Dependents
 
-- `lexibrarian.cli` — will import `DaemonService` when `daemon` command is implemented
+- `lexibrary.cli` — will import `DaemonService` when `daemon` command is implemented

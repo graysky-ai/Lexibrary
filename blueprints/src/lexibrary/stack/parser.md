@@ -24,13 +24,13 @@
 
 ## Dependencies
 
-- `lexibrarian.stack.models` -- `StackAnswer`, `StackPost`, `StackPostFrontmatter`
+- `lexibrary.stack.models` -- `StackAnswer`, `StackPost`, `StackPostFrontmatter`
 
 ## Dependents
 
-- `lexibrarian.stack.index` -- `StackIndex.build()` calls `parse_stack_post` for each file
-- `lexibrarian.stack.mutations` -- `_load_post()` calls `parse_stack_post`
-- `lexibrarian.cli` -- `stack_view` command
+- `lexibrary.stack.index` -- `StackIndex.build()` calls `parse_stack_post` for each file
+- `lexibrary.stack.mutations` -- `_load_post()` calls `parse_stack_post`
+- `lexibrary.cli` -- `stack_view` command
 
 ## Key Concepts
 

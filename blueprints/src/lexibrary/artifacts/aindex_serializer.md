@@ -10,15 +10,15 @@
 
 ## Dependencies
 
-- `lexibrarian.artifacts.aindex` — `AIndexFile`
+- `lexibrary.artifacts.aindex` — `AIndexFile`
 
 ## Dependents
 
-- `lexibrarian.indexer.orchestrator` — serializes model before writing to disk
+- `lexibrary.indexer.orchestrator` — serializes model before writing to disk
 
 ## Key Concepts
 
 - Child Map: files sorted alphabetically first, then directories; dirs shown with trailing `/`
-- Metadata footer: `<!-- lexibrarian:meta source="..." source_hash="..." generated="..." generator="..." -->`
+- Metadata footer: `<!-- lexibrary:meta source="..." source_hash="..." generated="..." generator="..." -->`
 - `interface_hash` is omitted from the footer when `None`
 - Empty entries section renders `(none)`; empty conventions section renders `(none)`

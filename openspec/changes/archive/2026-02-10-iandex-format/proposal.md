@@ -1,6 +1,6 @@
 ## Why
 
-Lexibrarian needs a well-defined file format for its `.aindex` index files — the Markdown documents placed in each directory that give AI agents a quick navigational map of the codebase. Without a structured format with generation, writing, and parsing capabilities, the crawler (Phase 5) has no way to produce or consume index files. This is a core building block that must exist before the crawl engine can be assembled.
+Lexibrary needs a well-defined file format for its `.aindex` index files — the Markdown documents placed in each directory that give AI agents a quick navigational map of the codebase. Without a structured format with generation, writing, and parsing capabilities, the crawler (Phase 5) has no way to produce or consume index files. This is a core building block that must exist before the crawl engine can be assembled.
 
 ## What Changes
 
@@ -23,7 +23,7 @@ Lexibrarian needs a well-defined file format for its `.aindex` index files — t
 
 ## Impact
 
-- **New code**: `src/lexibrarian/indexer/` package with `__init__.py`, `generator.py`, `writer.py`, `parser.py`
+- **New code**: `src/lexibrary/indexer/` package with `__init__.py`, `generator.py`, `writer.py`, `parser.py`
 - **New tests**: `tests/test_indexer/` with tests for generator, writer, parser, and round-trip verification
 - **Dependencies**: No new external dependencies — uses only stdlib (`dataclasses`, `re`, `os`, `tempfile`, `pathlib`)
 - **Downstream**: Phase 5 (Crawler Engine) will import these modules to produce and consume `.aindex` files

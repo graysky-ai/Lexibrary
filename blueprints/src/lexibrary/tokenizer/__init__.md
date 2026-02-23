@@ -8,5 +8,5 @@
 
 ## Dependents
 
-- `lexibrarian.daemon.service` — imports `create_tokenizer`
-- `lexibrarian.crawler.engine` — types against `TokenCounter`
+- `lexibrary.daemon.service` — imports `create_tokenizer`
+- `lexibrary.crawler.engine` — types against `TokenCounter`

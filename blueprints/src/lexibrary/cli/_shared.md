@@ -12,13 +12,13 @@
 
 ## Dependencies
 
-- `lexibrarian.exceptions` -- `LexibraryNotFoundError`
-- `lexibrarian.utils.root` -- `find_project_root`
+- `lexibrary.exceptions` -- `LexibraryNotFoundError`
+- `lexibrary.utils.root` -- `find_project_root`
 
 ## Dependents
 
-- `lexibrarian.cli.lexi_app` -- imports `console`, `require_project_root`
-- `lexibrarian.cli.lexictl_app` -- imports `console`, `require_project_root`, `stub`
+- `lexibrary.cli.lexi_app` -- imports `console`, `require_project_root`
+- `lexibrary.cli.lexictl_app` -- imports `console`, `require_project_root`, `stub`
 
 ## Key Concepts
 
@@ -29,4 +29,4 @@
 ## Dragons
 
 - `require_project_root()` raises `typer.Exit(1)` on failure -- callers do not need try/except
-- `stub()` calls `require_project_root()` internally, so stub commands still fail gracefully when run outside a Lexibrarian project
+- `stub()` calls `require_project_root()` internally, so stub commands still fail gracefully when run outside a Lexibrary project

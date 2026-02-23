@@ -10,11 +10,11 @@
 
 ## Dependencies
 
-- `lexibrarian.ast_parser.registry` -- `get_parser` for tree-sitter grammar lookup
+- `lexibrary.ast_parser.registry` -- `get_parser` for tree-sitter grammar lookup
 
 ## Dependents
 
-- `lexibrarian.archivist.pipeline` -- populates `dependencies` field in generated design files
+- `lexibrary.archivist.pipeline` -- populates `dependencies` field in generated design files
 
 ## Key Concepts
 

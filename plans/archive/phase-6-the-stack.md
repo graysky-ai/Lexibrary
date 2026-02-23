@@ -187,10 +187,10 @@ class StackPost(BaseModel):
 
 ---
 
-## New Module: `src/lexibrarian/stack/`
+## New Module: `src/lexibrary/stack/`
 
 ```
-src/lexibrarian/stack/
+src/lexibrary/stack/
 ├── __init__.py          ← Public API re-exports
 ├── models.py            ← StackPost, StackAnswer, StackPostFrontmatter
 ├── parser.py            ← Parse stack posts from disk

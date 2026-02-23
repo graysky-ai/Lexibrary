@@ -14,7 +14,7 @@ The system SHALL load patterns from a `.lexignore` file at the project root, usi
 ### Requirement: Three-layer ignore system
 The `IgnoreMatcher` SHALL merge patterns from three sources in order:
 1. `.gitignore` — standard git ignores
-2. `.lexignore` — Lexibrarian-specific ignores (files in git that shouldn't get design files)
+2. `.lexignore` — Lexibrary-specific ignores (files in git that shouldn't get design files)
 3. `config.ignore.additional_patterns` — programmatic patterns from config
 
 A file ignored by ANY layer SHALL be excluded.

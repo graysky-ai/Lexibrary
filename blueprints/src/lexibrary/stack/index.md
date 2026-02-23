@@ -18,13 +18,13 @@
 
 ## Dependencies
 
-- `lexibrarian.stack.models` -- `StackPost`
-- `lexibrarian.stack.parser` -- `parse_stack_post`
+- `lexibrary.stack.models` -- `StackPost`
+- `lexibrary.stack.parser` -- `parse_stack_post`
 
 ## Dependents
 
-- `lexibrarian.cli` -- `stack_search`, `stack_list` commands
-- `lexibrarian.search` -- `_search_stack_posts()` builds a `StackIndex`
+- `lexibrary.cli` -- `stack_search`, `stack_list` commands
+- `lexibrary.search` -- `_search_stack_posts()` builds a `StackIndex`
 
 ## Key Concepts
 

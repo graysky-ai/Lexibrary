@@ -14,30 +14,30 @@
 
 ## Dependencies
 
-- `lexibrarian.archivist.change_checker` -- `ChangeLevel`, `check_change`, `_compute_design_content_hash`
-- `lexibrarian.archivist.dependency_extractor` -- `extract_dependencies`
-- `lexibrarian.archivist.service` -- `ArchivistService`, `DesignFileRequest`
-- `lexibrarian.archivist.start_here` -- `generate_start_here`
-- `lexibrarian.artifacts.aindex` -- `AIndexEntry`
-- `lexibrarian.artifacts.aindex_parser` -- `parse_aindex`
-- `lexibrarian.artifacts.aindex_serializer` -- `serialize_aindex`
-- `lexibrarian.artifacts.design_file` -- `DesignFile`, `DesignFileFrontmatter`, `StalenessMetadata`
-- `lexibrarian.artifacts.design_file_parser` -- `parse_design_file`, `parse_design_file_frontmatter`, `parse_design_file_metadata`, `_FOOTER_RE`
-- `lexibrarian.artifacts.design_file_serializer` -- `serialize_design_file`
-- `lexibrarian.ast_parser` -- `compute_hashes`, `parse_interface`, `render_skeleton`
-- `lexibrarian.config.schema` -- `LexibraryConfig`
-- `lexibrarian.ignore` -- `create_ignore_matcher`
-- `lexibrarian.utils.atomic` -- `atomic_write` (replaces all `Path.write_text()` calls)
-- `lexibrarian.utils.conflict` -- `has_conflict_markers`
-- `lexibrarian.utils.languages` -- `detect_language`
-- `lexibrarian.linkgraph.builder` -- `build_index` (full and incremental link graph index builds)
-- `lexibrarian.utils.paths` -- `LEXIBRARY_DIR`, `aindex_path`, `mirror_path`
-- `lexibrarian.wiki.index` -- `ConceptIndex`
+- `lexibrary.archivist.change_checker` -- `ChangeLevel`, `check_change`, `_compute_design_content_hash`
+- `lexibrary.archivist.dependency_extractor` -- `extract_dependencies`
+- `lexibrary.archivist.service` -- `ArchivistService`, `DesignFileRequest`
+- `lexibrary.archivist.start_here` -- `generate_start_here`
+- `lexibrary.artifacts.aindex` -- `AIndexEntry`
+- `lexibrary.artifacts.aindex_parser` -- `parse_aindex`
+- `lexibrary.artifacts.aindex_serializer` -- `serialize_aindex`
+- `lexibrary.artifacts.design_file` -- `DesignFile`, `DesignFileFrontmatter`, `StalenessMetadata`
+- `lexibrary.artifacts.design_file_parser` -- `parse_design_file`, `parse_design_file_frontmatter`, `parse_design_file_metadata`, `_FOOTER_RE`
+- `lexibrary.artifacts.design_file_serializer` -- `serialize_design_file`
+- `lexibrary.ast_parser` -- `compute_hashes`, `parse_interface`, `render_skeleton`
+- `lexibrary.config.schema` -- `LexibraryConfig`
+- `lexibrary.ignore` -- `create_ignore_matcher`
+- `lexibrary.utils.atomic` -- `atomic_write` (replaces all `Path.write_text()` calls)
+- `lexibrary.utils.conflict` -- `has_conflict_markers`
+- `lexibrary.utils.languages` -- `detect_language`
+- `lexibrary.linkgraph.builder` -- `build_index` (full and incremental link graph index builds)
+- `lexibrary.utils.paths` -- `LEXIBRARY_DIR`, `aindex_path`, `mirror_path`
+- `lexibrary.wiki.index` -- `ConceptIndex`
 
 ## Dependents
 
-- `lexibrarian.cli.lexictl_app` -- `update` command calls `update_file`, `update_files`, and `update_project`
-- `lexibrarian.daemon.service` -- `_run_sweep` calls `update_project`
+- `lexibrary.cli.lexictl_app` -- `update` command calls `update_file`, `update_files`, and `update_project`
+- `lexibrary.daemon.service` -- `_run_sweep` calls `update_project`
 
 ## Key Concepts
 

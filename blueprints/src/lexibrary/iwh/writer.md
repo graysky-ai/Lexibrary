@@ -11,12 +11,12 @@
 
 ## Dependencies
 
-- `lexibrarian.iwh.model` -- `IWHFile`, `IWHScope`
-- `lexibrarian.iwh.serializer` -- `serialize_iwh`
+- `lexibrary.iwh.model` -- `IWHFile`, `IWHScope`
+- `lexibrary.iwh.serializer` -- `serialize_iwh`
 
 ## Dependents
 
-- `lexibrarian.iwh.__init__` -- re-exports `write_iwh`
+- `lexibrary.iwh.__init__` -- re-exports `write_iwh`
 
 ## Key Concepts
 

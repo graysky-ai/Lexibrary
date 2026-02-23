@@ -1,6 +1,6 @@
 ## Context
 
-Lexibrarian Phases 1-3 established the foundation: project scaffolding, config system, ignore matching, directory discovery, `.aindex` generation with structural descriptions, and AST-based interface extraction with tree-sitter. The existing `LLMService` provides v1 single-file and batch summarization via BAML, but produces only short summary strings — not the rich design files the architecture requires.
+Lexibrary Phases 1-3 established the foundation: project scaffolding, config system, ignore matching, directory discovery, `.aindex` generation with structural descriptions, and AST-based interface extraction with tree-sitter. The existing `LLMService` provides v1 single-file and batch summarization via BAML, but produces only short summary strings — not the rich design files the architecture requires.
 
 Phase 4 introduces the Archivist: an LLM pipeline that generates per-file design files with YAML frontmatter, structured markdown body, and machine-readable metadata footer. The key architectural shift is the **agent-first authoring model** — agents write design files during coding sessions; the Archivist is a safety net, not the primary author.
 

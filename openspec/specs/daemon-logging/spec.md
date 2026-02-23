@@ -4,12 +4,12 @@
 TBD - created by archiving change update-triggers. Update Purpose after archive.
 ## Requirements
 ### Requirement: Daemon-specific logging setup
-The system SHALL provide a `setup_daemon_logging(project_root, log_level)` function in `daemon/logging.py` that configures a `RotatingFileHandler` for `.lexibrarian.log`.
+The system SHALL provide a `setup_daemon_logging(project_root, log_level)` function in `daemon/logging.py` that configures a `RotatingFileHandler` for `.lexibrary.log`.
 
 #### Scenario: Log file creation
 - **WHEN** `setup_daemon_logging()` is called
-- **THEN** a `RotatingFileHandler` SHALL be attached to the `lexibrarian` logger
-- **AND** the handler SHALL write to `<project_root>/.lexibrarian.log`
+- **THEN** a `RotatingFileHandler` SHALL be attached to the `lexibrary` logger
+- **AND** the handler SHALL write to `<project_root>/.lexibrary.log`
 
 #### Scenario: Log rotation configuration
 - **WHEN** the `RotatingFileHandler` is created
@@ -29,9 +29,9 @@ The system SHALL provide a `setup_daemon_logging(project_root, log_level)` funct
 - **THEN** it SHALL NOT configure console logging (callers add their own console handler if needed)
 
 ### Requirement: Log file is gitignored
-The `.lexibrarian.log` file SHALL be gitignored.
+The `.lexibrary.log` file SHALL be gitignored.
 
 #### Scenario: Init scaffolder includes log file pattern
 - **WHEN** `lexictl init` creates the project skeleton
-- **THEN** `.lexibrarian.log` SHALL be included in the `.gitignore` additions
+- **THEN** `.lexibrary.log` SHALL be included in the `.gitignore` additions
 

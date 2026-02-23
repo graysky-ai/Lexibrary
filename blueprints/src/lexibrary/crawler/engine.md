@@ -11,15 +11,15 @@
 
 ## Dependencies
 
-- `lexibrarian.config.schema` — `LexibraryConfig`
-- `lexibrarian.crawler.change_detector` — `ChangeDetector`
-- `lexibrarian.crawler.discovery` — `discover_directories_bottom_up`, `list_directory_files`
-- `lexibrarian.crawler.file_reader` — `read_file_for_indexing`
-- `lexibrarian.ignore.matcher` — `IgnoreMatcher`
-- `lexibrarian.llm.service` — `LLMService`, request/result dataclasses
-- `lexibrarian.tokenizer.base` — `TokenCounter`
-- `lexibrarian.utils.hashing` — `hash_file`
-- `lexibrarian.utils.languages` — `detect_language`
+- `lexibrary.config.schema` — `LexibraryConfig`
+- `lexibrary.crawler.change_detector` — `ChangeDetector`
+- `lexibrary.crawler.discovery` — `discover_directories_bottom_up`, `list_directory_files`
+- `lexibrary.crawler.file_reader` — `read_file_for_indexing`
+- `lexibrary.ignore.matcher` — `IgnoreMatcher`
+- `lexibrary.llm.service` — `LLMService`, request/result dataclasses
+- `lexibrary.tokenizer.base` — `TokenCounter`
+- `lexibrary.utils.hashing` — `hash_file`
+- `lexibrary.utils.languages` — `detect_language`
 
 ## Key Concepts
 

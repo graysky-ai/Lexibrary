@@ -31,7 +31,7 @@ The system SHALL provide a function to configure logging with Rich handler for c
 - **THEN** logging level is set to DEBUG
 
 #### Scenario: File logging is enabled
-- **WHEN** calling `setup_logging(log_file=".lexibrarian.log")`
+- **WHEN** calling `setup_logging(log_file=".lexibrary.log")`
 - **THEN** a FileHandler is added that writes to the specified file
 
 #### Scenario: Log messages are formatted correctly

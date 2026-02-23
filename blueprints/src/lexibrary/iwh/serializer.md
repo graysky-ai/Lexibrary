@@ -10,12 +10,12 @@
 
 ## Dependencies
 
-- `lexibrarian.iwh.model` -- `IWHFile`
+- `lexibrary.iwh.model` -- `IWHFile`
 - `yaml` (PyYAML) -- frontmatter serialization
 
 ## Dependents
 
-- `lexibrarian.iwh.writer` -- `write_iwh()` calls `serialize_iwh()` before writing to disk
+- `lexibrary.iwh.writer` -- `write_iwh()` calls `serialize_iwh()` before writing to disk
 
 ## Key Concepts
 

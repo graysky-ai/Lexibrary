@@ -17,11 +17,11 @@
 
 ## Dependents
 
-- `lexibrarian.ignore.__init__` -- `create_ignore_matcher` instantiates this
-- `lexibrarian.crawler.discovery` -- passes to traversal functions
-- `lexibrarian.daemon.watcher` -- used to filter events
-- `lexibrarian.archivist.pipeline` -- `update_project` uses ignore matcher for file discovery
-- `lexibrarian.archivist.start_here` -- directory tree builder uses ignore matcher
+- `lexibrary.ignore.__init__` -- `create_ignore_matcher` instantiates this
+- `lexibrary.crawler.discovery` -- passes to traversal functions
+- `lexibrary.daemon.watcher` -- used to filter events
+- `lexibrary.archivist.pipeline` -- `update_project` uses ignore matcher for file discovery
+- `lexibrary.archivist.start_here` -- directory tree builder uses ignore matcher
 
 ## Key Concepts
 

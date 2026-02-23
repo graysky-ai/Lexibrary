@@ -1,7 +1,7 @@
 ## Context
 
 Phase 5 builds on the completed Phase 1 (Foundation) and Phase 4 (Archivist) infrastructure. The codebase already has:
-- A stub `ConceptFile` model in `src/lexibrarian/artifacts/concept.py` (no callers yet)
+- A stub `ConceptFile` model in `src/lexibrary/artifacts/concept.py` (no callers yet)
 - Design file parser/serializer with wikilinks support (stored as plain strings)
 - Archivist BAML prompts and pipeline for design file generation
 - CLI with Typer, Rich console output
@@ -27,7 +27,7 @@ The concepts wiki introduces cross-cutting knowledge management — concept file
 
 ## Decisions
 
-### D-1: Module placement — `src/lexibrarian/wiki/`
+### D-1: Module placement — `src/lexibrary/wiki/`
 The phase plan calls this `wiki/` rather than the master plan's `knowledge_graph/`. This better reflects the evolved design — it's a wiki of markdown files with wikilinks, not a graph database.
 
 **Alternative considered:** Putting everything in `artifacts/`. Rejected because the wiki module has distinct responsibilities (resolution, indexing, search) beyond data modeling.

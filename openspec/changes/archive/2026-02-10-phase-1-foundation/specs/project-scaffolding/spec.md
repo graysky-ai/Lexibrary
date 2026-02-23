@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Project directory structure
-The system SHALL have a Python package structure with source code under `src/lexibrarian/` and test code under `tests/`. Supporting directories for BAML, fixtures, and configuration SHALL exist.
+The system SHALL have a Python package structure with source code under `src/lexibrary/` and test code under `tests/`. Supporting directories for BAML, fixtures, and configuration SHALL exist.
 
 #### Scenario: Directory structure exists after initialization
 - **WHEN** running `uv sync` in the project root
-- **THEN** the following directories are created: `src/lexibrarian/`, `src/lexibrarian/config/`, `src/lexibrarian/ignore/`, `src/lexibrarian/utils/`, `src/lexibrarian/crawler/`, `src/lexibrarian/indexer/`, `src/lexibrarian/llm/`, `src/lexibrarian/tokenizer/`, `src/lexibrarian/daemon/`, `tests/`, `baml_src/`
+- **THEN** the following directories are created: `src/lexibrary/`, `src/lexibrary/config/`, `src/lexibrary/ignore/`, `src/lexibrary/utils/`, `src/lexibrary/crawler/`, `src/lexibrary/indexer/`, `src/lexibrary/llm/`, `src/lexibrary/tokenizer/`, `src/lexibrary/daemon/`, `tests/`, `baml_src/`
 
 ### Requirement: Project metadata in pyproject.toml
 The system SHALL declare the project name as "lexibrary", version "0.1.0", and include all required dependencies for config management, CLI, ignore patterns, tokenization, BAML, and HTTP operations.
@@ -20,7 +20,7 @@ The system SHALL declare the project name as "lexibrary", version "0.1.0", and i
 
 #### Scenario: CLI entry points are configured
 - **WHEN** reading `pyproject.toml` project.scripts
-- **THEN** both "lexi" and "lexibrarian" commands map to "lexibrarian.cli:app"
+- **THEN** both "lexi" and "lexibrary" commands map to "lexibrary.cli:app"
 
 ### Requirement: Python version is pinned
 The system SHALL require Python 3.11+ and pin to Python 3.12 via `.python-version` file.
@@ -30,19 +30,19 @@ The system SHALL require Python 3.11+ and pin to Python 3.12 via `.python-versio
 - **THEN** it contains exactly "3.12"
 
 ### Requirement: .gitignore is configured
-The system SHALL exclude Python artifacts, virtual environments, Lexibrarian caches, and generated BAML code.
+The system SHALL exclude Python artifacts, virtual environments, Lexibrary caches, and generated BAML code.
 
 #### Scenario: .gitignore contains project-specific patterns
 - **WHEN** reading `.gitignore`
-- **THEN** it includes patterns for `.aindex`, `.lexibrarian_cache.json`, `.lexibrarian.log`, `baml_client/`, and standard Python patterns (`__pycache__/`, `*.pyc`, `.venv/`, `venv/`)
+- **THEN** it includes patterns for `.aindex`, `.lexibrary_cache.json`, `.lexibrary.log`, `baml_client/`, and standard Python patterns (`__pycache__/`, `*.pyc`, `.venv/`, `venv/`)
 
 ### Requirement: Module initialization
 The system SHALL have proper `__init__.py` files in all packages with version declaration.
 
 #### Scenario: Root module declares version
-- **WHEN** importing `lexibrarian.__version__`
+- **WHEN** importing `lexibrary.__version__`
 - **THEN** it returns "0.1.0"
 
 #### Scenario: Root module can be run as a script
-- **WHEN** running `python -m lexibrarian`
+- **WHEN** running `python -m lexibrary`
 - **THEN** it imports the CLI app without errors

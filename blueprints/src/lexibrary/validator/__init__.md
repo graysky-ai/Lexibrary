@@ -40,9 +40,9 @@
 
 ## Dependencies
 
-- `lexibrarian.validator.checks` -- all 13 check functions
-- `lexibrarian.validator.report` -- `ValidationIssue`, `ValidationReport`, `ValidationSummary`, `Severity`
+- `lexibrary.validator.checks` -- all 13 check functions
+- `lexibrary.validator.report` -- `ValidationIssue`, `ValidationReport`, `ValidationSummary`, `Severity`
 
 ## Dependents
 
-- `lexibrarian.cli` -- `lexi validate` and `lexi status` commands
+- `lexibrary.cli` -- `lexi validate` and `lexi status` commands

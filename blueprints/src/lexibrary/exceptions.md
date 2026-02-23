@@ -10,5 +10,5 @@
 
 ## Dependents
 
-- `lexibrarian.utils.root` — raises it in `find_project_root()`
-- `lexibrarian.cli` — catches it in `_require_project_root()`
+- `lexibrary.utils.root` — raises it in `find_project_root()`
+- `lexibrary.cli` — catches it in `_require_project_root()`

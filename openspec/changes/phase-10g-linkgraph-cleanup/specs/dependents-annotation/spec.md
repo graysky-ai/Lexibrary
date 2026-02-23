@@ -77,7 +77,7 @@ All TODO comments added during Phase 10 implementation in the `linkgraph/` modul
 
 #### Scenario: No unresolved Phase 10 TODOs in linkgraph
 
-- **WHEN** a search for `TODO` is run across `src/lexibrarian/linkgraph/`
+- **WHEN** a search for `TODO` is run across `src/lexibrary/linkgraph/`
 - **THEN** no unresolved TODO comments related to Phase 10 implementation SHALL remain
 
 ### Requirement: Phase 10 tests pass with adequate coverage
@@ -86,5 +86,5 @@ All tests covering Phase 10 functionality (linkgraph schema, builder, query, pip
 
 #### Scenario: Test suite passes
 
-- **WHEN** `uv run pytest --cov=lexibrarian` is run
+- **WHEN** `uv run pytest --cov=lexibrary` is run
 - **THEN** all Phase 10-related tests SHALL pass and the `linkgraph/` module SHALL have coverage reported

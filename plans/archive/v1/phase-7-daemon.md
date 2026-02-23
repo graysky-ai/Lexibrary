@@ -13,7 +13,7 @@ The daemon has three concurrent components:
 ```
 DaemonService
 ├── watchdog Observer (file system events)
-│   └── LexibrarianEventHandler
+│   └── LexibraryEventHandler
 │       └── Debouncer (coalesces rapid events)
 │           └── _reindex_directories() callback
 ├── Periodic Sweep Scheduler
@@ -32,7 +32,7 @@ Thread model:
 
 ## 7.2 Event Handler
 
-### File: `src/lexibrarian/daemon/watcher.py`
+### File: `src/lexibrary/daemon/watcher.py`
 
 ```python
 from __future__ import annotations
@@ -40,7 +40,7 @@ from pathlib import Path
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
 from ..ignore.matcher import IgnoreMatcher
 
-class LexibrarianEventHandler(FileSystemEventHandler):
+class LexibraryEventHandler(FileSystemEventHandler):
     """Watches for file changes and forwards affected directories to the debouncer."""
 
     def __init__(self, root: Path, matcher: IgnoreMatcher, debouncer):
@@ -60,7 +60,7 @@ class LexibrarianEventHandler(FileSystemEventHandler):
             return
 
         # Skip cache and log files
-        if path.name in (".lexibrarian_cache.json", ".lexibrarian.log", ".lexibrarian.pid"):
+        if path.name in (".lexibrary_cache.json", ".lexibrary.log", ".lexibrary.pid"):
             return
 
         # Skip ignored files
@@ -81,7 +81,7 @@ Key considerations:
 
 ## 7.3 Debouncer
 
-### File: `src/lexibrarian/daemon/debouncer.py`
+### File: `src/lexibrary/daemon/debouncer.py`
 
 Coalesces rapid file changes into batched re-index operations.
 
@@ -154,7 +154,7 @@ Design notes:
 
 ## 7.4 Periodic Sweep Scheduler
 
-### File: `src/lexibrarian/daemon/scheduler.py`
+### File: `src/lexibrary/daemon/scheduler.py`
 
 ```python
 from __future__ import annotations
@@ -207,7 +207,7 @@ class PeriodicSweep:
 
 ## 7.5 Daemon Service
 
-### File: `src/lexibrarian/daemon/service.py`
+### File: `src/lexibrary/daemon/service.py`
 
 The main lifecycle manager that ties everything together.
 
@@ -228,14 +228,14 @@ from ..tokenizer import create_tokenizer
 from ..llm import create_llm_service
 from ..crawler.engine import full_crawl
 from ..crawler.change_detector import ChangeDetector
-from .watcher import LexibrarianEventHandler
+from .watcher import LexibraryEventHandler
 from .debouncer import Debouncer
 from .scheduler import PeriodicSweep
 
 log = logging.getLogger(__name__)
 
 class DaemonService:
-    """Manages the Lexibrarian daemon lifecycle."""
+    """Manages the Lexibrary daemon lifecycle."""
 
     def __init__(self, root: Path, config: LexibraryConfig):
         self._root = root
@@ -244,14 +244,14 @@ class DaemonService:
         self._debouncer: Debouncer | None = None
         self._sweep: PeriodicSweep | None = None
         self._shutdown = threading.Event()
-        self._pid_file = root / ".lexibrarian.pid"
+        self._pid_file = root / ".lexibrary.pid"
 
     def start(self, foreground: bool = False) -> None:
         """Start the daemon."""
         from ..utils.logging import setup_logging
         setup_logging(verbose=True, log_file=str(self._root / self._config.daemon.log_file))
 
-        log.info("Starting Lexibrarian daemon for %s", self._root)
+        log.info("Starting Lexibrary daemon for %s", self._root)
         self._write_pid_file()
         self._setup_signal_handlers()
 
@@ -264,7 +264,7 @@ class DaemonService:
             callback=lambda dirs: self._incremental_reindex(dirs),
         )
 
-        handler = LexibrarianEventHandler(self._root, matcher, self._debouncer)
+        handler = LexibraryEventHandler(self._root, matcher, self._debouncer)
         self._observer = Observer()
         self._observer.schedule(handler, str(self._root), recursive=True)
         self._observer.start()
@@ -279,7 +279,7 @@ class DaemonService:
         log.info("Periodic sweep scheduled every %d minutes", self._config.daemon.full_sweep_interval_minutes)
 
         log.info("Daemon ready. Watching for changes...")
-        print(f"Lexibrarian daemon running (PID {os.getpid()}). Press Ctrl+C to stop.")
+        print(f"Lexibrary daemon running (PID {os.getpid()}). Press Ctrl+C to stop.")
 
         # Block until shutdown signal
         try:
@@ -338,7 +338,7 @@ class DaemonService:
         matcher = create_ignore_matcher(self._config, self._root)
         tokenizer = create_tokenizer(self._config.tokenizer)
         llm_service = create_llm_service(self._config.llm)
-        cache_path = self._root / ".lexibrarian_cache.json"
+        cache_path = self._root / ".lexibrary_cache.json"
         change_detector = ChangeDetector(cache_path)
         change_detector.load()
 
@@ -359,7 +359,7 @@ class DaemonService:
         matcher = create_ignore_matcher(self._config, self._root)
         tokenizer = create_tokenizer(self._config.tokenizer)
         llm_service = create_llm_service(self._config.llm)
-        cache_path = self._root / ".lexibrarian_cache.json"
+        cache_path = self._root / ".lexibrary_cache.json"
         change_detector = ChangeDetector(cache_path)
         change_detector.load()
 
@@ -381,7 +381,7 @@ class DaemonService:
 
 ## 7.6 `__init__.py`
 
-### File: `src/lexibrarian/daemon/__init__.py`
+### File: `src/lexibrary/daemon/__init__.py`
 
 ```python
 from .service import DaemonService

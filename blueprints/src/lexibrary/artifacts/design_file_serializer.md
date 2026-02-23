@@ -16,7 +16,7 @@
 4. `## Dependencies` — bullet list or `(none)`
 5. `## Dependents` — bullet list or `(none)`
 6. Optional sections (omitted when empty/None): `## Tests`, `## Complexity Warning`, `## Wikilinks`, `## Tags`, `## Guardrails`
-7. Multiline HTML comment footer: `<!-- lexibrarian:meta\nkey: value\n-->`
+7. Multiline HTML comment footer: `<!-- lexibrary:meta\nkey: value\n-->`
 8. Trailing newline
 
 ## Notes
@@ -27,11 +27,11 @@
 
 ## Dependencies
 
-- `lexibrarian.artifacts.design_file` -- `DesignFile` model
-- `lexibrarian.utils.languages` -- `detect_language()`
+- `lexibrary.artifacts.design_file` -- `DesignFile` model
+- `lexibrary.utils.languages` -- `detect_language()`
 - `yaml` (PyYAML)
 - `hashlib` (stdlib)
 
 ## Dependents
 
-- `lexibrarian.archivist.pipeline` -- serializes generated `DesignFile` models to disk
+- `lexibrary.archivist.pipeline` -- serializes generated `DesignFile` models to disk

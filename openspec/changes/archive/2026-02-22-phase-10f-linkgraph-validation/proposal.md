@@ -23,7 +23,7 @@ The link graph (Phase 10a schema, 10c query interface) enables validation checks
 
 ## Impact
 
-- **Code:** `src/lexibrarian/validator/checks.py` gains three new check functions. `src/lexibrarian/validator/__init__.py` registers them in `AVAILABLE_CHECKS`. `src/lexibrarian/cli/lexictl_app.py` status command gains a link graph health section. New dependency on `src/lexibrarian/linkgraph/query.py` (Phase 10c).
+- **Code:** `src/lexibrary/validator/checks.py` gains three new check functions. `src/lexibrary/validator/__init__.py` registers them in `AVAILABLE_CHECKS`. `src/lexibrary/cli/lexictl_app.py` status command gains a link graph health section. New dependency on `src/lexibrary/linkgraph/query.py` (Phase 10c).
 - **Dependencies:** No new external packages (sqlite3 is stdlib). Internal dependency on the Phase 10c `LinkGraph` query interface.
 - **APIs:** No breaking changes. New checks are additive to the existing `AVAILABLE_CHECKS` registry. Status output gains one additional line.
 - **Phase:** This is Phase 10f of the master plan, within the Phase 10 (Unified Link Graph) sub-phase structure.

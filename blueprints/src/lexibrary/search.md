@@ -23,14 +23,14 @@
 
 ## Dependencies
 
-- `lexibrarian.linkgraph.query` -- `LinkGraph` (TYPE_CHECKING import for type annotations)
-- `lexibrarian.wiki.index` -- `ConceptIndex` (lazy import in file-scanning fallback)
-- `lexibrarian.artifacts.design_file_parser` -- `parse_design_file` (lazy import in file-scanning fallback)
-- `lexibrarian.stack.index` -- `StackIndex` (lazy import in file-scanning fallback)
+- `lexibrary.linkgraph.query` -- `LinkGraph` (TYPE_CHECKING import for type annotations)
+- `lexibrary.wiki.index` -- `ConceptIndex` (lazy import in file-scanning fallback)
+- `lexibrary.artifacts.design_file_parser` -- `parse_design_file` (lazy import in file-scanning fallback)
+- `lexibrary.stack.index` -- `StackIndex` (lazy import in file-scanning fallback)
 
 ## Dependents
 
-- `lexibrarian.cli` -- `search` command calls `unified_search()`
+- `lexibrary.cli` -- `search` command calls `unified_search()`
 
 ## Key Concepts
 

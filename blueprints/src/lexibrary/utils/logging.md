@@ -10,5 +10,5 @@
 
 ## Dependents
 
-- `lexibrarian.cli` (planned) — will call `setup_logging` early in CLI entry
-- `lexibrarian.daemon.service` — currently uses `logging.basicConfig` directly; should migrate to `setup_logging`
+- `lexibrary.cli` (planned) — will call `setup_logging` early in CLI entry
+- `lexibrary.daemon.service` — currently uses `logging.basicConfig` directly; should migrate to `setup_logging`

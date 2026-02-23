@@ -6,18 +6,18 @@
 
 | Name | Signature | Purpose |
 | --- | --- | --- |
-| `LexibrarianEventHandler` | `FileSystemEventHandler` subclass | Filters and forwards events to debouncer |
-| `LexibrarianEventHandler.__init__` | `(debouncer: Debouncer, ignore_matcher: IgnoreMatcher)` | Wire debouncer and matcher |
-| `LexibrarianEventHandler.on_any_event` | `(event: FileSystemEvent) -> None` | Main filter: skip dirs, `.aindex*`, internal files, ignored paths |
+| `LexibraryEventHandler` | `FileSystemEventHandler` subclass | Filters and forwards events to debouncer |
+| `LexibraryEventHandler.__init__` | `(debouncer: Debouncer, ignore_matcher: IgnoreMatcher)` | Wire debouncer and matcher |
+| `LexibraryEventHandler.on_any_event` | `(event: FileSystemEvent) -> None` | Main filter: skip dirs, `.aindex*`, internal files, ignored paths |
 
 ## Dependencies
 
-- `lexibrarian.daemon.debouncer` — `Debouncer`
-- `lexibrarian.ignore.matcher` — `IgnoreMatcher`
+- `lexibrary.daemon.debouncer` — `Debouncer`
+- `lexibrary.ignore.matcher` — `IgnoreMatcher`
 
 ## Dependents
 
-- `lexibrarian.daemon.service` — instantiates and schedules handler on the observer
+- `lexibrary.daemon.service` — instantiates and schedules handler on the observer
 
 ## Key Concepts
 

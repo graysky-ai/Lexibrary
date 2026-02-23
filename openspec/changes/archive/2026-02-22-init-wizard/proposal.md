@@ -27,7 +27,7 @@
 ## Impact
 
 - **Phase dependency:** Requires Phase 8a (CLI Split) to be complete — `init` and `setup` must live on `lexictl`, not `lexi`.
-- **New files:** `src/lexibrarian/init/detection.py`, `src/lexibrarian/init/wizard.py`, `tests/test_init/test_detection.py`, `tests/test_init/test_wizard.py`
+- **New files:** `src/lexibrary/init/detection.py`, `src/lexibrary/init/wizard.py`, `tests/test_init/test_detection.py`, `tests/test_init/test_wizard.py`
 - **Modified files:** `config/schema.py`, `config/defaults.py`, `config/__init__.py`, `init/__init__.py`, `init/scaffolder.py`, `cli/lexictl_app.py` (post-8a path), `tests/test_config/test_schema.py`, `tests/test_init/test_scaffolder.py`, `tests/test_cli/test_lexictl.py`
 - **New dependencies:** None — uses `tomllib` (stdlib 3.11+), `rich.prompt` (already in rich dependency).
 - **Backward compatibility:** All new config fields have defaults; `extra="ignore"` ensures existing configs load without changes. `create_lexibrary_skeleton()` preserved unchanged.

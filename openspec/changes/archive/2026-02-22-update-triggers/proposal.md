@@ -13,7 +13,7 @@ The `DaemonService` is non-functional: it references retired APIs (`full_crawl()
 - **Add `lexictl setup --hooks`** to install a git post-commit hook that runs `lexictl update --changed-only` in the background.
 - **Add `lexictl sweep` command** (one-shot + `--watch` mode).
 - **Replace `lexictl daemon` stub** with a working (but deprecated) watchdog command.
-- **Add daemon-specific logging** with `RotatingFileHandler` to `.lexibrarian.log`.
+- **Add daemon-specific logging** with `RotatingFileHandler` to `.lexibrary.log`.
 - **Add per-directory `.aindex` write locks** for future concurrency safety.
 - **Remove `ignore_errors = true`** for `daemon.service` in pyproject.toml mypy overrides.
 
@@ -24,7 +24,7 @@ The `DaemonService` is non-functional: it references retired APIs (`full_crawl()
 - `conflict-detection`: Git merge conflict marker detection to skip files with unresolved conflicts
 - `design-hash-recheck`: Re-check `design_hash` after LLM generation before write, discarding output if agent edited during LLM call
 - `aindex-write-locks`: Per-directory write locks for `.aindex` serialisation (no-op under sequential MVP)
-- `daemon-logging`: Daemon-specific `RotatingFileHandler` setup for `.lexibrarian.log`
+- `daemon-logging`: Daemon-specific `RotatingFileHandler` setup for `.lexibrary.log`
 - `daemon-rewrite`: Complete rewrite of `DaemonService` with three modes: one-shot sweep, periodic watch, deprecated watchdog
 - `changed-only-pipeline`: `update_files()` batch function and `--changed-only` CLI flag for processing specific file lists
 - `git-hook-installation`: `lexictl setup --hooks` for installing git post-commit hook
@@ -44,7 +44,7 @@ The `DaemonService` is non-functional: it references retired APIs (`full_crawl()
 - **Daemon module** (`daemon/service.py`): Complete rewrite — new class interface
 - **CLI** (`cli/lexictl_app.py`): `update` gains `--changed-only`, `setup` gains `--hooks`, new `sweep` command, `daemon` stub replaced
 - **New modules**: `utils/atomic.py`, `utils/conflict.py`, `utils/locks.py`, `daemon/logging.py`, `hooks/__init__.py`, `hooks/post_commit.py`
-- **Init scaffolder** (`init/scaffolder.py`): Ensure `.lexibrarian.log` and `.lexibrarian.pid` in `.gitignore`
+- **Init scaffolder** (`init/scaffolder.py`): Ensure `.lexibrary.log` and `.lexibrary.pid` in `.gitignore`
 - **pyproject.toml**: Remove `ignore_errors = true` for `daemon.service`
 - **Blueprints**: Multiple existing blueprints need updating, new blueprints for new modules
 - **No new dependencies**: All functionality uses stdlib (`tempfile`, `os.replace`, `threading`, `logging.handlers`, `stat`)

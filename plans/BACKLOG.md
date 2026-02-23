@@ -70,9 +70,9 @@ Inline TODOs and code-level improvements.
 
 | Importance | Status | Item | Location |
 |------------|--------|------|----------|
-| medium | planned | Track stale LLM fallback summaries | `src/lexibrarian/crawler/engine.py:220` — Add a flag to detect files where we fell back to a cached summary so persistent LLM failures can be re-queued. |
-| low | proposed | Log or surface validator check failures | `src/lexibrarian/validator/__init__.py:134` — Individual check exceptions are silently swallowed. Could log them or surface as issues. |
-| low | proposed | v1 crawler rework | `src/lexibrarian/crawler/engine.py:19` — v1 indexer retired in Phase 1, crawler tagged for rework in a later phase. Decide if this is still relevant or should be removed entirely. |
+| medium | planned | Track stale LLM fallback summaries | `src/lexibrary/crawler/engine.py:220` — Add a flag to detect files where we fell back to a cached summary so persistent LLM failures can be re-queued. |
+| low | proposed | Log or surface validator check failures | `src/lexibrary/validator/__init__.py:134` — Individual check exceptions are silently swallowed. Could log them or surface as issues. |
+| low | proposed | v1 crawler rework | `src/lexibrary/crawler/engine.py:19` — v1 indexer retired in Phase 1, crawler tagged for rework in a later phase. Decide if this is still relevant or should be removed entirely. |
 
 ## Refactors
 
@@ -80,7 +80,7 @@ Larger structural changes.
 
 | Importance | Status | Item | Context |
 |------------|--------|------|---------|
-| high | planned | Rename `lexibrarian` → `lexibrary` | ~470 files across src/, tests/, blueprints/, openspec/, plans/, config. Full plan in `plans/rename-lexibrarian-to-lexibrary.md`. Daemon dotfiles: Option A chosen — move `.lexibrarian.log`/`.pid` into `.lexibrary/`. |
+| high | planned | Rename `lexibrary` → `lexibrary` | ~470 files across src/, tests/, blueprints/, openspec/, plans/, config. Full plan in `plans/rename-lexibrary-to-lexibrary.md`. Daemon dotfiles: Option A chosen — move `.lexibrary.log`/`.pid` into `.lexibrary/`. |
 
 ## Open Questions
 

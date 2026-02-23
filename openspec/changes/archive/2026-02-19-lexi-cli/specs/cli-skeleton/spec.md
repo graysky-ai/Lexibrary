@@ -32,7 +32,7 @@ The `lexi crawl` command SHALL accept a path argument (default ".") and options 
 
 #### Scenario: Crawl command has help text
 - **WHEN** running `lexi crawl --help`
-- **THEN** the help text says "Run the Lexibrarian crawler. Generates .aindex files for all directories."
+- **THEN** the help text says "Run the Lexibrary crawler. Generates .aindex files for all directories."
 
 #### Scenario: Crawl command accepts full flag
 - **WHEN** running `lexi crawl --full`
@@ -55,7 +55,7 @@ The `lexi daemon` command SHALL accept a path argument (default ".") and a `--fo
 
 #### Scenario: Daemon command has help text
 - **WHEN** running `lexi daemon --help`
-- **THEN** the help text says "Start the Lexibrarian background daemon for live re-indexing."
+- **THEN** the help text says "Start the Lexibrary background daemon for live re-indexing."
 
 #### Scenario: Daemon command accepts foreground flag
 - **WHEN** running `lexi daemon --foreground`

@@ -4,7 +4,7 @@
 TBD - created by archiving change archivist. Update Purpose after archive.
 ## Requirements
 ### Requirement: DesignFileFrontmatter model
-The system SHALL provide a `DesignFileFrontmatter` Pydantic 2 model in `src/lexibrarian/artifacts/design_file.py` with fields:
+The system SHALL provide a `DesignFileFrontmatter` Pydantic 2 model in `src/lexibrary/artifacts/design_file.py` with fields:
 - `description` (str) — single sentence summary of the source file
 - `updated_by` (Literal["archivist", "agent"]) — who last meaningfully updated the design file body, default "archivist"
 
@@ -17,7 +17,7 @@ The system SHALL provide a `DesignFileFrontmatter` Pydantic 2 model in `src/lexi
 - **THEN** both fields SHALL be stored correctly
 
 ### Requirement: Design file serializer
-The system SHALL provide a `serialize_design_file(data: DesignFile) -> str` function in `src/lexibrarian/artifacts/design_file_serializer.py` that produces a markdown string with:
+The system SHALL provide a `serialize_design_file(data: DesignFile) -> str` function in `src/lexibrary/artifacts/design_file_serializer.py` that produces a markdown string with:
 1. YAML frontmatter delimited by `---` containing `description` and `updated_by`
 2. H1 header with source file path relative to project root
 3. `## Interface Contract` section with fenced code block (language-tagged)
@@ -41,7 +41,7 @@ The `## Stack` section SHALL serialize each stack ref as `- [[ST-NNN]]` in a bul
 
 #### Scenario: Metadata footer format
 - **WHEN** `serialize_design_file()` is called
-- **THEN** the HTML comment footer SHALL use the format `<!-- lexibrarian:meta\nkey: value\n-->` with fields: source, source_hash, interface_hash, design_hash, generated, generator
+- **THEN** the HTML comment footer SHALL use the format `<!-- lexibrary:meta\nkey: value\n-->` with fields: source, source_hash, interface_hash, design_hash, generated, generator
 
 #### Scenario: Wikilinks serialized with brackets
 - **WHEN** `serialize_design_file()` is called with `wikilinks=["JWT Auth", "Rate Limiting"]`
@@ -56,7 +56,7 @@ The `## Stack` section SHALL serialize each stack ref as `- [[ST-NNN]]` in a bul
 - **THEN** the `## Stack` section SHALL contain `- [[ST-001]]` and `- [[ST-015]]`
 
 ### Requirement: Design file parser
-The system SHALL provide parsing functions in `src/lexibrarian/artifacts/design_file_parser.py`:
+The system SHALL provide parsing functions in `src/lexibrary/artifacts/design_file_parser.py`:
 - `parse_design_file(path: Path) -> DesignFile | None` — full parse, returns None if file doesn't exist or is malformed
 - `parse_design_file_metadata(path: Path) -> StalenessMetadata | None` — extracts only the HTML comment footer (cheap, reads from end of file)
 - `parse_design_file_frontmatter(path: Path) -> DesignFileFrontmatter | None` — extracts only the YAML frontmatter

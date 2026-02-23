@@ -8,4 +8,4 @@
 
 ## Dependents
 
-- `lexibrarian.daemon.service` — imports `create_llm_service`
+- `lexibrary.daemon.service` — imports `create_llm_service`

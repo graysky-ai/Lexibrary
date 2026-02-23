@@ -25,11 +25,11 @@ Phase 10 (Unified Link Graph) introduced a SQLite-backed index for reverse depen
 
 ## Impact
 
-- **`src/lexibrarian/artifacts/design_file_serializer.py`** — modified to emit annotation in `## Dependents` section
-- **`src/lexibrarian/artifacts/design_file_parser.py`** — may need update to strip/ignore the annotation when parsing
+- **`src/lexibrary/artifacts/design_file_serializer.py`** — modified to emit annotation in `## Dependents` section
+- **`src/lexibrary/artifacts/design_file_parser.py`** — may need update to strip/ignore the annotation when parsing
 - **`blueprints/`** — new files for `linkgraph/` modules; updated `START_HERE.md`
 - **`plans/v2-master-plan.md`** — sub-phase status updates
 - **`lexibrary-overview.md`** — consistency updates for link graph behaviour
-- **`.gitignore`** / **`src/lexibrarian/init/scaffolder.py`** — potential `index.db` pattern additions
+- **`.gitignore`** / **`src/lexibrary/init/scaffolder.py`** — potential `index.db` pattern additions
 - **No new dependencies** — Phase 10 uses only stdlib `sqlite3`
 - **No breaking changes** — existing design files with `## Dependents` content are preserved; the annotation is additive

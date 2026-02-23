@@ -17,10 +17,10 @@
 
 ## Dependencies
 
-- `lexibrarian.artifacts.concept` — `ConceptFile`
-- `lexibrarian.wiki.parser` — `parse_concept_file`
+- `lexibrary.artifacts.concept` — `ConceptFile`
+- `lexibrary.wiki.parser` — `parse_concept_file`
 
 ## Dependents
 
-- `lexibrarian.wiki.__init__` — re-exports
-- `lexibrarian.wiki.resolver` — `WikilinkResolver` queries the index
+- `lexibrary.wiki.__init__` — re-exports
+- `lexibrary.wiki.resolver` — `WikilinkResolver` queries the index

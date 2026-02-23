@@ -12,7 +12,7 @@
 
 ## Dependents
 
-- `lexibrarian.crawler.engine` — calls `detect_language(fp.name)` for each file summarization request
+- `lexibrary.crawler.engine` — calls `detect_language(fp.name)` for each file summarization request
 
 ## Key Concepts
 

@@ -2,7 +2,7 @@
 
 Phase 10a delivered the SQLite schema for the link graph (`schema.py` with 8 tables + FTS5, `ensure_schema()`, `check_schema_version()`, pragma setup). Phase 10b (builder) is proceeding in parallel to populate the database. This design covers Phase 10c: the read-only query interface that all downstream consumers (CLI commands, validators, pipeline status) will use to access the link graph.
 
-The existing schema module (`src/lexibrarian/linkgraph/schema.py`) provides:
+The existing schema module (`src/lexibrary/linkgraph/schema.py`) provides:
 - `set_pragmas()` — WAL mode, foreign keys, synchronous=NORMAL
 - `check_schema_version()` — returns `int | None`
 - `ensure_schema()` — DDL creation/migration
@@ -81,7 +81,7 @@ Every query method uses `?` parameter placeholders. No string interpolation or f
 
 ### D6: Module structure
 
-All code lives in a single file `src/lexibrarian/linkgraph/query.py`:
+All code lives in a single file `src/lexibrary/linkgraph/query.py`:
 - Result dataclasses at the top
 - `LinkGraph` class with `open()`, `close()`, `__enter__`/`__exit__`, and query methods
 - Private helper methods prefixed with `_`

@@ -11,11 +11,11 @@
 
 ## Dependencies
 
-- `lexibrarian.artifacts.design_file` — `StalenessMetadata`
+- `lexibrary.artifacts.design_file` — `StalenessMetadata`
 
 ## Dependents
 
-- `lexibrarian.artifacts.__init__` — re-exports both models
-- `lexibrarian.artifacts.aindex_parser` — parses markdown → `AIndexFile`
-- `lexibrarian.artifacts.aindex_serializer` — renders `AIndexFile` → markdown
-- `lexibrarian.indexer.generator` — produces `AIndexFile` instances
+- `lexibrary.artifacts.__init__` — re-exports both models
+- `lexibrary.artifacts.aindex_parser` — parses markdown → `AIndexFile`
+- `lexibrary.artifacts.aindex_serializer` — renders `AIndexFile` → markdown
+- `lexibrary.indexer.generator` — produces `AIndexFile` instances

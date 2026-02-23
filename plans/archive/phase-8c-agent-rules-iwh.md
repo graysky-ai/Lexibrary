@@ -14,7 +14,7 @@ Implement two systems and wire them together:
 2. **Agent environment rules** — generate environment-specific rule files, skills, and commands for Claude Code, Cursor, and Codex
 3. **HANDOFF.md removal** — remove all HANDOFF.md scaffolding per D-053
 
-After Phase 8c, running `lexictl init` (or `lexictl setup --update`) produces complete agent environment rules that instruct agents to use the library, check for `.iwh` signals, and follow the full Lexibrarian workflow.
+After Phase 8c, running `lexictl init` (or `lexictl setup --update`) produces complete agent environment rules that instruct agents to use the library, check for `.iwh` signals, and follow the full Lexibrary workflow.
 
 ---
 
@@ -47,7 +47,7 @@ After Phase 8c, running `lexictl init` (or `lexictl setup --update`) produces co
 
 ## 8c-1 — IWH Module
 
-### New module: `src/lexibrarian/iwh/`
+### New module: `src/lexibrary/iwh/`
 
 ```
 iwh/
@@ -154,7 +154,7 @@ Re-exports: `IWHFile`, `IWHScope`, `parse_iwh`, `serialize_iwh`, `read_iwh`, `co
 
 ### IWH path helper
 
-Add to `src/lexibrarian/utils/paths.py`:
+Add to `src/lexibrary/utils/paths.py`:
 
 ```python
 def iwh_path(project_root: Path, source_directory: Path) -> Path:
@@ -167,36 +167,36 @@ def iwh_path(project_root: Path, source_directory: Path) -> Path:
 
 ## 8c-2 — Agent Rule Templates
 
-### New module: `src/lexibrarian/init/rules/`
+### New module: `src/lexibrary/init/rules/`
 
 ```
 init/rules/
   __init__.py        # Public API: generate_rules(), supported_environments()
   base.py            # Shared rule content (instructions all environments use)
   claude.py          # Claude Code: CLAUDE.md section + .claude/commands/
-  cursor.py          # Cursor: .cursor/rules/lexibrarian.mdc + .cursor/skills/
+  cursor.py          # Cursor: .cursor/rules/lexibrary.mdc + .cursor/skills/
   codex.py           # Codex: AGENTS.md section
   markers.py         # Marker detection + section replacement
 ```
 
 ### `markers.py` — Section marker utilities
 
-Handles `<!-- lexibrarian:start -->` / `<!-- lexibrarian:end -->` markers for files where Lexibrarian appends a section (CLAUDE.md, AGENTS.md).
+Handles `<!-- lexibrary:start -->` / `<!-- lexibrary:end -->` markers for files where Lexibrary appends a section (CLAUDE.md, AGENTS.md).
 
 ```python
-MARKER_START = "<!-- lexibrarian:start -->"
-MARKER_END = "<!-- lexibrarian:end -->"
+MARKER_START = "<!-- lexibrary:start -->"
+MARKER_END = "<!-- lexibrary:end -->"
 
-def has_lexibrarian_section(content: str) -> bool: ...
-def replace_lexibrarian_section(content: str, new_section: str) -> str: ...
-def append_lexibrarian_section(content: str, new_section: str) -> str: ...
+def has_lexibrary_section(content: str) -> bool: ...
+def replace_lexibrary_section(content: str, new_section: str) -> str: ...
+def append_lexibrary_section(content: str, new_section: str) -> str: ...
 ```
 
 ### `base.py` — Shared rule content
 
 ```python
 def get_core_rules() -> str:
-    """Core Lexibrarian rules for all environments."""
+    """Core Lexibrary rules for all environments."""
 ```
 
 The rules instruct agents to:
@@ -224,7 +224,7 @@ def generate_claude_rules(project_root: Path) -> list[Path]:
     """Generate Claude Code environment files.
 
     Produces:
-    - CLAUDE.md — append/update Lexibrarian section (marker-delimited)
+    - CLAUDE.md — append/update Lexibrary section (marker-delimited)
     - .claude/commands/lexi-orient.md — orient command
     - .claude/commands/lexi-search.md — search command
     """
@@ -243,7 +243,7 @@ def generate_cursor_rules(project_root: Path) -> list[Path]:
     """Generate Cursor environment files.
 
     Produces:
-    - .cursor/rules/lexibrarian.mdc — MDC rules file
+    - .cursor/rules/lexibrary.mdc — MDC rules file
     - .cursor/skills/lexi.md — combined skills file
     """
 ```
@@ -251,7 +251,7 @@ def generate_cursor_rules(project_root: Path) -> list[Path]:
 MDC format has YAML frontmatter:
 ```yaml
 ---
-description: Lexibrarian codebase knowledge library rules
+description: Lexibrary codebase knowledge library rules
 globs:
 alwaysApply: true
 ---
@@ -264,7 +264,7 @@ def generate_codex_rules(project_root: Path) -> list[Path]:
     """Generate Codex environment files.
 
     Produces:
-    - AGENTS.md — append/update Lexibrarian section (marker-delimited)
+    - AGENTS.md — append/update Lexibrary section (marker-delimited)
     """
 ```
 
@@ -311,7 +311,7 @@ No additional implementation beyond 8c-2.
 Claude Code, Cursor, and Codex do not provide reliable pre-session hook infrastructure. Instead:
 - Rules instruct agents to read `START_HERE.md` and check `.iwh` at session start
 - The `/lexi-orient` skill automates this for Claude Code and Cursor
-- `CLAUDE.md` and `.cursor/rules/lexibrarian.mdc` with `alwaysApply: true` ensure rules are always loaded
+- `CLAUDE.md` and `.cursor/rules/lexibrary.mdc` with `alwaysApply: true` ensure rules are always loaded
 
 ### Pre-Edit Hook
 
@@ -321,7 +321,7 @@ Claude Code, Cursor, and Codex do not provide reliable pre-session hook infrastr
 
 ## 8c-5 — HANDOFF.md Removal
 
-### Changes to `src/lexibrarian/init/scaffolder.py`
+### Changes to `src/lexibrary/init/scaffolder.py`
 
 1. Remove `HANDOFF_PLACEHOLDER` constant
 2. Remove `base / "HANDOFF.md": HANDOFF_PLACEHOLDER` from `files` dict in `create_lexibrary_skeleton()`
@@ -333,21 +333,21 @@ START_HERE_PLACEHOLDER = """\
 
 This library has not been generated yet.
 
-Run `lexictl update` to crawl the project and generate the full Lexibrarian library.
+Run `lexictl update` to crawl the project and generate the full Lexibrary library.
 
 Check `.lexibrary/.iwh` for any I Was Here signals from previous agents.
 """
 ```
 
-### Changes to `src/lexibrarian/config/schema.py`
+### Changes to `src/lexibrary/config/schema.py`
 
 Remove `handoff_tokens` from `TokenBudgetConfig` (or keep for backward compat — `extra="ignore"` handles stale config files either way).
 
-### Changes to `src/lexibrarian/config/defaults.py`
+### Changes to `src/lexibrary/config/defaults.py`
 
 Remove `handoff_tokens` line from template.
 
-### Changes to `src/lexibrarian/ignore/` patterns
+### Changes to `src/lexibrary/ignore/` patterns
 
 Remove `.lexibrary/HANDOFF.md` from `IgnoreConfig.additional_patterns` default.
 
@@ -414,19 +414,19 @@ def setup(
 
 | File | Purpose |
 |------|---------|
-| `src/lexibrarian/iwh/__init__.py` | Public API re-exports |
-| `src/lexibrarian/iwh/model.py` | `IWHFile` Pydantic model |
-| `src/lexibrarian/iwh/parser.py` | Parse `.iwh` files |
-| `src/lexibrarian/iwh/serializer.py` | Serialize `IWHFile` to markdown |
-| `src/lexibrarian/iwh/reader.py` | Read + consume `.iwh` files |
-| `src/lexibrarian/iwh/writer.py` | Create `.iwh` files |
-| `src/lexibrarian/iwh/gitignore.py` | Gitignore integration |
-| `src/lexibrarian/init/rules/__init__.py` | `generate_rules()`, `supported_environments()` |
-| `src/lexibrarian/init/rules/base.py` | Shared rule content |
-| `src/lexibrarian/init/rules/claude.py` | Claude Code rules |
-| `src/lexibrarian/init/rules/cursor.py` | Cursor rules |
-| `src/lexibrarian/init/rules/codex.py` | Codex rules |
-| `src/lexibrarian/init/rules/markers.py` | Marker utilities |
+| `src/lexibrary/iwh/__init__.py` | Public API re-exports |
+| `src/lexibrary/iwh/model.py` | `IWHFile` Pydantic model |
+| `src/lexibrary/iwh/parser.py` | Parse `.iwh` files |
+| `src/lexibrary/iwh/serializer.py` | Serialize `IWHFile` to markdown |
+| `src/lexibrary/iwh/reader.py` | Read + consume `.iwh` files |
+| `src/lexibrary/iwh/writer.py` | Create `.iwh` files |
+| `src/lexibrary/iwh/gitignore.py` | Gitignore integration |
+| `src/lexibrary/init/rules/__init__.py` | `generate_rules()`, `supported_environments()` |
+| `src/lexibrary/init/rules/base.py` | Shared rule content |
+| `src/lexibrary/init/rules/claude.py` | Claude Code rules |
+| `src/lexibrary/init/rules/cursor.py` | Cursor rules |
+| `src/lexibrary/init/rules/codex.py` | Codex rules |
+| `src/lexibrary/init/rules/markers.py` | Marker utilities |
 | `tests/test_iwh/__init__.py` | Test package |
 | `tests/test_iwh/test_model.py` | IWH model tests |
 | `tests/test_iwh/test_parser.py` | Parser tests |
@@ -447,11 +447,11 @@ def setup(
 
 | File | Change |
 |------|--------|
-| `src/lexibrarian/init/scaffolder.py` | Remove HANDOFF.md; update START_HERE placeholder; add gitignore integration |
-| `src/lexibrarian/config/schema.py` | Remove `handoff_tokens` from `TokenBudgetConfig` |
-| `src/lexibrarian/config/defaults.py` | Remove `handoff_tokens`; add IWH section |
-| `src/lexibrarian/utils/paths.py` | Add `iwh_path()` helper |
-| `src/lexibrarian/cli/lexictl_app.py` | Replace `setup` stub with real implementation |
+| `src/lexibrary/init/scaffolder.py` | Remove HANDOFF.md; update START_HERE placeholder; add gitignore integration |
+| `src/lexibrary/config/schema.py` | Remove `handoff_tokens` from `TokenBudgetConfig` |
+| `src/lexibrary/config/defaults.py` | Remove `handoff_tokens`; add IWH section |
+| `src/lexibrary/utils/paths.py` | Add `iwh_path()` helper |
+| `src/lexibrary/cli/lexictl_app.py` | Replace `setup` stub with real implementation |
 | `tests/test_init/test_scaffolder.py` | Update: no HANDOFF.md; verify gitignore |
 | `tests/test_config/test_schema.py` | Update for removed `handoff_tokens` |
 | `tests/test_cli/test_lexictl.py` | Add `setup` command tests |

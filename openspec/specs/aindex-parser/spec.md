@@ -4,7 +4,7 @@
 TBD - created by archiving change directory-indexes. Update Purpose after archive.
 ## Requirements
 ### Requirement: Parse v2 .aindex file into AIndexFile model
-The system SHALL provide a `parse_aindex(path: Path) -> AIndexFile | None` function in `src/lexibrarian/artifacts/aindex_parser.py` that reads a `.aindex` file and returns an `AIndexFile` Pydantic model.
+The system SHALL provide a `parse_aindex(path: Path) -> AIndexFile | None` function in `src/lexibrary/artifacts/aindex_parser.py` that reads a `.aindex` file and returns an `AIndexFile` Pydantic model.
 
 The parser SHALL:
 - Extract the `directory_path` from the H1 heading (strip trailing `/`)
@@ -36,11 +36,11 @@ The parser SHALL:
 - **THEN** the returned model's `local_conventions` SHALL contain those items as plain strings (without bullet prefix)
 
 #### Scenario: Parse extracts metadata footer
-- **WHEN** `parse_aindex()` is called with a file containing a `<!-- lexibrarian:meta ... -->` footer
+- **WHEN** `parse_aindex()` is called with a file containing a `<!-- lexibrary:meta ... -->` footer
 - **THEN** the returned model's `metadata` SHALL have the correct `source`, `source_hash`, `generated`, and `generator` fields
 
 ### Requirement: Parse metadata-only from .aindex file
-The system SHALL provide a `parse_aindex_metadata(path: Path) -> StalenessMetadata | None` function in `src/lexibrarian/artifacts/aindex_parser.py` that reads only the HTML comment metadata footer from a `.aindex` file.
+The system SHALL provide a `parse_aindex_metadata(path: Path) -> StalenessMetadata | None` function in `src/lexibrary/artifacts/aindex_parser.py` that reads only the HTML comment metadata footer from a `.aindex` file.
 
 The function SHALL be cheaper than `parse_aindex()` — it reads only as much of the file as needed to extract the footer, avoiding full parsing of the table and sections.
 

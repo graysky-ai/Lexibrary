@@ -14,7 +14,7 @@
 
 ## Dependents
 
-- `lexibrarian.tokenizer.factory` — selected when `config.backend == "anthropic_api"`
+- `lexibrary.tokenizer.factory` — selected when `config.backend == "anthropic_api"`
 
 ## Dragons
 

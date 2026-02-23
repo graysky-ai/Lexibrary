@@ -8,6 +8,6 @@
 
 ## Dependents
 
-- `lexibrarian.cli` -- `stack_*` commands import individual submodules directly (lazy imports)
-- `lexibrarian.search` -- imports `StackIndex` from `stack.index`
-- `lexibrarian.wiki.resolver` -- resolves `ST-NNN` wikilinks against stack directory
+- `lexibrary.cli` -- `stack_*` commands import individual submodules directly (lazy imports)
+- `lexibrary.search` -- imports `StackIndex` from `stack.index`
+- `lexibrary.wiki.resolver` -- resolves `ST-NNN` wikilinks against stack directory

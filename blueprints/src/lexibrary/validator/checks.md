@@ -45,17 +45,17 @@
 
 ## Dependencies
 
-- `lexibrarian.artifacts.design_file_parser` -- `parse_design_file`, `parse_design_file_metadata`
-- `lexibrarian.config.loader` -- `load_config` (for token budgets and scope_root)
-- `lexibrarian.linkgraph.schema` -- `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas` (for link-graph checks)
-- `lexibrarian.stack.parser` -- `parse_stack_post`
-- `lexibrarian.tokenizer.approximate` -- `ApproximateCounter`
-- `lexibrarian.utils.hashing` -- `hash_file`
-- `lexibrarian.utils.paths` -- `aindex_path`
-- `lexibrarian.validator.report` -- `ValidationIssue`
-- `lexibrarian.wiki.index` -- `ConceptIndex`
-- `lexibrarian.wiki.resolver` -- `WikilinkResolver`, `UnresolvedLink`
+- `lexibrary.artifacts.design_file_parser` -- `parse_design_file`, `parse_design_file_metadata`
+- `lexibrary.config.loader` -- `load_config` (for token budgets and scope_root)
+- `lexibrary.linkgraph.schema` -- `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas` (for link-graph checks)
+- `lexibrary.stack.parser` -- `parse_stack_post`
+- `lexibrary.tokenizer.approximate` -- `ApproximateCounter`
+- `lexibrary.utils.hashing` -- `hash_file`
+- `lexibrary.utils.paths` -- `aindex_path`
+- `lexibrary.validator.report` -- `ValidationIssue`
+- `lexibrary.wiki.index` -- `ConceptIndex`
+- `lexibrary.wiki.resolver` -- `WikilinkResolver`, `UnresolvedLink`
 
 ## Dependents
 
-- `lexibrarian.validator.__init__` -- imports all check functions into `AVAILABLE_CHECKS` registry
+- `lexibrary.validator.__init__` -- imports all check functions into `AVAILABLE_CHECKS` registry

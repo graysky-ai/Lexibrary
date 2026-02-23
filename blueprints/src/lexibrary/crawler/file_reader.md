@@ -12,7 +12,7 @@
 
 ## Dependents
 
-- `lexibrarian.crawler.engine` — calls `read_file_for_indexing`
+- `lexibrary.crawler.engine` — calls `read_file_for_indexing`
 
 ## Key Concepts
 
