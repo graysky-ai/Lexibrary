@@ -212,10 +212,10 @@ git commit -m "Update documentation: Lexibrary → Lexibrary"
 
 ### Phase 3: Remaining file renames
 
-- [ ] `mv Lexibrary.code-workspace Lexibrary.code-workspace`
-- [ ] Regenerate BAML client: `uv run baml generate` (updates `inlinedbaml.py`)
-- [ ] Run tests one final time
-- [ ] Commit
+- [x] `mv Lexibrary.code-workspace Lexibrary.code-workspace` (already done in Phase 1)
+- [x] Regenerate BAML client: `uv run baml generate` (updates `inlinedbaml.py`) -- no changes needed, already up to date
+- [x] Run tests one final time (1853 passed, ruff clean, mypy clean)
+- [x] Commit (no new changes to commit -- all Phase 3 items were already handled)
 
 ### Phase 4: Merge
 
