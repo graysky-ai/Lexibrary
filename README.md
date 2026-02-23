@@ -1,10 +1,10 @@
-# Lexibrarian
+# Lexibrary
 
 AI-friendly codebase indexer for creating `.aindex` files
 
 ## Overview
 
-Lexibrarian automatically crawls your codebase and generates `.aindex` files - AI-friendly summaries that help language models understand your code structure and navigate context more effectively.
+Lexibrary automatically crawls your codebase and generates `.aindex` files - AI-friendly summaries that help language models understand your code structure and navigate context more effectively.
 
 ## Installation
 
@@ -16,7 +16,7 @@ uv sync --dev
 
 ```bash
 # Initialize a project
-lexi init
+lexictl init
 
 # Crawl and index a codebase
 lexi crawl
@@ -33,9 +33,9 @@ lexi clean
 
 ## Configuration
 
-Lexibrarian is configured through two layers:
+Lexibrary is configured through two layers:
 
-1. **`lexibrary.toml`** — project-level config (created by `lexi init`)
+1. **`lexibrary.toml`** — project-level config (created by `lexictl init`)
 2. **`.env`** — local environment overrides (gitignored)
 
 Copy the template to get started:

@@ -18,6 +18,7 @@
 ## Dependencies
 
 - `lexibrary.cli._shared` -- `console`, `require_project_root`
+- `lexibrary.cli.banner` -- `render_banner` (lazy import in `init`)
 - `lexibrary.init.wizard` -- `run_wizard` (lazy import in `init`)
 - `lexibrary.init.scaffolder` -- `create_lexibrary_from_wizard` (lazy import in `init`)
 - `lexibrary.archivist.pipeline` -- `UpdateStats`, `update_file`, `update_files`, `update_project` (lazy import in `update`)
@@ -41,6 +42,7 @@
 
 ## Key Concepts
 
+- `init` displays a startup banner (truecolor block art or ASCII fallback) via `render_banner()` before running the wizard
 - `init` uses `run_wizard()` + `create_lexibrary_from_wizard()` instead of the old `create_lexibrary_skeleton()`
 - `init` does not call `require_project_root()` -- it creates the project root (uses `Path.cwd()` instead)
 - `init` has a re-init guard (checks for existing `.lexibrary/`) and a non-TTY guard (requires `--defaults`)

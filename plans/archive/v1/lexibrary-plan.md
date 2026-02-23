@@ -349,7 +349,7 @@ Both `lexibrary` and `lexi` work as CLI entry points (registered in `pyproject.t
 
 | Command | Description |
 |---------|-------------|
-| `lexi init [path]` | Create `lexibrary.toml`, add `.aindex` to `.gitignore` |
+| `lexictl init [path]` | Create `lexibrary.toml`, add `.aindex` to `.gitignore` |
 | `lexi crawl [path] [--full] [--dry-run] [-v]` | Run full/incremental crawl with rich progress |
 | `lexi daemon [path] [--foreground]` | Start background watcher + periodic sweep |
 | `lexi status [path]` | Show index stats, stale files, daemon status |
@@ -401,7 +401,7 @@ Error hardening, logging, README, tests with coverage targets.
 
 ## Verification
 
-1. `uv run lexi init` → creates `lexibrary.toml`
+1. `uv run lexictl init` → creates `lexibrary.toml`
 2. `uv run lexi crawl --dry-run` → shows what would be indexed
 3. `uv run lexi crawl` on a small test project → `.aindex` files appear in every directory
 4. Modify a file → `uv run lexi crawl` → only changed file re-summarized (check logs)

@@ -8,6 +8,8 @@ from typing import Annotated
 import typer
 
 from lexibrary.cli._shared import console, require_project_root
+from lexibrary.exceptions import LexibraryNotFoundError
+from lexibrary.utils.root import find_project_root
 
 lexi_app = typer.Typer(
     name="lexi",
@@ -93,10 +95,19 @@ def lookup(
     from lexibrary.config.loader import load_config  # noqa: PLC0415
     from lexibrary.utils.paths import mirror_path  # noqa: PLC0415
 
-    project_root = require_project_root()
-    config = load_config(project_root)
-
     target = Path(file).resolve()
+
+    # Find project root starting from the file's directory (walks upward)
+    try:
+        project_root = find_project_root(start=target.parent)
+    except LexibraryNotFoundError:
+        console.print(
+            "[red]No .lexibrary/ directory found.[/red]"
+            " Run [cyan]lexictl init[/cyan] to create one."
+        )
+        raise typer.Exit(1) from None
+
+    config = load_config(project_root)
 
     # Check scope: file must be under scope_root
     scope_abs = (project_root / config.scope_root).resolve()
@@ -232,9 +243,7 @@ def index(
     from lexibrary.config.loader import load_config  # noqa: PLC0415
     from lexibrary.indexer.orchestrator import index_directory, index_recursive  # noqa: PLC0415
 
-    project_root = require_project_root()
-
-    # Resolve directory relative to cwd
+    # Resolve directory relative to cwd first, then find project root from there
     target = Path(directory).resolve()
 
     # Validate directory exists
@@ -246,13 +255,13 @@ def index(
         console.print(f"[red]Not a directory:[/red] {directory}")
         raise typer.Exit(1)
 
-    # Validate directory is within project root
+    # Find project root starting from the target directory (walks upward)
     try:
-        target.relative_to(project_root)
-    except ValueError:
+        project_root = find_project_root(start=target)
+    except LexibraryNotFoundError:
         console.print(
-            f"[red]Directory is outside the project root:[/red] {directory}\n"
-            f"Project root: {project_root}"
+            "[red]No .lexibrary/ directory found.[/red]"
+            " Run [cyan]lexictl init[/cyan] to create one."
         )
         raise typer.Exit(1) from None
 
@@ -893,8 +902,6 @@ def describe(
     from lexibrary.artifacts.aindex_serializer import serialize_aindex  # noqa: PLC0415
     from lexibrary.utils.paths import aindex_path  # noqa: PLC0415
 
-    project_root = require_project_root()
-
     target = Path(directory).resolve()
 
     # Validate directory exists
@@ -906,13 +913,13 @@ def describe(
         console.print(f"[red]Not a directory:[/red] {directory}")
         raise typer.Exit(1)
 
-    # Validate directory is within project root
+    # Find project root starting from the target directory (walks upward)
     try:
-        target.relative_to(project_root)
-    except ValueError:
+        project_root = find_project_root(start=target)
+    except LexibraryNotFoundError:
         console.print(
-            f"[red]Directory is outside the project root:[/red] {directory}\n"
-            f"Project root: {project_root}"
+            "[red]No .lexibrary/ directory found.[/red]"
+            " Run [cyan]lexictl init[/cyan] to create one."
         )
         raise typer.Exit(1) from None
 

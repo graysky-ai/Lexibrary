@@ -59,6 +59,11 @@ def init(
         )
         raise typer.Exit(1)
 
+    # Show startup banner
+    from lexibrary.cli.banner import render_banner  # noqa: PLC0415
+
+    render_banner(console)
+
     # Run wizard
     answers = run_wizard(project_root, console, use_defaults=defaults)
 

@@ -23,7 +23,7 @@ from lexibrary.iwh.gitignore import IWH_GITIGNORE_PATTERN
 
 
 def test_creates_stack_directory(tmp_path: Path) -> None:
-    """lexi init creates .lexibrary/stack/ directory."""
+    """lexictl init creates .lexibrary/stack/ directory."""
     create_lexibrary_skeleton(tmp_path)
 
     stack_dir = tmp_path / ".lexibrary" / "stack"
@@ -32,7 +32,7 @@ def test_creates_stack_directory(tmp_path: Path) -> None:
 
 
 def test_does_not_create_guardrails_directory(tmp_path: Path) -> None:
-    """lexi init does NOT create .lexibrary/guardrails/ directory."""
+    """lexictl init does NOT create .lexibrary/guardrails/ directory."""
     create_lexibrary_skeleton(tmp_path)
 
     guardrails_dir = tmp_path / ".lexibrary" / "guardrails"
@@ -40,7 +40,7 @@ def test_does_not_create_guardrails_directory(tmp_path: Path) -> None:
 
 
 def test_creates_full_skeleton(tmp_path: Path) -> None:
-    """lexi init creates the complete .lexibrary/ skeleton with expected dirs."""
+    """lexictl init creates the complete .lexibrary/ skeleton with expected dirs."""
     created = create_lexibrary_skeleton(tmp_path)
 
     base = tmp_path / ".lexibrary"

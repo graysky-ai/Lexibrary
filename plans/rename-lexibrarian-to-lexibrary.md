@@ -219,25 +219,25 @@ git commit -m "Update documentation: Lexibrary → Lexibrary"
 
 ### Phase 4: Merge
 
-- [ ] Final full test suite: `uv run pytest --cov=lexibrary`
-- [ ] Lint + type check pass
-- [ ] `git checkout main && git merge rename/lexibrary-to-lexibrary`
+- [x] Final full test suite: `uv run pytest --cov=lexibrary` (1853 passed, 85% coverage)
+- [x] Lint + type check pass (ruff clean, mypy clean -- 125 source files)
+- [ ] `git checkout main && git merge rename/lexibrary-to-lexibrary` (ready -- fast-forward merge, no conflicts)
 - [ ] Delete branch
 
 ---
 
 ## Verification checklist (post-merge)
 
-- [ ] `uv run lexi --help` works
-- [ ] `uv run lexictl --help` works
-- [ ] `uv run pytest --cov=lexibrary` all green
-- [ ] `uv run ruff check src/ tests/` clean
-- [ ] `uv run mypy src/` clean
-- [ ] `grep -ri "lexibrary" src/ tests/ pyproject.toml CLAUDE.md .gitignore` returns nothing
-- [ ] `grep -ri "lexibrary" blueprints/ openspec/ plans/` returns nothing
+- [x] `uv run lexi --help` works
+- [x] `uv run lexictl --help` works
+- [x] `uv run pytest --cov=lexibrary` all green (1853 passed)
+- [x] `uv run ruff check src/ tests/` clean
+- [x] `uv run mypy src/` clean
+- [x] `grep -rI "lexibrarian" src/ tests/ pyproject.toml CLAUDE.md .gitignore` returns nothing
+- [x] `grep -ri "lexibrarian" blueprints/ openspec/ plans/` returns nothing
   (except this plan file and any deliberate historical references)
-- [ ] `uv run lexi init` in a temp directory creates `.lexibrary/` correctly
-- [ ] Blueprint paths match source paths (`blueprints/src/lexibrary/` mirrors `src/lexibrary/`)
+- [x] `uv run lexictl init --defaults` in a temp directory creates `.lexibrary/` correctly
+- [x] Blueprint paths match source paths (`blueprints/src/lexibrary/` mirrors `src/lexibrary/`)
 
 ---
 
