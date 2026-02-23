@@ -82,6 +82,7 @@ class LLMConfig(BaseModel):
     provider: str = "anthropic"
     model: str = "claude-sonnet-4-6"
     api_key_env: str = "ANTHROPIC_API_KEY"
+    api_key_source: str = "env"
     max_retries: int = 3
     timeout: int = 60
 
@@ -123,6 +124,9 @@ class IgnoreConfig(BaseModel):
             ".venv/",
             "venv/",
             "*.lock",
+            ".env",
+            ".env.*",
+            "*.env",
         ]
     )
 

@@ -60,6 +60,14 @@ _AGENT_RULES_FILES: dict[str, list[str]] = {
     "codex": ["AGENTS.md"],
 }
 
+# Directories that each environment's rule generator will create.
+# Used by the wizard to warn the user when base directories are missing.
+_AGENT_REQUIRED_DIRS: dict[str, list[str]] = {
+    "claude": [".claude/", ".claude/commands/"],
+    "cursor": [".cursor/", ".cursor/rules/", ".cursor/skills/"],
+    "codex": [],  # codex only writes AGENTS.md at root
+}
+
 # ---------------------------------------------------------------------------
 # Ignore pattern suggestions per project type
 # ---------------------------------------------------------------------------
@@ -149,6 +157,27 @@ def check_existing_agent_rules(
             except Exception:  # noqa: BLE001
                 pass
     return None
+
+
+def check_missing_agent_dirs(
+    project_root: Path,
+    environments: list[str],
+) -> dict[str, list[str]]:
+    """Check which agent environments have missing base directories.
+
+    Returns a mapping of environment name to list of missing directory paths
+    (relative to *project_root*).  Environments with no missing directories
+    are omitted from the result.
+    """
+    missing: dict[str, list[str]] = {}
+    for env in environments:
+        dirs = _AGENT_REQUIRED_DIRS.get(env, [])
+        env_missing = [
+            d for d in dirs if not (project_root / d.rstrip("/")).is_dir()
+        ]
+        if env_missing:
+            missing[env] = env_missing
+    return missing
 
 
 def detect_llm_providers() -> list[DetectedLLMProvider]:

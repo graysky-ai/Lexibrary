@@ -10,12 +10,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from dotenv import set_key
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from lexibrary.init.detection import (
     check_existing_agent_rules,
+    check_missing_agent_dirs,
     detect_agent_environments,
     detect_llm_providers,
     detect_project_name,
@@ -42,6 +44,8 @@ class WizardAnswers:
     llm_provider: str = "anthropic"
     llm_model: str = "claude-sonnet-4-6"
     llm_api_key_env: str = "ANTHROPIC_API_KEY"
+    llm_api_key_source: str = "env"
+    llm_api_key_value: str = ""
     ignore_patterns: list[str] = field(default_factory=list)
     token_budgets_customized: bool = False
     token_budgets: dict[str, int] = field(default_factory=dict)
@@ -144,34 +148,65 @@ def _step_agent_environment(
 
     if use_defaults:
         console.print(f"  Using: {detected_envs}")
-        return detected_envs
+        selected = detected_envs
+    else:
+        default_str = ", ".join(detected_envs) if detected_envs else ""
+        raw = Prompt.ask(
+            "  Agent environments (comma-separated, e.g. claude, cursor)",
+            default=default_str,
+            console=console,
+        )
 
-    default_str = ", ".join(detected_envs) if detected_envs else ""
-    raw = Prompt.ask(
-        "  Agent environments (comma-separated, e.g. claude, cursor)",
-        default=default_str,
-        console=console,
-    )
+        if not raw.strip():
+            return []
+        selected = [e.strip() for e in raw.split(",") if e.strip()]
 
-    if not raw.strip():
+    if not selected:
         return []
-    return [e.strip() for e in raw.split(",") if e.strip()]
+
+    # Check for missing directories and prompt to create them
+    missing = check_missing_agent_dirs(project_root, selected)
+    if missing:
+        console.print("\n  [yellow]The following directories do not exist yet:[/yellow]")
+        for env_name, dirs in missing.items():
+            for d in dirs:
+                console.print(f"    [dim]{d}[/dim]  ({env_name})")
+
+        if use_defaults:
+            console.print("  Will create during setup.")
+        else:
+            create = Confirm.ask(
+                "  Create these directories and generate agent rules?",
+                default=True,
+                console=console,
+            )
+            if not create:
+                # Remove environments whose directories the user declined to create
+                selected = [e for e in selected if e not in missing]
+                if selected:
+                    console.print(f"  Continuing with: {selected}")
+                else:
+                    console.print("  [dim]No agent environments selected.[/dim]")
+
+    return selected
 
 
 def _step_llm_provider(
+    project_root: Path,
     console: Console,
     *,
     use_defaults: bool,
-) -> tuple[str, str, str]:
-    """Step 4: Detect and select LLM provider.
+) -> tuple[str, str, str, str, str]:
+    """Step 4: Detect and select LLM provider and API key storage method.
 
-    Returns ``(provider, model, api_key_env)``.
+    Returns ``(provider, model, api_key_env, api_key_source, api_key_value)``.
     """
     providers = detect_llm_providers()
 
     console.print("\n[bold]Step 4/8: LLM Provider[/bold]")
     console.print("  [dim]We never store, log, or transmit your API key.[/dim]")
 
+    # --- Provider selection ---
     if providers:
         primary = providers[0]
         console.print(
@@ -183,7 +218,8 @@ def _step_llm_provider(
 
         if use_defaults:
             console.print(f"  Using: {primary.provider}")
-            return primary.provider, primary.model, primary.api_key_env
+            console.print("  API key storage: env")
+            return primary.provider, primary.model, primary.api_key_env, "env", ""
 
         choices = [p.provider for p in providers]
         choice = Prompt.ask(
@@ -193,17 +229,70 @@ def _step_llm_provider(
             console=console,
         )
         selected = next(p for p in providers if p.provider == choice)
-        return selected.provider, selected.model, selected.api_key_env
+        provider, model, api_key_env = selected.provider, selected.model, selected.api_key_env
     else:
         console.print(
             "  [yellow]No LLM provider API keys detected.[/yellow]"
             "\n  Set one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OLLAMA_HOST"
             "\n  Defaulting to anthropic."
         )
-        if use_defaults:
-            return "anthropic", "claude-sonnet-4-6", "ANTHROPIC_API_KEY"
+        provider, model, api_key_env = "anthropic", "claude-sonnet-4-6", "ANTHROPIC_API_KEY"
 
-        return "anthropic", "claude-sonnet-4-6", "ANTHROPIC_API_KEY"
+        if use_defaults:
+            console.print("  API key storage: env")
+            return provider, model, api_key_env, "env", ""
+
+    # --- Storage-method sub-step ---
+    console.print(
+        "\n  [bold]API Key Storage[/bold]"
+        "\n    env    - Already set in shell environment"
+        "\n    dotenv - Store in .env file at project root"
+        "\n    manual - You will manage the key yourself"
+    )
+    source = Prompt.ask(
+        "  Storage method",
+        choices=["env", "dotenv", "manual"],
+        default="env",
+        console=console,
+    )
+
+    api_key_value = ""
+    if source == "dotenv":
+        api_key_value = Prompt.ask(
+            f"  Enter your API key ({api_key_env})",
+            password=True,
+            console=console,
+        )
+        _write_dotenv_key(project_root, api_key_env, api_key_value, console)
+
+    return provider, model, api_key_env, source, api_key_value
+
+
+def _write_dotenv_key(
+    project_root: Path,
+    key_name: str,
+    key_value: str,
+    console: Console,
+) -> None:
+    """Write an API key to ``.env`` and ensure ``.env`` is gitignored."""
+    dotenv_path = project_root / ".env"
+    set_key(str(dotenv_path), key_name, key_value)
+    console.print(f"  [green]Wrote {key_name} to {dotenv_path}[/green]")
+
+    # Ensure .env is in .gitignore
+    gitignore_path = project_root / ".gitignore"
+    if gitignore_path.exists():
+        content = gitignore_path.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        if ".env" not in lines:
+            with gitignore_path.open("a", encoding="utf-8") as fh:
+                if content and not content.endswith("\n"):
+                    fh.write("\n")
+                fh.write(".env\n")
+            console.print("  [green]Added .env to .gitignore[/green]")
+    else:
+        gitignore_path.write_text(".env\n", encoding="utf-8")
+        console.print("  [green]Created .gitignore with .env entry[/green]")
 
 
 def _step_ignore_patterns(
@@ -336,6 +425,18 @@ def _step_summary(
     table.add_row("LLM provider", answers.llm_provider)
     table.add_row("LLM model", answers.llm_model)
     table.add_row("API key env var", answers.llm_api_key_env)
+
+    # Show storage mode label — never the raw key value
+    _source_labels = {
+        "env": "[from environment]",
+        "dotenv": "[stored in .env]",
+        "manual": "[manual]",
+    }
+    table.add_row(
+        "API key storage",
+        _source_labels.get(answers.llm_api_key_source, answers.llm_api_key_source),
+    )
+
     table.add_row("Ignore patterns", ", ".join(answers.ignore_patterns) or "(none)")
     table.add_row(
         "Token budgets",
@@ -392,11 +493,15 @@ def run_wizard(
         project_root, console, use_defaults=use_defaults
     )
 
-    # Step 4: LLM provider
-    provider, model, api_key_env = _step_llm_provider(console, use_defaults=use_defaults)
+    # Step 4: LLM provider + API key storage
+    provider, model, api_key_env, api_key_source, api_key_value = _step_llm_provider(
+        project_root, console, use_defaults=use_defaults
+    )
     answers.llm_provider = provider
     answers.llm_model = model
     answers.llm_api_key_env = api_key_env
+    answers.llm_api_key_source = api_key_source
+    answers.llm_api_key_value = api_key_value
 
     # Step 5: Ignore patterns
     answers.ignore_patterns = _step_ignore_patterns(

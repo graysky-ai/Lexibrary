@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 
-from lexibrary.cli._shared import console, require_project_root
+from lexibrary.cli._shared import console, load_dotenv_if_configured, require_project_root
 
 lexictl_app = typer.Typer(
     name="lexictl",
@@ -16,6 +16,7 @@ lexictl_app = typer.Typer(
         "Provides setup, design file generation, and validation for library management."
     ),
     no_args_is_help=True,
+    callback=load_dotenv_if_configured,
 )
 
 
@@ -74,6 +75,22 @@ def init(
     # Create skeleton from wizard answers
     created = create_lexibrary_from_wizard(project_root, answers)
     console.print(f"[green]Created .lexibrary/ skeleton[/green] ({len(created)} items)")
+
+    # Generate agent rule files for selected environments
+    if answers.agent_environments:
+        from lexibrary.init.rules import generate_rules, supported_environments  # noqa: PLC0415
+
+        # Filter to only supported environments (user may have typed an unsupported name)
+        supported = supported_environments()
+        valid_envs = [e for e in answers.agent_environments if e in supported]
+        if valid_envs:
+            results = generate_rules(project_root, valid_envs)
+            for env_name, paths in results.items():
+                console.print(f"  [green]{env_name}:[/green] {len(paths)} rule file(s) created")
+                for p in paths:
+                    rel = p.relative_to(project_root)
+                    console.print(f"    [dim]{rel}[/dim]")
+
     console.print("[dim]Run [cyan]lexictl update[/cyan] to generate design files.[/dim]")
 
 

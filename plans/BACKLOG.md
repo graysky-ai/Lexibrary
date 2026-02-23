@@ -61,6 +61,7 @@ Design-described capabilities that aren't delivered yet.
 | high | proposed | Multi-repo support | Index and navigate across multiple related repositories. Needs design for cross-repo linking, shared concepts, and config inheritance. |
 | high | proposed | Additional language parsers | Expand `ast_parser/` beyond Python/TypeScript/JavaScript. Priority languages: Go, Rust, Java, C/C++, Ruby, C#. Each needs a tree-sitter parser + `extract_interface()` impl. |
 | medium | proposed | Additional agent environments | Expand `init/rules/` beyond Claude/Cursor/Codex. Candidates: Windsurf, Copilot, Aider, and others as the ecosystem evolves. |
+| medium | proposed | Expanded agent environment setup (hooks, settings, MCP) | Beyond rule files, `lexictl init`/`setup` should scaffold additional agent environment artefacts: hooks (`.claude/hooks/`), settings files (`.claude/settings.json`, `.cursor/settings.json`), MCP server configs, and other environment-specific configuration. Build on the directory-creation prompt added in the init bug fix. |
 | medium | proposed | Custom/pluggable parsers | Let users register their own language parsers via config or plugin directory, for languages not built-in. |
 | low | proposed | Template customization | Let users override design file, concept, and stack post templates in `.lexibrary/templates/` or config. |
 | low | suggestion | `start_here.topology_format` config | Overview §1 says topology format is "configurable" (Mermaid vs ASCII). No config key exists. See overview Q-009. Phase 8b. |
@@ -71,6 +72,7 @@ Potential config improvements — none committed.
 
 | Importance | Status | Item | Rationale |
 |------------|--------|------|-----------|
+| medium | proposed | System keychain API key storage | Allow users to store API keys in macOS Keychain / Linux Secret Service / Windows Credential Store via the `keyring` library. Add `api_key_source: "env" \| "dotenv" \| "keychain"` config field and a `lexictl setup --store-key` command to prompt-and-persist the key securely. Builds on the `.env` wizard multi-choice (see operator-docs on API key management). Requires `keyring` as an optional dep and cross-platform testing. |
 | medium | suggestion | `llm.archivist_model` | Use a cheaper/faster model for design file generation vs START_HERE. Archivist does repetitive work on many files; a cheaper model may suffice. |
 | medium | suggestion | `crawl.max_files` | Hard limit on files per `lexictl update` run. Safety valve for enormous projects where accidental full updates are expensive. |
 | low | suggestion | `validate.disabled_checks` | Persist disabled checks in project config (suppress `orphan_concepts` during early setup). Currently CLI-only via `--check` / `--severity`. |
@@ -81,7 +83,7 @@ Potential config improvements — none committed.
 
 | Importance | Status | Item | Context |
 |------------|--------|------|---------|
-| high | proposed | `lexictl init` — selecting an agent env in an uninitialised project silently does nothing | If the project doesn't have `.claude/` (or equivalent) yet, init should offer to create it or show a clear error. Same behaviour needed for Cursor. |
+| high | resolved | `lexictl init` — selecting an agent env in an uninitialised project silently does nothing | Fixed: wizard now detects missing directories, prompts to create them, and `init` calls `generate_rules()` to create agent rule files. |
 | medium | planned | Remove legacy `conventions` section from `.aindex` files | The `conventions` section is no longer used and should be stripped from generated `.aindex` output. |
 
 ## Tech Debt

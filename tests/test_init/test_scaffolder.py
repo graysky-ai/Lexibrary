@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from lexibrary.init.scaffolder import (
+    _DEFAULT_LEXIGNORE_PATTERNS,
     LEXIGNORE_HEADER,
     START_HERE_PLACEHOLDER,
     _generate_config_yaml,
@@ -165,15 +166,57 @@ def test_generate_lexignore_with_patterns() -> None:
 
 
 def test_generate_lexignore_empty_patterns() -> None:
-    """Lexignore with empty patterns returns only the header."""
+    """Lexignore with empty patterns includes header and default .env patterns."""
     result = _generate_lexignore([])
-    assert result == LEXIGNORE_HEADER
+    assert result.startswith(LEXIGNORE_HEADER)
+    for pattern in _DEFAULT_LEXIGNORE_PATTERNS:
+        assert pattern in result
 
 
 def test_generate_lexignore_has_header() -> None:
     """Lexignore always starts with a comment header."""
     result = _generate_lexignore(["node_modules/"])
     assert result.startswith("#")
+
+
+def test_generate_lexignore_always_includes_env_patterns() -> None:
+    """Lexignore always includes .env, .env.*, and *.env patterns."""
+    result = _generate_lexignore([])
+    assert ".env\n" in result
+    assert ".env.*\n" in result
+    assert "*.env\n" in result
+
+
+def test_generate_lexignore_env_patterns_not_duplicated() -> None:
+    """User-provided .env patterns do not duplicate the defaults."""
+    result = _generate_lexignore([".env", ".env.*", "*.env"])
+    # Each pattern should appear exactly once
+    lines = result.splitlines()
+    assert lines.count(".env") == 1
+    assert lines.count(".env.*") == 1
+    assert lines.count("*.env") == 1
+
+
+def test_default_lexignore_patterns_constant() -> None:
+    """_DEFAULT_LEXIGNORE_PATTERNS contains exactly the expected .env patterns."""
+    assert ".env" in _DEFAULT_LEXIGNORE_PATTERNS
+    assert ".env.*" in _DEFAULT_LEXIGNORE_PATTERNS
+    assert "*.env" in _DEFAULT_LEXIGNORE_PATTERNS
+
+
+# ---------------------------------------------------------------------------
+# Scaffolder .lexignore .env pattern tests
+# ---------------------------------------------------------------------------
+
+
+def test_skeleton_lexignore_contains_env_patterns(tmp_path: Path) -> None:
+    """create_lexibrary_skeleton writes .env patterns to .lexignore."""
+    create_lexibrary_skeleton(tmp_path)
+
+    lexignore = (tmp_path / ".lexignore").read_text()
+    assert ".env" in lexignore
+    assert ".env.*" in lexignore
+    assert "*.env" in lexignore
 
 
 # ---------------------------------------------------------------------------
@@ -229,14 +272,15 @@ def test_wizard_creates_lexignore_with_patterns(tmp_path: Path) -> None:
 
 
 def test_wizard_creates_lexignore_empty_patterns(tmp_path: Path) -> None:
-    """Wizard scaffolder creates .lexignore with header when no patterns."""
+    """Wizard scaffolder creates .lexignore with header and default .env patterns."""
     answers = _make_answers(ignore_patterns=[])
     create_lexibrary_from_wizard(tmp_path, answers)
 
     lexignore = (tmp_path / ".lexignore").read_text()
     assert lexignore.startswith("#")
-    # Only the header — no additional pattern lines
-    assert lexignore == LEXIGNORE_HEADER
+    # Default .env patterns are always included even with no user patterns
+    for pattern in _DEFAULT_LEXIGNORE_PATTERNS:
+        assert pattern in lexignore
 
 
 def test_wizard_returns_created_paths(tmp_path: Path) -> None:

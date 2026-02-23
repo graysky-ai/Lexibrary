@@ -10,6 +10,7 @@ from lexibrary.init.detection import (
     DetectedLLMProvider,
     DetectedProject,
     check_existing_agent_rules,
+    check_missing_agent_dirs,
     detect_agent_environments,
     detect_llm_providers,
     detect_project_name,
@@ -237,11 +238,73 @@ class TestCheckExistingAgentRules:
         result = check_existing_agent_rules(tmp_path, "unknown_env")
         assert result is None
 
+    def test_cursor_rules_directory_check(self, tmp_path: Path) -> None:
+        # .cursor/rules is a directory, not a file — should return None
+        cursor_rules = tmp_path / ".cursor" / "rules"
+        cursor_rules.mkdir(parents=True)
+        result = check_existing_agent_rules(tmp_path, "cursor")
+        assert result is None
+
     def test_marker_found_in_agents_md(self, tmp_path: Path) -> None:
         rules = tmp_path / "AGENTS.md"
         rules.write_text("<!-- lexibrary: section -->\n", encoding="utf-8")
         result = check_existing_agent_rules(tmp_path, "codex")
         assert result == str(rules)
+
+
+# -----------------------------------------------------------------------
+# check_missing_agent_dirs
+# -----------------------------------------------------------------------
+
+
+class TestCheckMissingAgentDirs:
+    def test_claude_dirs_missing(self, tmp_path: Path) -> None:
+        result = check_missing_agent_dirs(tmp_path, ["claude"])
+        assert "claude" in result
+        assert ".claude/" in result["claude"]
+        assert ".claude/commands/" in result["claude"]
+
+    def test_claude_dirs_exist(self, tmp_path: Path) -> None:
+        (tmp_path / ".claude" / "commands").mkdir(parents=True)
+        result = check_missing_agent_dirs(tmp_path, ["claude"])
+        assert result == {}
+
+    def test_claude_partial_dirs(self, tmp_path: Path) -> None:
+        """Base .claude/ exists but commands/ subdir is missing."""
+        (tmp_path / ".claude").mkdir()
+        result = check_missing_agent_dirs(tmp_path, ["claude"])
+        assert "claude" in result
+        assert ".claude/commands/" in result["claude"]
+        assert ".claude/" not in result["claude"]
+
+    def test_cursor_dirs_missing(self, tmp_path: Path) -> None:
+        result = check_missing_agent_dirs(tmp_path, ["cursor"])
+        assert "cursor" in result
+        assert ".cursor/" in result["cursor"]
+
+    def test_cursor_dirs_exist(self, tmp_path: Path) -> None:
+        (tmp_path / ".cursor" / "rules").mkdir(parents=True)
+        (tmp_path / ".cursor" / "skills").mkdir(parents=True)
+        result = check_missing_agent_dirs(tmp_path, ["cursor"])
+        assert result == {}
+
+    def test_codex_no_dirs_needed(self, tmp_path: Path) -> None:
+        result = check_missing_agent_dirs(tmp_path, ["codex"])
+        assert result == {}
+
+    def test_multiple_envs_mixed(self, tmp_path: Path) -> None:
+        (tmp_path / ".claude" / "commands").mkdir(parents=True)
+        result = check_missing_agent_dirs(tmp_path, ["claude", "cursor"])
+        assert "claude" not in result
+        assert "cursor" in result
+
+    def test_unknown_env_returns_empty(self, tmp_path: Path) -> None:
+        result = check_missing_agent_dirs(tmp_path, ["unknown"])
+        assert result == {}
+
+    def test_empty_envs(self, tmp_path: Path) -> None:
+        result = check_missing_agent_dirs(tmp_path, [])
+        assert result == {}
 
 
 # -----------------------------------------------------------------------

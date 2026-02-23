@@ -22,8 +22,36 @@ def test_llm_config_defaults() -> None:
     assert config.provider == "anthropic"
     assert config.model == "claude-sonnet-4-6"
     assert config.api_key_env == "ANTHROPIC_API_KEY"
+    assert config.api_key_source == "env"
     assert config.max_retries == 3
     assert config.timeout == 60
+
+
+def test_llm_config_api_key_source_default_is_env() -> None:
+    """LLMConfig.api_key_source defaults to 'env'."""
+    config = LLMConfig()
+    assert config.api_key_source == "env"
+
+
+def test_llm_config_api_key_source_from_yaml() -> None:
+    """api_key_source can be set via model_validate (simulating YAML load)."""
+    config = LLMConfig.model_validate({"api_key_source": "dotenv"})
+    assert config.api_key_source == "dotenv"
+
+
+def test_llm_config_api_key_source_manual_from_yaml() -> None:
+    """api_key_source accepts 'manual' via model_validate."""
+    config = LLMConfig.model_validate({"api_key_source": "manual"})
+    assert config.api_key_source == "manual"
+
+
+def test_llm_config_api_key_source_via_top_level_config() -> None:
+    """api_key_source is accessible via LexibraryConfig.llm."""
+    config = LexibraryConfig.model_validate({"llm": {"api_key_source": "dotenv"}})
+    assert config.llm.api_key_source == "dotenv"
+    # Other defaults preserved
+    assert config.llm.provider == "anthropic"
+    assert config.llm.max_retries == 3
 
 
 def test_token_budget_defaults() -> None:
@@ -62,6 +90,14 @@ def test_ignore_config_defaults() -> None:
     assert config.use_gitignore is True
     assert "node_modules/" in config.additional_patterns
     assert "__pycache__/" in config.additional_patterns
+
+
+def test_ignore_config_env_patterns_in_defaults() -> None:
+    """IgnoreConfig.additional_patterns includes .env patterns by default."""
+    config = IgnoreConfig()
+    assert ".env" in config.additional_patterns
+    assert ".env.*" in config.additional_patterns
+    assert "*.env" in config.additional_patterns
 
 
 def test_daemon_config_defaults() -> None:

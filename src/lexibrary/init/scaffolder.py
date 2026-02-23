@@ -29,6 +29,14 @@ LEXIGNORE_HEADER = """\
 # Example: **/migrations/
 """
 
+# Default patterns always included in .lexignore to prevent sensitive files
+# (particularly API keys in dotenv files) from being indexed as source content.
+_DEFAULT_LEXIGNORE_PATTERNS = [
+    ".env",
+    ".env.*",
+    "*.env",
+]
+
 START_HERE_PLACEHOLDER = """\
 # START HERE
 
@@ -54,19 +62,23 @@ _CONFIG_YAML_HEADER = """\
 def _generate_lexignore(patterns: list[str]) -> str:
     """Build ``.lexignore`` content from wizard-collected patterns.
 
-    The output always starts with :data:`LEXIGNORE_HEADER`.  If *patterns*
-    is non-empty, each pattern is appended on its own line.
+    The output always starts with :data:`LEXIGNORE_HEADER`, followed by
+    :data:`_DEFAULT_LEXIGNORE_PATTERNS` (e.g. ``.env`` patterns to prevent
+    API keys from being indexed).  If *patterns* is non-empty, each
+    user-provided pattern is appended after the defaults.
 
     Args:
-        patterns: Gitignore-style glob patterns to include.
+        patterns: Additional gitignore-style glob patterns to include.
 
     Returns:
         Complete ``.lexignore`` file content.
     """
-    if not patterns:
-        return LEXIGNORE_HEADER
+    all_patterns = list(_DEFAULT_LEXIGNORE_PATTERNS)
+    for p in patterns:
+        if p not in all_patterns:
+            all_patterns.append(p)
 
-    return LEXIGNORE_HEADER + "\n".join(patterns) + "\n"
+    return LEXIGNORE_HEADER + "\n".join(all_patterns) + "\n"
 
 
 def _generate_config_yaml(answers: WizardAnswers) -> str:
@@ -173,7 +185,7 @@ def create_lexibrary_skeleton(project_root: Path) -> list[Path]:
     files: dict[Path, str] = {
         base / "config.yaml": DEFAULT_PROJECT_CONFIG_TEMPLATE,
         base / "START_HERE.md": START_HERE_PLACEHOLDER,
-        project_root / ".lexignore": LEXIGNORE_HEADER,
+        project_root / ".lexignore": _generate_lexignore([]),
     }
     for path, content in files.items():
         if not path.exists():

@@ -151,6 +151,24 @@ def test_lexignore_missing_is_ok(tmp_path: Path) -> None:
     assert not matcher.is_ignored(tmp_path / "src" / "main.py")
 
 
+def test_config_patterns_match_dotenv_files(tmp_path: Path) -> None:
+    """Default config patterns match .env, .env.*, and *.env files."""
+    config = IgnoreConfig()
+    spec = load_config_patterns(config)
+
+    # .env exact match
+    assert spec.match_file(".env")
+    # .env.* wildcard matches
+    assert spec.match_file(".env.local")
+    assert spec.match_file(".env.production")
+    # *.env wildcard matches
+    assert spec.match_file("staging.env")
+    assert spec.match_file("production.env")
+    # Regular files should not match
+    assert not spec.match_file("src/main.py")
+    assert not spec.match_file("environment.py")
+
+
 def test_three_layer_ignore_merge(tmp_path: Path) -> None:
     """A file ignored by any single layer should be excluded."""
     from lexibrary.config.schema import LexibraryConfig

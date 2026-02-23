@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 
-from lexibrary.cli._shared import console, require_project_root
+from lexibrary.cli._shared import console, load_dotenv_if_configured, require_project_root
 from lexibrary.exceptions import LexibraryNotFoundError
 from lexibrary.utils.root import find_project_root
 
@@ -18,6 +18,7 @@ lexi_app = typer.Typer(
         "Provides lookups, search, concepts, and Stack Q&A for LLM context navigation."
     ),
     no_args_is_help=True,
+    callback=load_dotenv_if_configured,
 )
 
 # ---------------------------------------------------------------------------
