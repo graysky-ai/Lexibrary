@@ -91,6 +91,12 @@ src/lexibrarian/
 │       ├── claude.py            ← generate_claude_rules() — CLAUDE.md + .claude/commands/
 │       ├── cursor.py            ← generate_cursor_rules() — .cursor/rules/ + .cursor/skills/
 │       └── codex.py             ← generate_codex_rules() — AGENTS.md
+├── linkgraph/                   ← SQLite link graph index for cross-artifact queries (reverse deps, tag search, FTS, traversal)
+│   ├── __init__.py              ← Public API re-exports; lazy-imports builder symbols to avoid circular imports
+│   ├── schema.py                ← DDL constants, ensure_schema(), check_schema_version(), set_pragmas(), SCHEMA_VERSION; 8-table + FTS5 structure
+│   ├── builder.py               ← IndexBuilder class: full_build(), incremental_update(); build_index() convenience function
+│   ├── query.py                 ← LinkGraph read-only query class: reverse_deps, search_by_tag, full_text_search, get_conventions, traverse; open_index()
+│   └── health.py                ← IndexHealth dataclass + read_index_health() — lightweight metadata read for status/validation
 ├── llm/                         ← BAML client wrapper + rate limiter + factory
 │   ├── __init__.py
 │   ├── factory.py               ← create_llm_service() factory
@@ -149,12 +155,13 @@ src/lexibrarian/
 | `indexer` | Structural `.aindex` pipeline: `generate_aindex` (with design file frontmatter lookup) -> `serialize_aindex` -> `write_artifact`; no LLM |
 | `init` | `create_lexibrary_skeleton()`, `create_lexibrary_from_wizard()` -- creates `.lexibrary/` + `.lexignore` on `lexictl init`; ensures `.lexibrarian.log` and `.lexibrarian.pid` are gitignored; `detection.py` auto-discovers project name, scope roots, agent envs, LLM providers, project type; `wizard.py` runs 8-step interactive setup via `run_wizard()` → `WizardAnswers`; `rules/` subpackage generates agent environment files (Claude, Cursor, Codex) via `generate_rules()` |
 | `iwh` | IWH (I Was Here) ephemeral inter-agent signal files: `IWHFile` model, `parse_iwh`, `serialize_iwh`, `read_iwh`, `consume_iwh`, `write_iwh`; `ensure_iwh_gitignored()` for `.gitignore` integration |
+| `linkgraph` | SQLite link graph index (`.lexibrary/index.db`, gitignored, rebuilt by `lexictl update`): `IndexBuilder` with `full_build()` / `incremental_update()`; `build_index()` convenience function; `LinkGraph` read-only query class with `reverse_deps`, `search_by_tag`, `full_text_search`, `get_conventions`, `traverse`, `build_summary`; `open_index()` returns `LinkGraph \| None` for graceful degradation; `IndexHealth` + `read_index_health()` for lightweight metadata; `ensure_schema()` manages 8-table + FTS5 schema with WAL mode |
 | `llm` | `LLMService` wrapping BAML client; `RateLimiter`; `create_llm_service()` factory |
 | `stack` | Stack Q&A knowledge base: `StackPost`, `StackIndex`, `parse_stack_post`, `serialize_stack_post`, `render_post_template`; mutations: `add_answer`, `record_vote`, `accept_answer`, `mark_duplicate`, `mark_outdated` |
 | `tokenizer` | `TokenCounter` protocol; tiktoken / anthropic / approximate backends |
 | `hooks` | Git hook installation: `install_post_commit_hook` for automatic `lexictl update --changed-only` after commits |
 | `utils` | `hash_file`, `detect_language`, `setup_logging`, `find_project_root`, path helpers, `atomic_write` (safe file writes), `has_conflict_markers` (git conflict detection), `DirectoryLockManager` (per-directory locks) |
-| `validator` | `validate_library()` orchestrator; `AVAILABLE_CHECKS` registry; `ValidationReport`, `ValidationIssue`, `ValidationSummary` models; 10 individual checks grouped by severity (error: wikilink_resolution, file_existence, concept_frontmatter; warning: hash_freshness, token_budgets, orphan_concepts, deprecated_concept_usage; info: forward_dependencies, stack_staleness, aindex_coverage) |
+| `validator` | `validate_library()` orchestrator; `AVAILABLE_CHECKS` registry; `ValidationReport`, `ValidationIssue`, `ValidationSummary` models; 13 individual checks grouped by severity (error: wikilink_resolution, file_existence, concept_frontmatter; warning: hash_freshness, token_budgets, orphan_concepts, deprecated_concept_usage; info: forward_dependencies, stack_staleness, aindex_coverage, bidirectional_deps, dangling_links, orphan_artifacts) |
 | `wiki` | `ConceptIndex` (search/retrieval by title, alias, tag, substring); `parse_concept_file`; `serialize_concept_file`; `WikilinkResolver` (`ResolvedLink`, `UnresolvedLink`); `render_concept_template`, `concept_file_path` |
 | `search` | `unified_search()` — cross-artifact search across concepts, design files, and Stack posts; `SearchResults` with Rich rendering |
 
@@ -195,6 +202,10 @@ src/lexibrarian/
 | Add / modify concept wiki utilities | `blueprints/src/lexibrarian/wiki/` |
 | Add / modify Stack Q&A features | `blueprints/src/lexibrarian/stack/` |
 | Change cross-artifact search | `blueprints/src/lexibrarian/search.md` |
+| Modify link graph schema or migrations | `blueprints/src/lexibrarian/linkgraph/schema.md` |
+| Modify link graph build pipeline (full/incremental) | `blueprints/src/lexibrarian/linkgraph/builder.md` |
+| Modify link graph queries (reverse deps, tag search, FTS, traversal) | `blueprints/src/lexibrarian/linkgraph/query.md` |
+| Modify link graph health / status metadata | `blueprints/src/lexibrarian/linkgraph/health.md` |
 | Add / modify validation checks | `blueprints/src/lexibrarian/validator/checks.md` |
 | Change validation report models | `blueprints/src/lexibrarian/validator/report.md` |
 | Change validation orchestrator | `blueprints/src/lexibrarian/validator/__init__.md` |

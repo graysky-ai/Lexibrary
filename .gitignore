@@ -10,6 +10,7 @@ baml_client/
 .lexibrary/**/*.md
 .lexibrary/**/.aindex
 !.lexibrary/config.yaml
+.lexibrary/index.db
 
 # Python
 __pycache__/

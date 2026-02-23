@@ -339,3 +339,31 @@ def test_wizard_appends_iwh_to_existing_gitignore(tmp_path: Path) -> None:
     content = gitignore_path.read_text()
     assert "*.pyc" in content, "Existing patterns should be preserved"
     assert IWH_GITIGNORE_PATTERN in content
+
+
+# ---------------------------------------------------------------------------
+# LinkGraph index.db gitignore tests
+# ---------------------------------------------------------------------------
+
+_INDEX_DB_PATTERN = ".lexibrary/index.db"
+
+
+def test_skeleton_gitignore_contains_index_db(tmp_path: Path) -> None:
+    """create_lexibrary_skeleton adds .lexibrary/index.db to .gitignore."""
+    create_lexibrary_skeleton(tmp_path)
+
+    gitignore_path = tmp_path / ".gitignore"
+    assert gitignore_path.is_file(), ".gitignore should be created"
+    content = gitignore_path.read_text()
+    assert _INDEX_DB_PATTERN in content
+
+
+def test_wizard_gitignore_contains_index_db(tmp_path: Path) -> None:
+    """create_lexibrary_from_wizard adds .lexibrary/index.db to .gitignore."""
+    answers = _make_answers()
+    create_lexibrary_from_wizard(tmp_path, answers)
+
+    gitignore_path = tmp_path / ".gitignore"
+    assert gitignore_path.is_file(), ".gitignore should be created"
+    content = gitignore_path.read_text()
+    assert _INDEX_DB_PATTERN in content

@@ -169,6 +169,45 @@ def lookup(
                 console.print(f"- {conv}")
             console.print()
 
+    # Reverse links from the link graph index (graceful degradation)
+    from lexibrarian.linkgraph import open_index  # noqa: PLC0415
+
+    link_graph = open_index(project_root)
+    if link_graph is not None:
+        rel_path = str(target.relative_to(project_root))
+
+        # Dependents: inbound ast_import links
+        import_links = link_graph.reverse_deps(rel_path, link_type="ast_import")
+        if import_links:
+            console.print("\n## Dependents (imports this file)\n")
+            for link in import_links:
+                console.print(f"- {link.source_path}")
+            console.print()
+
+        # Also Referenced By: all other inbound link types
+        link_type_labels: dict[str, str] = {
+            "wikilink": "concept wikilink",
+            "stack_file_ref": "stack post",
+            "stack_concept_ref": "stack concept ref",
+            "design_stack_ref": "design stack ref",
+            "design_source": "design file",
+            "concept_file_ref": "concept file ref",
+            "convention_concept_ref": "convention concept ref",
+        }
+        all_links = link_graph.reverse_deps(rel_path)
+        other_links = [lnk for lnk in all_links if lnk.link_type != "ast_import"]
+        if other_links:
+            console.print("\n## Also Referenced By\n")
+            for link in other_links:
+                label = link_type_labels.get(link.link_type, link.link_type)
+                # Use link_context as the display name when available,
+                # otherwise fall back to the source_path
+                display_name = link.link_context or link.source_path
+                console.print(f"- [[{display_name}]] ({label})")
+            console.print()
+
+        link_graph.close()
+
 
 # ---------------------------------------------------------------------------
 # index
@@ -922,6 +961,7 @@ def search(
     ] = None,
 ) -> None:
     """Search across concepts, design files, and Stack posts."""
+    from lexibrarian.linkgraph import open_index  # noqa: PLC0415
     from lexibrarian.search import unified_search  # noqa: PLC0415
 
     if query is None and tag is None and scope is None:
@@ -929,7 +969,15 @@ def search(
         raise typer.Exit(1)
 
     project_root = require_project_root()
-    results = unified_search(project_root, query=query, tag=tag, scope=scope)
+
+    link_graph = open_index(project_root)
+    try:
+        results = unified_search(
+            project_root, query=query, tag=tag, scope=scope, link_graph=link_graph
+        )
+    finally:
+        if link_graph is not None:
+            link_graph.close()
 
     if not results.has_results():
         console.print("[yellow]No results found.[/yellow]")

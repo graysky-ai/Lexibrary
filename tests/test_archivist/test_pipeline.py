@@ -16,6 +16,7 @@ from lexibrarian.archivist.pipeline import (
     _is_within_scope,
     _refresh_parent_aindex,
     update_file,
+    update_files,
     update_project,
 )
 from lexibrarian.archivist.service import (
@@ -186,6 +187,18 @@ class TestUpdateStats:
         assert stats.files_failed == 0
         assert stats.aindex_refreshed == 0
         assert stats.token_budget_warnings == 0
+
+    def test_linkgraph_fields_default_values(self) -> None:
+        stats = UpdateStats()
+        assert stats.linkgraph_built is False
+        assert stats.linkgraph_error is None
+
+    def test_linkgraph_fields_are_mutable(self) -> None:
+        stats = UpdateStats()
+        stats.linkgraph_built = True
+        stats.linkgraph_error = "SQLite error: disk full"
+        assert stats.linkgraph_built is True
+        assert stats.linkgraph_error == "SQLite error: disk full"
 
     def test_fields_are_mutable(self) -> None:
         stats = UpdateStats()
@@ -1001,3 +1014,254 @@ class TestUpdateProjectConceptLoading:
         assert len(captured_concepts) == 1
         # No concepts dir means empty list -> None
         assert captured_concepts[0] is None
+
+
+# ---------------------------------------------------------------------------
+# update_project — link graph integration
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateProjectLinkGraph:
+    """Verify that update_project() triggers a link graph full build."""
+
+    @pytest.mark.asyncio()
+    async def test_creates_index_db(self, tmp_path: Path) -> None:
+        """update_project() creates index.db in .lexibrary/ after processing files."""
+        _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
+
+        # Create .lexibrary directory (normally created by init)
+        (tmp_path / ".lexibrary").mkdir(parents=True, exist_ok=True)
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.UNCHANGED)
+
+        with patch("lexibrarian.archivist.pipeline.update_file", side_effect=fake_update_file):
+            stats = await update_project(tmp_path, config, archivist)
+
+        # Verify index.db was created
+        index_db = tmp_path / ".lexibrary" / "index.db"
+        assert index_db.exists(), "index.db should be created by update_project()"
+
+        # Verify stats reflect successful build
+        assert stats.linkgraph_built is True
+        assert stats.linkgraph_error is None
+
+    @pytest.mark.asyncio()
+    async def test_accurate_stats_when_index_build_fails(self, tmp_path: Path) -> None:
+        """update_project() returns accurate design file stats even when index build fails."""
+        _make_source_file(tmp_path, "src/a.py", "# a")
+        _make_source_file(tmp_path, "src/b.py", "# b")
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        call_count = 0
+        results = [
+            FileResult(change=ChangeLevel.NEW_FILE, aindex_refreshed=True),
+            FileResult(change=ChangeLevel.UNCHANGED),
+        ]
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            nonlocal call_count
+            r = results[call_count]
+            call_count += 1
+            return r
+
+        with (
+            patch("lexibrarian.archivist.pipeline.update_file", side_effect=fake_update_file),
+            patch(
+                "lexibrarian.archivist.pipeline.build_index",
+                side_effect=RuntimeError("SQLite corruption"),
+            ),
+        ):
+            stats = await update_project(tmp_path, config, archivist)
+
+        # Design file stats should still be accurate
+        assert stats.files_scanned == 2
+        assert stats.files_created == 1
+        assert stats.files_unchanged == 1
+        assert stats.aindex_refreshed == 1
+
+        # Link graph stats should reflect failure
+        assert stats.linkgraph_built is False
+        assert stats.linkgraph_error is not None
+        assert "failed" in stats.linkgraph_error.lower()
+
+
+# ---------------------------------------------------------------------------
+# update_files — link graph incremental update integration
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateFilesLinkGraph:
+    """Verify that update_files() triggers incremental link graph updates."""
+
+    @pytest.mark.asyncio()
+    async def test_changed_files_trigger_incremental_update(self, tmp_path: Path) -> None:
+        """update_files() with changed files triggers incremental index update."""
+        source_a = _make_source_file(tmp_path, "src/a.py", "def a(): pass")
+        source_b = _make_source_file(tmp_path, "src/b.py", "def b(): pass")
+
+        # Create .lexibrary directory (normally created by init)
+        (tmp_path / ".lexibrary").mkdir(parents=True, exist_ok=True)
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.UNCHANGED)
+
+        with (
+            patch(
+                "lexibrarian.archivist.pipeline.update_file",
+                side_effect=fake_update_file,
+            ),
+            patch(
+                "lexibrarian.archivist.pipeline.build_index",
+            ) as mock_build,
+        ):
+            stats = await update_files(
+                [source_a, source_b],
+                tmp_path,
+                config,
+                archivist,
+            )
+
+        # build_index was called once with changed_paths including both files
+        mock_build.assert_called_once()
+        call_kwargs = mock_build.call_args
+        changed_paths = call_kwargs[1]["changed_paths"]
+        # Both processed files should be in the changed paths
+        assert source_a in changed_paths
+        assert source_b in changed_paths
+
+        # Stats should reflect successful build
+        assert stats.linkgraph_built is True
+        assert stats.linkgraph_error is None
+
+    @pytest.mark.asyncio()
+    async def test_deleted_files_forwarded_to_incremental_update(self, tmp_path: Path) -> None:
+        """update_files() with deleted files forwards deletions to incremental update."""
+        # Create one existing file and one "deleted" path (does not exist on disk)
+        source_existing = _make_source_file(tmp_path, "src/existing.py", "def e(): pass")
+        source_deleted = tmp_path / "src" / "deleted.py"
+        # deleted.py does NOT exist on disk -- simulates a file deletion
+
+        (tmp_path / ".lexibrary").mkdir(parents=True, exist_ok=True)
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.UNCHANGED)
+
+        with (
+            patch(
+                "lexibrarian.archivist.pipeline.update_file",
+                side_effect=fake_update_file,
+            ),
+            patch(
+                "lexibrarian.archivist.pipeline.build_index",
+            ) as mock_build,
+        ):
+            stats = await update_files(
+                [source_existing, source_deleted],
+                tmp_path,
+                config,
+                archivist,
+            )
+
+        # build_index should have been called with both the processed path
+        # and the deleted path
+        mock_build.assert_called_once()
+        changed_paths = mock_build.call_args[1]["changed_paths"]
+        assert source_existing in changed_paths
+        assert source_deleted in changed_paths
+
+        assert stats.linkgraph_built is True
+        assert stats.linkgraph_error is None
+
+    @pytest.mark.asyncio()
+    async def test_accurate_stats_when_incremental_update_fails(self, tmp_path: Path) -> None:
+        """update_files() returns accurate design file stats when incremental update fails."""
+        source_a = _make_source_file(tmp_path, "src/a.py", "# a")
+        source_b = _make_source_file(tmp_path, "src/b.py", "# b")
+
+        (tmp_path / ".lexibrary").mkdir(parents=True, exist_ok=True)
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        call_count = 0
+        results = [
+            FileResult(change=ChangeLevel.NEW_FILE, aindex_refreshed=True),
+            FileResult(change=ChangeLevel.UNCHANGED),
+        ]
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            nonlocal call_count
+            r = results[call_count]
+            call_count += 1
+            return r
+
+        with (
+            patch(
+                "lexibrarian.archivist.pipeline.update_file",
+                side_effect=fake_update_file,
+            ),
+            patch(
+                "lexibrarian.archivist.pipeline.build_index",
+                side_effect=RuntimeError("SQLite disk full"),
+            ),
+        ):
+            stats = await update_files(
+                [source_a, source_b],
+                tmp_path,
+                config,
+                archivist,
+            )
+
+        # Design file stats should be accurate despite index failure
+        assert stats.files_scanned == 2
+        assert stats.files_created == 1
+        assert stats.files_unchanged == 1
+        assert stats.aindex_refreshed == 1
+        assert stats.files_failed == 0
+
+        # Link graph stats should reflect the failure
+        assert stats.linkgraph_built is False
+        assert stats.linkgraph_error is not None
+        assert "failed" in stats.linkgraph_error.lower()

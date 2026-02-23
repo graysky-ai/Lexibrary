@@ -4,7 +4,7 @@
 TBD - created by archiving change validation-status. Update Purpose after archive.
 ## Requirements
 ### Requirement: Lookup appends inherited Local Conventions
-The `lexi lookup <file>` command SHALL, after displaying the design file content, walk upward from the file's parent directory to `scope_root` (inclusive), parsing each `.aindex` file for `local_conventions`. If any conventions are found, an `## Applicable Conventions` section SHALL be appended to the output.
+The `lexi lookup <file>` command SHALL, after displaying the design file content, walk upward from the file's parent directory to `scope_root` (inclusive), parsing each `.aindex` file for `local_conventions`. If any conventions are found, an `## Applicable Conventions` section SHALL be appended to the output. After conventions, if a link graph index is available, reverse link sections SHALL be appended.
 
 #### Scenario: File in directory with conventions
 - **WHEN** running `lexi lookup src/payments/processor.py` and `src/payments/.aindex` has Local Conventions ["All monetary values use Decimal"]
@@ -16,7 +16,11 @@ The `lexi lookup <file>` command SHALL, after displaying the design file content
 
 #### Scenario: File with no applicable conventions
 - **WHEN** running `lexi lookup src/utils/helpers.py` and no parent `.aindex` files have Local Conventions
-- **THEN** no "## Applicable Conventions" section is appended (output is unchanged from current behavior)
+- **THEN** no "## Applicable Conventions" section is appended (reverse link sections may still appear if index is available)
+
+#### Scenario: Conventions appear before reverse links
+- **WHEN** running `lexi lookup src/payments/processor.py` and both conventions and reverse links are available
+- **THEN** the `## Applicable Conventions` section appears before any `## Dependents` or `## Also Referenced By` sections
 
 ### Requirement: Convention inheritance stops at scope_root
 The convention walk SHALL NOT traverse above the configured `scope_root` directory. This ensures conventions from unrelated parent directories are not surfaced.

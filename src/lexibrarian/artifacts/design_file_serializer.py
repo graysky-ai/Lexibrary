@@ -98,6 +98,8 @@ def serialize_design_file(data: DesignFile) -> str:
     # --- Dependents ---
     parts.append("## Dependents")
     parts.append("")
+    parts.append("*(see `lexi lookup` for live reverse references)*")
+    parts.append("")
     if data.dependents:
         for dep in data.dependents:
             parts.append(f"- {dep}")

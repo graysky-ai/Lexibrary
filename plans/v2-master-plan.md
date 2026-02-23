@@ -43,6 +43,7 @@ The v1 codebase built a solid foundation of reusable infrastructure. The new vis
 | `src/lexibrarian/stack/` | Stack post CRUD, voting, search |
 | `src/lexibrarian/init/` | Project init wizard + agent environment rule generation |
 | `src/lexibrarian/validator/` | Consistency checks (links, token bounds, bidirectional deps) |
+| `src/lexibrarian/linkgraph/` | SQLite link graph index — schema, builder, read-only query interface |
 | `src/lexibrarian/iwh/` | I Was Here (IWH) system — ephemeral inter-agent signals |
 
 ---
@@ -54,6 +55,7 @@ project-root/
   .lexignore             # Lexibrarian-specific ignore patterns (gitignore format)
   .lexibrary/
     config.yaml          # project config (version controlled)
+    index.db             # link graph index (gitignored, rebuilt by lexictl update)
     START_HERE.md        # bootloader — agent entry point (< 2KB)
     .iwh                 # project-root I Was Here signal (gitignored, ephemeral)
     concepts/            # concept files (cross-cutting knowledge)
@@ -101,8 +103,7 @@ Three-layer ignore: `.gitignore` + `.lexignore` + `config.ignore.additional_patt
 | 8b | Init Wizard | `lexictl init` wizard, `lexictl setup --update`, config persistence | Phase 8a |
 | 8c | Agent Rules + IWH | Rule templates per env, IWH system, skills/commands | Phase 8b |
 | 9 | Update Triggers & CI | Git hooks (primary), periodic sweep (safety net), CI integration, watchdog (deprecated) | Phase 4 |
-| 10 | Reverse Dependency Index | Two-pass reverse-index build, design file `dependents` population, bidirectional validation | Phase 4 (forward deps) |
-| 11 | Query Index | SQLite optimisation (optional) | Phase 7 |
+| 10 | Unified Link Graph | SQLite index (`index.db`), reverse dependency lookups, accelerated tag/cross-artifact search, bidirectional validation | Phases 4, 5, 6 |
 
 **Critical path:** 1 → 3 → 4 → 7 → 8a → 8b → 8c
 
@@ -110,7 +111,7 @@ Three-layer ignore: `.gitignore` + `.lexignore` + `config.ignore.additional_patt
 - Phase 2 (.aindex) can run alongside Phase 3 (AST)
 - Phase 5 (Concepts Wiki) and Phase 6 (The Stack) can run in parallel once Phase 4 is complete (Phase 6 depends on Phase 5's wikilink resolver but core model/parser work is independent)
 - Phase 9 (Update Triggers & CI) can run alongside Phase 8 (no dependency between them)
-- Phase 10 (Reverse Index) can run alongside Phases 8 and 9 (no dependency between them)
+- Phase 10 (Unified Link Graph) can run alongside Phases 8 and 9 (no dependency between them)
 
 ---
 
@@ -345,7 +346,7 @@ Phase 6 is structured into sub-phases that can partially overlap:
 - Post ID assignment must scan existing `ST-NNN` files atomically
 - The `## Guardrails` → `## Stack` rename in design files — parser must handle both section names during transition
 - Tags share a namespace across concepts, design files, and Stack posts — tag conventions must be consistent
-- Unified search performance is O(concepts + design_files + stack_posts) — acceptable for MVP, Phase 10 adds SQLite if needed
+- Unified search performance is O(concepts + design_files + stack_posts) — acceptable for MVP, Phase 10 (Unified Link Graph) adds SQLite-accelerated search
 
 ---
 
@@ -374,7 +375,7 @@ Phase 6 is structured into sub-phases that can partially overlap:
 ### What to Watch Out For
 
 - Validation is the first command that touches every artifact — it will surface design choices made in earlier phases. Plan for iteration.
-- `lexi search --tag` with Option A (files only) means scanning all markdown frontmatter. Acceptable for < 500 files; flag as slow if it approaches that.
+- `lexi search --tag` scans all markdown frontmatter before the link graph index (Phase 10) is built. Acceptable for < 500 files; Phase 10 adds SQLite-accelerated tag queries.
 
 ---
 
@@ -695,42 +696,212 @@ lexictl daemon start|stop|status        # Watchdog daemon (deprecated, requires 
 
 ---
 
-## Phase 10 — Reverse Dependency Index
+## Phase 10 — Unified Link Graph
 
-**Goal:** Build the project-wide reverse dependency index so that design file `dependents` fields are populated and bidirectional consistency validation becomes possible.
+**Goal:** Build a SQLite-backed link graph index covering all cross-artifact relationships in the library. Enable reverse dependency lookups, accelerated tag search, and bidirectional consistency validation. Merges the old Phase 10 (Reverse Dependency Index) and Phase 11 (Query Index) — see D-068.
 
-### Two-Pass Process
+### Why Merge
 
-1. **Forward pass** — collect all forward dependencies from every design file (already populated by Phase 4's AST import extraction).
-2. **Reverse pass** — invert the dependency map to produce dependents for each file.
+The old Phase 10 proposed writing computed reverse dependencies back into design file `## Dependents` sections. This approach has fundamental problems:
 
-The reverse index is built during `lexictl update` and written back into design file `## Dependents` sections. The index is cached and updated incrementally when individual files change.
+1. **Dual ownership** — design files are agent-authored (D-019). Writing machine-computed data into them conflicts with the `design_hash` TOCTOU protection (D-061) and creates ownership confusion.
+2. **Cascading writes** — changing one file's imports requires reading and writing many other design files to update their dependents. O(degree) file modifications per change.
+3. **Throwaway work** — the file-writing approach would be torn out once SQLite arrived in the old Phase 11.
+4. **Scope too narrow** — only tracked AST imports, missing wikilinks, Stack refs, concept links, and tags.
 
-### What This Enables
+The old Phase 11 was marked "optional, add if queries exceed 2 seconds." But reverse lookups are inherently O(N) against files — there is no file-scanning approach that makes them efficient. The index is required, not optional.
 
-- Design file `dependents` field populated (currently always empty)
-- `lexictl validate` bidirectional consistency check (D-048 — currently deferred)
-- "What uses this file?" queries via `lexi search` or `lexi lookup`
-- Impact analysis: "if I change this file, what else might break?"
+### Link Types Indexed
+
+| Link Type | From | To | Extraction |
+|-----------|------|----|------------|
+| `ast_import` | Source file | Source file | `dependency_extractor` (tree-sitter) |
+| `wikilink` | Design file | Concept | `DesignFile.wikilinks` |
+| `wikilink` | Concept | Concept | Regex scan of concept body |
+| `stack_file_ref` | Stack post | Source file | `StackPostFrontmatter.refs.files` |
+| `stack_concept_ref` | Stack post | Concept | `StackPostFrontmatter.refs.concepts` |
+| `design_stack_ref` | Design file | Stack post | `DesignFile.stack_refs` |
+| `design_source` | Design file | Source file | Path derivation (1:1 mirror structure) |
+| `concept_file_ref` | Concept | Source file | `ConceptFile.linked_files` |
+| `convention_concept_ref` | Convention | Concept | `[[ConceptName]]` in convention text |
+
+Tags are also indexed (design file, concept, and Stack post tags in a shared namespace per D-037), stored in a dedicated `tags` table.
+
+### SQLite Schema
+
+Database: `.lexibrary/index.db` (gitignored, always rebuildable). 8 tables + FTS5 virtual table. Implementation: `src/lexibrarian/linkgraph/schema.py`.
+
+**Pragmas** (set on every connection open):
+```sql
+PRAGMA journal_mode = WAL;        -- concurrent readers + single writer
+PRAGMA foreign_keys = ON;         -- enforce referential integrity
+PRAGMA synchronous = NORMAL;      -- safe with WAL, better write perf
+```
+
+**Table 1: `meta`** — key-value store (D-073). Keys: `schema_version`, `built_at`, `builder`, `artifact_count`, `link_count`.
+
+**Table 2: `artifacts`** — every indexed entity.
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INTEGER PK | Internal FK target |
+| `path` | TEXT UNIQUE | File path relative to project root |
+| `kind` | TEXT | `source`, `design`, `concept`, `stack`, or `convention` |
+| `title` | TEXT | Short description from frontmatter — enables rich search results without file I/O (D-080) |
+| `status` | TEXT | Lifecycle status: concept (`active`/`deprecated`/`draft`), stack (`open`/`resolved`/`outdated`/`duplicate`), NULL for others |
+| `last_hash` | TEXT | SHA-256 for incremental update detection |
+| `created_at` | TEXT | ISO 8601 timestamp from frontmatter or file mtime (D-080) |
+
+Both source files and design files get separate rows, connected via `design_source` (D-074). Source `title` = design file `frontmatter.description`; source `last_hash` = source file SHA-256; design `last_hash` = design file SHA-256.
+
+**Table 3: `links`** — directed edges with optional context.
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `source_id` | FK → artifacts | The artifact that *has* the reference |
+| `target_id` | FK → artifacts | The artifact being *referenced* |
+| `link_type` | TEXT | Edge type (see link types table) |
+| `link_context` | TEXT | Optional metadata — import statement, section heading, etc. (D-078) |
+
+Constraints: `UNIQUE(source_id, target_id, link_type)`, `ON DELETE CASCADE`.
+
+**Table 4: `tags`** — `artifact_id`, `tag` (text). `UNIQUE(artifact_id, tag)`. `ON DELETE CASCADE`.
+
+**Table 5: `aliases`** — concept alias resolution (D-076). `artifact_id` FK, `alias` TEXT `UNIQUE COLLATE NOCASE`. Populated from `ConceptFileFrontmatter.aliases`. Enables O(1) concept lookup, replacing linear scan in `WikilinkResolver`.
+
+**Table 6: `conventions`** — local conventions scoped to directories (D-077). `artifact_id` FK, `directory_path` TEXT, `ordinal` INTEGER, `body` TEXT. `UNIQUE(directory_path, ordinal)`. Each convention has a corresponding `kind='convention'` artifact with synthetic path `{directory_path}::convention::{ordinal}`.
+
+**Table 7: `build_log`** — per-artifact build tracking (D-079). `build_started`, `build_type` (full/incremental), `artifact_path`, `artifact_kind`, `action` (created/updated/deleted/unchanged/failed), `duration_ms`, `error_message`. 30-day retention.
+
+**Table 8: `artifacts_fts`** — FTS5 full-text search (D-075). Standalone virtual table (builder-managed, no trigger sync). `title` + `body` columns with `porter unicode61` tokenizer. Body content: source files → design file summary + interface contract; concepts → summary + body; Stack posts → problem + answers; conventions → full text.
+
+**13 indexes** on: `artifacts(path, kind, status)`, `links(source_id, target_id, link_type, target_id+link_type)`, `tags(tag, artifact_id)`, `aliases(artifact_id)`, `conventions(directory_path)`, `build_log(build_started, artifact_path)`.
+
+### Key Queries
+
+- **Reverse deps** ("what imports this file?"): `SELECT source_id FROM links WHERE target_id = ? AND link_type = 'ast_import'`
+- **All references to a concept**: `SELECT source_id, link_type FROM links WHERE target_id = ?`
+- **Tag search**: `SELECT a.path, a.kind, a.title FROM tags t JOIN artifacts a ON a.id = t.artifact_id WHERE t.tag = ?`
+- **Full-text search**: `SELECT a.path, a.kind, a.title FROM artifacts_fts JOIN artifacts a ON a.id = artifacts_fts.rowid WHERE artifacts_fts MATCH ? ORDER BY rank`
+- **Alias resolution**: `SELECT a.id, a.path, a.title FROM aliases al JOIN artifacts a ON a.id = al.artifact_id WHERE al.alias = ? COLLATE NOCASE`
+- **Convention inheritance**: `SELECT c.body, c.directory_path FROM conventions c WHERE c.directory_path IN (?, ?, ?) ORDER BY c.directory_path, c.ordinal`
+- **Multi-hop traversal** (D-081): Recursive CTEs with configurable `max_depth` (default: 3). See `LinkGraph.traverse()`.
+- **Build summary**: `SELECT action, COUNT(*), SUM(duration_ms) FROM build_log WHERE build_started = (SELECT MAX(build_started) FROM build_log) GROUP BY action`
+
+### New Module: `src/lexibrarian/linkgraph/`
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `__init__.py` | Public API: `build_index()`, `open_index()`, re-exports | **Done** |
+| `schema.py` | DDL constants (8 tables + FTS5), `ensure_schema()`, `check_schema_version()` | **Done** |
+| `builder.py` | `IndexBuilder`: `full_build()` and `incremental_update(changed_paths)` | **Done** |
+| `query.py` | `LinkGraph`: read-only query interface with graceful degradation + `traverse()` for multi-hop | **Done** |
+
+### Build Pipeline
+
+**Full build** (`lexictl update` with no path):
+1. Open/create `index.db`, ensure schema (version mismatch → drop all, recreate)
+2. Clear all rows
+3. Scan design files → for each:
+   - Insert `kind='source'` artifact (path, title from frontmatter, last_hash, created_at)
+   - Insert `kind='design'` artifact for the design file itself
+   - Insert `design_source` link (design → source)
+   - Insert `ast_import` links from `extract_dependencies()` (source → source)
+   - Insert `wikilink` links from `DesignFile.wikilinks` (design → concept)
+   - Insert `design_stack_ref` links from `DesignFile.stack_refs` (design → stack)
+   - Insert tags from `DesignFile.tags` (on design artifact)
+   - Insert FTS row with body = summary + interface_contract (via delete+reinsert)
+4. Scan concept files → for each:
+   - Insert `kind='concept'` artifact (path, title, status, aliases, tags)
+   - Insert aliases into `aliases` table
+   - Insert `wikilink` links (concept → concept) from body scan
+   - Insert `concept_file_ref` links from `ConceptFile.linked_files`
+   - Insert tags, insert FTS row
+5. Scan Stack posts → for each:
+   - Insert `kind='stack'` artifact (path, title, status, tags)
+   - Insert `stack_file_ref` links from `refs.files`
+   - Insert `stack_concept_ref` links from `refs.concepts`
+   - Insert tags, insert FTS row
+6. Scan `.aindex` files → for each local convention:
+   - Insert `kind='convention'` artifact (synthetic path, title = first 120 chars)
+   - Insert convention row (directory_path, ordinal, body)
+   - Extract `[[wikilinks]]` from convention text → insert `convention_concept_ref` links
+   - Insert FTS row
+7. Update `meta` (built_at, builder, artifact_count, link_count)
+8. Log build results to `build_log`
+
+**Incremental update** (`lexictl update --changed-only <files>`):
+1. For each changed file, delete its outbound links, tags, aliases, and FTS row
+2. Re-extract and re-insert from the current file content
+3. If a file was deleted, delete its artifact row (CASCADE cleans links/tags/aliases)
+4. Update `meta` counts and `build_log`
+
+The index build runs at the end of `update_project()` / `update_files()` in `archivist/pipeline.py`, after design files have been generated.
+
+### CLI Integration
+
+**`lexi lookup <file>`** — after displaying the design file and inherited Local Conventions, queries the LinkGraph for inbound links and displays a `## Referenced By` section:
+
+```
+## Dependents (imports this file)
+- src/api/auth_controller.py
+- src/middleware/auth.py
+
+## Also Referenced By
+- [[Authentication]] (concept wikilink)
+- [[ST-007]] (stack post)
+```
+
+If the index does not exist, this section is simply omitted. Graceful degradation — the agent still gets the design file.
+
+**`lexi search --tag <t>`** — queries the `tags` table for O(1) lookup. Falls back to file scanning if the index is unavailable.
+
+**`lexictl status`** — gains an index health line: artifact count, link count, build timestamp, or "not built."
+
+**`lexictl validate`** — gains a `bidirectional_deps` check (info severity) that validates link graph consistency with design file dependency lists. Resolves D-048.
+
+### `DesignFile.dependents` Field
+
+**Keep the field on the model** (backward compatibility with existing files that have a `## Dependents` section). **Never populate it** from the pipeline — dependents are served at query time via `lexi lookup`. The serializer annotates the section: `(see lexi lookup for reverse references)`.
+
+### Graceful Degradation
+
+| Scenario | Behaviour |
+|----------|-----------|
+| `index.db` missing | `LinkGraph.open()` returns `None`. CLI commands work without reverse links. |
+| `index.db` corrupt | `LinkGraph.open()` catches `sqlite3.DatabaseError`, returns `None`. Same fallback. |
+| `index.db` stale | Reverse links may be incomplete. `lexictl status` reports staleness. |
+| Schema version mismatch | `check_schema_version()` returns `None`. Next `lexictl update` rebuilds. |
+
+### Sub-Phases
+
+| Sub-Phase | Name | Depends On | Status |
+|-----------|------|------------|--------|
+| 10a | Schema (DDL, `ensure_schema()`, version check) | Phases 4, 5, 6 (artifacts exist) | **Done** |
+| 10b | Builder (`full_build()`, `incremental_update()`, FTS population) | 10a | **Done** |
+| 10c | Query Interface (`LinkGraph` read-only queries, `traverse()` multi-hop) | 10a | **Done** |
+| 10d | Pipeline Integration (wire builder into `update_project`/`update_files`) | 10b, 10c | **Done** |
+| 10e | CLI Integration (`lexi lookup` reverse links, `lexi search` FTS + tag acceleration) | 10c | **Done** |
+| 10f | Validation + Status (bidirectional deps check, index health in `lexictl status`) | 10c | **Done** |
+| 10g | Cleanup (serializer annotation, docs) | 10e | **Done** |
+
+**Critical path:** 10a → 10b → 10d → 10e
+**Parallelisable:** 10c can run alongside 10b once 10a is complete. 10f can run alongside 10e.
 
 ### What to Watch Out For
 
-- Incremental updates: changing one file's imports should update both its own `dependencies` and all affected files' `dependents` without a full rebuild
-- Circular dependencies are valid (A imports B, B imports A) — report but don't error
-- External package imports (not project files) should not appear in the dependents index
-- The reverse index must survive partial updates — if only some files are re-analyzed, stale dependents entries from deleted files must be cleaned up
-
----
-
-## Phase 11 — Query Index (Future / Optional)
-
-**Start with Option A (files-only).** Layer SQLite underneath if performance becomes an issue.
-
-Design principle: all CLI commands keep the same interface regardless of backend. The query backend is a private implementation detail.
-
-### Trigger for Adopting Option B
-
-Empirical: if `lexictl validate` or `lexi search` takes > 2 seconds on a real project, add the index.
+- SQLite WAL mode must be enabled on connection open for concurrent read/write safety
+- `index.db` must be in `.gitignore` — `lexictl init` scaffolder must include it
+- Circular dependencies (A imports B, B imports A) are valid in the link graph — report but don't error
+- External package imports (not project files) should not create artifact rows — filter to project-internal paths only
+- Temp file for atomic write of `index.db` must be in the same filesystem (same directory) for `os.replace()` to work
+- Full rebuild on a large project scans all design files, concepts, and Stack posts — this is I/O-bound (parsing existing markdown), not LLM-bound, so it should be fast
+- The `--changed-only` incremental path must handle file deletions (remove artifact + CASCADE)
+- FTS5 is a standalone table (no content sync) — the builder must explicitly delete+reinsert FTS rows when updating artifacts, since body content comes from file reads not the `artifacts` table
+- Convention synthetic paths (`{dir}::convention::{ordinal}`) use `::` separator which must not collide with real file paths
+- `aliases.alias` UNIQUE constraint means the builder must handle the case where two concepts claim the same alias — first one wins, log a warning
+- `build_log` grows unboundedly — the builder should clean up entries older than 30 days at the start of each build
+- Multi-hop recursive CTEs need a `max_depth` guard to prevent runaway queries on cyclic graphs
 
 ---
 
@@ -742,6 +913,8 @@ Empirical: if `lexictl validate` or `lexi search` takes > 2 seconds on a real pr
 | `tree-sitter-python>=0.21.0` | 3 | Python grammar |
 | `tree-sitter-typescript>=0.21.0` | 3 | TypeScript/JS grammar |
 | `PyYAML>=6.0.0,<7.0.0` | 1 | Config format (replaces TOML) |
+
+Phase 10 (Unified Link Graph) requires no new dependencies — `sqlite3` is in Python's standard library.
 
 **Retire when safe:**
 - `tiktoken` (if token budget validation moves to approximate counting)

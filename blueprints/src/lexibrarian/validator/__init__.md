@@ -1,6 +1,6 @@
 # validator
 
-**Summary:** Library health checks and validation reporting -- orchestrates 10 individual checks grouped by severity (error, warning, info), aggregates results into a `ValidationReport`, and provides filtering by severity and check name.
+**Summary:** Library health checks and validation reporting -- orchestrates 13 individual checks grouped by severity (error, warning, info), aggregates results into a `ValidationReport`, and provides filtering by severity and check name. Includes three link-graph checks (`bidirectional_deps`, `dangling_links`, `orphan_artifacts`) that degrade gracefully when `index.db` is absent.
 
 ## Re-exports
 
@@ -27,6 +27,9 @@
 | `forward_dependencies` | info | `check_forward_dependencies` |
 | `stack_staleness` | info | `check_stack_staleness` |
 | `aindex_coverage` | info | `check_aindex_coverage` |
+| `bidirectional_deps` | info | `check_bidirectional_deps` |
+| `dangling_links` | info | `check_dangling_links` |
+| `orphan_artifacts` | info | `check_orphan_artifacts` |
 
 ## Orchestration Logic
 
@@ -37,7 +40,7 @@
 
 ## Dependencies
 
-- `lexibrarian.validator.checks` -- all 10 check functions
+- `lexibrarian.validator.checks` -- all 13 check functions
 - `lexibrarian.validator.report` -- `ValidationIssue`, `ValidationReport`, `ValidationSummary`, `Severity`
 
 ## Dependents

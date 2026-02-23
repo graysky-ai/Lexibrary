@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
 LEXIBRARY_DIR = ".lexibrary"
 
-# Patterns for daemon runtime files that should be gitignored.
-_DAEMON_GITIGNORE_PATTERNS = [".lexibrarian.log", ".lexibrarian.pid"]
+# Patterns for daemon runtime files and generated artifacts that should be gitignored.
+_DAEMON_GITIGNORE_PATTERNS = [".lexibrarian.log", ".lexibrarian.pid", ".lexibrary/index.db"]
 
 LEXIGNORE_HEADER = """\
 # .lexignore — Lexibrarian-specific ignore patterns
@@ -106,11 +106,12 @@ def _generate_config_yaml(answers: WizardAnswers) -> str:
 
 
 def _ensure_daemon_files_gitignored(project_root: Path) -> bool:
-    """Ensure daemon runtime files are listed in ``.gitignore``.
+    """Ensure daemon runtime files and generated artifacts are listed in ``.gitignore``.
 
-    Appends ``.lexibrarian.log`` and ``.lexibrarian.pid`` to the project's
-    ``.gitignore`` if they are not already present.  Creates the
-    ``.gitignore`` file if it does not exist.
+    Appends ``.lexibrarian.log``, ``.lexibrarian.pid``, and
+    ``.lexibrary/index.db`` to the project's ``.gitignore`` if they are
+    not already present.  Creates the ``.gitignore`` file if it does not
+    exist.
 
     Args:
         project_root: Root directory of the project.

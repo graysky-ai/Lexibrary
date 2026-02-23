@@ -831,6 +831,75 @@ class TestStatusCommand:
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
 
+    def test_status_link_graph_exists_shows_health(self, tmp_path: Path) -> None:
+        """When index.db exists with data, status shows link graph health line."""
+        import sqlite3
+
+        from lexibrarian.linkgraph.schema import ensure_schema
+
+        project = _setup_status_project(tmp_path)
+        db_path = project / ".lexibrary" / "index.db"
+        conn = sqlite3.connect(str(db_path))
+        ensure_schema(conn)
+
+        # Insert artifacts
+        conn.execute(
+            "INSERT INTO artifacts (id, path, kind, title, status) "
+            "VALUES (1, 'src/main.py', 'source', 'Main', 'active')"
+        )
+        conn.execute(
+            "INSERT INTO artifacts (id, path, kind, title, status) "
+            "VALUES (2, '.lexibrary/src/main.py.md', 'design', 'Main design', NULL)"
+        )
+        # Insert a link
+        conn.execute(
+            "INSERT INTO links (source_id, target_id, link_type) VALUES (2, 1, 'design_source')"
+        )
+        # Set built_at
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) "
+            "VALUES ('built_at', '2026-02-20T10:30:00+00:00')"
+        )
+        conn.commit()
+        conn.close()
+
+        result = self._invoke(project, ["status"])
+        output = result.output  # type: ignore[union-attr]
+        assert "Link graph:" in output
+        assert "2 artifacts" in output
+        assert "1 link" in output
+        assert "built 2026-02-20T10:30:00+00:00" in output
+
+    def test_status_link_graph_missing_shows_not_built(self, tmp_path: Path) -> None:
+        """When index.db does not exist, status shows 'not built' message."""
+        project = _setup_status_project(tmp_path)
+
+        result = self._invoke(project, ["status"])
+        output = result.output  # type: ignore[union-attr]
+        assert "Link graph: not built" in output
+        assert "run lexictl update to create" in output
+
+    def test_status_quiet_omits_link_graph(self, tmp_path: Path) -> None:
+        """Quiet mode does not include the link graph health line."""
+        import sqlite3
+
+        from lexibrarian.linkgraph.schema import ensure_schema
+
+        project = _setup_status_project(tmp_path)
+        db_path = project / ".lexibrary" / "index.db"
+        conn = sqlite3.connect(str(db_path))
+        ensure_schema(conn)
+        conn.execute(
+            "INSERT INTO artifacts (id, path, kind, title, status) "
+            "VALUES (1, 'src/main.py', 'source', 'Main', 'active')"
+        )
+        conn.commit()
+        conn.close()
+
+        result = self._invoke(project, ["status", "--quiet"])
+        output = result.output  # type: ignore[union-attr]
+        assert "Link graph" not in output
+
 
 # ---------------------------------------------------------------------------
 # Setup command tests

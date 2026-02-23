@@ -10,7 +10,7 @@
 | `create_lexibrary_from_wizard` | `(project_root: Path, answers: WizardAnswers) -> list[Path]` | Create skeleton using wizard answers; generates config dynamically; call `ensure_iwh_gitignored()` and `_ensure_daemon_files_gitignored()` |
 | `_generate_config_yaml` | `(answers: WizardAnswers) -> str` | Build config YAML from wizard answers with Pydantic validation via `LexibraryConfig.model_validate()` |
 | `_generate_lexignore` | `(patterns: list[str]) -> str` | Build `.lexignore` content from wizard-collected patterns with `LEXIGNORE_HEADER` |
-| `_ensure_daemon_files_gitignored` | `(project_root: Path) -> bool` | Append `.lexibrarian.log` and `.lexibrarian.pid` to `.gitignore` if not already present; creates `.gitignore` if it does not exist |
+| `_ensure_daemon_files_gitignored` | `(project_root: Path) -> bool` | Append `.lexibrarian.log`, `.lexibrarian.pid`, and `.lexibrary/index.db` to `.gitignore` if not already present; creates `.gitignore` if it does not exist |
 | `START_HERE_PLACEHOLDER` | `str` | Placeholder content for `START_HERE.md` before `lexictl update` runs; references IWH inter-agent signals |
 | `LEXIGNORE_HEADER` | `str` | Standard header comment block for `.lexignore` files |
 
@@ -35,7 +35,7 @@
 - `_generate_config_yaml` validates through Pydantic before serializing, so invalid wizard answers raise `ValidationError` before writing
 - Both init paths call `ensure_iwh_gitignored()` to add `**/.iwh` to `.gitignore`
 - Both init paths call `_ensure_daemon_files_gitignored()` to add `.lexibrarian.log` and `.lexibrarian.pid` to `.gitignore`
-- `_DAEMON_GITIGNORE_PATTERNS` constant holds the list of daemon runtime files to gitignore
+- `_DAEMON_GITIGNORE_PATTERNS` constant holds the list of daemon runtime files and generated artifacts (`.lexibrarian.log`, `.lexibrarian.pid`, `.lexibrary/index.db`) to gitignore
 - `START_HERE_PLACEHOLDER` references IWH signals, guiding agents to check for `.iwh` files
 - HANDOFF.md has been removed -- IWH files replace the old HANDOFF mechanism
 

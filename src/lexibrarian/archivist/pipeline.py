@@ -36,6 +36,7 @@ from lexibrarian.artifacts.design_file_serializer import serialize_design_file
 from lexibrarian.ast_parser import compute_hashes, parse_interface, render_skeleton
 from lexibrarian.config.schema import LexibraryConfig
 from lexibrarian.ignore import create_ignore_matcher
+from lexibrarian.linkgraph.builder import build_index
 from lexibrarian.utils.atomic import atomic_write
 from lexibrarian.utils.conflict import has_conflict_markers
 from lexibrarian.utils.languages import detect_language
@@ -63,6 +64,8 @@ class UpdateStats:
     aindex_refreshed: int = 0
     token_budget_warnings: int = 0
     start_here_failed: bool = False
+    linkgraph_built: bool = False
+    linkgraph_error: str | None = None
 
 
 @dataclass
@@ -398,7 +401,9 @@ async def update_files(
     ``--changed-only`` usage where the caller already knows which files changed.
 
     Files that are deleted, binary, ignored, or inside ``.lexibrary/`` are
-    silently skipped.
+    silently skipped for design file processing.  Deleted file paths are
+    collected and forwarded to the link graph incremental update so that
+    artifact rows and cascaded links are cleaned up.
     """
     stats = UpdateStats()
     ignore_matcher = create_ignore_matcher(config, project_root)
@@ -409,8 +414,13 @@ async def update_files(
     concept_index = ConceptIndex.load(concepts_dir)
     available_concepts = concept_index.names() or None
 
+    # Collect deleted file paths before the processing loop so they can be
+    # forwarded to the link graph incremental update for CASCADE cleanup.
+    deleted_paths: list[Path] = [p for p in file_paths if not p.exists()]
+    processed_paths: list[Path] = []
+
     for source_path in file_paths:
-        # Skip deleted files
+        # Skip deleted files (already collected above)
         if not source_path.exists():
             logger.debug("Skipping deleted file: %s", source_path)
             continue
@@ -451,9 +461,23 @@ async def update_files(
             continue
 
         _accumulate_stats(stats, file_result)
+        processed_paths.append(source_path)
 
         if progress_callback is not None:
             progress_callback(source_path, file_result.change)
+
+    # Incremental link graph index update: pass both processed and deleted
+    # paths so the builder can update changed artifacts and clean up deleted
+    # ones via CASCADE.  Wrapped in try/except so index failures never block
+    # the pipeline from returning design file stats (D3).
+    all_changed = processed_paths + deleted_paths
+    if all_changed:
+        try:
+            build_index(project_root, changed_paths=all_changed)
+            stats.linkgraph_built = True
+        except Exception:
+            logger.exception("Failed to run incremental link graph update")
+            stats.linkgraph_error = "Link graph incremental update failed"
 
     return stats
 
@@ -543,5 +567,13 @@ async def update_project(
     except Exception:
         logger.exception("Failed to regenerate START_HERE.md")
         stats.start_here_failed = True
+
+    # Step 6: Build the link graph index (full rebuild after all artifacts are up to date)
+    try:
+        build_index(project_root)
+        stats.linkgraph_built = True
+    except Exception:
+        logger.exception("Failed to build link graph index")
+        stats.linkgraph_error = "Link graph full build failed"
 
     return stats

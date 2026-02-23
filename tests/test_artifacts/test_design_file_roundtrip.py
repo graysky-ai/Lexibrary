@@ -139,6 +139,35 @@ class TestDesignFileRoundtrip:
 
         assert new_hash != original_hash, "Agent edit should produce a different hash"
 
+    def test_roundtrip_annotation_not_in_dependents_list(self, tmp_path: Path) -> None:
+        """D-070: Annotation line is present in serialized output but does not
+        appear in parsed dependents list after round-trip (task 1.4)."""
+        df = _design_file(dependents=["src/lexibrarian/__main__.py"])
+        content = serialize_design_file(df)
+        # Verify annotation is present in the raw serialized text
+        assert "*(see `lexi lookup` for live reverse references)*" in content
+        f = tmp_path / "design.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+        # Annotation must NOT be in the parsed dependents list
+        assert parsed.dependents == ["src/lexibrarian/__main__.py"]
+        for dep in parsed.dependents:
+            assert "lexi lookup" not in dep
+            assert "reverse references" not in dep
+
+    def test_roundtrip_annotation_not_in_empty_dependents(self, tmp_path: Path) -> None:
+        """D-070: With no dependents, annotation is serialized but parsed dependents
+        remains empty after round-trip."""
+        df = _design_file(dependents=[])
+        content = serialize_design_file(df)
+        assert "*(see `lexi lookup` for live reverse references)*" in content
+        f = tmp_path / "design.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+        assert parsed.dependents == []
+
     def test_metadata_source_fields_preserved(self, tmp_path: Path) -> None:
         df = _design_file(
             metadata=_meta(

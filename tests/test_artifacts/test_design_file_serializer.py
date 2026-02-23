@@ -107,6 +107,43 @@ class TestSerializeDesignFileStructure:
         assert result.endswith("\n")
 
 
+class TestSerializeDesignFileDependentsAnnotation:
+    """Tests for D-070 annotation in the Dependents section."""
+
+    def test_annotation_present_with_empty_dependents(self) -> None:
+        """Annotation appears after Dependents heading even with no dependents (task 1.2)."""
+        result = serialize_design_file(_design_file())
+        dep_body = result.split("## Dependents")[1].split("##")[0]
+        assert "*(see `lexi lookup` for live reverse references)*" in dep_body
+        assert "(none)" in dep_body
+
+    def test_annotation_before_none_marker(self) -> None:
+        """Annotation appears before the (none) marker in empty dependents."""
+        result = serialize_design_file(_design_file())
+        dep_body = result.split("## Dependents")[1].split("##")[0]
+        annotation_idx = dep_body.index("*(see `lexi lookup` for live reverse references)*")
+        none_idx = dep_body.index("(none)")
+        assert annotation_idx < none_idx
+
+    def test_annotation_present_with_non_empty_dependents(self) -> None:
+        """Annotation appears alongside populated dependents list (task 1.3)."""
+        df = _design_file(dependents=["src/lexibrarian/__main__.py", "src/lexibrarian/cli.py"])
+        result = serialize_design_file(df)
+        dep_body = result.split("## Dependents")[1].split("##")[0]
+        assert "*(see `lexi lookup` for live reverse references)*" in dep_body
+        assert "- src/lexibrarian/__main__.py" in dep_body
+        assert "- src/lexibrarian/cli.py" in dep_body
+
+    def test_annotation_before_bullet_items(self) -> None:
+        """Annotation appears before the bullet items when dependents exist."""
+        df = _design_file(dependents=["src/lexibrarian/__main__.py"])
+        result = serialize_design_file(df)
+        dep_body = result.split("## Dependents")[1].split("##")[0]
+        annotation_idx = dep_body.index("*(see `lexi lookup` for live reverse references)*")
+        bullet_idx = dep_body.index("- src/lexibrarian/__main__.py")
+        assert annotation_idx < bullet_idx
+
+
 class TestSerializeDesignFileOptionalSections:
     def test_optional_sections_omitted_when_empty(self) -> None:
         result = serialize_design_file(_design_file())

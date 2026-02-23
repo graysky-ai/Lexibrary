@@ -10,7 +10,7 @@
 | `init` | `(*, defaults: bool) -> None` | Run the 8-step init wizard via `run_wizard()`; `--defaults` flag accepts all detected values without prompting; re-init guard prevents overwriting existing `.lexibrary/`; non-TTY guard requires `--defaults` |
 | `update` | `(path: Path \| None, *, changed_only: list[Path] \| None) -> None` | Generate/update design files via archivist pipeline; supports `--changed-only` for git-hook usage (calls `update_files`); mutually exclusive with `path`; single file, directory, or full project mode |
 | `validate` | `(*, severity: str \| None, check: str \| None, json_output: bool) -> None` | Run consistency checks with optional severity/check filters; outputs Rich tables or JSON; exits with `report.exit_code()` |
-| `status` | `(path: Path \| None, *, quiet: bool) -> None` | Dashboard showing design file counts/staleness, concept counts by status, stack post counts, validation issues summary, last updated timestamp; `--quiet`/`-q` for CI/hooks single-line output |
+| `status` | `(path: Path \| None, *, quiet: bool) -> None` | Dashboard showing design file counts/staleness, concept counts by status, stack post counts, link graph health (artifact/link counts + built_at timestamp), validation issues summary, last updated timestamp; `--quiet`/`-q` for CI/hooks single-line output (omits link graph line) |
 | `setup` | `(*, update_flag: bool, env: list[str] \| None, hooks: bool) -> None` | Install or update agent environment rules; `--hooks` flag installs the git post-commit hook; `--update` flag regenerates agent rules; reads `agent_environment` from config |
 | `sweep` | `(*, watch: bool) -> None` | Run a library update sweep; one-shot by default, `--watch` for periodic sweeps in foreground |
 | `daemon` | `(action: str \| None) -> None` | Deprecated watchdog daemon management; actions: `start`, `stop`, `status`; defaults to `start` |
@@ -28,6 +28,7 @@
 - `lexibrarian.artifacts.design_file_parser` -- `parse_design_file_metadata` (lazy import in `status`)
 - `lexibrarian.stack.parser` -- `parse_stack_post` (lazy import in `status`)
 - `lexibrarian.wiki.parser` -- `parse_concept_file` (lazy import in `status`)
+- `lexibrarian.linkgraph.health` -- `read_index_health` (lazy import in `status`)
 - `lexibrarian.init.rules` -- `generate_rules`, `supported_environments` (lazy import in `setup`)
 - `lexibrarian.iwh.gitignore` -- `ensure_iwh_gitignored` (lazy import in `setup`)
 - `lexibrarian.hooks.post_commit` -- `install_post_commit_hook` (lazy import in `setup`)
@@ -49,7 +50,8 @@
 - `setup --update` with optional `--env` overrides; reads `agent_environment` list from config; validates against `supported_environments()`
 - `sweep` command: one-shot (`run_once`) by default; `--watch` for periodic sweeps (`run_watch`)
 - `daemon` command: deprecated watchdog management; `start` checks `watchdog_enabled` config; `stop` sends SIGTERM to PID; `status` checks PID file and process liveness
-- `status` quiet mode (`-q`) outputs a single line for CI/hooks integration; prefix is `"lexictl:"` (not `"lexi:"`)
+- `status` full dashboard includes a link graph health line (placed after Stack, before Issues): shows `"Link graph: N artifacts, M links (built <timestamp>)"` when index exists, or `"Link graph: not built (run lexictl update to create)"` when absent; uses `read_index_health()` from `linkgraph.health`
+- `status` quiet mode (`-q`) outputs a single line for CI/hooks integration; prefix is `"lexictl:"` (not `"lexi:"`); quiet mode omits the link graph line
 - All heavy imports are lazy (inside command functions) to keep CLI startup fast
 
 ## Dragons

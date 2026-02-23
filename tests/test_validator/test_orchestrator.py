@@ -458,6 +458,9 @@ class TestCheckFilter:
             "forward_dependencies",
             "stack_staleness",
             "aindex_coverage",
+            "bidirectional_deps",
+            "dangling_links",
+            "orphan_artifacts",
         }
         assert set(AVAILABLE_CHECKS.keys()) == expected
 
@@ -484,3 +487,89 @@ class TestCheckFilter:
 
         # hash_freshness is warning-level, so with error-only filter it should not run
         assert len(report.issues) == 0
+
+
+# ---------------------------------------------------------------------------
+# All 13 checks registered (including link-graph checks)
+# ---------------------------------------------------------------------------
+
+
+class TestAllChecksRegistered:
+    """Verify that validate_library() includes all 13 checks and that
+    link-graph checks degrade gracefully when index.db is absent."""
+
+    def test_available_checks_count_is_13(self) -> None:
+        """AVAILABLE_CHECKS should contain exactly 13 entries."""
+        assert len(AVAILABLE_CHECKS) == 13
+
+    def test_validate_library_runs_all_13_checks_without_filters(self, tmp_path: Path) -> None:
+        """With no severity or check filters, all 13 checks should be invoked.
+
+        We verify this indirectly: an unfiltered run on a minimal project
+        should not crash and should exercise every registered check.
+        """
+        project_root = tmp_path
+        lexibrary_dir = project_root / ".lexibrary"
+        lexibrary_dir.mkdir()
+        _write_config(project_root)
+        (lexibrary_dir / "concepts").mkdir(parents=True, exist_ok=True)
+
+        # Provide a source + matching design so some checks have work to do
+        source = _write_source_file(project_root, "src/app.py", "def main(): pass\n")
+        current_hash = hash_file(source)
+        _write_design_file(
+            lexibrary_dir,
+            "src/app.py",
+            source_hash=current_hash,
+        )
+
+        # No index.db -- link-graph checks must degrade gracefully
+        report = validate_library(project_root, lexibrary_dir)
+
+        assert isinstance(report, ValidationReport)
+        # The run must not crash; any issues present are from non-graph checks
+        # (e.g., aindex_coverage info). Graph checks should return empty.
+        for issue in report.issues:
+            assert issue.check not in {
+                "bidirectional_deps",
+                "dangling_links",
+                "orphan_artifacts",
+            }, (
+                f"Link-graph check '{issue.check}' should return empty "
+                f"when index.db is absent, but produced: {issue.message}"
+            )
+
+    def test_link_graph_checks_return_empty_when_index_absent(self, tmp_path: Path) -> None:
+        """Each link-graph check individually returns an empty list when no index.db exists."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / ".lexibrary"
+        lexibrary_dir.mkdir()
+        _write_config(project_root)
+
+        link_graph_check_names = [
+            "bidirectional_deps",
+            "dangling_links",
+            "orphan_artifacts",
+        ]
+
+        for check_name in link_graph_check_names:
+            report = validate_library(
+                project_root,
+                lexibrary_dir,
+                check_filter=check_name,
+            )
+            assert isinstance(report, ValidationReport)
+            assert len(report.issues) == 0, (
+                f"Check '{check_name}' should return no issues when index.db "
+                f"is absent, but got {len(report.issues)} issues"
+            )
+
+    def test_link_graph_checks_have_info_severity_in_registry(self) -> None:
+        """All three link-graph checks should be registered with 'info' severity."""
+        link_graph_checks = ["bidirectional_deps", "dangling_links", "orphan_artifacts"]
+        for name in link_graph_checks:
+            assert name in AVAILABLE_CHECKS, f"Check '{name}' not found in AVAILABLE_CHECKS"
+            _fn, severity = AVAILABLE_CHECKS[name]
+            assert severity == "info", (
+                f"Check '{name}' should have 'info' severity, got '{severity}'"
+            )

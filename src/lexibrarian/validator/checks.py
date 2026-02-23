@@ -6,12 +6,16 @@ Each check function follows the signature:
 Checks are grouped by severity:
 - Error-severity: wikilink_resolution, file_existence, concept_frontmatter
 - Warning-severity: hash_freshness, token_budgets, orphan_concepts, deprecated_concept_usage
-- Info-severity: forward_dependencies, stack_staleness, aindex_coverage
+- Info-severity: forward_dependencies, stack_staleness, aindex_coverage,
+    bidirectional_deps, dangling_links, orphan_artifacts
 """
 
 from __future__ import annotations
 
+import contextlib
+import logging
 import re
+import sqlite3
 from pathlib import Path
 
 import yaml
@@ -21,6 +25,7 @@ from lexibrarian.artifacts.design_file_parser import (
     parse_design_file_metadata,
 )
 from lexibrarian.config.loader import load_config
+from lexibrarian.linkgraph.schema import SCHEMA_VERSION, check_schema_version, set_pragmas
 from lexibrarian.stack.parser import parse_stack_post
 from lexibrarian.tokenizer.approximate import ApproximateCounter
 from lexibrarian.utils.hashing import hash_file
@@ -29,11 +34,16 @@ from lexibrarian.validator.report import ValidationIssue
 from lexibrarian.wiki.index import ConceptIndex
 from lexibrarian.wiki.resolver import UnresolvedLink, WikilinkResolver
 
+logger = logging.getLogger(__name__)
+
 # Regex to extract wikilinks from markdown content
 _WIKILINK_RE = re.compile(r"\[\[(.+?)\]\]")
 
 # Regex to match YAML frontmatter block
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)
+
+_INDEX_DB_NAME = "index.db"
+"""Filename of the SQLite index database within ``.lexibrary/``."""
 
 
 # ---------------------------------------------------------------------------
@@ -787,6 +797,277 @@ def check_aindex_coverage(
                     message=f"Directory not indexed: {dir_rel}",
                     artifact=dir_rel,
                     suggestion="Run 'lexi index' to generate .aindex files",
+                )
+            )
+
+    return issues
+
+
+def check_bidirectional_deps(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Compare design file dependency lists against ``ast_import`` links in the graph.
+
+    For each design file, parses the ``## Dependencies`` section to get
+    listed dependencies, then queries the link graph for actual
+    ``ast_import`` outbound links from the corresponding source file.
+    Mismatches in either direction produce info-severity issues.
+
+    Returns an empty list when the index is absent, corrupt, or has a
+    schema version mismatch -- graceful degradation per D2.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for dependency mismatches.
+    """
+    issues: list[ValidationIssue] = []
+
+    db_path = lexibrary_dir / _INDEX_DB_NAME
+    if not db_path.is_file():
+        return issues
+
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        set_pragmas(conn)
+
+        # Verify schema version
+        version = check_schema_version(conn)
+        if version is None or version != SCHEMA_VERSION:
+            logger.warning(
+                "Schema version mismatch for %s: expected %s, got %s",
+                db_path,
+                SCHEMA_VERSION,
+                version,
+            )
+            return issues
+
+        # Build a lookup: source artifact path -> set of ast_import target paths
+        graph_imports: dict[str, set[str]] = {}
+        rows = conn.execute(
+            "SELECT a_src.path, a_tgt.path "
+            "FROM links AS l "
+            "JOIN artifacts AS a_src ON l.source_id = a_src.id "
+            "JOIN artifacts AS a_tgt ON l.target_id = a_tgt.id "
+            "WHERE l.link_type = 'ast_import'"
+        ).fetchall()
+        for src_path, tgt_path in rows:
+            graph_imports.setdefault(src_path, set()).add(tgt_path)
+
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Cannot read index for bidirectional check from %s: %s", db_path, exc)
+        return issues
+
+    finally:
+        if conn is not None:
+            with contextlib.suppress(Exception):
+                conn.close()
+
+    # Walk design files and compare
+    for design_path in _iter_design_files(lexibrary_dir):
+        design = parse_design_file(design_path)
+        if design is None:
+            continue
+
+        source_path = design.source_path
+        rel_design = _rel(design_path, project_root)
+
+        # Gather design-listed deps (project-relative paths), skip placeholders
+        design_deps: set[str] = set()
+        for dep in design.dependencies:
+            dep_stripped = dep.strip()
+            if dep_stripped and dep_stripped != "(none)":
+                design_deps.add(dep_stripped)
+
+        # Gather graph-listed ast_import targets for this source file
+        graph_deps = graph_imports.get(source_path, set())
+
+        # Direction 1: dep listed in design file but not found in graph
+        for dep in sorted(design_deps - graph_deps):
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="bidirectional_deps",
+                    message=(
+                        f"Dependency {dep} is listed in the design file "
+                        f"but not found as an ast_import link in the graph"
+                    ),
+                    artifact=rel_design,
+                    suggestion=(
+                        "The link graph index may be stale; run `lexictl update` to rebuild."
+                    ),
+                )
+            )
+
+        # Direction 2: graph link exists but not listed in design file
+        for dep in sorted(graph_deps - design_deps):
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="bidirectional_deps",
+                    message=(
+                        f"Import {dep} exists in the link graph "
+                        f"but is not listed in the design file dependencies"
+                    ),
+                    artifact=rel_design,
+                    suggestion="Update the design file or rebuild the index.",
+                )
+            )
+
+    return issues
+
+
+def check_dangling_links(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect link graph artifacts whose backing files no longer exist on disk.
+
+    Opens ``index.db`` and queries all artifacts with ``kind`` in
+    (``source``, ``design``, ``concept``, ``stack``).  For each artifact,
+    verifies the file at ``artifact.path`` (resolved relative to
+    *project_root*) exists.  Convention artifacts are skipped because
+    they use synthetic paths with no backing file.
+
+    Returns an empty list when the index is absent, corrupt, or has a
+    schema version mismatch -- graceful degradation per D2.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for dangling links.
+    """
+    issues: list[ValidationIssue] = []
+
+    db_path = lexibrary_dir / _INDEX_DB_NAME
+    if not db_path.is_file():
+        return issues
+
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        set_pragmas(conn)
+
+        # Verify schema version
+        version = check_schema_version(conn)
+        if version is None or version != SCHEMA_VERSION:
+            logger.warning(
+                "Schema version mismatch for %s: expected %s, got %s",
+                db_path,
+                SCHEMA_VERSION,
+                version,
+            )
+            return issues
+
+        # Query all non-convention artifacts
+        rows = conn.execute(
+            "SELECT path, kind FROM artifacts "
+            "WHERE kind IN ('source', 'design', 'concept', 'stack')"
+        ).fetchall()
+
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Cannot read index for dangling links check from %s: %s", db_path, exc)
+        return issues
+
+    finally:
+        if conn is not None:
+            with contextlib.suppress(Exception):
+                conn.close()
+
+    # Check each artifact's backing file
+    for artifact_path, kind in rows:
+        full_path = project_root / artifact_path
+        if not full_path.exists():
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="dangling_links",
+                    message=(
+                        f"Link graph references {kind} file that no longer exists: {artifact_path}"
+                    ),
+                    artifact=artifact_path,
+                    suggestion="Rebuild the index with `lexictl update` to remove stale entries.",
+                )
+            )
+
+    return issues
+
+
+def check_orphan_artifacts(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect link graph index entries whose backing files have been deleted.
+
+    Opens ``index.db`` and queries all non-convention artifacts (source,
+    design, concept, stack).  For each artifact, verifies the file at
+    ``artifact.path`` (resolved relative to *project_root*) exists on
+    disk.  Missing files produce info-severity issues with a suggestion
+    to rebuild the index.
+
+    Returns an empty list when the index is absent, corrupt, or has a
+    schema version mismatch -- graceful degradation per D2.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for orphan artifacts.
+    """
+    issues: list[ValidationIssue] = []
+
+    db_path = lexibrary_dir / _INDEX_DB_NAME
+    if not db_path.is_file():
+        return issues
+
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        set_pragmas(conn)
+
+        # Verify schema version
+        version = check_schema_version(conn)
+        if version is None or version != SCHEMA_VERSION:
+            logger.warning(
+                "Schema version mismatch for %s: expected %s, got %s",
+                db_path,
+                SCHEMA_VERSION,
+                version,
+            )
+            return issues
+
+        # Query all non-convention artifacts
+        rows = conn.execute(
+            "SELECT path, kind FROM artifacts WHERE kind != 'convention'"
+        ).fetchall()
+
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Cannot read index for orphan check from %s: %s", db_path, exc)
+        return issues
+
+    finally:
+        if conn is not None:
+            with contextlib.suppress(Exception):
+                conn.close()
+
+    # Check each artifact's backing file
+    for artifact_path, kind in rows:
+        full_path = project_root / artifact_path
+        if not full_path.exists():
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="orphan_artifacts",
+                    message=(f"Index contains {kind} artifact for deleted file: {artifact_path}"),
+                    artifact=artifact_path,
+                    suggestion="Run `lexictl update` to rebuild the index.",
                 )
             )
 

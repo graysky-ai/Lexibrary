@@ -9,7 +9,7 @@
 | `lexi_app` | `typer.Typer` | Root agent-facing CLI application registered as the `lexi` entry point |
 | `stack_app` | `typer.Typer` | Sub-group for `lexi stack *` commands (post, search, answer, vote, accept, view, list) |
 | `concept_app` | `typer.Typer` | Sub-group for `lexi concept *` commands (new, link) |
-| `lookup` | `(file: Path) -> None` | Display design file for a source file; checks scope, warns if stale, shows inherited conventions |
+| `lookup` | `(file: Path) -> None` | Display design file for a source file; checks scope, warns if stale, shows inherited conventions, shows reverse links from link graph |
 | `index` | `(directory: Path = ".", *, recursive: bool) -> None` | Generate `.aindex` for a directory; `-r` flag triggers bottom-up recursive indexing |
 | `describe` | `(directory: Path, description: str) -> None` | Update the billboard description in a directory's `.aindex` file |
 | `concepts` | `(topic: str \| None) -> None` | List or search concept files in a Rich table |
@@ -22,7 +22,7 @@
 | `stack_accept` | `(post_id, *, answer_num) -> None` | Mark answer as accepted, set post status to resolved |
 | `stack_view` | `(post_id) -> None` | Display full post with Rich formatting (Panel header, Markdown body, answers, comments) |
 | `stack_list` | `(*, status, tag) -> None` | List Stack posts in a Rich table with optional status/tag filters |
-| `search` | `(query: str \| None, *, tag, scope) -> None` | Unified cross-artifact search via `unified_search()`; searches concepts, design files, and Stack posts |
+| `search` | `(query: str \| None, *, tag, scope) -> None` | Unified cross-artifact search via `unified_search()`; opens link graph for index-accelerated search with fallback to file scanning |
 
 ## Internal Functions
 
@@ -50,6 +50,7 @@
 - `lexibrarian.stack.mutations` -- `add_answer`, `record_vote`, `accept_answer` (lazy imports)
 - `lexibrarian.stack.parser` -- `parse_stack_post` (lazy import in `stack_view`)
 - `lexibrarian.search` -- `unified_search` (lazy import in `search`)
+- `lexibrarian.linkgraph` -- `open_index` (lazy import in `lookup` and `search`)
 
 ## Dependents
 
@@ -65,6 +66,8 @@
 - All heavy imports are lazy (inside command functions) to keep CLI startup fast
 - Stack post IDs are auto-assigned by scanning `.lexibrary/stack/ST-*-*.md` files and incrementing
 - `lookup` walks parent `.aindex` files upward to show inherited local conventions
+- `lookup` opens the link graph via `open_index()` and displays reverse links in two sections: "Dependents (imports this file)" for `ast_import` links, and "Also Referenced By" for all other link types (wikilinks, stack refs, etc.) with human-readable labels; both sections are silently omitted when the index is unavailable or the file has no inbound links (graceful degradation)
+- `search` opens the link graph via `open_index()` and passes it to `unified_search()` for index-accelerated tag and FTS queries; closes the graph in a `finally` block; falls back to file scanning when the index is unavailable
 
 ## Dragons
 

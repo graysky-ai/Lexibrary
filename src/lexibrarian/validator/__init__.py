@@ -8,11 +8,14 @@ from typing import Literal
 
 from lexibrarian.validator.checks import (
     check_aindex_coverage,
+    check_bidirectional_deps,
     check_concept_frontmatter,
+    check_dangling_links,
     check_deprecated_concept_usage,
     check_file_existence,
     check_forward_dependencies,
     check_hash_freshness,
+    check_orphan_artifacts,
     check_orphan_concepts,
     check_stack_staleness,
     check_token_budgets,
@@ -51,6 +54,9 @@ AVAILABLE_CHECKS: dict[str, tuple[CheckFn, Severity]] = {
     "forward_dependencies": (check_forward_dependencies, "info"),
     "stack_staleness": (check_stack_staleness, "info"),
     "aindex_coverage": (check_aindex_coverage, "info"),
+    "bidirectional_deps": (check_bidirectional_deps, "info"),
+    "dangling_links": (check_dangling_links, "info"),
+    "orphan_artifacts": (check_orphan_artifacts, "info"),
 }
 
 # Severity levels ordered from most to least severe.

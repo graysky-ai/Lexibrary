@@ -303,6 +303,7 @@ def status(
     from lexibrarian.artifacts.design_file_parser import (  # noqa: PLC0415
         parse_design_file_metadata,
     )
+    from lexibrarian.linkgraph.health import read_index_health  # noqa: PLC0415
     from lexibrarian.stack.parser import parse_stack_post  # noqa: PLC0415
     from lexibrarian.validator import validate_library  # noqa: PLC0415
     from lexibrarian.wiki.parser import parse_concept_file  # noqa: PLC0415
@@ -430,6 +431,20 @@ def status(
         )
     else:
         console.print("  Stack: 0 posts")
+
+    # Link graph health
+    index_health = read_index_health(project_root)
+    if index_health.artifact_count is not None:
+        built_part = f" (built {index_health.built_at})" if index_health.built_at else ""
+        console.print(
+            f"  Link graph: {index_health.artifact_count} artifact"
+            f"{'s' if index_health.artifact_count != 1 else ''}"
+            f", {index_health.link_count} link"
+            f"{'s' if index_health.link_count != 1 else ''}"
+            f"{built_part}"
+        )
+    else:
+        console.print("  Link graph: not built (run lexictl update to create)")
 
     console.print()
 

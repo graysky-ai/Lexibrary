@@ -1,6 +1,6 @@
 # validator/checks
 
-**Summary:** Individual validation check functions for library health, each following the `(project_root: Path, lexibrary_dir: Path) -> list[ValidationIssue]` signature. Checks are grouped by default severity: error (3), warning (4), info (3).
+**Summary:** Individual validation check functions for library health, each following the `(project_root: Path, lexibrary_dir: Path) -> list[ValidationIssue]` signature. Checks are grouped by default severity: error (3), warning (4), info (6). The three link-graph checks (`bidirectional_deps`, `dangling_links`, `orphan_artifacts`) degrade gracefully when `index.db` is absent, corrupt, or has a schema version mismatch -- returning empty lists.
 
 ## Interface
 
@@ -28,6 +28,9 @@
 | `check_forward_dependencies` | `(project_root, lexibrary_dir) -> list[ValidationIssue]` | Parse design file `## Dependencies` sections; verify listed paths exist on disk |
 | `check_stack_staleness` | `(project_root, lexibrary_dir) -> list[ValidationIssue]` | For Stack posts with `refs.files`, check if referenced files' design files have stale `source_hash` |
 | `check_aindex_coverage` | `(project_root, lexibrary_dir) -> list[ValidationIssue]` | Walk `scope_root` directory tree; report directories lacking corresponding `.aindex` files |
+| `check_bidirectional_deps` | `(project_root, lexibrary_dir) -> list[ValidationIssue]` | Compare design file `## Dependencies` lists against `ast_import` links in the link graph index; report mismatches in both directions (design lists dep not in graph, graph has link not in design file); returns empty list if index is absent/corrupt/version-mismatch |
+| `check_dangling_links` | `(project_root, lexibrary_dir) -> list[ValidationIssue]` | Query all non-convention artifacts (`source`, `design`, `concept`, `stack`) from `index.db` and verify backing files exist on disk; returns empty list if index is absent/corrupt/version-mismatch |
+| `check_orphan_artifacts` | `(project_root, lexibrary_dir) -> list[ValidationIssue]` | Query all non-convention artifacts from `index.db` and report entries whose backing files have been deleted; suggests rebuilding the index; returns empty list if index is absent/corrupt/version-mismatch |
 
 ## Internal Helpers
 
@@ -35,6 +38,7 @@
 | --- | --- |
 | `_WIKILINK_RE` | Regex to extract `[[wikilink]]` targets from markdown content |
 | `_FRONTMATTER_RE` | Regex to match YAML frontmatter blocks (`---` delimited) |
+| `_INDEX_DB_NAME` | Constant `"index.db"` -- filename of the SQLite index database within `.lexibrary/` |
 | `_rel(path, root)` | Return relative path string, falling back to full path on error |
 | `_iter_design_files(lexibrary_dir)` | Iterate design file paths, excluding START_HERE, HANDOFF, stack, and concepts |
 | `_iter_directories(scope_root, project_root, lexibrary_dir)` | Recursive directory walker, skipping hidden dirs, `.lexibrary`, `node_modules`, `__pycache__`, `venv` |
@@ -43,6 +47,7 @@
 
 - `lexibrarian.artifacts.design_file_parser` -- `parse_design_file`, `parse_design_file_metadata`
 - `lexibrarian.config.loader` -- `load_config` (for token budgets and scope_root)
+- `lexibrarian.linkgraph.schema` -- `SCHEMA_VERSION`, `check_schema_version`, `set_pragmas` (for link-graph checks)
 - `lexibrarian.stack.parser` -- `parse_stack_post`
 - `lexibrarian.tokenizer.approximate` -- `ApproximateCounter`
 - `lexibrarian.utils.hashing` -- `hash_file`

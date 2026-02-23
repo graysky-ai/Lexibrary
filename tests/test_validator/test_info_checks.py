@@ -1,16 +1,23 @@
 """Unit tests for info-severity validation checks.
 
-Tests check_forward_dependencies, check_stack_staleness, and check_aindex_coverage.
+Tests check_forward_dependencies, check_stack_staleness, check_aindex_coverage,
+check_bidirectional_deps, check_dangling_links, and check_orphan_artifacts.
 """
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
+from lexibrarian.linkgraph.schema import SCHEMA_VERSION, ensure_schema
 from lexibrarian.utils.hashing import hash_file
+from lexibrarian.utils.paths import LEXIBRARY_DIR
 from lexibrarian.validator.checks import (
     check_aindex_coverage,
+    check_bidirectional_deps,
+    check_dangling_links,
     check_forward_dependencies,
+    check_orphan_artifacts,
     check_stack_staleness,
 )
 
@@ -561,3 +568,580 @@ class TestCheckAindexCoverage:
         # The config load will fail but should be handled gracefully
         # The scope_root walk should still work
         assert isinstance(issues, list)
+
+
+# ---------------------------------------------------------------------------
+# Helpers for check_dangling_links and check_orphan_artifacts tests
+# ---------------------------------------------------------------------------
+
+
+def _create_index_with_artifacts(
+    lexibrary_dir: Path,
+    artifacts: list[tuple[str, str]],
+) -> None:
+    """Create an index.db with the given artifacts.
+
+    Args:
+        lexibrary_dir: Path to .lexibrary directory.
+        artifacts: List of (path, kind) tuples to insert.
+    """
+    db_path = lexibrary_dir / "index.db"
+    conn = sqlite3.connect(str(db_path))
+    ensure_schema(conn)
+    for i, (art_path, kind) in enumerate(artifacts, start=1):
+        conn.execute(
+            "INSERT INTO artifacts (id, path, kind, title, status) VALUES (?, ?, ?, ?, ?)",
+            (i, art_path, kind, f"Artifact {i}", "active" if kind != "design" else None),
+        )
+    conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# check_dangling_links
+# ---------------------------------------------------------------------------
+
+
+class TestCheckDanglingLinks:
+    """Tests for check_dangling_links."""
+
+    def test_all_files_exist(self, tmp_path: Path) -> None:
+        """When every artifact in the graph has a corresponding file on disk, no issues."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Create actual files on disk
+        src_dir = project_root / "src"
+        src_dir.mkdir()
+        (src_dir / "main.py").write_text("pass", encoding="utf-8")
+
+        design_dir = lexibrary_dir / "src"
+        design_dir.mkdir(parents=True)
+        (design_dir / "main.py.md").write_text("# design", encoding="utf-8")
+
+        # Create index with matching artifacts
+        _create_index_with_artifacts(
+            lexibrary_dir,
+            [
+                ("src/main.py", "source"),
+                (".lexibrary/src/main.py.md", "design"),
+            ],
+        )
+
+        issues = check_dangling_links(project_root, lexibrary_dir)
+        assert len(issues) == 0
+
+    def test_source_file_deleted_but_in_index(self, tmp_path: Path) -> None:
+        """When a source file is deleted but still in the graph, an info issue is returned."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Do NOT create the source file on disk -- it has been deleted
+        _create_index_with_artifacts(
+            lexibrary_dir,
+            [("src/old_module.py", "source")],
+        )
+
+        issues = check_dangling_links(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        issue = issues[0]
+        assert issue.severity == "info"
+        assert issue.check == "dangling_links"
+        assert "src/old_module.py" in issue.message
+        assert "no longer exists" in issue.message
+        assert issue.artifact == "src/old_module.py"
+        assert "lexictl update" in issue.suggestion
+
+    def test_convention_artifacts_skipped(self, tmp_path: Path) -> None:
+        """Convention artifacts are not checked for file existence."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Create index with only a convention artifact (synthetic path, no backing file)
+        db_path = lexibrary_dir / "index.db"
+        conn = sqlite3.connect(str(db_path))
+        ensure_schema(conn)
+        conn.execute(
+            "INSERT INTO artifacts (id, path, kind, title) "
+            "VALUES (1, 'src/api::convention::0', 'convention', 'Convention 1')"
+        )
+        conn.commit()
+        conn.close()
+
+        issues = check_dangling_links(project_root, lexibrary_dir)
+        assert len(issues) == 0
+
+    def test_index_missing_returns_empty(self, tmp_path: Path) -> None:
+        """When index.db does not exist, returns empty list without error."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # No index.db created
+        issues = check_dangling_links(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_index_corrupt_returns_empty(self, tmp_path: Path) -> None:
+        """When index.db is corrupt, returns empty list without error."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        db_path = lexibrary_dir / "index.db"
+        db_path.write_bytes(b"this is not a valid sqlite database")
+
+        issues = check_dangling_links(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_schema_version_mismatch_returns_empty(self, tmp_path: Path) -> None:
+        """When schema version does not match, returns empty list."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        db_path = lexibrary_dir / "index.db"
+        conn = sqlite3.connect(str(db_path))
+        ensure_schema(conn)
+        conn.execute(
+            "UPDATE meta SET value = ? WHERE key = 'schema_version'",
+            (str(SCHEMA_VERSION + 999),),
+        )
+        conn.commit()
+        conn.close()
+
+        issues = check_dangling_links(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_mixed_existing_and_deleted(self, tmp_path: Path) -> None:
+        """Only artifacts with deleted files produce issues; existing ones are fine."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Create one existing source file
+        src_dir = project_root / "src"
+        src_dir.mkdir()
+        (src_dir / "alive.py").write_text("pass", encoding="utf-8")
+
+        # Index has both existing and deleted
+        _create_index_with_artifacts(
+            lexibrary_dir,
+            [
+                ("src/alive.py", "source"),
+                ("src/deleted.py", "source"),
+            ],
+        )
+
+        issues = check_dangling_links(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        assert "src/deleted.py" in issues[0].message
+
+    def test_lexibrary_dir_does_not_exist(self, tmp_path: Path) -> None:
+        """When .lexibrary directory itself is missing, returns empty list."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        # Do not create .lexibrary
+
+        issues = check_dangling_links(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_multiple_artifact_kinds_checked(self, tmp_path: Path) -> None:
+        """All non-convention kinds (source, design, concept, stack) are checked."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # None of the backing files exist on disk
+        _create_index_with_artifacts(
+            lexibrary_dir,
+            [
+                ("src/module.py", "source"),
+                (".lexibrary/src/module.py.md", "design"),
+                (".lexibrary/concepts/auth.md", "concept"),
+                (".lexibrary/stack/ST-Q-001.md", "stack"),
+            ],
+        )
+
+        issues = check_dangling_links(project_root, lexibrary_dir)
+        assert len(issues) == 4
+        checks = {i.check for i in issues}
+        assert checks == {"dangling_links"}
+        severities = {i.severity for i in issues}
+        assert severities == {"info"}
+
+
+# ---------------------------------------------------------------------------
+# check_orphan_artifacts
+# ---------------------------------------------------------------------------
+
+
+class TestCheckOrphanArtifacts:
+    """Tests for check_orphan_artifacts."""
+
+    def test_no_orphans(self, tmp_path: Path) -> None:
+        """When all artifacts have existing backing files, no issues returned."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Create actual files on disk
+        src_dir = project_root / "src"
+        src_dir.mkdir()
+        (src_dir / "main.py").write_text("pass", encoding="utf-8")
+
+        design_dir = lexibrary_dir / "src"
+        design_dir.mkdir(parents=True)
+        (design_dir / "main.py.md").write_text("# design", encoding="utf-8")
+
+        # Create index with matching artifacts
+        _create_index_with_artifacts(
+            lexibrary_dir,
+            [
+                ("src/main.py", "source"),
+                (".lexibrary/src/main.py.md", "design"),
+            ],
+        )
+
+        issues = check_orphan_artifacts(project_root, lexibrary_dir)
+        assert len(issues) == 0
+
+    def test_source_file_deleted(self, tmp_path: Path) -> None:
+        """When a source file is deleted but still in index, an info issue is returned."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Do NOT create the source file on disk -- it is "deleted"
+        _create_index_with_artifacts(
+            lexibrary_dir,
+            [("src/services/deprecated.py", "source")],
+        )
+
+        issues = check_orphan_artifacts(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        issue = issues[0]
+        assert issue.severity == "info"
+        assert issue.check == "orphan_artifacts"
+        assert "src/services/deprecated.py" in issue.message
+        assert issue.artifact == "src/services/deprecated.py"
+        assert "lexictl update" in issue.suggestion
+
+    def test_design_file_deleted(self, tmp_path: Path) -> None:
+        """When a design file is deleted but still in index, an info issue is returned."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Do NOT create the design file on disk -- it is "deleted"
+        _create_index_with_artifacts(
+            lexibrary_dir,
+            [(".lexibrary/src/old_module.py.md", "design")],
+        )
+
+        issues = check_orphan_artifacts(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        issue = issues[0]
+        assert issue.severity == "info"
+        assert issue.check == "orphan_artifacts"
+        assert ".lexibrary/src/old_module.py.md" in issue.message
+        assert "design" in issue.message
+        assert "lexictl update" in issue.suggestion
+
+    def test_index_missing_returns_empty(self, tmp_path: Path) -> None:
+        """When index.db does not exist, returns empty list without error."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # No index.db created
+        issues = check_orphan_artifacts(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_index_corrupt_returns_empty(self, tmp_path: Path) -> None:
+        """When index.db is corrupt, returns empty list without error."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        db_path = lexibrary_dir / "index.db"
+        db_path.write_bytes(b"this is not a valid sqlite database")
+
+        issues = check_orphan_artifacts(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_schema_version_mismatch_returns_empty(self, tmp_path: Path) -> None:
+        """When schema version does not match, returns empty list."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        db_path = lexibrary_dir / "index.db"
+        conn = sqlite3.connect(str(db_path))
+        ensure_schema(conn)
+        conn.execute(
+            "UPDATE meta SET value = ? WHERE key = 'schema_version'",
+            (str(SCHEMA_VERSION + 999),),
+        )
+        conn.commit()
+        conn.close()
+
+        issues = check_orphan_artifacts(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_convention_artifacts_skipped(self, tmp_path: Path) -> None:
+        """Convention artifacts are not checked for backing files."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Create index with a convention artifact (no backing file)
+        db_path = lexibrary_dir / "index.db"
+        conn = sqlite3.connect(str(db_path))
+        ensure_schema(conn)
+        conn.execute(
+            "INSERT INTO artifacts (id, path, kind, title) "
+            "VALUES (1, 'src/api::convention::0', 'convention', 'Convention 1')"
+        )
+        conn.commit()
+        conn.close()
+
+        issues = check_orphan_artifacts(project_root, lexibrary_dir)
+        assert len(issues) == 0
+
+    def test_mixed_existing_and_deleted(self, tmp_path: Path) -> None:
+        """Only deleted artifacts produce issues; existing ones are fine."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Create one existing source file
+        src_dir = project_root / "src"
+        src_dir.mkdir()
+        (src_dir / "alive.py").write_text("pass", encoding="utf-8")
+
+        # Index has both existing and deleted
+        _create_index_with_artifacts(
+            lexibrary_dir,
+            [
+                ("src/alive.py", "source"),
+                ("src/deleted.py", "source"),
+            ],
+        )
+
+        issues = check_orphan_artifacts(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        assert "src/deleted.py" in issues[0].message
+
+    def test_lexibrary_dir_does_not_exist(self, tmp_path: Path) -> None:
+        """When .lexibrary directory itself is missing, returns empty list."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        # Do not create .lexibrary
+
+        issues = check_orphan_artifacts(project_root, lexibrary_dir)
+        assert issues == []
+
+
+# ---------------------------------------------------------------------------
+# Helpers for check_bidirectional_deps tests
+# ---------------------------------------------------------------------------
+
+
+def _create_index_with_links(
+    lexibrary_dir: Path,
+    artifacts: list[tuple[int, str, str]],
+    links: list[tuple[int, int, str]],
+) -> None:
+    """Create an index.db with given artifacts and links.
+
+    Args:
+        lexibrary_dir: Path to .lexibrary directory.
+        artifacts: List of (id, path, kind) tuples to insert.
+        links: List of (source_id, target_id, link_type) tuples to insert.
+    """
+    db_path = lexibrary_dir / "index.db"
+    conn = sqlite3.connect(str(db_path))
+    ensure_schema(conn)
+    for art_id, art_path, kind in artifacts:
+        conn.execute(
+            "INSERT INTO artifacts (id, path, kind, title, status) VALUES (?, ?, ?, ?, ?)",
+            (art_id, art_path, kind, f"Artifact {art_id}", None),
+        )
+    for src_id, tgt_id, link_type in links:
+        conn.execute(
+            "INSERT INTO links (source_id, target_id, link_type) VALUES (?, ?, ?)",
+            (src_id, tgt_id, link_type),
+        )
+    conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# check_bidirectional_deps
+# ---------------------------------------------------------------------------
+
+
+class TestCheckBidirectionalDeps:
+    """Tests for check_bidirectional_deps.
+
+    Scenarios per task 2.2:
+    1. All consistent (no issues)
+    2. Design file lists dep not in graph
+    3. Graph has link not in design file
+    4. Index missing (returns empty)
+    5. Index corrupt (returns empty)
+    """
+
+    def test_all_consistent_no_issues(self, tmp_path: Path) -> None:
+        """When design deps and graph ast_import links match, no issues returned."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Create source files on disk
+        src_dir = project_root / "src" / "api"
+        src_dir.mkdir(parents=True)
+        (src_dir / "auth.py").write_text("import crypto", encoding="utf-8")
+
+        utils_dir = project_root / "src" / "utils"
+        utils_dir.mkdir(parents=True)
+        (utils_dir / "crypto.py").write_text("def encrypt(): pass", encoding="utf-8")
+
+        source_hash = hash_file(src_dir / "auth.py")
+
+        # Create design file listing src/utils/crypto.py as a dependency
+        _write_design_file(
+            lexibrary_dir,
+            "src/api/auth.py",
+            source_hash=source_hash,
+            dependencies="- src/utils/crypto.py",
+        )
+
+        # Create index with matching ast_import link
+        _create_index_with_links(
+            lexibrary_dir,
+            artifacts=[
+                (1, "src/api/auth.py", "source"),
+                (2, "src/utils/crypto.py", "source"),
+            ],
+            links=[
+                (1, 2, "ast_import"),
+            ],
+        )
+
+        issues = check_bidirectional_deps(project_root, lexibrary_dir)
+        assert len(issues) == 0
+
+    def test_design_dep_not_in_graph(self, tmp_path: Path) -> None:
+        """When design file lists a dep not in the graph, an info issue is returned."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Create source file
+        src_dir = project_root / "src" / "api"
+        src_dir.mkdir(parents=True)
+        (src_dir / "auth.py").write_text("import crypto", encoding="utf-8")
+
+        source_hash = hash_file(src_dir / "auth.py")
+
+        # Design file lists src/utils/crypto.py as dep
+        _write_design_file(
+            lexibrary_dir,
+            "src/api/auth.py",
+            source_hash=source_hash,
+            dependencies="- src/utils/crypto.py",
+        )
+
+        # Index has the source artifact but NO ast_import link
+        _create_index_with_links(
+            lexibrary_dir,
+            artifacts=[
+                (1, "src/api/auth.py", "source"),
+                (2, "src/utils/crypto.py", "source"),
+            ],
+            links=[],
+        )
+
+        issues = check_bidirectional_deps(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        issue = issues[0]
+        assert issue.severity == "info"
+        assert issue.check == "bidirectional_deps"
+        assert "src/utils/crypto.py" in issue.message
+        assert "listed in the design file" in issue.message
+        assert "not found" in issue.message
+        assert "stale" in issue.suggestion
+
+    def test_graph_link_not_in_design(self, tmp_path: Path) -> None:
+        """When graph has ast_import not listed in design file, an info issue is returned."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Create source file
+        src_dir = project_root / "src" / "api"
+        src_dir.mkdir(parents=True)
+        (src_dir / "auth.py").write_text("from models import user", encoding="utf-8")
+
+        source_hash = hash_file(src_dir / "auth.py")
+
+        # Design file has NO dependencies listed
+        _write_design_file(
+            lexibrary_dir,
+            "src/api/auth.py",
+            source_hash=source_hash,
+            dependencies="(none)",
+        )
+
+        # Graph has an ast_import link from auth.py to models/user.py
+        _create_index_with_links(
+            lexibrary_dir,
+            artifacts=[
+                (1, "src/api/auth.py", "source"),
+                (2, "src/models/user.py", "source"),
+            ],
+            links=[
+                (1, 2, "ast_import"),
+            ],
+        )
+
+        issues = check_bidirectional_deps(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        issue = issues[0]
+        assert issue.severity == "info"
+        assert issue.check == "bidirectional_deps"
+        assert "src/models/user.py" in issue.message
+        assert "exists in the link graph" in issue.message
+        assert "not listed in the design file" in issue.message
+
+    def test_index_missing_returns_empty(self, tmp_path: Path) -> None:
+        """When index.db does not exist, returns empty list without error."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Create a design file with dependencies but no index
+        _write_design_file(
+            lexibrary_dir,
+            "src/main.py",
+            dependencies="- src/utils.py",
+        )
+
+        issues = check_bidirectional_deps(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_index_corrupt_returns_empty(self, tmp_path: Path) -> None:
+        """When index.db is corrupt, returns empty list without error."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        db_path = lexibrary_dir / "index.db"
+        db_path.write_bytes(b"this is not a valid sqlite database")
+
+        issues = check_bidirectional_deps(project_root, lexibrary_dir)
+        assert issues == []
