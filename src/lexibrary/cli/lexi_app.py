@@ -243,7 +243,9 @@ def index(
     from lexibrary.config.loader import load_config  # noqa: PLC0415
     from lexibrary.indexer.orchestrator import index_directory, index_recursive  # noqa: PLC0415
 
-    # Resolve directory relative to cwd first, then find project root from there
+    project_root = require_project_root()
+
+    # Resolve directory relative to cwd
     target = Path(directory).resolve()
 
     # Validate directory exists
@@ -255,13 +257,13 @@ def index(
         console.print(f"[red]Not a directory:[/red] {directory}")
         raise typer.Exit(1)
 
-    # Find project root starting from the target directory (walks upward)
+    # Validate directory is within project root
     try:
-        project_root = find_project_root(start=target)
-    except LexibraryNotFoundError:
+        target.relative_to(project_root)
+    except ValueError:
         console.print(
-            "[red]No .lexibrary/ directory found.[/red]"
-            " Run [cyan]lexictl init[/cyan] to create one."
+            f"[red]Directory is outside the project root:[/red] {directory}\n"
+            f"Project root: {project_root}"
         )
         raise typer.Exit(1) from None
 
