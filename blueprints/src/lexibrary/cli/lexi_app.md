@@ -6,7 +6,7 @@
 
 | Name | Signature | Purpose |
 | --- | --- | --- |
-| `lexi_app` | `typer.Typer` | Root agent-facing CLI application registered as the `lexi` entry point |
+| `lexi_app` | `typer.Typer` | Root agent-facing CLI application registered as the `lexi` entry point; uses `load_dotenv_if_configured` as its Typer callback for dotenv startup loading |
 | `stack_app` | `typer.Typer` | Sub-group for `lexi stack *` commands (post, search, answer, vote, accept, view, list) |
 | `concept_app` | `typer.Typer` | Sub-group for `lexi concept *` commands (new, link) |
 | `lookup` | `(file: Path) -> None` | Display design file for a source file; checks scope, warns if stale, shows inherited conventions, shows reverse links from link graph |
@@ -35,7 +35,7 @@
 
 ## Dependencies
 
-- `lexibrary.cli._shared` -- `console`, `require_project_root`
+- `lexibrary.cli._shared` -- `console`, `load_dotenv_if_configured`, `require_project_root`
 - `lexibrary.config.loader` -- `load_config` (lazy import)
 - `lexibrary.indexer.orchestrator` -- `index_directory`, `index_recursive` (lazy import)
 - `lexibrary.artifacts.design_file_parser` -- `parse_design_file_metadata`, `parse_design_file` (lazy imports)
@@ -60,6 +60,7 @@
 
 ## Key Concepts
 
+- `lexi_app` registers `load_dotenv_if_configured` as its Typer `callback`, which runs before any command; when `llm.api_key_source` is `"dotenv"` in the project config, it calls `load_dotenv(project_root / ".env", override=False)` so that env vars already set in the shell take precedence; silently handles missing project root or `.env` file
 - All commands are fully implemented; no stubs in `lexi_app`
 - Cross-reference messages direct maintenance actions to `lexictl` (e.g. `"Run lexictl update ..."` in `lookup` and `concept_link`)
 - Stack helpers (`_stack_dir`, `_next_stack_id`, `_slugify`, `_find_post_path`) are private to this module per design decision D2

@@ -26,6 +26,7 @@ llm:
   provider: anthropic                    # LLM provider: anthropic, openai, ollama
   model: claude-sonnet-4-6              # Model identifier
   api_key_env: ANTHROPIC_API_KEY         # Env var holding the API key
+  api_key_source: env                    # How the API key is provided: env, dotenv, or manual
   max_retries: 3                         # Retry attempts on API failure
   timeout: 60                            # Request timeout in seconds
 
@@ -55,6 +56,9 @@ ignore:
     - .venv/
     - venv/
     - "*.lock"
+    - .env
+    - ".env.*"
+    - "*.env"
 
 # Background daemon settings
 daemon:

@@ -6,7 +6,7 @@
 
 | Name | Signature | Purpose |
 | --- | --- | --- |
-| `lexictl_app` | `typer.Typer` | Root maintenance CLI application registered as the `lexictl` entry point |
+| `lexictl_app` | `typer.Typer` | Root maintenance CLI application registered as the `lexictl` entry point; uses `load_dotenv_if_configured` as its Typer callback for dotenv startup loading |
 | `init` | `(*, defaults: bool) -> None` | Run the 8-step init wizard via `run_wizard()`; `--defaults` flag accepts all detected values without prompting; re-init guard prevents overwriting existing `.lexibrary/`; non-TTY guard requires `--defaults` |
 | `update` | `(path: Path \| None, *, changed_only: list[Path] \| None) -> None` | Generate/update design files via archivist pipeline; supports `--changed-only` for git-hook usage (calls `update_files`); mutually exclusive with `path`; single file, directory, or full project mode |
 | `validate` | `(*, severity: str \| None, check: str \| None, json_output: bool) -> None` | Run consistency checks with optional severity/check filters; outputs Rich tables or JSON; exits with `report.exit_code()` |
@@ -17,7 +17,7 @@
 
 ## Dependencies
 
-- `lexibrary.cli._shared` -- `console`, `require_project_root`
+- `lexibrary.cli._shared` -- `console`, `load_dotenv_if_configured`, `require_project_root`
 - `lexibrary.cli.banner` -- `render_banner` (lazy import in `init`)
 - `lexibrary.init.wizard` -- `run_wizard` (lazy import in `init`)
 - `lexibrary.init.scaffolder` -- `create_lexibrary_from_wizard` (lazy import in `init`)
@@ -42,8 +42,10 @@
 
 ## Key Concepts
 
+- `lexictl_app` registers `load_dotenv_if_configured` as its Typer `callback`, which runs before any command; when `llm.api_key_source` is `"dotenv"` in the project config, it calls `load_dotenv(project_root / ".env", override=False)` so that env vars already set in the shell take precedence; silently handles missing project root or `.env` file
 - `init` displays a startup banner (truecolor block art or ASCII fallback) via `render_banner()` before running the wizard
 - `init` uses `run_wizard()` + `create_lexibrary_from_wizard()` instead of the old `create_lexibrary_skeleton()`
+- `init` calls `generate_rules()` for selected agent environments after scaffolding, creating rule files and directories (e.g. `CLAUDE.md`, `.claude/commands/`, `.cursor/rules/`); filters to supported environments only
 - `init` does not call `require_project_root()` -- it creates the project root (uses `Path.cwd()` instead)
 - `init` has a re-init guard (checks for existing `.lexibrary/`) and a non-TTY guard (requires `--defaults`)
 - `update` supports `--changed-only` flag: accepts a list of file paths, calls `update_files()` for batch processing (designed for git hooks / CI)

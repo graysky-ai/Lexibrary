@@ -42,11 +42,32 @@ class TestWizardAnswers:
         assert answers.llm_provider == "anthropic"
         assert answers.llm_model == "claude-sonnet-4-6"
         assert answers.llm_api_key_env == "ANTHROPIC_API_KEY"
+        assert answers.llm_api_key_source == "env"
+        assert answers.llm_api_key_value == ""
         assert answers.ignore_patterns == []
         assert answers.token_budgets_customized is False
         assert answers.token_budgets == {}
         assert answers.iwh_enabled is True
         assert answers.confirmed is False
+
+    def test_api_key_value_empty_by_default(self) -> None:
+        """llm_api_key_value is empty string by default."""
+        answers = WizardAnswers()
+        assert answers.llm_api_key_value == ""
+
+    def test_api_key_source_env_by_default(self) -> None:
+        """llm_api_key_source defaults to 'env'."""
+        answers = WizardAnswers()
+        assert answers.llm_api_key_source == "env"
+
+    def test_api_key_value_populated_when_set(self) -> None:
+        """llm_api_key_value can be set explicitly (dotenv mode)."""
+        answers = WizardAnswers(
+            llm_api_key_source="dotenv",
+            llm_api_key_value="sk-secret-key",
+        )
+        assert answers.llm_api_key_source == "dotenv"
+        assert answers.llm_api_key_value == "sk-secret-key"
 
     def test_custom_values(self) -> None:
         answers = WizardAnswers(
@@ -110,26 +131,47 @@ class TestStepAgentEnvironmentDefaults:
         result = _step_agent_environment(tmp_path, console, use_defaults=True)
         assert result == []
 
+    def test_detected_with_missing_subdirs_auto_accepts(
+        self, tmp_path: Path, console: Console
+    ) -> None:
+        """Defaults mode: .claude/ exists (detected) but commands/ missing — auto-accepts."""
+        (tmp_path / ".claude").mkdir()
+        # .claude/commands/ doesn't exist yet — defaults mode should still proceed
+        result = _step_agent_environment(tmp_path, console, use_defaults=True)
+        assert result == ["claude"]
+
 
 class TestStepLLMProviderDefaults:
-    def test_provider_detected(self, console: Console, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_provider_detected(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
-        provider, model, env = _step_llm_provider(console, use_defaults=True)
+        provider, model, env, source, value = _step_llm_provider(
+            tmp_path, console, use_defaults=True
+        )
         assert provider == "anthropic"
         assert model == "claude-sonnet-4-6"
         assert env == "ANTHROPIC_API_KEY"
+        assert source == "env"
+        assert value == ""
 
-    def test_no_provider_detected(self, console: Console, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_provider_detected(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
-        provider, model, env = _step_llm_provider(console, use_defaults=True)
+        provider, model, env, source, value = _step_llm_provider(
+            tmp_path, console, use_defaults=True
+        )
         assert provider == "anthropic"
         assert env == "ANTHROPIC_API_KEY"
+        assert source == "env"
+        assert value == ""
 
 
 class TestStepIgnorePatternsDefaults:
@@ -192,7 +234,11 @@ class TestStepScopeRootInteractive:
 
 
 class TestStepAgentEnvironmentInteractive:
-    def test_user_selects_multiple(self, tmp_path: Path, console: Console) -> None:
+    def test_user_selects_existing_env(self, tmp_path: Path, console: Console) -> None:
+        """Selecting an env whose directories exist skips the create prompt."""
+        (tmp_path / ".claude" / "commands").mkdir(parents=True)
+        (tmp_path / ".cursor" / "rules").mkdir(parents=True)
+        (tmp_path / ".cursor" / "skills").mkdir(parents=True)
         with patch("lexibrary.init.wizard.Prompt.ask", return_value="claude, cursor"):
             result = _step_agent_environment(tmp_path, console, use_defaults=False)
         assert result == ["claude", "cursor"]
@@ -201,6 +247,167 @@ class TestStepAgentEnvironmentInteractive:
         with patch("lexibrary.init.wizard.Prompt.ask", return_value=""):
             result = _step_agent_environment(tmp_path, console, use_defaults=False)
         assert result == []
+
+    def test_missing_dirs_user_accepts_creation(
+        self, tmp_path: Path, console: Console
+    ) -> None:
+        """User selects 'claude' without .claude/ dir, accepts creation."""
+        with (
+            patch("lexibrary.init.wizard.Prompt.ask", return_value="claude"),
+            patch("lexibrary.init.wizard.Confirm.ask", return_value=True),
+        ):
+            result = _step_agent_environment(tmp_path, console, use_defaults=False)
+        assert result == ["claude"]
+
+    def test_missing_dirs_user_declines_creation(
+        self, tmp_path: Path, console: Console
+    ) -> None:
+        """User selects 'claude' without .claude/ dir, declines — env removed."""
+        with (
+            patch("lexibrary.init.wizard.Prompt.ask", return_value="claude"),
+            patch("lexibrary.init.wizard.Confirm.ask", return_value=False),
+        ):
+            result = _step_agent_environment(tmp_path, console, use_defaults=False)
+        assert result == []
+
+    def test_missing_dirs_partial_decline(self, tmp_path: Path, console: Console) -> None:
+        """One env has dirs, one doesn't — declining removes only the missing one."""
+        (tmp_path / ".claude" / "commands").mkdir(parents=True)
+        with (
+            patch("lexibrary.init.wizard.Prompt.ask", return_value="claude, cursor"),
+            patch("lexibrary.init.wizard.Confirm.ask", return_value=False),
+        ):
+            result = _step_agent_environment(tmp_path, console, use_defaults=False)
+        assert result == ["claude"]
+
+
+class TestStepLLMProviderInteractiveStorageModes:
+    """Test _step_llm_provider() interactive mode covering all three storage modes."""
+
+    def test_storage_mode_env(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """User selects 'env' storage mode — no key written, value is empty."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        prompt_values = iter(["anthropic", "env"])
+        with patch(
+            "lexibrary.init.wizard.Prompt.ask",
+            side_effect=lambda *a, **kw: next(prompt_values),
+        ):
+            provider, model, env, source, value = _step_llm_provider(
+                tmp_path, console, use_defaults=False
+            )
+
+        assert provider == "anthropic"
+        assert source == "env"
+        assert value == ""
+        # No .env file should be created
+        assert not (tmp_path / ".env").exists()
+
+    def test_storage_mode_manual(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """User selects 'manual' storage mode — no key written, value is empty."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        prompt_values = iter(["anthropic", "manual"])
+        with patch(
+            "lexibrary.init.wizard.Prompt.ask",
+            side_effect=lambda *a, **kw: next(prompt_values),
+        ):
+            provider, model, env, source, value = _step_llm_provider(
+                tmp_path, console, use_defaults=False
+            )
+
+        assert provider == "anthropic"
+        assert source == "manual"
+        assert value == ""
+        # No .env file should be created
+        assert not (tmp_path / ".env").exists()
+
+    def test_storage_mode_dotenv(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """User selects 'dotenv' storage mode — key is written to .env."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        prompt_values = iter(["anthropic", "dotenv", "sk-my-secret-key"])
+        with patch(
+            "lexibrary.init.wizard.Prompt.ask",
+            side_effect=lambda *a, **kw: next(prompt_values),
+        ):
+            provider, model, env, source, value = _step_llm_provider(
+                tmp_path, console, use_defaults=False
+            )
+
+        assert provider == "anthropic"
+        assert source == "dotenv"
+        assert value == "sk-my-secret-key"
+        # .env file should be created with the key
+        assert (tmp_path / ".env").exists()
+        dotenv_content = (tmp_path / ".env").read_text()
+        assert "ANTHROPIC_API_KEY" in dotenv_content
+        # .gitignore should be created/updated with .env entry
+        assert (tmp_path / ".gitignore").exists()
+        gitignore_content = (tmp_path / ".gitignore").read_text()
+        assert ".env" in gitignore_content
+
+    def test_storage_mode_dotenv_appends_gitignore(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """dotenv mode appends .env to existing .gitignore if not already present."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        # Pre-create .gitignore without .env
+        (tmp_path / ".gitignore").write_text("node_modules/\n")
+
+        prompt_values = iter(["anthropic", "dotenv", "sk-key"])
+        with patch(
+            "lexibrary.init.wizard.Prompt.ask",
+            side_effect=lambda *a, **kw: next(prompt_values),
+        ):
+            _step_llm_provider(tmp_path, console, use_defaults=False)
+
+        gitignore = (tmp_path / ".gitignore").read_text()
+        assert "node_modules/" in gitignore
+        assert ".env" in gitignore
+
+    def test_no_provider_detected_uses_anthropic_default(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When no provider is detected, defaults to anthropic and still prompts for storage."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        prompt_values = iter(["env"])
+        with patch(
+            "lexibrary.init.wizard.Prompt.ask",
+            side_effect=lambda *a, **kw: next(prompt_values),
+        ):
+            provider, model, env, source, value = _step_llm_provider(
+                tmp_path, console, use_defaults=False
+            )
+
+        assert provider == "anthropic"
+        assert model == "claude-sonnet-4-6"
+        assert env == "ANTHROPIC_API_KEY"
+        assert source == "env"
+        assert value == ""
 
 
 class TestStepIgnorePatternsInteractive:
@@ -298,6 +505,36 @@ class TestRunWizardDefaults:
         assert result.iwh_enabled is True
         assert result.token_budgets_customized is False
 
+    def test_use_defaults_api_key_value_is_empty(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """use_defaults=True sets llm_api_key_value to empty and source to 'env'."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        result = run_wizard(tmp_path, console, use_defaults=True)
+
+        assert result is not None
+        assert result.llm_api_key_source == "env"
+        assert result.llm_api_key_value == ""
+
+    def test_use_defaults_no_env_key_api_key_value_is_empty(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """use_defaults=True with no provider detected still has empty api_key_value."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        result = run_wizard(tmp_path, console, use_defaults=True)
+
+        assert result is not None
+        assert result.llm_api_key_source == "env"
+        assert result.llm_api_key_value == ""
+
     def test_use_defaults_detected_project_name_from_pyproject(
         self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -345,6 +582,7 @@ class TestRunWizardInteractive:
                 tmp_path.name,  # step 1: project name
                 ".",  # step 2: scope root
                 "",  # step 3: agent environments
+                "env",  # step 4: storage method
                 "",  # step 5: custom patterns (no type detected, no suggestions)
             ]
         )
@@ -387,10 +625,12 @@ class TestRunWizardInteractive:
                 "src/",  # step 2: accept scope root
                 "claude",  # step 3: agent environments
                 "anthropic",  # step 4: select LLM provider
+                "env",  # step 4: storage method
             ]
         )
         confirm_values = iter(
             [
+                True,  # step 3: create missing .claude/ dirs
                 True,  # step 5: accept ignore patterns (python detected)
                 False,  # step 6: don't customize budgets
                 True,  # step 7: IWH enabled
@@ -416,3 +656,55 @@ class TestRunWizardInteractive:
         assert result.scope_root == "src/"
         assert result.agent_environments == ["claude"]
         assert result.llm_provider == "anthropic"
+        assert result.llm_api_key_source == "env"
+        assert result.llm_api_key_value == ""
+
+    def test_interactive_dotenv_populates_api_key_value(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Interactive dotenv mode populates llm_api_key_value on the answers."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-app"\n', encoding="utf-8")
+        (tmp_path / "src").mkdir()
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        prompt_values = iter(
+            [
+                "my-app",  # step 1: accept project name
+                "src/",  # step 2: accept scope root
+                "claude",  # step 3: agent environments
+                "anthropic",  # step 4: select LLM provider
+                "dotenv",  # step 4: storage method
+                "sk-my-secret-key",  # step 4: API key value
+            ]
+        )
+        confirm_values = iter(
+            [
+                True,  # step 3: create missing .claude/ dirs
+                True,  # step 5: accept ignore patterns (python detected)
+                False,  # step 6: don't customize budgets
+                True,  # step 7: IWH enabled
+                True,  # step 8: confirm
+            ]
+        )
+
+        with (
+            patch(
+                "lexibrary.init.wizard.Prompt.ask",
+                side_effect=lambda *a, **kw: next(prompt_values),
+            ),
+            patch(
+                "lexibrary.init.wizard.Confirm.ask",
+                side_effect=lambda *a, **kw: next(confirm_values),
+            ),
+        ):
+            result = run_wizard(tmp_path, console, use_defaults=False)
+
+        assert result is not None
+        assert result.confirmed is True
+        assert result.llm_api_key_source == "dotenv"
+        assert result.llm_api_key_value == "sk-my-secret-key"
+        # .env file should have been written
+        assert (tmp_path / ".env").exists()

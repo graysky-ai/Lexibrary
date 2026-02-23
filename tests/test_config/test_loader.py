@@ -80,6 +80,31 @@ def test_load_config_partial_project(tmp_path: Path) -> None:
     assert config.token_budgets.start_here_tokens == 1200  # from project
 
 
+def test_load_config_api_key_source_from_project_yaml(tmp_path: Path) -> None:
+    """api_key_source is loaded correctly from project YAML config."""
+    (tmp_path / ".lexibrary").mkdir()
+    (tmp_path / ".lexibrary" / "config.yaml").write_text(
+        "llm:\n  api_key_source: dotenv\n"
+    )
+
+    config = load_config(
+        project_root=tmp_path,
+        global_config_path=tmp_path / "nonexistent_global.yaml",
+    )
+    assert config.llm.api_key_source == "dotenv"
+    # Other LLM defaults preserved
+    assert config.llm.provider == "anthropic"
+
+
+def test_load_config_api_key_source_defaults_to_env(tmp_path: Path) -> None:
+    """api_key_source defaults to 'env' when not specified in YAML."""
+    config = load_config(
+        project_root=tmp_path,
+        global_config_path=tmp_path / "nonexistent_global.yaml",
+    )
+    assert config.llm.api_key_source == "env"
+
+
 def test_load_config_extra_fields_ignored(tmp_path: Path) -> None:
     """Extra fields in YAML are silently ignored (extra='ignore')."""
     global_cfg = tmp_path / "global.yaml"
