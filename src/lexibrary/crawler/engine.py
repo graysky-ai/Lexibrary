@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from lexibrary.config.schema import LexibraryConfig
+from lexibrary.errors import ErrorSummary
 from lexibrary.crawler.change_detector import ChangeDetector
 from lexibrary.crawler.discovery import (
     discover_directories_bottom_up,
@@ -46,6 +47,7 @@ class CrawlStats:
     files_skipped: int = 0
     llm_calls: int = 0
     errors: int = 0
+    error_summary: ErrorSummary = field(default_factory=ErrorSummary)
 
 
 async def full_crawl(
@@ -93,9 +95,10 @@ async def full_crawl(
                 dry_run=dry_run,
             )
             stats.directories_indexed += 1
-        except Exception:
+        except Exception as exc:
             logger.warning("Error indexing %s", directory, exc_info=True)
             stats.errors += 1
+            stats.error_summary.add("crawl", exc, path=str(directory))
 
     # Save cache after crawl (unless dry run)
     if not dry_run:

@@ -13,6 +13,7 @@ from pathlib import Path
 from lexibrary.ast_parser.models import InterfaceSkeleton
 from lexibrary.ast_parser.registry import GRAMMAR_MAP
 from lexibrary.ast_parser.skeleton_render import render_skeleton
+from lexibrary.exceptions import ParseError
 from lexibrary.utils.hashing import hash_file, hash_string
 
 logger = logging.getLogger(__name__)
@@ -80,9 +81,10 @@ def parse_interface(file_path: Path) -> InterfaceSkeleton | None:
 
     try:
         return extractor(file_path)
-    except Exception:
-        logger.exception("Failed to parse interface for %s", file_path)
-        return None
+    except Exception as exc:
+        raise ParseError(
+            f"Failed to parse interface for {file_path}: {exc}"
+        ) from exc
 
 
 def hash_interface(skeleton: InterfaceSkeleton) -> str:
@@ -112,8 +114,12 @@ def compute_hashes(file_path: Path) -> tuple[str, str | None]:
     """
     content_hash = hash_file(file_path)
 
-    skeleton = parse_interface(file_path)
     interface_hash: str | None = None
+    try:
+        skeleton = parse_interface(file_path)
+    except ParseError:
+        logger.warning("Parse error computing interface hash for %s", file_path, exc_info=True)
+        skeleton = None
     if skeleton is not None:
         interface_hash = hash_interface(skeleton)
 

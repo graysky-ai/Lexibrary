@@ -160,9 +160,12 @@ def get_language(extension: str) -> Language | None:
                 f"not installed. Run: pip install {info.pip_package}"
             )
         return None
-    except Exception:
-        logger.exception("Failed to load grammar for %s", extension)
-        return None
+    except Exception as exc:
+        from lexibrary.exceptions import ParseError  # noqa: PLC0415
+
+        raise ParseError(
+            f"Failed to load grammar for {extension}: {exc}"
+        ) from exc
 
 
 def get_parser(extension: str) -> Parser | None:
@@ -197,9 +200,12 @@ def get_parser(extension: str) -> Parser | None:
         parser = Parser(language)
         _parser_cache[cache_key] = parser
         return parser
-    except Exception:
-        logger.exception("Failed to create parser for %s", extension)
-        return None
+    except Exception as exc:
+        from lexibrary.exceptions import ParseError  # noqa: PLC0415
+
+        raise ParseError(
+            f"Failed to create parser for {extension}: {exc}"
+        ) from exc
 
 
 def get_supported_extensions() -> list[str]:

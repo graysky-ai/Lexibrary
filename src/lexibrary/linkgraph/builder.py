@@ -26,6 +26,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from lexibrary.archivist.dependency_extractor import extract_dependencies
+from lexibrary.errors import ErrorSummary
 from lexibrary.artifacts.aindex import AIndexFile  # noqa: F401
 from lexibrary.artifacts.aindex_parser import parse_aindex
 from lexibrary.artifacts.concept import ConceptFile  # noqa: F401
@@ -64,6 +65,7 @@ class BuildResult:
     duration_ms: int = 0
     errors: list[str] = field(default_factory=list)
     build_type: str = "full"
+    error_summary: ErrorSummary = field(default_factory=ErrorSummary)
 
 
 # ---------------------------------------------------------------------------
@@ -971,6 +973,7 @@ class IndexBuilder:
         start_ns = time.monotonic_ns()
         build_started = datetime.now(UTC).isoformat()
         errors: list[str] = []
+        error_summary = ErrorSummary()
 
         # Step 1: Ensure schema is up-to-date (must precede build_log cleanup
         # because the table may not exist yet on a fresh database)
@@ -1002,6 +1005,7 @@ class IndexBuilder:
                     error_msg = f"Error processing design file {design_path}: {exc}"
                     logger.error(error_msg, exc_info=True)
                     errors.append(error_msg)
+                    error_summary.add("linkgraph", exc, path=str(design_path))
 
             # 4b. Concept files (creates concept artifacts, aliases, links, tags, FTS)
             for concept_path in self._scan_concept_files():
@@ -1011,6 +1015,7 @@ class IndexBuilder:
                     error_msg = f"Error processing concept file {concept_path}: {exc}"
                     logger.error(error_msg, exc_info=True)
                     errors.append(error_msg)
+                    error_summary.add("linkgraph", exc, path=str(concept_path))
 
             # 4c. Stack posts (creates stack artifacts, links, tags, FTS)
             for stack_path in self._scan_stack_posts():
@@ -1020,6 +1025,7 @@ class IndexBuilder:
                     error_msg = f"Error processing Stack post {stack_path}: {exc}"
                     logger.error(error_msg, exc_info=True)
                     errors.append(error_msg)
+                    error_summary.add("linkgraph", exc, path=str(stack_path))
 
             # 4d. .aindex conventions (creates convention artifacts, links, FTS)
             for aindex_path in self._scan_aindex_files():
@@ -1029,6 +1035,7 @@ class IndexBuilder:
                     error_msg = f"Error processing .aindex file {aindex_path}: {exc}"
                     logger.error(error_msg, exc_info=True)
                     errors.append(error_msg)
+                    error_summary.add("linkgraph", exc, path=str(aindex_path))
 
             # Step 5: Update meta table with build summary
             self._update_meta(build_started)
@@ -1045,6 +1052,7 @@ class IndexBuilder:
             error_msg = f"Full build failed, transaction rolled back: {exc}"
             logger.error(error_msg, exc_info=True)
             errors.append(error_msg)
+            error_summary.add("linkgraph", exc)
 
             duration_ms = (time.monotonic_ns() - start_ns) // 1_000_000
             return BuildResult(
@@ -1053,6 +1061,7 @@ class IndexBuilder:
                 duration_ms=duration_ms,
                 errors=errors,
                 build_type="full",
+                error_summary=error_summary,
             )
 
         # Compute final counts and timing
@@ -1066,6 +1075,7 @@ class IndexBuilder:
             duration_ms=duration_ms,
             errors=errors,
             build_type="full",
+            error_summary=error_summary,
         )
 
     # -- incremental update (task group 8) ----------------------------------
@@ -1683,6 +1693,7 @@ class IndexBuilder:
         start_ns = time.monotonic_ns()
         build_started = datetime.now(UTC).isoformat()
         errors: list[str] = []
+        error_summary = ErrorSummary()
 
         # Ensure schema is in place
         ensure_schema(self.conn)
@@ -1721,6 +1732,7 @@ class IndexBuilder:
                 error_msg = f"Error processing {rel}: {exc}"
                 logger.error(error_msg, exc_info=True)
                 errors.append(error_msg)
+                error_summary.add("linkgraph", exc, path=str(rel))
 
         # Update meta with current counts
         self._update_meta(build_started)
@@ -1737,6 +1749,7 @@ class IndexBuilder:
             duration_ms=duration_ms,
             errors=errors,
             build_type="incremental",
+            error_summary=error_summary,
         )
 
 

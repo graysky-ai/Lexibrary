@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from lexibrary.artifacts.aindex_serializer import serialize_aindex
 from lexibrary.artifacts.writer import write_artifact
 from lexibrary.config.schema import LexibraryConfig
+from lexibrary.errors import ErrorSummary
 from lexibrary.ignore import create_ignore_matcher
 from lexibrary.indexer.generator import generate_aindex
+
+logger = logging.getLogger(__name__)
 
 _LEXIBRARY_DIR = ".lexibrary"
 
@@ -23,6 +27,7 @@ class IndexStats:
     directories_indexed: int = 0
     files_found: int = 0
     errors: int = 0
+    error_summary: ErrorSummary = field(default_factory=ErrorSummary)
 
 
 def index_directory(
@@ -128,8 +133,10 @@ def index_recursive(
             # Count files in the directory for stats
             with contextlib.suppress(OSError):
                 stats.files_found += sum(1 for child in dir_path.iterdir() if child.is_file())
-        except Exception:
+        except Exception as exc:
+            logger.exception("Failed to index directory: %s", dir_path)
             stats.errors += 1
+            stats.error_summary.add("indexer", exc, path=str(dir_path))
 
         if progress_callback is not None:
             progress_callback(i, total, dir_path.name)

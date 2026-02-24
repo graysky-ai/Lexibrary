@@ -6,7 +6,7 @@ import contextlib
 import hashlib
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,6 +18,7 @@ from lexibrary.archivist.change_checker import (
 from lexibrary.archivist.dependency_extractor import extract_dependencies
 from lexibrary.archivist.service import ArchivistService, DesignFileRequest
 from lexibrary.archivist.start_here import generate_start_here
+from lexibrary.errors import ErrorSummary
 from lexibrary.artifacts.aindex import AIndexEntry
 from lexibrary.artifacts.aindex_parser import parse_aindex
 from lexibrary.artifacts.aindex_serializer import serialize_aindex
@@ -67,6 +68,7 @@ class UpdateStats:
     start_here_failed: bool = False
     linkgraph_built: bool = False
     linkgraph_error: str | None = None
+    error_summary: ErrorSummary = field(default_factory=ErrorSummary)
 
 
 @dataclass
@@ -555,9 +557,10 @@ async def update_files(
                 archivist,
                 available_concepts=available_concepts,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Unexpected error processing %s", source_path)
             stats.files_failed += 1
+            stats.error_summary.add("archivist", exc, path=str(source_path))
             if progress_callback is not None:
                 progress_callback(source_path, ChangeLevel.UNCHANGED)
             continue
@@ -576,8 +579,9 @@ async def update_files(
         try:
             reindexed = reindex_directories(list(affected_dirs), project_root, config)
             stats.aindex_refreshed += reindexed
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to re-index directories after update_files")
+            stats.error_summary.add("archivist", exc)
 
     # Incremental link graph index update: pass both processed and deleted
     # paths so the builder can update changed artifacts and clean up deleted
@@ -588,9 +592,10 @@ async def update_files(
         try:
             build_index(project_root, changed_paths=all_changed)
             stats.linkgraph_built = True
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to run incremental link graph update")
             stats.linkgraph_error = "Link graph incremental update failed"
+            stats.error_summary.add("linkgraph", exc)
 
     return stats
 
@@ -665,9 +670,10 @@ async def update_project(
                 archivist,
                 available_concepts=available_concepts,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Unexpected error processing %s", source_path)
             stats.files_failed += 1
+            stats.error_summary.add("archivist", exc, path=str(source_path))
             changed_file_paths.append(source_path)
             if progress_callback is not None:
                 progress_callback(source_path, ChangeLevel.UNCHANGED)
@@ -685,9 +691,10 @@ async def update_project(
     # Step 5: Regenerate START_HERE.md after processing all files (pipeline spec SS5)
     try:
         await generate_start_here(project_root, config, archivist)
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to regenerate START_HERE.md")
         stats.start_here_failed = True
+        stats.error_summary.add("archivist", exc, path="START_HERE.md")
 
     # Step 6: Re-index directories containing changed files (D-2, D-3).
     # Skipped when no files were actually created, updated, or failed (4.3).
@@ -696,15 +703,17 @@ async def update_project(
         try:
             reindexed = reindex_directories(list(affected_dirs), project_root, config)
             stats.aindex_refreshed += reindexed
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to re-index directories after update_project")
+            stats.error_summary.add("archivist", exc)
 
     # Step 7: Build the link graph index (full rebuild after all artifacts are up to date)
     try:
         build_index(project_root)
         stats.linkgraph_built = True
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to build link graph index")
         stats.linkgraph_error = "Link graph full build failed"
+        stats.error_summary.add("linkgraph", exc)
 
     return stats

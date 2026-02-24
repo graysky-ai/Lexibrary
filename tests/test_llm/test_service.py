@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from lexibrary.baml_client.types import BatchFileSummary, FileSummary
+from lexibrary.exceptions import LLMServiceError
 from lexibrary.llm.rate_limiter import RateLimiter
 from lexibrary.llm.service import (
     DirectorySummaryRequest,
@@ -43,14 +44,12 @@ async def test_summarize_file_success(mock_b: AsyncMock, service: LLMService) ->
 
 @pytest.mark.asyncio
 @patch("lexibrary.llm.service.b")
-async def test_summarize_file_error_fallback(mock_b: AsyncMock, service: LLMService) -> None:
+async def test_summarize_file_error_raises(mock_b: AsyncMock, service: LLMService) -> None:
     mock_b.SummarizeFile = AsyncMock(side_effect=RuntimeError("API error"))
     request = FileSummaryRequest(path=Path("src/broken.py"), content="bad", language="Python")
-    result = await service.summarize_file(request)
 
-    assert result.summary == ""
-    assert result.error is True
-    assert result.path == Path("src/broken.py")
+    with pytest.raises(LLMServiceError, match="API error"):
+        await service.summarize_file(request)
 
 
 # --- summarize_files_batch ---
@@ -84,17 +83,15 @@ async def test_summarize_files_batch_empty(service: LLMService) -> None:
 
 @pytest.mark.asyncio
 @patch("lexibrary.llm.service.b")
-async def test_summarize_files_batch_error_fallback(mock_b: AsyncMock, service: LLMService) -> None:
+async def test_summarize_files_batch_error_raises(mock_b: AsyncMock, service: LLMService) -> None:
     mock_b.SummarizeFilesBatch = AsyncMock(side_effect=RuntimeError("API error"))
     requests = [
         FileSummaryRequest(path=Path("a.py"), content="# a", language="Python"),
         FileSummaryRequest(path=Path("b.py"), content="# b", language="Python"),
     ]
-    results = await service.summarize_files_batch(requests)
 
-    assert len(results) == 2
-    assert all(r.summary == "" for r in results)
-    assert all(r.error is True for r in results)
+    with pytest.raises(LLMServiceError, match="API error"):
+        await service.summarize_files_batch(requests)
 
 
 # --- summarize_directory ---
@@ -118,13 +115,13 @@ async def test_summarize_directory_success(mock_b: AsyncMock, service: LLMServic
 
 @pytest.mark.asyncio
 @patch("lexibrary.llm.service.b")
-async def test_summarize_directory_error_fallback(mock_b: AsyncMock, service: LLMService) -> None:
+async def test_summarize_directory_error_raises(mock_b: AsyncMock, service: LLMService) -> None:
     mock_b.SummarizeDirectory = AsyncMock(side_effect=RuntimeError("API error"))
     request = DirectorySummaryRequest(
         path=Path("src/utils"),
         file_list="hashing.py",
         subdir_list="",
     )
-    result = await service.summarize_directory(request)
 
-    assert result == "Summary unavailable."
+    with pytest.raises(LLMServiceError, match="API error"):
+        await service.summarize_directory(request)

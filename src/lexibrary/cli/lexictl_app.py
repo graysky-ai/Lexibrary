@@ -168,6 +168,11 @@ def update(
         if stats.files_failed:
             console.print(f"  [red]Files failed:       {stats.files_failed}[/red]")
 
+        if stats.error_summary.has_errors():
+            from lexibrary.errors import format_error_summary  # noqa: PLC0415
+
+            format_error_summary(stats.error_summary, console)
+
         if stats.files_failed:
             raise typer.Exit(1)
         return
@@ -246,6 +251,11 @@ def update(
     if stats.token_budget_warnings:
         console.print(f"  [yellow]Token budget warnings: {stats.token_budget_warnings}[/yellow]")
 
+    if stats.error_summary.has_errors():
+        from lexibrary.errors import format_error_summary  # noqa: PLC0415
+
+        format_error_summary(stats.error_summary, console)
+
     if stats.files_failed:
         raise typer.Exit(1)
 
@@ -321,6 +331,11 @@ def index(
             + (f", [red]{stats.errors} errors[/red]" if stats.errors else "")
             + "."
         )
+
+        if stats.error_summary.has_errors():
+            from lexibrary.errors import format_error_summary  # noqa: PLC0415
+
+            format_error_summary(stats.error_summary, console)
     else:
         output_path = index_directory(target, project_root, config)
         console.print(f"[green]Wrote[/green] {output_path}")

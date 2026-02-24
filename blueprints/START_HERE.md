@@ -13,7 +13,8 @@ src/lexibrary/
 │   ├── _shared.py               ← Shared helpers: console, require_project_root(), stub(), _run_validate(), _run_status()
 │   ├── lexi_app.py              ← Agent-facing CLI (lexi): lookup, describe, validate, status, concepts, concept, stack, search
 │   └── lexictl_app.py           ← Maintenance CLI (lexictl): init, update (--changed-only), index, validate, status, setup (--update, --hooks), sweep (--watch), daemon (start/stop/status)
-├── exceptions.py                ← LexibraryNotFoundError
+├── errors.py                    ← ErrorRecord, ErrorSummary, format_error_summary — structured error collection
+├── exceptions.py                ← LexibraryError hierarchy: ConfigError, IndexingError, LLMServiceError, ParseError, LinkGraphError
 ├── search.py                    ← unified_search() — cross-artifact search (concepts, design files, Stack posts)
 ├── archivist/                   ← LLM pipeline for design file + START_HERE generation (Phase 4)
 │   ├── __init__.py              ← Public API re-exports
@@ -198,7 +199,7 @@ src/lexibrary/
 | Add / modify agent environment rules | `blueprints/src/lexibrary/init/rules/` |
 | Add / modify IWH signal files | `blueprints/src/lexibrary/iwh/` |
 | Change path utilities | `blueprints/src/lexibrary/utils/paths.md` |
-| Raise / handle project-not-found | `blueprints/src/lexibrary/exceptions.md` |
+| Raise / handle errors | `blueprints/src/lexibrary/exceptions.md` — exception hierarchy; `src/lexibrary/errors.py` — error collection |
 | Add / modify concept wiki utilities | `blueprints/src/lexibrary/wiki/` |
 | Add / modify Stack Q&A features | `blueprints/src/lexibrary/stack/` |
 | Change cross-artifact search | `blueprints/src/lexibrary/search.md` |
@@ -218,6 +219,19 @@ src/lexibrary/
 - Output: `rich.console.Console` — no bare `print()`
 - `baml_client/` is auto-generated — never edit it directly
 - `crawler/engine.py` is partially broken: references `config.output`, `FileEntry`/`DirEntry`/`IandexData` types not yet defined — use `indexer/orchestrator.py` for `lexi index` instead
+
+### Error Handling Conventions
+
+1. **Leaf functions** raise specific `LexibraryError` subclasses — never return error flags
+   or None as a failure signal in new code.
+2. **Pipeline/orchestrator functions** catch specific exceptions, record them in
+   `ErrorSummary`, and continue processing. A final `except Exception` remains as a safety
+   net with `logger.exception()`.
+3. **CLI commands** call `format_error_summary()` before exiting and set exit code 1 if
+   errors occurred.
+4. **No bare `except Exception: pass`** — every catch block must either log or record.
+5. **Error context matters** — always include the file path or operation context in error
+   messages.
 
 ## Navigation Protocol
 

@@ -7,11 +7,14 @@ with Rich rendering and JSON output support.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
+
+if TYPE_CHECKING:
+    from lexibrary.errors import ErrorSummary
 
 Severity = Literal["error", "warning", "info"]
 
@@ -75,6 +78,7 @@ class ValidationReport:
     """Aggregated validation results with rendering capabilities."""
 
     issues: list[ValidationIssue] = field(default_factory=list)
+    error_summary: ErrorSummary | None = None
 
     @property
     def summary(self) -> ValidationSummary:

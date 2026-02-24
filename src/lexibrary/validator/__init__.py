@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
+from lexibrary.errors import ErrorSummary
+from lexibrary.exceptions import LexibraryError
 from lexibrary.validator.checks import (
     check_aindex_coverage,
     check_bidirectional_deps,
@@ -27,6 +30,8 @@ from lexibrary.validator.report import (
     ValidationReport,
     ValidationSummary,
 )
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "AVAILABLE_CHECKS",
@@ -126,14 +131,18 @@ def validate_library(
 
     # Run selected checks and aggregate issues
     all_issues: list[ValidationIssue] = []
-    for _name, (check_fn, _sev) in checks_to_run.items():
+    error_summary = ErrorSummary()
+    for name, (check_fn, _sev) in checks_to_run.items():
         try:
             issues = check_fn(project_root, lexibrary_dir)
             all_issues.extend(issues)
-        except Exception:
-            # Individual check failures should not abort the entire run.
-            # In a future iteration we could log these or add them as
-            # issues themselves.
-            pass
+        except LexibraryError as exc:
+            logger.warning("Validation check %r failed", name, exc_info=True)
+            error_summary.add("validate", exc, path=name)
+        except Exception as exc:
+            logger.warning("Validation check %r failed unexpectedly", name, exc_info=True)
+            error_summary.add("validate", exc, path=name)
 
-    return ValidationReport(issues=all_issues)
+    report = ValidationReport(issues=all_issues)
+    report.error_summary = error_summary
+    return report

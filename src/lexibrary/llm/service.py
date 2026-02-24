@@ -8,6 +8,7 @@ from pathlib import Path
 
 from lexibrary.baml_client.async_client import b
 from lexibrary.baml_client.types import FileInput
+from lexibrary.exceptions import LLMServiceError
 from lexibrary.llm.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
@@ -58,9 +59,11 @@ class LLMService:
                 is_truncated=request.is_truncated,
             )
             return FileSummaryResult(path=request.path, summary=result.summary)
-        except Exception:
+        except Exception as exc:
             logger.warning("LLM error summarizing %s", request.path, exc_info=True)
-            return FileSummaryResult(path=request.path, summary="", error=True)
+            raise LLMServiceError(
+                f"Failed to summarize {request.path}: {exc}"
+            ) from exc
 
     async def summarize_files_batch(
         self, requests: list[FileSummaryRequest]
@@ -93,9 +96,11 @@ class LLMService:
                 FileSummaryResult(path=req.path, summary=batch_result.summary)
                 for req, batch_result in zip(requests, results, strict=True)
             ]
-        except Exception:
+        except Exception as exc:
             logger.warning("LLM error in batch summarization", exc_info=True)
-            return [FileSummaryResult(path=req.path, summary="", error=True) for req in requests]
+            raise LLMServiceError(
+                f"Failed to summarize batch of {len(requests)} files: {exc}"
+            ) from exc
 
     async def summarize_directory(self, request: DirectorySummaryRequest) -> str:
         """Summarize a directory. Returns fallback summary on error."""
@@ -106,6 +111,8 @@ class LLMService:
                 file_list=request.file_list,
                 subdir_list=request.subdir_list,
             )
-        except Exception:
+        except Exception as exc:
             logger.warning("LLM error summarizing directory %s", request.path, exc_info=True)
-            return "Summary unavailable."
+            raise LLMServiceError(
+                f"Failed to summarize directory {request.path}: {exc}"
+            ) from exc
