@@ -70,12 +70,12 @@ class TestFullFlowPerEnvironment:
     """Each supported environment produces the correct files via generate_rules()."""
 
     def test_claude_full_flow(self, tmp_path: Path) -> None:
-        """Claude generates CLAUDE.md and two command files."""
+        """Claude generates CLAUDE.md, settings.json, hooks, and command files."""
         results = generate_rules(tmp_path, ["claude"])
 
         assert "claude" in results
         paths = results["claude"]
-        assert len(paths) == 3
+        assert len(paths) == 9
 
         # CLAUDE.md
         claude_md = tmp_path / "CLAUDE.md"
@@ -96,12 +96,12 @@ class TestFullFlowPerEnvironment:
         assert "lexi search" in search.read_text(encoding="utf-8")
 
     def test_cursor_full_flow(self, tmp_path: Path) -> None:
-        """Cursor generates MDC rules file and skills file."""
+        """Cursor generates MDC rules file, editing MDC, and skills file."""
         results = generate_rules(tmp_path, ["cursor"])
 
         assert "cursor" in results
         paths = results["cursor"]
-        assert len(paths) == 2
+        assert len(paths) == 3
 
         # MDC file
         mdc = tmp_path / ".cursor" / "rules" / "lexibrary.mdc"
@@ -151,7 +151,7 @@ class TestMultiEnvironment:
         envs = supported_environments()
         results = generate_rules(tmp_path, envs)
 
-        assert set(results.keys()) == {"claude", "codex", "cursor"}
+        assert set(results.keys()) == {"claude", "codex", "cursor", "generic"}
 
         # Each environment produced files
         for env_name, paths in results.items():
@@ -164,6 +164,7 @@ class TestMultiEnvironment:
         assert (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").exists()
         assert (tmp_path / ".cursor" / "skills" / "lexi.md").exists()
         assert (tmp_path / "AGENTS.md").exists()
+        assert (tmp_path / "LEXIBRARY_RULES.md").exists()
 
     def test_claude_and_codex_coexist(self, tmp_path: Path) -> None:
         """Claude (CLAUDE.md) and Codex (AGENTS.md) are separate files."""

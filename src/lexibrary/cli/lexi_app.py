@@ -39,6 +39,9 @@ lexi_app.add_typer(concept_app, name="concept")
 iwh_app = typer.Typer(help="IWH (I Was Here) signal management commands.")
 lexi_app.add_typer(iwh_app, name="iwh")
 
+design_app = typer.Typer(help="Design file management commands.")
+lexi_app.add_typer(design_app, name="design")
+
 
 # ---------------------------------------------------------------------------
 # Stack helpers (private, used only by stack commands — D2)
@@ -447,6 +450,71 @@ def concept_link(
     console.print(
         f"[green]Linked[/green] [[{concept_name}]] to {design_path.relative_to(project_root)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Design commands
+# ---------------------------------------------------------------------------
+
+
+@design_app.command("update")
+def design_update(
+    source_file: Annotated[
+        Path,
+        typer.Argument(help="Source file to scaffold or display a design file for."),
+    ],
+) -> None:
+    """Display existing or scaffold a new design file for a source file."""
+    from lexibrary.archivist.scaffold import generate_design_scaffold  # noqa: PLC0415
+    from lexibrary.config.loader import load_config  # noqa: PLC0415
+    from lexibrary.utils.paths import mirror_path  # noqa: PLC0415
+
+    target = Path(source_file).resolve()
+
+    # Find project root starting from the file's directory (walks upward)
+    try:
+        project_root = find_project_root(start=target.parent)
+    except LexibraryNotFoundError:
+        console.print(
+            "[red]No .lexibrary/ directory found.[/red]"
+            " Run [cyan]lexictl init[/cyan] to create one."
+        )
+        raise typer.Exit(1) from None
+
+    config = load_config(project_root)
+
+    # Check scope: file must be under scope_root
+    scope_abs = (project_root / config.scope_root).resolve()
+    try:
+        target.relative_to(scope_abs)
+    except ValueError:
+        console.print(
+            f"[red]Error:[/red] {source_file} is outside the configured scope_root "
+            f"([dim]{config.scope_root}[/dim])."
+        )
+        raise typer.Exit(1) from None
+
+    # Compute mirror path
+    design_path = mirror_path(project_root, target)
+
+    if design_path.exists():
+        # Display existing design file
+        rel_design = design_path.relative_to(project_root)
+        content = design_path.read_text(encoding="utf-8")
+        console.print(f"[cyan]{rel_design}[/cyan]\n")
+        console.print(content)
+        console.print(
+            "\n[dim]Reminder: set `updated_by: agent` in frontmatter "
+            "after making changes.[/dim]"
+        )
+    else:
+        # Scaffold new design file
+        scaffold = generate_design_scaffold(target, project_root)
+        design_path.parent.mkdir(parents=True, exist_ok=True)
+        design_path.write_text(scaffold, encoding="utf-8")
+        rel_design = design_path.relative_to(project_root)
+        console.print(f"[green]Created design scaffold:[/green] {rel_design}\n")
+        console.print(scaffold)
 
 
 # ---------------------------------------------------------------------------
@@ -860,6 +928,55 @@ def stack_list(
         )
 
     console.print(table)
+
+
+@stack_app.command("mark-outdated")
+def stack_mark_outdated(
+    post_id: Annotated[
+        str,
+        typer.Argument(help="Post ID (e.g. ST-001)."),
+    ],
+) -> None:
+    """Mark a Stack post as outdated."""
+    from lexibrary.stack.mutations import mark_outdated  # noqa: PLC0415
+
+    project_root = require_project_root()
+    post_path = _find_post_path(project_root, post_id)
+
+    if post_path is None:
+        console.print(f"[red]Post not found:[/red] {post_id}")
+        raise typer.Exit(1)
+
+    mark_outdated(post_path)
+    console.print(f"[green]Marked {post_id} as outdated[/green]")
+
+
+@stack_app.command("duplicate")
+def stack_duplicate(
+    post_id: Annotated[
+        str,
+        typer.Argument(help="Post ID to mark as duplicate (e.g. ST-003)."),
+    ],
+    *,
+    of: Annotated[
+        str,
+        typer.Option("--of", help="Original post ID this is a duplicate of."),
+    ],
+) -> None:
+    """Mark a Stack post as a duplicate of another post."""
+    from lexibrary.stack.mutations import mark_duplicate  # noqa: PLC0415
+
+    project_root = require_project_root()
+    post_path = _find_post_path(project_root, post_id)
+
+    if post_path is None:
+        console.print(f"[red]Post not found:[/red] {post_id}")
+        raise typer.Exit(1)
+
+    mark_duplicate(post_path, duplicate_of=of)
+    console.print(
+        f"[green]Marked {post_id} as duplicate of {of}[/green]"
+    )
 
 
 # ---------------------------------------------------------------------------

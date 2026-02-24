@@ -100,7 +100,57 @@ def init(
                     rel = p.relative_to(project_root)
                     console.print(f"    [dim]{rel}[/dim]")
 
-    console.print("[dim]Run [cyan]lexictl update[/cyan] to generate design files.[/dim]")
+    # Install git hooks if user opted in
+    if answers.install_hooks:
+        from lexibrary.hooks.post_commit import install_post_commit_hook  # noqa: PLC0415
+        from lexibrary.hooks.pre_commit import install_pre_commit_hook  # noqa: PLC0415
+
+        post_result = install_post_commit_hook(project_root)
+        if post_result.no_git_dir or post_result.already_installed:
+            console.print(f"[yellow]{post_result.message}[/yellow]")
+        else:
+            console.print(f"[green]{post_result.message}[/green]")
+
+        pre_result = install_pre_commit_hook(project_root)
+        if pre_result.no_git_dir or pre_result.already_installed:
+            console.print(f"[yellow]{pre_result.message}[/yellow]")
+        else:
+            console.print(f"[green]{pre_result.message}[/green]")
+
+    # Post-init: offer to run lexictl update (skip in defaults mode)
+    if not defaults:
+        from rich.prompt import Confirm as _Confirm  # noqa: PLC0415
+
+        run_update = _Confirm.ask(
+            "\nRun [cyan]lexictl update[/cyan] now to generate design files?",
+            default=False,
+            console=console,
+        )
+        if run_update:
+            console.print("[dim]Running lexictl update...[/dim]")
+            import asyncio  # noqa: PLC0415
+
+            from lexibrary.archivist.pipeline import update_project  # noqa: PLC0415
+            from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
+            from lexibrary.config.loader import load_config  # noqa: PLC0415
+            from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
+
+            config = load_config(project_root)
+            rate_limiter = RateLimiter()
+            archivist = ArchivistService(rate_limiter=rate_limiter, config=config.llm)
+            stats = asyncio.run(update_project(project_root, config, archivist))
+            console.print(
+                f"[green]Update complete.[/green] "
+                f"{stats.files_scanned} files scanned, "
+                f"{stats.files_created} created, "
+                f"{stats.files_updated} updated."
+            )
+        else:
+            console.print(
+                "[dim]Run [cyan]lexictl update[/cyan] later to generate design files.[/dim]"
+            )
+    else:
+        console.print("[dim]Run [cyan]lexictl update[/cyan] to generate design files.[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +172,20 @@ def update(
             help="Only update the specified files (for git hooks / CI).",
         ),
     ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Preview which files would change without making any modifications.",
+        ),
+    ] = False,
+    start_here: Annotated[
+        bool,
+        typer.Option(
+            "--start-here",
+            help="Regenerate START_HERE.md only, without running the full update.",
+        ),
+    ] = False,
 ) -> None:
     """Re-index changed files and regenerate design files."""
     import asyncio  # noqa: PLC0415
@@ -130,6 +194,8 @@ def update(
 
     from lexibrary.archivist.pipeline import (  # noqa: PLC0415
         UpdateStats,
+        dry_run_files,
+        dry_run_project,
         update_file,
         update_files,
         update_project,
@@ -138,7 +204,7 @@ def update(
     from lexibrary.config.loader import load_config  # noqa: PLC0415
     from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
 
-    # Mutual exclusivity check
+    # Mutual exclusivity checks
     if path is not None and changed_only is not None:
         console.print(
             "[red]Error:[/red] [cyan]path[/cyan] and [cyan]--changed-only[/cyan]"
@@ -146,8 +212,62 @@ def update(
         )
         raise typer.Exit(1)
 
+    if start_here and (changed_only is not None or path is not None):
+        console.print(
+            "[red]Error:[/red] [cyan]--start-here[/cyan] cannot be combined with"
+            " [cyan]path[/cyan] or [cyan]--changed-only[/cyan]."
+        )
+        raise typer.Exit(1)
+
     project_root = require_project_root()
     config = load_config(project_root)
+
+    # --start-here: regenerate START_HERE.md only
+    if start_here:
+        from lexibrary.archivist.start_here import generate_start_here  # noqa: PLC0415
+
+        rate_limiter = RateLimiter()
+        archivist = ArchivistService(rate_limiter=rate_limiter, config=config.llm)
+        try:
+            asyncio.run(generate_start_here(project_root, config, archivist))
+            console.print("[green]START_HERE.md regenerated.[/green]")
+        except Exception as exc:
+            console.print(f"[red]Failed to regenerate START_HERE.md:[/red] {exc}")
+            raise typer.Exit(1) from None
+        return
+
+    # --dry-run: preview changes without modifications
+    if dry_run:
+        console.print("[yellow]DRY-RUN MODE -- no files will be modified[/yellow]")
+        console.print()
+
+        if changed_only is not None:
+            resolved_paths = [p.resolve() for p in changed_only]
+            results = asyncio.run(dry_run_files(resolved_paths, project_root, config))
+        else:
+            results = asyncio.run(dry_run_project(project_root, config))
+
+        if not results:
+            console.print("[dim]No files would change.[/dim]")
+            return
+
+        # Display results
+        counts: dict[str, int] = {}
+        for file_path, change_level in results:
+            label = change_level.value.upper()
+            counts[label] = counts.get(label, 0) + 1
+            rel_path = file_path.relative_to(project_root)
+            console.print(f"  [cyan]{label:<20}[/cyan] {rel_path}")
+
+        # Summary
+        console.print()
+        total = len(results)
+        parts = [f"{total} file{'s' if total != 1 else ''}"]
+        for label, count in sorted(counts.items()):
+            parts.append(f"{count} {label.lower()}")
+        console.print("[bold]Summary:[/bold] " + ", ".join(parts))
+        return
+
     rate_limiter = RateLimiter()
     archivist = ArchivistService(rate_limiter=rate_limiter, config=config.llm)
 
@@ -370,11 +490,30 @@ def validate(
             help="Output results as JSON instead of Rich tables.",
         ),
     ] = False,
+    ci: Annotated[
+        bool,
+        typer.Option(
+            "--ci",
+            help="Compact single-line output for CI pipelines.",
+        ),
+    ] = False,
+    fix: Annotated[
+        bool,
+        typer.Option(
+            "--fix",
+            help="Auto-fix fixable issues after validation.",
+        ),
+    ] = False,
 ) -> None:
     """Run consistency checks on the library."""
     project_root = require_project_root()
     exit_code = _run_validate(
-        project_root, severity=severity, check=check, json_output=json_output
+        project_root,
+        severity=severity,
+        check=check,
+        json_output=json_output,
+        ci_mode=ci,
+        fix=fix,
     )
     raise typer.Exit(exit_code)
 
@@ -422,22 +561,38 @@ def setup(
     ] = None,
     hooks: Annotated[
         bool,
-        typer.Option("--hooks", help="Install the git post-commit hook for automatic updates."),
+        typer.Option(
+            "--hooks",
+            help="Install git hooks (post-commit auto-update, pre-commit validation).",
+        ),
     ] = False,
 ) -> None:
     """Install or update agent environment rules."""
     if hooks:
         from lexibrary.hooks.post_commit import install_post_commit_hook  # noqa: PLC0415
+        from lexibrary.hooks.pre_commit import install_pre_commit_hook  # noqa: PLC0415
 
         project_root = require_project_root()
-        result = install_post_commit_hook(project_root)
-        if result.no_git_dir:
-            console.print(f"[red]{result.message}[/red]")
+
+        # Install post-commit hook
+        post_result = install_post_commit_hook(project_root)
+        if post_result.no_git_dir:
+            console.print(f"[red]{post_result.message}[/red]")
             raise typer.Exit(1)
-        if result.already_installed:
-            console.print(f"[yellow]{result.message}[/yellow]")
+        if post_result.already_installed:
+            console.print(f"[yellow]{post_result.message}[/yellow]")
         else:
-            console.print(f"[green]{result.message}[/green]")
+            console.print(f"[green]{post_result.message}[/green]")
+
+        # Install pre-commit hook
+        pre_result = install_pre_commit_hook(project_root)
+        if pre_result.no_git_dir:
+            console.print(f"[red]{pre_result.message}[/red]")
+            raise typer.Exit(1)
+        if pre_result.already_installed:
+            console.print(f"[yellow]{pre_result.message}[/yellow]")
+        else:
+            console.print(f"[green]{pre_result.message}[/green]")
         return
 
     if not update_flag:

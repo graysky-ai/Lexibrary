@@ -11,6 +11,7 @@ from rich.console import Console
 from lexibrary.init.wizard import (
     WizardAnswers,
     _step_agent_environment,
+    _step_hooks,
     _step_ignore_patterns,
     _step_iwh,
     _step_llm_provider,
@@ -48,6 +49,7 @@ class TestWizardAnswers:
         assert answers.token_budgets_customized is False
         assert answers.token_budgets == {}
         assert answers.iwh_enabled is True
+        assert answers.install_hooks is False
         assert answers.confirmed is False
 
     def test_api_key_value_empty_by_default(self) -> None:
@@ -197,6 +199,13 @@ class TestStepIWHDefaults:
     def test_defaults_enabled(self, console: Console) -> None:
         result = _step_iwh(console, use_defaults=True)
         assert result is True
+
+
+class TestStepHooksDefaults:
+    def test_defaults_not_installed(self, console: Console) -> None:
+        """Defaults mode returns False (conservative default for unattended mode)."""
+        result = _step_hooks(console, use_defaults=True)
+        assert result is False
 
 
 class TestStepSummaryDefaults:
@@ -460,6 +469,20 @@ class TestStepIWHInteractive:
         assert result is False
 
 
+class TestStepHooksInteractive:
+    def test_user_accepts_hooks(self, console: Console) -> None:
+        """User accepts default (True) at hooks prompt."""
+        with patch("lexibrary.init.wizard.Confirm.ask", return_value=True):
+            result = _step_hooks(console, use_defaults=False)
+        assert result is True
+
+    def test_user_declines_hooks(self, console: Console) -> None:
+        """User declines hooks installation."""
+        with patch("lexibrary.init.wizard.Confirm.ask", return_value=False):
+            result = _step_hooks(console, use_defaults=False)
+        assert result is False
+
+
 class TestStepSummaryInteractive:
     def test_user_confirms(self, console: Console) -> None:
         answers = WizardAnswers(project_name="test-proj")
@@ -503,7 +526,21 @@ class TestRunWizardDefaults:
         assert result.llm_model == "claude-sonnet-4-6"
         assert result.llm_api_key_env == "ANTHROPIC_API_KEY"
         assert result.iwh_enabled is True
+        assert result.install_hooks is False
         assert result.token_budgets_customized is False
+
+    def test_use_defaults_install_hooks_is_false(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Defaults mode sets install_hooks to False (conservative default)."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        result = run_wizard(tmp_path, console, use_defaults=True)
+        assert result is not None
+        assert result.install_hooks is False
 
     def test_use_defaults_api_key_value_is_empty(
         self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
@@ -590,7 +627,8 @@ class TestRunWizardInteractive:
             [
                 False,  # step 6: don't customize budgets
                 True,  # step 7: IWH enabled
-                False,  # step 8: cancel at summary
+                False,  # step 8: don't install hooks
+                False,  # step 9: cancel at summary
             ]
         )
 
@@ -634,7 +672,8 @@ class TestRunWizardInteractive:
                 True,  # step 5: accept ignore patterns (python detected)
                 False,  # step 6: don't customize budgets
                 True,  # step 7: IWH enabled
-                True,  # step 8: confirm
+                True,  # step 8: install hooks
+                True,  # step 9: confirm
             ]
         )
 
@@ -658,6 +697,7 @@ class TestRunWizardInteractive:
         assert result.llm_provider == "anthropic"
         assert result.llm_api_key_source == "env"
         assert result.llm_api_key_value == ""
+        assert result.install_hooks is True
 
     def test_interactive_dotenv_populates_api_key_value(
         self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
@@ -686,7 +726,8 @@ class TestRunWizardInteractive:
                 True,  # step 5: accept ignore patterns (python detected)
                 False,  # step 6: don't customize budgets
                 True,  # step 7: IWH enabled
-                True,  # step 8: confirm
+                False,  # step 8: don't install hooks
+                True,  # step 9: confirm
             ]
         )
 
@@ -708,3 +749,89 @@ class TestRunWizardInteractive:
         assert result.llm_api_key_value == "sk-my-secret-key"
         # .env file should have been written
         assert (tmp_path / ".env").exists()
+
+    def test_interactive_hooks_accepted(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Interactive mode with hooks accepted sets install_hooks=True."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        prompt_values = iter(
+            [
+                tmp_path.name,  # step 1: project name
+                ".",  # step 2: scope root
+                "",  # step 3: agent environments
+                "env",  # step 4: storage method
+                "",  # step 5: custom patterns
+            ]
+        )
+        confirm_values = iter(
+            [
+                False,  # step 6: don't customize budgets
+                True,  # step 7: IWH enabled
+                True,  # step 8: install hooks
+                True,  # step 9: confirm
+            ]
+        )
+
+        with (
+            patch(
+                "lexibrary.init.wizard.Prompt.ask",
+                side_effect=lambda *a, **kw: next(prompt_values),
+            ),
+            patch(
+                "lexibrary.init.wizard.Confirm.ask",
+                side_effect=lambda *a, **kw: next(confirm_values),
+            ),
+        ):
+            result = run_wizard(tmp_path, console, use_defaults=False)
+
+        assert result is not None
+        assert result.confirmed is True
+        assert result.install_hooks is True
+
+    def test_interactive_hooks_declined(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Interactive mode with hooks declined sets install_hooks=False."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        prompt_values = iter(
+            [
+                tmp_path.name,  # step 1: project name
+                ".",  # step 2: scope root
+                "",  # step 3: agent environments
+                "env",  # step 4: storage method
+                "",  # step 5: custom patterns
+            ]
+        )
+        confirm_values = iter(
+            [
+                False,  # step 6: don't customize budgets
+                True,  # step 7: IWH enabled
+                False,  # step 8: don't install hooks
+                True,  # step 9: confirm
+            ]
+        )
+
+        with (
+            patch(
+                "lexibrary.init.wizard.Prompt.ask",
+                side_effect=lambda *a, **kw: next(prompt_values),
+            ),
+            patch(
+                "lexibrary.init.wizard.Confirm.ask",
+                side_effect=lambda *a, **kw: next(confirm_values),
+            ),
+        ):
+            result = run_wizard(tmp_path, console, use_defaults=False)
+
+        assert result is not None
+        assert result.confirmed is True
+        assert result.install_hooks is False

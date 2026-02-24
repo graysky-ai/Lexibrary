@@ -65,19 +65,6 @@ The `lexictl index` command SHALL accept a `directory` argument (default `.`) an
 - **WHEN** `lexictl index` completes
 - **THEN** the output SHALL include a count of directories indexed and files found
 
-## MODIFIED Requirements
-
-### Requirement: lexi help lists only agent commands
-The `lexi --help` output SHALL list only agent-facing commands: `lookup`, `describe`, `concepts`, `concept`, `stack`, `search`, `validate`, `status`, `help`. It SHALL NOT list `index`.
-
-#### Scenario: lexi help shows agent commands
-- **WHEN** running `lexi --help`
-- **THEN** the output SHALL list `lookup`, `describe`, `concepts`, `concept`, `stack`, `search`, `validate`, `status`, `help`
-
-#### Scenario: lexi help does NOT show maintenance commands
-- **WHEN** running `lexi --help`
-- **THEN** the output SHALL NOT contain `init`, `update`, `index`, `setup`, `sweep`, or `daemon`
-
 ### Requirement: lexi help content reflects rebalanced commands
 The `lexi help` command output SHALL organize commands into sections that reflect the rebalanced CLI. The "Indexing & Maintenance" section SHALL be replaced by an "Inspection & Annotation" section containing `lexi status`, `lexi validate`, and `lexi describe`. The "Index a new directory" workflow SHALL be replaced by a "Check library health" workflow using `lexi status` and `lexi validate`.
 
@@ -97,8 +84,15 @@ The `lexi help` command output SHALL organize commands into sections that reflec
 - **WHEN** running `lexi help`
 - **THEN** the "Common Workflows" panel SHALL include a workflow titled "Check library health" that references `lexi status` and `lexi validate`
 
-## REMOVED Requirements
+## MODIFIED Requirements
 
-### Requirement: Index command generates .aindex for a directory (on lexi)
-**Reason:** The `index` command is moved from `lexi` to `lexictl`. Agents no longer need manual index generation because `.aindex` regeneration is automated via the update pipeline.
-**Migration:** Replace `lexi index` calls with `lexictl index`. For most use cases, rely on automated indexing via post-commit hook and sweep.
+### Requirement: lexi help lists only agent commands
+The `lexi --help` output SHALL list only agent-facing commands: `lookup`, `describe`, `concepts`, `concept`, `stack`, `search`, `validate`, `status`, `help`. It SHALL NOT list `index`.
+
+#### Scenario: lexi help shows agent commands
+- **WHEN** running `lexi --help`
+- **THEN** the output SHALL list `lookup`, `describe`, `concepts`, `concept`, `stack`, `search`, `validate`, `status`, `help`
+
+#### Scenario: lexi help does NOT show maintenance commands
+- **WHEN** running `lexi --help`
+- **THEN** the output SHALL NOT contain `init`, `update`, `index`, `setup`, `sweep`, or `daemon`

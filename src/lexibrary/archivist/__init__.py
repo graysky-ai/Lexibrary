@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from lexibrary.archivist.change_checker import ChangeLevel, check_change
 from lexibrary.archivist.pipeline import UpdateStats, update_file, update_project
+from lexibrary.archivist.scaffold import generate_design_scaffold
 from lexibrary.archivist.service import (
     ArchivistService,
     DesignFileRequest,
@@ -22,6 +23,7 @@ __all__ = [
     "StartHereResult",
     "UpdateStats",
     "check_change",
+    "generate_design_scaffold",
     "generate_start_here",
     "update_file",
     "update_project",

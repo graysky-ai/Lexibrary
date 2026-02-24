@@ -1606,3 +1606,134 @@ class TestIWHAwareness:
         # Should NOT be skipped — IWH is disabled
         assert result.change != ChangeLevel.UNCHANGED
         archivist.generate_design_file.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# dry_run_project / dry_run_files (task 2.10)
+# ---------------------------------------------------------------------------
+
+
+class TestDryRunProject:
+    """Tests for dry_run_project() — detection-only preview, no LLM or writes."""
+
+    @pytest.mark.asyncio()
+    async def test_detects_changed_files(self, tmp_path: Path) -> None:
+        """dry_run_project() returns files that would change."""
+        from lexibrary.archivist.pipeline import dry_run_project
+
+        _make_source_file(tmp_path, "src/foo.py", "def bar(): pass")
+        _make_source_file(tmp_path, "src/unchanged.py", "x = 1")
+
+        # Create design file for unchanged.py with correct hash
+        unchanged_hash = _sha256("x = 1")
+        _make_design_file(tmp_path, "src/unchanged.py", source_hash=unchanged_hash)
+
+        config = _make_config(scope_root="src")
+        results = await dry_run_project(tmp_path, config)
+
+        # foo.py is NEW_FILE (no design file), unchanged.py is UNCHANGED
+        assert len(results) >= 1
+        result_paths = {p.name for p, _ in results}
+        assert "foo.py" in result_paths
+        assert "unchanged.py" not in result_paths
+
+    @pytest.mark.asyncio()
+    async def test_empty_for_clean_project(self, tmp_path: Path) -> None:
+        """dry_run_project() returns empty list when all files are unchanged."""
+        from lexibrary.archivist.pipeline import dry_run_project
+
+        source = _make_source_file(tmp_path, "src/foo.py", "x = 1")
+
+        # Create design file with correct hash
+        import hashlib as _hl
+
+        actual_hash = _hl.sha256(source.read_bytes()).hexdigest()
+        _make_design_file(tmp_path, "src/foo.py", source_hash=actual_hash)
+
+        config = _make_config(scope_root="src")
+        results = await dry_run_project(tmp_path, config)
+
+        assert len(results) == 0
+
+    @pytest.mark.asyncio()
+    async def test_no_side_effects(self, tmp_path: Path) -> None:
+        """dry_run_project() does not create or modify any files."""
+        from lexibrary.archivist.pipeline import dry_run_project
+
+        _make_source_file(tmp_path, "src/foo.py", "def bar(): pass")
+
+        config = _make_config(scope_root="src")
+
+        # Record state before dry run
+        lexibrary_dir = tmp_path / ".lexibrary"
+        files_before = set(lexibrary_dir.rglob("*")) if lexibrary_dir.exists() else set()
+
+        await dry_run_project(tmp_path, config)
+
+        # Verify no new files created in .lexibrary
+        files_after = set(lexibrary_dir.rglob("*")) if lexibrary_dir.exists() else set()
+        assert files_after == files_before
+
+    @pytest.mark.asyncio()
+    async def test_skips_binary_files(self, tmp_path: Path) -> None:
+        """dry_run_project() skips binary files."""
+        from lexibrary.archivist.pipeline import dry_run_project
+
+        _make_source_file(tmp_path, "src/foo.py", "x = 1")
+        img = tmp_path / "src" / "logo.png"
+        img.write_bytes(b"\x89PNG")
+
+        config = _make_config(scope_root="src")
+        results = await dry_run_project(tmp_path, config)
+
+        result_paths = {p.name for p, _ in results}
+        assert "logo.png" not in result_paths
+
+
+class TestDryRunFiles:
+    """Tests for dry_run_files() — detection-only preview for specific files."""
+
+    @pytest.mark.asyncio()
+    async def test_checks_specific_files(self, tmp_path: Path) -> None:
+        """dry_run_files() only checks the given file paths."""
+        from lexibrary.archivist.pipeline import dry_run_files
+
+        source_a = _make_source_file(tmp_path, "src/a.py", "a = 1")
+        source_b = _make_source_file(tmp_path, "src/b.py", "b = 2")
+
+        config = _make_config()
+        results = await dry_run_files([source_a, source_b], tmp_path, config)
+
+        # Both are new files (no design files exist)
+        assert len(results) == 2
+        result_paths = {p.name for p, _ in results}
+        assert "a.py" in result_paths
+        assert "b.py" in result_paths
+
+    @pytest.mark.asyncio()
+    async def test_skips_deleted_files(self, tmp_path: Path) -> None:
+        """dry_run_files() skips files that don't exist."""
+        from lexibrary.archivist.pipeline import dry_run_files
+
+        source_a = _make_source_file(tmp_path, "src/a.py", "a = 1")
+        deleted = tmp_path / "src" / "deleted.py"
+
+        config = _make_config()
+        results = await dry_run_files([source_a, deleted], tmp_path, config)
+
+        assert len(results) == 1
+        assert results[0][0].name == "a.py"
+
+    @pytest.mark.asyncio()
+    async def test_returns_change_levels(self, tmp_path: Path) -> None:
+        """dry_run_files() returns correct ChangeLevel values."""
+        from lexibrary.archivist.pipeline import dry_run_files
+
+        source = _make_source_file(tmp_path, "src/new.py", "def new(): pass")
+
+        config = _make_config()
+        results = await dry_run_files([source], tmp_path, config)
+
+        assert len(results) == 1
+        _path, change = results[0]
+        assert change == ChangeLevel.NEW_FILE

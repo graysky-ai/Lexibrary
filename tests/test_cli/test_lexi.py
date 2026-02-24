@@ -2459,3 +2459,249 @@ class TestIWH:
         result = runner.invoke(lexi_app, ["iwh", "read"])
         assert result.exit_code == 0
         assert "disabled" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Design scaffold generation tests
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateDesignScaffold:
+    """Tests for generate_design_scaffold() in the archivist module."""
+
+    def test_scaffold_contains_source_path(self, tmp_path: Path) -> None:
+        """Scaffold frontmatter includes the relative source_path."""
+        from lexibrary.archivist.scaffold import generate_design_scaffold
+
+        project_root = tmp_path
+        source = tmp_path / "src" / "lexibrary" / "cli" / "lexi_app.py"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("pass\n")
+
+        result = generate_design_scaffold(source, project_root)
+        assert "source_path: src/lexibrary/cli/lexi_app.py" in result
+
+    def test_scaffold_contains_updated_by_agent(self, tmp_path: Path) -> None:
+        """Scaffold frontmatter includes updated_by: agent."""
+        from lexibrary.archivist.scaffold import generate_design_scaffold
+
+        project_root = tmp_path
+        source = tmp_path / "src" / "main.py"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("pass\n")
+
+        result = generate_design_scaffold(source, project_root)
+        assert "updated_by: agent" in result
+
+    def test_scaffold_contains_placeholder_sections(self, tmp_path: Path) -> None:
+        """Scaffold contains Purpose, Key Components, and Dependencies sections."""
+        from lexibrary.archivist.scaffold import generate_design_scaffold
+
+        project_root = tmp_path
+        source = tmp_path / "src" / "main.py"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("pass\n")
+
+        result = generate_design_scaffold(source, project_root)
+        assert "## Purpose" in result
+        assert "## Key Components" in result
+        assert "## Dependencies" in result
+
+    def test_scaffold_contains_date(self, tmp_path: Path) -> None:
+        """Scaffold frontmatter includes a date field."""
+        from lexibrary.archivist.scaffold import generate_design_scaffold
+
+        project_root = tmp_path
+        source = tmp_path / "src" / "main.py"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("pass\n")
+
+        result = generate_design_scaffold(source, project_root)
+        assert "date:" in result
+
+    def test_scaffold_with_relative_path(self, tmp_path: Path) -> None:
+        """Scaffold works with a relative path input."""
+        from lexibrary.archivist.scaffold import generate_design_scaffold
+
+        project_root = tmp_path
+        rel_path = Path("src/module.py")
+
+        result = generate_design_scaffold(rel_path, project_root)
+        assert "source_path: src/module.py" in result
+
+
+# ---------------------------------------------------------------------------
+# Design update command tests
+# ---------------------------------------------------------------------------
+
+
+class TestDesignUpdateCommand:
+    """Tests for the `lexi design update` command."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_scaffold_new_design_file(self, tmp_path: Path) -> None:
+        """When no design file exists, a scaffold is created."""
+        _setup_project(tmp_path)
+        source = tmp_path / "src" / "main.py"
+        result = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Created design scaffold" in result.output  # type: ignore[union-attr]
+        # Design file should exist in mirror tree
+        design_path = tmp_path / ".lexibrary" / "src" / "main.py.md"
+        assert design_path.exists()
+        content = design_path.read_text(encoding="utf-8")
+        assert "source_path:" in content
+        assert "## Purpose" in content
+
+    def test_display_existing_design_file(self, tmp_path: Path) -> None:
+        """When a design file exists, its content is displayed."""
+        _setup_project(tmp_path)
+        source_content = "print('hello')\n"
+        _create_design_file(tmp_path, "src/main.py", source_content)
+        source = tmp_path / "src" / "main.py"
+        result = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "updated_by" in output
+        assert "Reminder" in output
+
+    def test_file_outside_scope(self, tmp_path: Path) -> None:
+        """File outside scope_root should fail."""
+        # Set up project with scope_root restricted to src/
+        (tmp_path / ".lexibrary").mkdir()
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_root: src\n")
+        (tmp_path / "src").mkdir()
+        # Create a file in project root but outside scope_root
+        outside = tmp_path / "outside.py"
+        outside.write_text("pass\n")
+        result = self._invoke(tmp_path, ["design", "update", str(outside)])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "outside" in result.output.lower()  # type: ignore[union-attr]
+
+    def test_no_project(self, tmp_path: Path) -> None:
+        """Running without .lexibrary should fail."""
+        source = tmp_path / "main.py"
+        source.write_text("pass\n")
+        result = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+    def test_scaffold_idempotent(self, tmp_path: Path) -> None:
+        """Running scaffold twice shows existing file second time."""
+        _setup_project(tmp_path)
+        source = tmp_path / "src" / "main.py"
+        # First run: scaffold
+        result1 = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result1.exit_code == 0  # type: ignore[union-attr]
+        assert "Created design scaffold" in result1.output  # type: ignore[union-attr]
+        # Second run: display existing
+        result2 = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result2.exit_code == 0  # type: ignore[union-attr]
+        assert "Reminder" in result2.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Stack mark-outdated command tests
+# ---------------------------------------------------------------------------
+
+
+class TestStackMarkOutdatedCommand:
+    """Tests for the `lexi stack mark-outdated` command."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_mark_post_outdated(self, tmp_path: Path) -> None:
+        """Mark an existing post as outdated."""
+        _setup_stack_project(tmp_path)
+        _create_stack_post(tmp_path, post_id="ST-001", title="Old bug")
+        result = self._invoke(tmp_path, ["stack", "mark-outdated", "ST-001"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "outdated" in result.output  # type: ignore[union-attr]
+        # Verify the post file was updated
+        post_path = list((tmp_path / ".lexibrary" / "stack").glob("ST-001-*.md"))[0]
+        content = post_path.read_text(encoding="utf-8")
+        assert "status: outdated" in content
+
+    def test_mark_nonexistent_post_outdated(self, tmp_path: Path) -> None:
+        """Marking a nonexistent post should fail."""
+        _setup_stack_project(tmp_path)
+        result = self._invoke(tmp_path, ["stack", "mark-outdated", "ST-999"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "not found" in result.output.lower()  # type: ignore[union-attr]
+
+    def test_mark_outdated_no_project(self, tmp_path: Path) -> None:
+        """Running without .lexibrary should fail."""
+        result = self._invoke(tmp_path, ["stack", "mark-outdated", "ST-001"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Stack duplicate command tests
+# ---------------------------------------------------------------------------
+
+
+class TestStackDuplicateCommand:
+    """Tests for the `lexi stack duplicate` command."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_mark_post_as_duplicate(self, tmp_path: Path) -> None:
+        """Mark a post as duplicate of another."""
+        _setup_stack_project(tmp_path)
+        _create_stack_post(tmp_path, post_id="ST-001", title="Original bug")
+        _create_stack_post(tmp_path, post_id="ST-003", title="Duplicate bug")
+        result = self._invoke(
+            tmp_path, ["stack", "duplicate", "ST-003", "--of", "ST-001"]
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "duplicate" in result.output.lower()  # type: ignore[union-attr]
+        assert "ST-001" in result.output  # type: ignore[union-attr]
+        # Verify the post file was updated
+        post_path = list((tmp_path / ".lexibrary" / "stack").glob("ST-003-*.md"))[0]
+        content = post_path.read_text(encoding="utf-8")
+        assert "status: duplicate" in content
+        assert "duplicate_of: ST-001" in content
+
+    def test_duplicate_nonexistent_post(self, tmp_path: Path) -> None:
+        """Duplicating a nonexistent post should fail."""
+        _setup_stack_project(tmp_path)
+        result = self._invoke(
+            tmp_path, ["stack", "duplicate", "ST-999", "--of", "ST-001"]
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "not found" in result.output.lower()  # type: ignore[union-attr]
+
+    def test_duplicate_without_of_flag(self, tmp_path: Path) -> None:
+        """Duplicate without --of flag should fail."""
+        _setup_stack_project(tmp_path)
+        _create_stack_post(tmp_path, post_id="ST-003", title="Some bug")
+        result = self._invoke(tmp_path, ["stack", "duplicate", "ST-003"])
+        assert result.exit_code != 0  # type: ignore[union-attr]
+
+    def test_duplicate_no_project(self, tmp_path: Path) -> None:
+        """Running without .lexibrary should fail."""
+        result = self._invoke(
+            tmp_path, ["stack", "duplicate", "ST-001", "--of", "ST-002"]
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]

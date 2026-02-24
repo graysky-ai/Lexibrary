@@ -13,11 +13,13 @@ from pathlib import Path
 from lexibrary.init.rules.claude import generate_claude_rules
 from lexibrary.init.rules.codex import generate_codex_rules
 from lexibrary.init.rules.cursor import generate_cursor_rules
+from lexibrary.init.rules.generic import generate_generic_rules
 
 _GENERATORS: dict[str, Callable[[Path], list[Path]]] = {
     "claude": generate_claude_rules,
     "cursor": generate_cursor_rules,
     "codex": generate_codex_rules,
+    "generic": generate_generic_rules,
 }
 
 
@@ -25,7 +27,7 @@ def supported_environments() -> list[str]:
     """Return the list of supported agent environment names.
 
     Returns:
-        Sorted list of environment name strings (e.g. ``["claude", "codex", "cursor"]``).
+        Sorted list of environment name strings (e.g. ``["claude", "codex", "cursor", "generic"]``).
     """
     return sorted(_GENERATORS.keys())
 

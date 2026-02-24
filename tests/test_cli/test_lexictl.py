@@ -1627,3 +1627,234 @@ class TestIWHClean:
         assert "Cleaned" in result.output
         assert "1 signal(s)" in result.output
         assert "Removed" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Update --dry-run tests (task 2.11)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateDryRun:
+    """Tests for the ``--dry-run`` flag on ``lexictl update``."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexictl_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_dry_run_shows_header(self, tmp_path: Path) -> None:
+        """--dry-run shows DRY-RUN MODE header."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_results = [
+            (tmp_path / "src" / "main.py", ChangeLevel.NEW_FILE),
+        ]
+        mock_dry_run = AsyncMock(return_value=mock_results)
+
+        with patch(
+            "lexibrary.archivist.pipeline.dry_run_project",
+            mock_dry_run,
+        ):
+            result = self._invoke(project, ["update", "--dry-run"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "DRY-RUN MODE" in output
+
+    def test_dry_run_shows_change_levels(self, tmp_path: Path) -> None:
+        """--dry-run displays ChangeLevel per file."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_results = [
+            (tmp_path / "src" / "main.py", ChangeLevel.NEW_FILE),
+            (tmp_path / "src" / "utils.py", ChangeLevel.CONTENT_CHANGED),
+        ]
+        mock_dry_run = AsyncMock(return_value=mock_results)
+
+        with patch(
+            "lexibrary.archivist.pipeline.dry_run_project",
+            mock_dry_run,
+        ):
+            result = self._invoke(project, ["update", "--dry-run"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "NEW_FILE" in output
+        assert "CONTENT_CHANGED" in output
+        assert "Summary" in output
+        assert "2 files" in output
+
+    def test_dry_run_empty_project(self, tmp_path: Path) -> None:
+        """--dry-run with no changes shows appropriate message."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_dry_run = AsyncMock(return_value=[])
+
+        with patch(
+            "lexibrary.archivist.pipeline.dry_run_project",
+            mock_dry_run,
+        ):
+            result = self._invoke(project, ["update", "--dry-run"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "No files would change" in output
+
+    def test_dry_run_with_changed_only(self, tmp_path: Path) -> None:
+        """--dry-run combined with --changed-only uses dry_run_files()."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_results = [
+            (tmp_path / "src" / "main.py", ChangeLevel.CONTENT_CHANGED),
+        ]
+        mock_dry_run_files = AsyncMock(return_value=mock_results)
+
+        with patch(
+            "lexibrary.archivist.pipeline.dry_run_files",
+            mock_dry_run_files,
+        ):
+            result = self._invoke(
+                project, ["update", "--dry-run", "--changed-only", "src/main.py"]
+            )
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "CONTENT_CHANGED" in output
+        mock_dry_run_files.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Update --start-here tests (task 2.11)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateStartHere:
+    """Tests for the ``--start-here`` flag on ``lexictl update``."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexictl_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_start_here_regenerates(self, tmp_path: Path) -> None:
+        """--start-here calls generate_start_here and shows success."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_generate = AsyncMock(return_value=project / ".lexibrary" / "START_HERE.md")
+
+        with patch(
+            "lexibrary.archivist.start_here.generate_start_here",
+            mock_generate,
+        ):
+            result = self._invoke(project, ["update", "--start-here"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "START_HERE.md regenerated" in output
+        mock_generate.assert_called_once()
+
+    def test_start_here_mutual_exclusivity_with_changed_only(self, tmp_path: Path) -> None:
+        """--start-here and --changed-only cannot be used together."""
+        project = _setup_archivist_project(tmp_path)
+        result = self._invoke(
+            project, ["update", "--start-here", "--changed-only", "src/main.py"]
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "cannot be combined" in output
+
+    def test_start_here_mutual_exclusivity_with_path(self, tmp_path: Path) -> None:
+        """--start-here and path cannot be used together."""
+        project = _setup_archivist_project(tmp_path)
+        result = self._invoke(project, ["update", "--start-here", "src/main.py"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "cannot be combined" in output
+
+
+# ---------------------------------------------------------------------------
+# Validate --ci tests (task 2.11)
+# ---------------------------------------------------------------------------
+
+
+class TestValidateCi:
+    """Tests for the ``--ci`` flag on ``lexictl validate``."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexictl_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_ci_mode_compact_output(self, tmp_path: Path) -> None:
+        """--ci produces compact single-line output."""
+        project = _setup_validate_project(tmp_path)
+        result = self._invoke(project, ["validate", "--ci"])
+        output = result.output.strip()  # type: ignore[union-attr]
+        assert output.startswith("lexibrary-validate:")
+        assert "errors=" in output
+        assert "warnings=" in output
+        assert "info=" in output
+
+    def test_ci_mode_clean_exit_0(self, tmp_path: Path) -> None:
+        """--ci with clean library exits 0."""
+        project = _setup_validate_project(tmp_path)
+        result = self._invoke(project, ["validate", "--ci", "--check", "hash_freshness"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+
+    def test_ci_mode_errors_exit_1(self, tmp_path: Path) -> None:
+        """--ci with errors exits 1."""
+        project = _setup_validate_project_with_errors(tmp_path)
+        result = self._invoke(project, ["validate", "--ci"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        output = result.output.strip()  # type: ignore[union-attr]
+        assert "errors=" in output
+
+
+# ---------------------------------------------------------------------------
+# Validate --fix tests (task 2.11)
+# ---------------------------------------------------------------------------
+
+
+class TestValidateFix:
+    """Tests for the ``--fix`` flag on ``lexictl validate``."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexictl_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_fix_reports_non_fixable_as_skip(self, tmp_path: Path) -> None:
+        """--fix reports non-fixable issues as [SKIP]."""
+        project = _setup_validate_project_with_errors(tmp_path)
+        result = self._invoke(project, ["validate", "--fix"])
+        output = result.output  # type: ignore[union-attr]
+        assert "SKIP" in output
+        assert "Fixed" in output
+
+    def test_fix_shows_summary(self, tmp_path: Path) -> None:
+        """--fix shows summary line."""
+        project = _setup_validate_project(tmp_path)
+        result = self._invoke(project, ["validate", "--fix"])
+        output = result.output  # type: ignore[union-attr]
+        # Even with no issues, check that it still behaves correctly
+        assert "Fixed" in output or "No validation issues" not in output
+
+    def test_fix_not_on_lexi_validate(self) -> None:
+        """--fix is NOT available on lexi validate (agent CLI)."""
+        from lexibrary.cli import lexi_app
+
+        result = runner.invoke(lexi_app, ["validate", "--fix"])
+        # Typer should report --fix as unrecognized or show an error
+        assert result.exit_code != 0

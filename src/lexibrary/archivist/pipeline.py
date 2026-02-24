@@ -18,7 +18,6 @@ from lexibrary.archivist.change_checker import (
 from lexibrary.archivist.dependency_extractor import extract_dependencies
 from lexibrary.archivist.service import ArchivistService, DesignFileRequest
 from lexibrary.archivist.start_here import generate_start_here
-from lexibrary.errors import ErrorSummary
 from lexibrary.artifacts.aindex import AIndexEntry
 from lexibrary.artifacts.aindex_parser import parse_aindex
 from lexibrary.artifacts.aindex_serializer import serialize_aindex
@@ -36,6 +35,7 @@ from lexibrary.artifacts.design_file_parser import (
 from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.ast_parser import compute_hashes, parse_interface, render_skeleton
 from lexibrary.config.schema import LexibraryConfig
+from lexibrary.errors import ErrorSummary
 from lexibrary.ignore import create_ignore_matcher
 from lexibrary.indexer.orchestrator import index_directory
 from lexibrary.linkgraph.builder import build_index
@@ -197,6 +197,118 @@ def _refresh_parent_aindex(
         atomic_write(aindex_file_path, serialized)
 
     return updated
+
+
+async def dry_run_project(
+    project_root: Path,
+    config: LexibraryConfig,
+) -> list[tuple[Path, ChangeLevel]]:
+    """Preview which files would be processed, without LLM calls or writes.
+
+    Discovers source files within scope_root, runs change detection on each,
+    and returns a list of files that would change with their change levels.
+    Files classified as UNCHANGED are excluded from the result.
+
+    Args:
+        project_root: Absolute path to the project root.
+        config: Project configuration.
+
+    Returns:
+        List of (source_path, change_level) tuples for files that would change.
+    """
+    ignore_matcher = create_ignore_matcher(config, project_root)
+    binary_exts = set(config.crawl.binary_extensions)
+    scope_abs = (project_root / config.scope_root).resolve()
+
+    results: list[tuple[Path, ChangeLevel]] = []
+
+    for path in sorted(scope_abs.rglob("*")):
+        if not path.is_file():
+            continue
+
+        # Skip .lexibrary contents
+        try:
+            path.relative_to(project_root / LEXIBRARY_DIR)
+            continue
+        except ValueError:
+            pass
+
+        # Skip binary files
+        if _is_binary(path, binary_exts):
+            continue
+
+        # Skip ignored files
+        if ignore_matcher.is_ignored(path):
+            continue
+
+        # Skip files above max_file_size_kb
+        try:
+            file_size_kb = path.stat().st_size / 1024
+            if file_size_kb > config.crawl.max_file_size_kb:
+                continue
+        except OSError:
+            continue
+
+        # Run change detection only
+        content_hash, interface_hash = compute_hashes(path)
+        change = check_change(path, project_root, content_hash, interface_hash)
+
+        if change != ChangeLevel.UNCHANGED:
+            results.append((path, change))
+
+    return results
+
+
+async def dry_run_files(
+    file_paths: list[Path],
+    project_root: Path,
+    config: LexibraryConfig,
+) -> list[tuple[Path, ChangeLevel]]:
+    """Preview which of the given files would be processed, without LLM calls or writes.
+
+    Runs change detection on each file and returns results for those that
+    would change. No LLM calls are made and no files are written.
+
+    Args:
+        file_paths: List of source file paths to check.
+        project_root: Absolute path to the project root.
+        config: Project configuration.
+
+    Returns:
+        List of (source_path, change_level) tuples for files that would change.
+    """
+    ignore_matcher = create_ignore_matcher(config, project_root)
+    binary_exts = set(config.crawl.binary_extensions)
+
+    results: list[tuple[Path, ChangeLevel]] = []
+
+    for source_path in file_paths:
+        if not source_path.exists():
+            continue
+
+        # Skip .lexibrary contents
+        try:
+            source_path.resolve().relative_to((project_root / LEXIBRARY_DIR).resolve())
+            continue
+        except ValueError:
+            pass
+
+        # Skip binary files
+        if _is_binary(source_path, binary_exts):
+            continue
+
+        # Skip ignored files
+        if ignore_matcher.is_ignored(source_path):
+            continue
+
+        # Run change detection only
+        content_hash, interface_hash = compute_hashes(source_path)
+        change = check_change(source_path, project_root, content_hash, interface_hash)
+
+        if change != ChangeLevel.UNCHANGED:
+            results.append((source_path, change))
+
+    return results
 
 
 async def update_file(

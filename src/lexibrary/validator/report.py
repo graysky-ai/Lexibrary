@@ -92,6 +92,19 @@ class ValidationReport:
             info_count=infos,
         )
 
+    def counts_by_severity(self) -> dict[str, int]:
+        """Return a dictionary with issue counts per severity level.
+
+        Returns:
+            Dictionary with keys ``"error"``, ``"warning"``, and ``"info"``
+            mapped to their respective issue counts.
+        """
+        counts: dict[str, int] = {"error": 0, "warning": 0, "info": 0}
+        for issue in self.issues:
+            if issue.severity in counts:
+                counts[issue.severity] += 1
+        return counts
+
     def has_errors(self) -> bool:
         """Return True if any error-severity issues exist."""
         return any(i.severity == "error" for i in self.issues)

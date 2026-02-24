@@ -1,0 +1,222 @@
+# MCP Server Plan
+
+> **Purpose:** Expose Lexibrary as a native MCP tool provider so agents see `lexi_lookup`, `lexi_search`, etc. as first-class tools alongside their built-in Glob/Grep/Read.
+> **Date:** 2026-02-25
+> **Depends on:** `lexi lookup --format json` (from lookup-upgrade plan), stable MCP protocol support in target environments
+
+---
+
+## Why MCP
+
+Today agents invoke Lexibrary via `Bash(lexi lookup <file>)`. This has three problems:
+
+1. **Discovery** — agents don't know `lexi` commands exist unless they read CLAUDE.md/rules
+2. **Friction** — bash commands need permission approval, shell parsing, error handling
+3. **Typing** — bash output is unstructured text; agents must parse Rich tables
+
+MCP tools appear in the agent's tool list natively. The agent sees `lexi_lookup` the same way it sees `Read` or `Grep`. Structured JSON responses mean no parsing. The agent's planner can reason about Lexibrary tools the same way it reasons about built-in tools.
+
+---
+
+## Architecture
+
+### Server Type: stdio (local process)
+
+MCP supports stdio and SSE transports. Use stdio — Lexibrary is a local tool, no network needed. The server runs as a subprocess managed by the IDE/agent.
+
+### Entry Point
+
+```
+lexibrary-mcp
+```
+
+A new console script entry point (via `pyproject.toml`). Starts the MCP server on stdin/stdout.
+
+### Implementation Framework
+
+Use `mcp` Python SDK (`mcp[cli]` package). Provides the protocol handling, tool registration, and JSON-RPC transport.
+
+---
+
+## Tools to Expose
+
+### Core Tools (Phase 1)
+
+| MCP Tool | Maps to | Returns |
+|----------|---------|---------|
+| `lexi_lookup` | `lexi lookup <file> --format json` | File role, conventions, concepts, stack posts, dependents |
+| `lexi_search` | `lexi search <query> --format plain` | Concepts, design files, stack posts matching query |
+| `lexi_concepts` | `lexi concepts <topic>` | Matching concepts with summaries |
+| `lexi_status` | `lexi status` | Library health summary |
+
+### Secondary Tools (Phase 2)
+
+| MCP Tool | Maps to | Returns |
+|----------|---------|---------|
+| `lexi_stack_search` | `lexi stack search <query>` | Matching Stack posts |
+| `lexi_stack_post` | `lexi stack post` | Creates a new Stack post |
+| `lexi_validate` | `lexi validate` | Validation results |
+| `lexi_iwh_list` | `lexi iwh list` | Active IWH signals |
+| `lexi_iwh_read` | `lexi iwh read <dir>` | Signal content |
+
+### Not Exposed via MCP
+
+- `lexictl` commands (admin-only, never agent-facing)
+- `lexi describe` (write operation, keep as CLI)
+- `lexi iwh write` (write operation, keep as CLI for now)
+
+---
+
+## Implementation
+
+### File Structure
+
+```
+src/lexibrary/mcp/
+    __init__.py        # Package marker
+    server.py          # MCP server setup, tool registration
+    tools.py           # Tool handler functions (thin wrappers around existing CLI logic)
+```
+
+### Server Setup (`server.py`)
+
+```python
+from mcp.server import Server
+from mcp.server.stdio import stdio_server
+
+app = Server("lexibrary")
+
+@app.list_tools()
+async def list_tools() -> list[Tool]:
+    return [
+        Tool(name="lexi_lookup", description="...", inputSchema={...}),
+        Tool(name="lexi_search", description="...", inputSchema={...}),
+        # ...
+    ]
+
+@app.call_tool()
+async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+    handler = TOOL_HANDLERS[name]
+    return await handler(arguments)
+```
+
+### Tool Handlers (`tools.py`)
+
+Each handler reuses existing library code directly — no subprocess calls to `lexi` CLI:
+
+```python
+async def handle_lookup(args: dict) -> list[TextContent]:
+    """Reuse lookup logic from lexi_app, return structured JSON."""
+    file_path = Path(args["file"])
+    project_root = find_project_root(start=file_path.parent)
+    # ... same logic as lexi_app.lookup() but returning dict instead of printing
+    return [TextContent(type="text", text=json.dumps(result))]
+```
+
+**Key decision:** Call library functions directly, not subprocess `lexi` commands. This avoids shell overhead, is faster, and returns structured data natively.
+
+### Tool Descriptions
+
+Tool descriptions are critical — they tell the agent *when* to use each tool. These should match the skill content from `base.py` but be more concise:
+
+```python
+Tool(
+    name="lexi_lookup",
+    description=(
+        "Look up design context for a source file. Returns the file's role, "
+        "conventions, dependencies, related concepts, and recent Stack posts. "
+        "Call this before editing any source file."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "file": {"type": "string", "description": "Path to the source file"},
+            "brief": {"type": "boolean", "default": False},
+        },
+        "required": ["file"],
+    },
+)
+```
+
+---
+
+## Environment Configuration
+
+### Claude Code
+
+Add to `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "lexibrary": {
+      "command": "lexibrary-mcp",
+      "args": [],
+      "cwd": "."
+    }
+  }
+}
+```
+
+Generated by `src/lexibrary/init/rules/claude.py` alongside existing permissions/hooks.
+
+### Cursor
+
+Add to `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "lexibrary": {
+      "command": "lexibrary-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+Generated by `src/lexibrary/init/rules/cursor.py`.
+
+### Other Environments
+
+MCP support varies. For environments without MCP, the existing CLI + rules approach remains the fallback. The `generic.py` generator doesn't change.
+
+---
+
+## Relationship to Existing Hooks
+
+MCP tools and hooks serve different purposes and coexist:
+
+- **MCP tools** replace `Bash(lexi ...)` calls — agents invoke `lexi_lookup` directly instead of shelling out
+- **Pre-edit hook** still fires automatically — it can call the MCP tool internally or remain as-is
+- **Post-edit hook** still fires for design file reminders
+- **Search augment hook** (from search-upgrade plan) still fires on Grep/Glob
+
+Over time, if MCP adoption is high, hooks become less necessary because agents use MCP tools proactively. But hooks remain as the safety net for agents that don't.
+
+---
+
+## Dependencies
+
+- `mcp[cli]` package (add to `pyproject.toml` as optional dep: `lexibrary[mcp]`)
+- `lexi lookup --format json` (from lookup-upgrade plan) — needed so tool handlers return structured data
+- Python 3.10+ (MCP SDK requirement, already our minimum)
+
+---
+
+## Phases
+
+1. **Scaffold** — MCP server with `lexi_lookup` and `lexi_search` tools only. Test with Claude Code manually.
+2. **Full tool set** — Add remaining tools. Generate MCP config in rules.
+3. **Hook migration** — Evaluate whether pre-edit hook can be replaced by MCP auto-invocation (depends on whether agents reliably call `lexi_lookup` when it's a native tool).
+
+---
+
+## Risks
+
+| Risk | Mitigation |
+|------|------------|
+| MCP protocol still evolving | Pin `mcp` SDK version, isolate behind optional dep |
+| Agents ignore MCP tools in favor of built-in search | Keep hooks as fallback; MCP supplements, doesn't replace |
+| Server startup latency | stdio transport is fast; Python import time is the bottleneck — use lazy imports |
+| Tool description quality | Iterate on descriptions based on agent behavior; descriptions are the primary adoption lever |

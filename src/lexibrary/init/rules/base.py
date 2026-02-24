@@ -9,6 +9,9 @@ Functions:
     get_core_rules: Shared agent rules applicable to all environments.
     get_orient_skill_content: Content for a ``/lexi-orient`` session-start skill.
     get_search_skill_content: Content for a ``/lexi-search`` cross-artifact search skill.
+    get_lookup_skill_content: Content for a ``/lexi-lookup`` file lookup skill.
+    get_concepts_skill_content: Content for a ``/lexi-concepts`` concept search skill.
+    get_stack_skill_content: Content for a ``/lexi-stack`` Stack Q&A skill.
 """
 
 from __future__ import annotations
@@ -61,6 +64,42 @@ def get_search_skill_content() -> str:
         Multiline string with search skill instructions.
     """
     return _SEARCH_SKILL.strip()
+
+
+def get_lookup_skill_content() -> str:
+    """Return the content for a ``/lexi-lookup`` skill.
+
+    The lookup skill runs ``lexi lookup <file>`` to retrieve design context
+    for a source file before editing it.
+
+    Returns:
+        Multiline string with lookup skill instructions.
+    """
+    return _LOOKUP_SKILL.strip()
+
+
+def get_concepts_skill_content() -> str:
+    """Return the content for a ``/lexi-concepts`` skill.
+
+    The concepts skill runs ``lexi concepts [topic]`` with guidance on
+    ``--tag`` and ``--all`` flags for searching project conventions.
+
+    Returns:
+        Multiline string with concepts skill instructions.
+    """
+    return _CONCEPTS_SKILL.strip()
+
+
+def get_stack_skill_content() -> str:
+    """Return the content for a ``/lexi-stack`` skill.
+
+    The stack skill provides guided prompts for ``lexi stack search``,
+    ``lexi stack post``, and ``lexi stack answer`` operations.
+
+    Returns:
+        Multiline string with stack skill instructions.
+    """
+    return _STACK_SKILL.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -149,4 +188,54 @@ Run `lexi search <query>` to perform a unified search that combines:
 - **Design file search** — matching design files by source path or content.
 
 Review all results to build a complete picture before proceeding.
+"""
+
+_LOOKUP_SKILL = """
+# /lexi-lookup — File Lookup
+
+Look up design context for a source file before editing it.
+
+## Usage
+
+Run `lexi lookup <file>` with the path to any source file to see:
+
+- The corresponding design file content (role, dependencies, conventions)
+- Related concepts and cross-references
+- Staleness information (whether the design file is up to date)
+
+Always run this before editing a file to understand its context and
+avoid breaking conventions or dependencies.
+"""
+
+_CONCEPTS_SKILL = """
+# /lexi-concepts — Concept Search
+
+Search for project concepts, conventions, and architectural patterns.
+
+## Usage
+
+- `lexi concepts <topic>` — search for concepts matching a topic
+- `lexi concepts --tag <tag>` — filter concepts by tag (e.g., `--tag convention`, `--tag pattern`)
+- `lexi concepts --all` — list all concepts in the project wiki
+
+Use this before making architectural decisions to check for existing
+conventions, patterns, or design rationale documented in the project.
+"""
+
+_STACK_SKILL = """
+# /lexi-stack — Stack Q&A
+
+Search, post, and answer questions in the project's Stack knowledge base.
+
+## Usage
+
+- `lexi stack search <query>` — search for existing Q&A posts matching your query.
+  Run this before debugging to check if a solution already exists.
+- `lexi stack post` — create a new question post after encountering a non-trivial
+  bug or issue. Document the problem clearly for future reference.
+- `lexi stack answer <post-id>` — add an answer to an existing Stack post after
+  solving the problem. Include the solution and any relevant context.
+
+The Stack is the project's persistent knowledge base for debugging insights
+and solutions. Contributing to it helps future sessions avoid repeating work.
 """

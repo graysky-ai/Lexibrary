@@ -42,6 +42,8 @@ def _run_validate(
     severity: str | None = None,
     check: str | None = None,
     json_output: bool = False,
+    ci_mode: bool = False,
+    fix: bool = False,
 ) -> int:
     """Run validation checks and render output.
 
@@ -55,6 +57,10 @@ def _run_validate(
         check: Run only the named check.  ``None`` means all checks.
         json_output: When ``True``, output results as JSON instead of
             Rich tables.
+        ci_mode: When ``True``, output a compact single-line summary
+            suitable for CI pipelines. No Rich formatting is used.
+        fix: When ``True``, attempt to auto-fix fixable issues after
+            validation.
 
     Returns:
         Exit code: 0 = clean, 1 = errors, 2 = warnings only.
@@ -82,6 +88,51 @@ def _run_validate(
         if check is not None and check not in AVAILABLE_CHECKS:
             console.print("[dim]Available checks:[/dim] " + ", ".join(sorted(AVAILABLE_CHECKS)))
         raise typer.Exit(1) from None
+
+    # CI mode: compact single-line output, no Rich formatting
+    if ci_mode:
+        counts = report.counts_by_severity()
+        print(  # noqa: T201
+            f"lexibrary-validate: errors={counts['error']}"
+            f" warnings={counts['warning']}"
+            f" info={counts['info']}"
+        )
+        return report.exit_code()
+
+    # Fix mode: run fixers after validation
+    if fix:
+        from lexibrary.config.loader import load_config  # noqa: PLC0415
+        from lexibrary.validator.fixes import FIXERS  # noqa: PLC0415
+
+        config = load_config(project_root)
+        fixed_count = 0
+        total_issues = len(report.issues)
+
+        for issue in report.issues:
+            fixer = FIXERS.get(issue.check)
+            if fixer is not None:
+                result = fixer(issue, project_root, config)
+                if result.fixed:
+                    console.print(
+                        f"  [green][FIXED][/green] {issue.check}: {result.message}"
+                    )
+                    fixed_count += 1
+                else:
+                    console.print(
+                        f"  [yellow][SKIP][/yellow] {issue.check}: {result.message}"
+                    )
+            else:
+                console.print(
+                    f"  [yellow][SKIP][/yellow] {issue.check}: no auto-fix available"
+                )
+
+        manual_count = total_issues - fixed_count
+        console.print()
+        console.print(
+            f"Fixed {fixed_count} of {total_issues} issues."
+            f" {manual_count} require manual attention."
+        )
+        return report.exit_code()
 
     if json_output:
         console.print(_json.dumps(report.to_dict(), indent=2))

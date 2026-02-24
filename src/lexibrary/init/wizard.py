@@ -1,6 +1,6 @@
 """Interactive init wizard for guided project setup.
 
-Collects configuration through an 8-step guided flow using ``rich.prompt``
+Collects configuration through a 9-step guided flow using ``rich.prompt``
 for all user interaction.  The ``WizardAnswers`` dataclass decouples
 the interactive flow from the filesystem operations performed by the scaffolder.
 """
@@ -50,6 +50,7 @@ class WizardAnswers:
     token_budgets_customized: bool = False
     token_budgets: dict[str, int] = field(default_factory=dict)
     iwh_enabled: bool = True
+    install_hooks: bool = False
     confirmed: bool = False
 
 
@@ -81,7 +82,7 @@ def _step_project_name(
     """Step 1: Detect and confirm project name."""
     detected = detect_project_name(project_root)
     console.print(
-        f"\n[bold]Step 1/8: Project Name[/bold]"
+        f"\n[bold]Step 1/9: Project Name[/bold]"
         f"\n  Detected: [cyan]{detected.name}[/cyan] (from {detected.source})"
     )
 
@@ -108,7 +109,7 @@ def _step_scope_root(
     default = detected_roots[0] if detected_roots else "."
 
     console.print(
-        f"\n[bold]Step 2/8: Scope Root[/bold]"
+        f"\n[bold]Step 2/9: Scope Root[/bold]"
         f"\n  Detected directories: {detected_roots or ['(none)']}"
         f"\n  [dim]Modify later in .lexibrary/config.yaml[/dim]"
     )
@@ -135,7 +136,7 @@ def _step_agent_environment(
     detected_envs = detect_agent_environments(project_root)
 
     console.print(
-        f"\n[bold]Step 3/8: Agent Environment[/bold]\n  Detected: {detected_envs or ['(none)']}"
+        f"\n[bold]Step 3/9: Agent Environment[/bold]\n  Detected: {detected_envs or ['(none)']}"
     )
 
     # Check for existing lexibrary sections
@@ -203,7 +204,7 @@ def _step_llm_provider(
     """
     providers = detect_llm_providers()
 
-    console.print("\n[bold]Step 4/8: LLM Provider[/bold]")
+    console.print("\n[bold]Step 4/9: LLM Provider[/bold]")
     console.print("  [dim]We never store, log, or transmit your API key.[/dim]")
 
     # --- Provider selection ---
@@ -306,7 +307,7 @@ def _step_ignore_patterns(
     patterns = suggest_ignore_patterns(project_type)
 
     console.print(
-        f"\n[bold]Step 5/8: Ignore Patterns[/bold]\n  Project type: {project_type or '(unknown)'}"
+        f"\n[bold]Step 5/9: Ignore Patterns[/bold]\n  Project type: {project_type or '(unknown)'}"
     )
 
     if patterns:
@@ -346,7 +347,7 @@ def _step_token_budgets(
 
     Returns ``(customized, budgets_dict)``.
     """
-    console.print("\n[bold]Step 6/8: Token Budgets[/bold]")
+    console.print("\n[bold]Step 6/9: Token Budgets[/bold]")
     console.print("  Current defaults:")
     for key, value in _DEFAULT_TOKEN_BUDGETS.items():
         console.print(f"    {key}: {value}")
@@ -385,9 +386,12 @@ def _step_iwh(
     *,
     use_defaults: bool,
 ) -> bool:
-    """Step 7: Enable/disable I Was Here (IWH) system."""
+    """Step 7: Enable/disable I Was Here (IWH) system.
+
+    Returns ``True`` if IWH is enabled, ``False`` if disabled.
+    """
     console.print(
-        "\n[bold]Step 7/8: I Was Here (IWH)[/bold]"
+        "\n[bold]Step 7/9: I Was Here (IWH)[/bold]"
         "\n  IWH creates trace files so agents can see what previous agents did."
         "\n  Recommended for multi-agent workflows."
     )
@@ -403,17 +407,46 @@ def _step_iwh(
     )
 
 
+def _step_hooks(
+    console: Console,
+    *,
+    use_defaults: bool,
+) -> bool:
+    """Step 8: Offer to install git hooks (pre-commit and post-commit).
+
+    Returns ``True`` if the user accepts hook installation, ``False`` otherwise.
+    In defaults mode (``use_defaults=True``), returns ``False`` (conservative
+    default for unattended mode).
+    """
+    console.print(
+        "\n[bold]Step 8/9: Git Hooks[/bold]"
+        "\n  Install git hooks for automatic library maintenance:"
+        "\n    - [cyan]pre-commit:[/cyan] validate library before each commit"
+        "\n    - [cyan]post-commit:[/cyan] auto-update design files for changed files"
+    )
+
+    if use_defaults:
+        console.print("  Using: not installed (conservative default)")
+        return False
+
+    return Confirm.ask(
+        "  Install git hooks?",
+        default=True,
+        console=console,
+    )
+
+
 def _step_summary(
     answers: WizardAnswers,
     console: Console,
     *,
     use_defaults: bool,
 ) -> bool:
-    """Step 8: Display summary and confirm.
+    """Step 9: Display summary and confirm.
 
     Returns ``True`` if the user confirms, ``False`` if cancelled.
     """
-    console.print("\n[bold]Step 8/8: Summary[/bold]")
+    console.print("\n[bold]Step 9/9: Summary[/bold]")
 
     table = Table(show_header=True, header_style="bold")
     table.add_column("Setting", style="cyan")
@@ -443,6 +476,7 @@ def _step_summary(
         "customized" if answers.token_budgets_customized else "defaults",
     )
     table.add_row("IWH enabled", str(answers.iwh_enabled))
+    table.add_row("Git hooks", "install" if answers.install_hooks else "skip")
 
     console.print(table)
 
@@ -468,7 +502,7 @@ def run_wizard(
     *,
     use_defaults: bool = False,
 ) -> WizardAnswers | None:
-    """Run the 8-step init wizard.
+    """Run the 9-step init wizard.
 
     Args:
         project_root: Absolute path to the project root directory.
@@ -516,7 +550,10 @@ def run_wizard(
     # Step 7: IWH
     answers.iwh_enabled = _step_iwh(console, use_defaults=use_defaults)
 
-    # Step 8: Summary + confirm
+    # Step 8: Git hooks
+    answers.install_hooks = _step_hooks(console, use_defaults=use_defaults)
+
+    # Step 9: Summary + confirm
     confirmed = _step_summary(answers, console, use_defaults=use_defaults)
 
     if confirmed:

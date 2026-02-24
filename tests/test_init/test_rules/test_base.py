@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from lexibrary.init.rules.base import (
+    get_concepts_skill_content,
     get_core_rules,
+    get_lookup_skill_content,
     get_orient_skill_content,
     get_search_skill_content,
+    get_stack_skill_content,
 )
 
 # ---------------------------------------------------------------------------
@@ -210,4 +213,115 @@ class TestGetSearchSkillContent:
     def test_no_leading_trailing_whitespace(self) -> None:
         """Returned content has no leading/trailing whitespace."""
         result = get_search_skill_content()
+        assert result == result.strip()
+
+
+# ---------------------------------------------------------------------------
+# get_lookup_skill_content — file lookup
+# ---------------------------------------------------------------------------
+
+
+class TestGetLookupSkillContent:
+    """Lookup skill wraps lexi lookup for file context."""
+
+    def test_returns_string(self) -> None:
+        """get_lookup_skill_content() returns a non-empty string."""
+        result = get_lookup_skill_content()
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_contains_lexi_lookup(self) -> None:
+        """Lookup skill references lexi lookup command."""
+        result = get_lookup_skill_content()
+        assert "lexi lookup" in result
+
+    def test_contains_file_argument(self) -> None:
+        """Lookup skill mentions a file argument."""
+        result = get_lookup_skill_content()
+        assert "<file>" in result or "file" in result.lower()
+
+    def test_mentions_design_context(self) -> None:
+        """Lookup skill mentions design context."""
+        result = get_lookup_skill_content()
+        lower = result.lower()
+        assert "design" in lower
+
+    def test_no_leading_trailing_whitespace(self) -> None:
+        """Returned content has no leading/trailing whitespace."""
+        result = get_lookup_skill_content()
+        assert result == result.strip()
+
+
+# ---------------------------------------------------------------------------
+# get_concepts_skill_content — concept search
+# ---------------------------------------------------------------------------
+
+
+class TestGetConceptsSkillContent:
+    """Concepts skill wraps lexi concepts for convention search."""
+
+    def test_returns_string(self) -> None:
+        """get_concepts_skill_content() returns a non-empty string."""
+        result = get_concepts_skill_content()
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_contains_lexi_concepts(self) -> None:
+        """Concepts skill references lexi concepts command."""
+        result = get_concepts_skill_content()
+        assert "lexi concepts" in result
+
+    def test_contains_tag_flag(self) -> None:
+        """Concepts skill mentions --tag flag."""
+        result = get_concepts_skill_content()
+        assert "--tag" in result
+
+    def test_contains_all_flag(self) -> None:
+        """Concepts skill mentions --all flag."""
+        result = get_concepts_skill_content()
+        assert "--all" in result
+
+    def test_mentions_topic_argument(self) -> None:
+        """Concepts skill mentions topic argument."""
+        result = get_concepts_skill_content()
+        assert "topic" in result.lower()
+
+    def test_no_leading_trailing_whitespace(self) -> None:
+        """Returned content has no leading/trailing whitespace."""
+        result = get_concepts_skill_content()
+        assert result == result.strip()
+
+
+# ---------------------------------------------------------------------------
+# get_stack_skill_content — Stack Q&A
+# ---------------------------------------------------------------------------
+
+
+class TestGetStackSkillContent:
+    """Stack skill wraps lexi stack for Q&A operations."""
+
+    def test_returns_string(self) -> None:
+        """get_stack_skill_content() returns a non-empty string."""
+        result = get_stack_skill_content()
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_contains_lexi_stack_search(self) -> None:
+        """Stack skill references lexi stack search."""
+        result = get_stack_skill_content()
+        assert "lexi stack search" in result
+
+    def test_contains_lexi_stack_post(self) -> None:
+        """Stack skill references lexi stack post."""
+        result = get_stack_skill_content()
+        assert "lexi stack post" in result
+
+    def test_contains_lexi_stack_answer(self) -> None:
+        """Stack skill references lexi stack answer."""
+        result = get_stack_skill_content()
+        assert "lexi stack answer" in result
+
+    def test_no_leading_trailing_whitespace(self) -> None:
+        """Returned content has no leading/trailing whitespace."""
+        result = get_stack_skill_content()
         assert result == result.strip()

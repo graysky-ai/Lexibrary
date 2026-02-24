@@ -37,18 +37,19 @@ Items where the overview or design describes a CLI command/flag that doesn't exi
 | low | resolved | `lexi concepts --status <s>` | Delivered via OpenSpec change `agent-navigation`. |
 | low | resolved | `lexi concepts --all` | Delivered via OpenSpec change `agent-navigation`. |
 | critical | resolved | `lexi iwh write/read/list`, `lexictl iwh clean` | Delivered via IWH gap fix. `find_all_iwh()` discovery, archivist IWH awareness, docs/rules aligned. |
-| medium | proposed | `lexi stack mark-outdated <post-id>` | Mutation `mark_outdated()` exists in code but has no CLI surface. Phase 6. |
-| low | proposed | `lexi stack duplicate <post-id> --of <id>` | Mutation `mark_duplicate()` exists in code but has no CLI surface. Phase 6. |
-| high | planned | `lexictl update --dry-run` | Preview what would change without LLM calls. See overview Q-005. Phase 4. |
-| medium | planned | `lexictl update --start-here` | Regenerate START_HERE.md independently without a full project update. Phase 4. |
-| medium | proposed | `lexictl validate --fix` | Auto-remediate fixable issues (refresh stale hashes, remove broken wikilinks). Scope TBD. See D-047. Phase 7. |
+| medium | planned | `lexi stack mark-outdated <post-id>` | Mutation `mark_outdated()` exists in code but has no CLI surface. Scoped in agent-harnessing plan Phase 3.2. |
+| low | planned | `lexi stack duplicate <post-id> --of <id>` | Mutation `mark_duplicate()` exists in code but has no CLI surface. Scoped in agent-harnessing plan Phase 3.2. |
+| high | planned | `lexictl update --dry-run` | Preview what would change without LLM calls. Scoped in agent-harnessing plan Phase 2.1. |
+| medium | planned | `lexictl update --start-here` | Regenerate START_HERE.md independently without a full project update. Scoped in agent-harnessing plan Phase 2.2. |
+| medium | planned | `lexictl validate --fix` | Auto-remediate fixable issues (refresh stale hashes, remove orphans, rebuild .aindex). Scoped in agent-harnessing plan Phase 2.4. |
 | high | resolved | `lexi help` | Delivered via OpenSpec change `agent-navigation`. |
 | high | proposed | `lexictl help` | Operator-facing help command with workflow guidance beyond `--help` flag descriptions — e.g., "how do I set up CI?", "how do I add a new language?" |
-| medium | proposed | `lexictl validate --ci` | CI validation gate — exits non-zero when the library is stale or unhealthy. For use in CI/CD pipelines. |
+| high | planned | `lexi design update <file>` | Agent design file update helper — scaffold or display design file for a source file, set `updated_by: agent`. Scoped in agent-harnessing plan Phase 3.1. |
+| medium | planned | `lexictl validate --ci` | CI validation gate — exits non-zero when the library is stale or unhealthy. Scoped in agent-harnessing plan Phase 2.3. |
 | medium | proposed | `lexictl diff` / `lexictl changelog` | Show what changed in the library since a given commit or date. Staleness report across artifacts. |
 | medium | proposed | `lexi browse` | Interactive TUI (Rich/Textual) for navigating design files, concepts, link graph, and stack posts visually. |
 | medium | proposed | `lexictl export` | Export the lexibrary as JSON or other structured formats for consumption by external tools and integrations. |
-| low | proposed | `lexictl metrics` | Coverage stats dashboard — % of source files with design files, concept density, staleness distribution, link graph health. |
+| low | proposed | `lexictl metrics` | Coverage stats dashboard — % of source files with design files, concept density, staleness distribution, link graph health. Deferred from agent-harnessing plan (analysis item L6). |
 
 ## Feature Gaps
 
@@ -61,8 +62,13 @@ Design-described capabilities that aren't delivered yet.
 | medium | planned | Concurrency for `lexictl update` | D-025 establishes sequential MVP with async architecture ready. Needs config key (`update.max_concurrent`). Not urgent — locks in `utils/locks.py` are pre-wired as no-ops. Post-Phase 4. |
 | high | proposed | Multi-repo support | Index and navigate across multiple related repositories. Needs design for cross-repo linking, shared concepts, and config inheritance. |
 | high | proposed | Additional language parsers | Expand `ast_parser/` beyond Python/TypeScript/JavaScript. Priority languages: Go, Rust, Java, C/C++, Ruby, C#. Each needs a tree-sitter parser + `extract_interface()` impl. |
-| medium | proposed | Additional agent environments | Expand `init/rules/` beyond Claude/Cursor/Codex. Candidates: Windsurf, Copilot, Aider, and others as the ecosystem evolves. |
-| medium | proposed | Expanded agent environment setup (hooks, settings, MCP) | Beyond rule files, `lexictl init`/`setup` should scaffold additional agent environment artefacts: hooks (`.claude/hooks/`), settings files (`.claude/settings.json`, `.cursor/settings.json`), MCP server configs, and other environment-specific configuration. Build on the directory-creation prompt added in the init bug fix. |
+| medium | planned | Additional agent environments | Expand `init/rules/` beyond Claude/Cursor/Codex. Generic fallback (`LEXIBRARY_RULES.md`) scoped in agent-harnessing plan Phase 5.2. Specific env integrations (Windsurf, Copilot, Aider) deferred to demand. |
+| medium | resolved | Expanded agent environment setup (hooks, settings, MCP) | Covered by agent-harnessing-plan.md Phases 1.1 (settings.json), 1.2 (hooks), 5.1 (Cursor). MCP server deferred — see below. |
+| medium | proposed | MCP server for `lexi` commands | Expose `lexi` commands as native Claude/Cursor tools via MCP instead of requiring bash. Large scope — revisit when MCP stabilizes across IDEs. Deferred from agent-harnessing plan (analysis item L1). |
+| low | proposed | IDE workspace settings generation | Generate `.vscode/settings.json`, `.vscode/extensions.json` etc. during `lexictl init`. Low impact — editors work fine without them. Deferred from agent-harnessing plan (analysis item L3). |
+| low | proposed | Post-merge / post-checkout git hooks | Auto-refresh design files after `git merge` and rebuild link graph after `git checkout`. Same pattern as existing post-commit hook. Deferred from agent-harnessing plan (Phase 4.2). |
+| low | proposed | Windows git hook support | Generate PowerShell `.ps1` equivalents of shell hook scripts. Detect platform in installer. Deferred from agent-harnessing plan — no active Windows users (analysis item M8). |
+| low | proposed | Hook/sweep coordination | Prevent concurrent `lexictl update` from post-commit hook and daemon/sweep. Edge case — sweeps are periodic (full) and hooks are post-commit (quick, scoped), so conflicts are rare. Deferred from agent-harnessing plan (analysis item M5). |
 | medium | proposed | Custom/pluggable parsers | Let users register their own language parsers via config or plugin directory, for languages not built-in. |
 | low | proposed | Template customization | Let users override design file, concept, and stack post templates in `.lexibrary/templates/` or config. |
 | low | suggestion | `start_here.topology_format` config | Overview §1 says topology format is "configurable" (Mermaid vs ASCII). No config key exists. See overview Q-009. Phase 8b. |
