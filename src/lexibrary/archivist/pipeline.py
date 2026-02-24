@@ -36,6 +36,7 @@ from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.ast_parser import compute_hashes, parse_interface, render_skeleton
 from lexibrary.config.schema import LexibraryConfig
 from lexibrary.ignore import create_ignore_matcher
+from lexibrary.indexer.orchestrator import index_directory
 from lexibrary.linkgraph.builder import build_index
 from lexibrary.utils.atomic import atomic_write
 from lexibrary.utils.conflict import has_conflict_markers
@@ -210,6 +211,29 @@ async def update_file(
     # 1. Scope check
     if not _is_within_scope(source_path, project_root, config.scope_root):
         return FileResult(change=ChangeLevel.UNCHANGED)
+
+    # 1b. IWH check: skip if blocked signal exists for the source directory
+    if config.iwh.enabled:
+        from lexibrary.iwh.reader import read_iwh  # noqa: PLC0415
+        from lexibrary.utils.paths import iwh_path as _iwh_path  # noqa: PLC0415
+
+        iwh_dir = _iwh_path(project_root, source_path.parent).parent
+        iwh_signal = read_iwh(iwh_dir)
+        if iwh_signal is not None:
+            if iwh_signal.scope == "blocked":
+                logger.warning(
+                    "Skipping %s: IWH blocked signal in %s — %s",
+                    source_path.name,
+                    source_path.parent,
+                    iwh_signal.body[:100] if iwh_signal.body else "(no body)",
+                )
+                return FileResult(change=ChangeLevel.UNCHANGED)
+            if iwh_signal.scope == "incomplete":
+                logger.info(
+                    "IWH incomplete signal in %s — proceeding with caution: %s",
+                    source_path.parent,
+                    iwh_signal.body[:100] if iwh_signal.body else "(no body)",
+                )
 
     # 2. Compute hashes
     content_hash, interface_hash = compute_hashes(source_path)
@@ -387,6 +411,84 @@ def _accumulate_stats(stats: UpdateStats, file_result: FileResult) -> None:
         stats.token_budget_warnings += 1
 
 
+def _has_meaningful_changes(stats: UpdateStats) -> bool:
+    """Return True if any files were created, updated, or failed.
+
+    Used to decide whether to run post-pipeline re-indexing.  When zero
+    files actually changed, re-indexing is skipped because the existing
+    ``.aindex`` files are already up-to-date.
+    """
+    return (stats.files_created + stats.files_updated + stats.files_failed) > 0
+
+
+def reindex_directories(
+    directories: list[Path],
+    project_root: Path,
+    config: LexibraryConfig,
+) -> int:
+    """Regenerate ``.aindex`` files for *directories* and their ancestors.
+
+    For each directory in *directories*, walks up to ``scope_root`` and
+    collects ancestor directories.  Then re-indexes each unique directory
+    (deepest first so child ``.aindex`` data is available when parents
+    are processed).
+
+    Uses the existing ``index_directory()`` from the indexer orchestrator
+    to ensure output is identical to ``lexictl index``.
+
+    Args:
+        directories: Source directories containing changed files.
+        project_root: The project root (contains ``.lexibrary/``).
+        config: Project configuration (provides ``scope_root``).
+
+    Returns:
+        Number of directories re-indexed.
+    """
+    if not directories:
+        return 0
+
+    scope_abs = (project_root / config.scope_root).resolve()
+
+    # Collect all directories plus their ancestors up to scope_root
+    all_dirs: set[Path] = set()
+    for dir_path in directories:
+        resolved = dir_path.resolve()
+        # Walk up from the directory to scope_root (inclusive)
+        current = resolved
+        while True:
+            all_dirs.add(current)
+            if current == scope_abs:
+                break
+            parent = current.parent
+            if parent == current:
+                # Hit filesystem root without reaching scope_root
+                break
+            # Don't walk above scope_root
+            try:
+                parent.relative_to(scope_abs)
+            except ValueError:
+                break
+            current = parent
+
+    # Sort deepest-first so child .aindex files exist before parents
+    sorted_dirs = sorted(all_dirs, key=lambda p: len(p.parts), reverse=True)
+
+    count = 0
+    for dir_path in sorted_dirs:
+        if not dir_path.is_dir():
+            continue
+        try:
+            index_directory(dir_path, project_root, config)
+            count += 1
+        except Exception:
+            logger.exception("Failed to re-index directory: %s", dir_path)
+
+    if count:
+        logger.info("Re-indexed %d directories", count)
+
+    return count
+
+
 async def update_files(
     file_paths: list[Path],
     project_root: Path,
@@ -466,6 +568,17 @@ async def update_files(
         if progress_callback is not None:
             progress_callback(source_path, file_result.change)
 
+    # Re-index directories containing changed files (plus ancestors up to
+    # scope_root) so .aindex files stay fresh after hook-triggered updates.
+    # Skipped when no files were actually created, updated, or failed (4.3).
+    if _has_meaningful_changes(stats) and processed_paths:
+        affected_dirs = sorted({p.parent for p in processed_paths})
+        try:
+            reindexed = reindex_directories(list(affected_dirs), project_root, config)
+            stats.aindex_refreshed += reindexed
+        except Exception:
+            logger.exception("Failed to re-index directories after update_files")
+
     # Incremental link graph index update: pass both processed and deleted
     # paths so the builder can update changed artifacts and clean up deleted
     # ones via CASCADE.  Wrapped in try/except so index failures never block
@@ -537,6 +650,9 @@ async def update_project(
 
     logger.info("Discovered %d source files for processing", len(source_files))
 
+    # Track which files were actually changed (for targeted re-indexing)
+    changed_file_paths: list[Path] = []
+
     # Process each file sequentially
     for source_path in source_files:
         stats.files_scanned += 1
@@ -552,23 +668,38 @@ async def update_project(
         except Exception:
             logger.exception("Unexpected error processing %s", source_path)
             stats.files_failed += 1
+            changed_file_paths.append(source_path)
             if progress_callback is not None:
                 progress_callback(source_path, ChangeLevel.UNCHANGED)
             continue
 
         _accumulate_stats(stats, file_result)
 
+        # Track files that were actually created, updated, or failed
+        if file_result.change not in (ChangeLevel.UNCHANGED, ChangeLevel.AGENT_UPDATED):
+            changed_file_paths.append(source_path)
+
         if progress_callback is not None:
             progress_callback(source_path, file_result.change)
 
-    # Step 5: Regenerate START_HERE.md after processing all files (pipeline spec §5)
+    # Step 5: Regenerate START_HERE.md after processing all files (pipeline spec SS5)
     try:
         await generate_start_here(project_root, config, archivist)
     except Exception:
         logger.exception("Failed to regenerate START_HERE.md")
         stats.start_here_failed = True
 
-    # Step 6: Build the link graph index (full rebuild after all artifacts are up to date)
+    # Step 6: Re-index directories containing changed files (D-2, D-3).
+    # Skipped when no files were actually created, updated, or failed (4.3).
+    if _has_meaningful_changes(stats) and changed_file_paths:
+        affected_dirs = sorted({p.parent for p in changed_file_paths})
+        try:
+            reindexed = reindex_directories(list(affected_dirs), project_root, config)
+            stats.aindex_refreshed += reindexed
+        except Exception:
+            logger.exception("Failed to re-index directories after update_project")
+
+    # Step 7: Build the link graph index (full rebuild after all artifacts are up to date)
     try:
         build_index(project_root)
         stats.linkgraph_built = True

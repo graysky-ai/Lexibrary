@@ -12,9 +12,11 @@ from lexibrary.archivist.change_checker import ChangeLevel
 from lexibrary.archivist.pipeline import (
     FileResult,
     UpdateStats,
+    _has_meaningful_changes,
     _is_binary,
     _is_within_scope,
     _refresh_parent_aindex,
+    reindex_directories,
     update_file,
     update_files,
     update_project,
@@ -753,7 +755,10 @@ class TestUpdateProjectStats:
             call_count += 1
             return r
 
-        with patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file):
+        with (
+            patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file),
+            patch("lexibrary.archivist.pipeline.reindex_directories", return_value=0),
+        ):
             stats = await update_project(tmp_path, config, archivist)
 
         assert stats.files_scanned == 4
@@ -1088,6 +1093,7 @@ class TestUpdateProjectLinkGraph:
                 "lexibrary.archivist.pipeline.build_index",
                 side_effect=RuntimeError("SQLite corruption"),
             ),
+            patch("lexibrary.archivist.pipeline.reindex_directories", return_value=0),
         ):
             stats = await update_project(tmp_path, config, archivist)
 
@@ -1246,6 +1252,7 @@ class TestUpdateFilesLinkGraph:
                 "lexibrary.archivist.pipeline.build_index",
                 side_effect=RuntimeError("SQLite disk full"),
             ),
+            patch("lexibrary.archivist.pipeline.reindex_directories", return_value=0),
         ):
             stats = await update_files(
                 [source_a, source_b],
@@ -1265,3 +1272,337 @@ class TestUpdateFilesLinkGraph:
         assert stats.linkgraph_built is False
         assert stats.linkgraph_error is not None
         assert "failed" in stats.linkgraph_error.lower()
+
+
+# ---------------------------------------------------------------------------
+# reindex_directories (task 7.5)
+# ---------------------------------------------------------------------------
+
+class TestReindexDirectories:
+    """Tests for automated index regeneration after update_project() (task 7.5)."""
+
+    def test_reindex_generates_aindex_files(self, tmp_path: Path) -> None:
+        """reindex_directories() regenerates .aindex files for given directories."""
+        # Set up project structure
+        (tmp_path / ".lexibrary").mkdir(parents=True)
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "foo.py").write_text("def foo(): pass\n")
+        (src_dir / "bar.py").write_text("def bar(): pass\n")
+
+        config = _make_config(scope_root="src")
+
+        count = reindex_directories([src_dir], tmp_path, config)
+
+        # Should have re-indexed at least the src directory
+        assert count >= 1
+        aindex_file = tmp_path / ".lexibrary" / "src" / ".aindex"
+        assert aindex_file.exists()
+
+    def test_reindex_includes_ancestors(self, tmp_path: Path) -> None:
+        """reindex_directories() walks up to scope_root and re-indexes ancestors."""
+        (tmp_path / ".lexibrary").mkdir(parents=True)
+        # Create nested dirs: src/api/handlers/
+        src_dir = tmp_path / "src"
+        api_dir = src_dir / "api"
+        handlers_dir = api_dir / "handlers"
+        handlers_dir.mkdir(parents=True)
+        (handlers_dir / "auth.py").write_text("def auth(): pass\n")
+        (api_dir / "routes.py").write_text("def routes(): pass\n")
+        (src_dir / "main.py").write_text("def main(): pass\n")
+
+        config = _make_config(scope_root="src")
+
+        count = reindex_directories([handlers_dir], tmp_path, config)
+
+        # Should have re-indexed handlers/, api/, and src/ (3 directories)
+        assert count == 3
+        assert (tmp_path / ".lexibrary" / "src" / "api" / "handlers" / ".aindex").exists()
+        assert (tmp_path / ".lexibrary" / "src" / "api" / ".aindex").exists()
+        assert (tmp_path / ".lexibrary" / "src" / ".aindex").exists()
+
+    def test_reindex_empty_list_returns_zero(self, tmp_path: Path) -> None:
+        """reindex_directories() with empty list returns 0."""
+        config = _make_config()
+        count = reindex_directories([], tmp_path, config)
+        assert count == 0
+
+    def test_reindex_deduplicates_directories(self, tmp_path: Path) -> None:
+        """Passing multiple files in the same directory re-indexes it once."""
+        (tmp_path / ".lexibrary").mkdir(parents=True)
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "a.py").write_text("a = 1\n")
+        (src_dir / "b.py").write_text("b = 2\n")
+
+        config = _make_config(scope_root="src")
+
+        # Both files are in src/, so src/ should only be indexed once
+        count = reindex_directories([src_dir, src_dir], tmp_path, config)
+        assert count == 1
+
+    @pytest.mark.asyncio()
+    async def test_update_project_triggers_reindex(self, tmp_path: Path) -> None:
+        """update_project() calls reindex_directories when files are changed."""
+        _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.NEW_FILE)
+
+        with (
+            patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file),
+            patch(
+                "lexibrary.archivist.pipeline.reindex_directories",
+                return_value=2,
+            ) as mock_reindex,
+        ):
+            await update_project(tmp_path, config, archivist)
+
+        mock_reindex.assert_called_once()
+        # Verify the arguments
+        call_args = mock_reindex.call_args
+        dirs_arg = call_args[0][0]
+        # Should contain the parent directory of the changed file
+        assert any(d.name == "src" for d in dirs_arg)
+
+    @pytest.mark.asyncio()
+    async def test_update_files_triggers_reindex(self, tmp_path: Path) -> None:
+        """update_files() calls reindex_directories when files are changed."""
+        source = _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
+        (tmp_path / ".lexibrary").mkdir(parents=True, exist_ok=True)
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.NEW_FILE)
+
+        with (
+            patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file),
+            patch(
+                "lexibrary.archivist.pipeline.reindex_directories",
+                return_value=1,
+            ) as mock_reindex,
+            patch("lexibrary.archivist.pipeline.build_index"),
+        ):
+            await update_files([source], tmp_path, config, archivist)
+
+        mock_reindex.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Skip-when-no-changes (task 7.6)
+# ---------------------------------------------------------------------------
+
+
+class TestSkipWhenNoChanges:
+    """Tests for skip re-indexing when UpdateStats has zero changes (task 7.6)."""
+
+    def test_has_meaningful_changes_all_zeros(self) -> None:
+        """_has_meaningful_changes returns False when no files changed."""
+        stats = UpdateStats(files_scanned=10, files_unchanged=10)
+        assert _has_meaningful_changes(stats) is False
+
+    def test_has_meaningful_changes_with_created(self) -> None:
+        """_has_meaningful_changes returns True when files are created."""
+        stats = UpdateStats(files_scanned=5, files_created=1)
+        assert _has_meaningful_changes(stats) is True
+
+    def test_has_meaningful_changes_with_updated(self) -> None:
+        """_has_meaningful_changes returns True when files are updated."""
+        stats = UpdateStats(files_scanned=5, files_updated=2)
+        assert _has_meaningful_changes(stats) is True
+
+    def test_has_meaningful_changes_with_failed(self) -> None:
+        """_has_meaningful_changes returns True when files failed."""
+        stats = UpdateStats(files_scanned=5, files_failed=1)
+        assert _has_meaningful_changes(stats) is True
+
+    def test_has_meaningful_changes_agent_updated_only(self) -> None:
+        """_has_meaningful_changes returns False when only agent_updated changes exist."""
+        stats = UpdateStats(files_scanned=5, files_unchanged=3, files_agent_updated=2)
+        assert _has_meaningful_changes(stats) is False
+
+    @pytest.mark.asyncio()
+    async def test_update_project_skips_reindex_when_no_changes(self, tmp_path: Path) -> None:
+        """update_project() does NOT re-index when all files are unchanged."""
+        _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.UNCHANGED)
+
+        with (
+            patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file),
+            patch(
+                "lexibrary.archivist.pipeline.reindex_directories",
+            ) as mock_reindex,
+        ):
+            await update_project(tmp_path, config, archivist)
+
+        # reindex_directories should NOT have been called
+        mock_reindex.assert_not_called()
+
+    @pytest.mark.asyncio()
+    async def test_update_files_skips_reindex_when_no_changes(self, tmp_path: Path) -> None:
+        """update_files() does NOT re-index when all files are unchanged."""
+        source = _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
+        (tmp_path / ".lexibrary").mkdir(parents=True, exist_ok=True)
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.UNCHANGED)
+
+        with (
+            patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file),
+            patch(
+                "lexibrary.archivist.pipeline.reindex_directories",
+            ) as mock_reindex,
+            patch("lexibrary.archivist.pipeline.build_index"),
+        ):
+            await update_files([source], tmp_path, config, archivist)
+
+        # reindex_directories should NOT have been called
+        mock_reindex.assert_not_called()
+
+    @pytest.mark.asyncio()
+    async def test_update_project_reindexes_when_files_created(self, tmp_path: Path) -> None:
+        """update_project() DOES re-index when files are created."""
+        _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.NEW_FILE)
+
+        with (
+            patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file),
+            patch(
+                "lexibrary.archivist.pipeline.reindex_directories",
+                return_value=1,
+            ) as mock_reindex,
+        ):
+            await update_project(tmp_path, config, archivist)
+
+        # reindex_directories SHOULD have been called
+        mock_reindex.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# update_file — IWH awareness
+# ---------------------------------------------------------------------------
+
+
+class TestIWHAwareness:
+    """Tests for archivist IWH signal awareness (TG4)."""
+
+    @pytest.mark.asyncio()
+    async def test_blocked_signal_skips_file(self, tmp_path: Path) -> None:
+        """File in directory with blocked IWH signal returns UNCHANGED."""
+        from lexibrary.iwh import write_iwh
+
+        source = _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
+        config = _make_config()
+        archivist = _mock_archivist()
+
+        # Write a blocked IWH signal at the mirror path for src/
+        mirror_dir = tmp_path / ".lexibrary" / "src"
+        mirror_dir.mkdir(parents=True, exist_ok=True)
+        write_iwh(mirror_dir, author="agent", scope="blocked", body="do not touch")
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        assert result.change == ChangeLevel.UNCHANGED
+        archivist.generate_design_file.assert_not_awaited()
+
+    @pytest.mark.asyncio()
+    async def test_incomplete_signal_proceeds(self, tmp_path: Path) -> None:
+        """File in directory with incomplete IWH signal is still processed."""
+        from lexibrary.iwh import write_iwh
+
+        source = _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
+        config = _make_config()
+        archivist = _mock_archivist(summary="Processed despite incomplete.")
+
+        # Write an incomplete IWH signal
+        mirror_dir = tmp_path / ".lexibrary" / "src"
+        mirror_dir.mkdir(parents=True, exist_ok=True)
+        write_iwh(mirror_dir, author="agent", scope="incomplete", body="wip")
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        # Should proceed — NOT return UNCHANGED
+        assert result.change != ChangeLevel.UNCHANGED
+        archivist.generate_design_file.assert_awaited_once()
+
+    @pytest.mark.asyncio()
+    async def test_no_signal_proceeds_normally(self, tmp_path: Path) -> None:
+        """File with no IWH signal is processed normally."""
+        source = _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
+        config = _make_config()
+        archivist = _mock_archivist(summary="Normal processing.")
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        assert result.change == ChangeLevel.NEW_FILE
+        archivist.generate_design_file.assert_awaited_once()
+
+    @pytest.mark.asyncio()
+    async def test_iwh_disabled_ignores_signals(self, tmp_path: Path) -> None:
+        """When config.iwh.enabled=False, blocked signals are ignored."""
+        from lexibrary.config.schema import IWHConfig
+        from lexibrary.iwh import write_iwh
+
+        source = _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
+        config = _make_config()
+        config.iwh = IWHConfig(enabled=False)
+        archivist = _mock_archivist(summary="Processed despite blocked signal.")
+
+        # Write a blocked IWH signal
+        mirror_dir = tmp_path / ".lexibrary" / "src"
+        mirror_dir.mkdir(parents=True, exist_ok=True)
+        write_iwh(mirror_dir, author="agent", scope="blocked", body="blocked")
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        # Should NOT be skipped — IWH is disabled
+        assert result.change != ChangeLevel.UNCHANGED
+        archivist.generate_design_file.assert_awaited_once()

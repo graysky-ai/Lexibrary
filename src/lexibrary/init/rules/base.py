@@ -20,13 +20,14 @@ def get_core_rules() -> str:
     The rules instruct agents to:
 
     * Read ``.lexibrary/START_HERE.md`` at session start
-    * Check for ``.iwh`` signals when entering directories
+    * Check for IWH signals via ``lexi iwh list``
     * Run ``lexi lookup <file>`` before editing
     * Update design files after editing (set ``updated_by: agent``)
+    * Run ``lexi validate`` after editing to check library health
     * Run ``lexi concepts <topic>`` before architectural decisions
     * Use ``lexi stack search`` before debugging and ``lexi stack post``
       after solving non-trivial bugs
-    * Create ``.iwh`` when leaving work incomplete
+    * Use ``lexi iwh write`` when leaving work incomplete
     * Never run ``lexictl`` commands
 
     Returns:
@@ -41,7 +42,7 @@ def get_orient_skill_content() -> str:
     The orient skill provides a single-command session start that:
 
     * Reads ``.lexibrary/START_HERE.md``
-    * Checks for a project-root ``.iwh`` signal
+    * Checks for IWH signals via ``lexi iwh list``
     * Runs ``lexi status`` to display library health
 
     Returns:
@@ -72,8 +73,11 @@ _CORE_RULES = """
 ## Session Start
 
 1. Read `.lexibrary/START_HERE.md` to understand the project structure and conventions.
-2. Check for `.iwh` (I Was Here) signal files when entering any directory.
-   - If an `.iwh` file exists: read its contents, act on any instructions, then delete the file.
+2. Run `lexi iwh list` to check for IWH (I Was Here) signals left by a previous session.
+   - If signals exist, run `lexi iwh read <directory>` for each to understand the context
+     and consume the signal.
+   - IWH files live in `.lexibrary/<mirror-path>/.iwh` (e.g., `.lexibrary/src/auth/.iwh`
+     for the `src/auth/` directory).
 
 ## Before Editing Files
 
@@ -85,6 +89,8 @@ _CORE_RULES = """
 
 - Update the corresponding design file to reflect your changes.
   Set `updated_by: agent` in the frontmatter.
+- Run `lexi validate` to check for broken wikilinks, stale design
+  files, or other library health issues introduced by your changes.
 
 ## Architectural Decisions
 
@@ -100,10 +106,10 @@ _CORE_RULES = """
 
 ## Leaving Work Incomplete
 
-- If you must stop before completing a task, create an `.iwh` file
-  in the relevant directory describing the incomplete work and next
-  steps.
-- Do NOT create an `.iwh` file if all work is clean and complete.
+- If you must stop before completing a task, run:
+  `lexi iwh write <directory> --scope incomplete --body "description of what remains"`
+- Use `--scope blocked` if work cannot proceed until a condition is met.
+- Do NOT create an IWH signal if all work is clean and complete.
 
 ## Prohibited Commands
 
@@ -123,7 +129,9 @@ Orientate yourself in this Lexibrary-managed project.
 
 1. Read `.lexibrary/START_HERE.md` to understand the project layout,
    package map, and navigation protocol.
-2. Check for `.lexibrary/.iwh` — if present, read it, follow any instructions, then delete the file.
+2. Run `lexi iwh list` to check for IWH signals across the project.
+   - If any signals exist, run `lexi iwh read <directory>` for each to understand the context
+     and consume the signal.
 3. Run `lexi status` to see a summary of library health, including design file counts and staleness.
 """
 

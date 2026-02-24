@@ -10,9 +10,9 @@ src/lexibrary/
 ├── __main__.py
 ├── cli/                         ← CLI package — two Typer apps + shared helpers
 │   ├── __init__.py              ← Re-exports lexi_app and lexictl_app
-│   ├── _shared.py               ← Shared helpers: console, require_project_root(), stub()
-│   ├── lexi_app.py              ← Agent-facing CLI (lexi): lookup, index, describe, concepts, concept, stack, search
-│   └── lexictl_app.py           ← Maintenance CLI (lexictl): init, update (--changed-only), validate, status, setup (--update, --hooks), sweep (--watch), daemon (start/stop/status)
+│   ├── _shared.py               ← Shared helpers: console, require_project_root(), stub(), _run_validate(), _run_status()
+│   ├── lexi_app.py              ← Agent-facing CLI (lexi): lookup, describe, validate, status, concepts, concept, stack, search
+│   └── lexictl_app.py           ← Maintenance CLI (lexictl): init, update (--changed-only), index, validate, status, setup (--update, --hooks), sweep (--watch), daemon (start/stop/status)
 ├── exceptions.py                ← LexibraryNotFoundError
 ├── search.py                    ← unified_search() — cross-artifact search (concepts, design files, Stack posts)
 ├── archivist/                   ← LLM pipeline for design file + START_HERE generation (Phase 4)
@@ -144,8 +144,8 @@ src/lexibrary/
 
 | Package | Role |
 | --- | --- |
-| `cli` | Two Typer CLI apps: `lexi_app` (agent-facing: lookup, index, describe, concepts, concept, stack, search) and `lexictl_app` (maintenance: init, update, validate, status, setup, sweep, daemon); shared helpers in `_shared.py` (`console`, `require_project_root`, `stub`) |
-| `archivist` | LLM pipeline for design file + START_HERE generation: `ArchivistService`, `update_file`, `update_files`, `update_project`, `generate_start_here`, `check_change`, `extract_dependencies`; safety features: conflict marker check, design hash TOCTOU re-check, atomic writes |
+| `cli` | Two Typer CLI apps: `lexi_app` (agent-facing: lookup, describe, validate, status, concepts, concept, stack, search) and `lexictl_app` (maintenance: init, update, index, validate, status, setup, sweep, daemon); shared helpers in `_shared.py` (`console`, `require_project_root`, `stub`, `_run_validate`, `_run_status`) |
+| `archivist` | LLM pipeline for design file + START_HERE generation: `ArchivistService`, `update_file`, `update_files`, `update_project`, `reindex_directories`, `generate_start_here`, `check_change`, `extract_dependencies`; safety features: conflict marker check, design hash TOCTOU re-check, atomic writes; automated `.aindex` regeneration for affected directories after updates |
 | `artifacts` | Pydantic 2 models: `DesignFile`, `AIndexFile`, `ConceptFile`; plus parsers, serializers, writer |
 | `ast_parser` | Tree-sitter interface extraction: `parse_interface`, `compute_hashes`, `hash_interface`; `InterfaceSkeleton` model; Python / TypeScript / JavaScript parsers; `render_skeleton` canonical renderer |
 | `config` | `LexibraryConfig` schema (incl. `scope_root`, `ASTConfig`), two-tier YAML loader, default config template |

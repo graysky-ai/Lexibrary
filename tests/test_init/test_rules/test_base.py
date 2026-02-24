@@ -102,16 +102,26 @@ class TestGetCoreRules:
                 msg = f"Found instruction to run lexictl status: {line}"
                 raise AssertionError(msg)
 
-    def test_iwh_read_act_delete(self) -> None:
-        """Core rules instruct agents to read, act on, and delete .iwh files."""
+    def test_iwh_read_act_consume(self) -> None:
+        """Core rules instruct agents to read and consume .iwh signals."""
         result = get_core_rules().lower()
         assert "read" in result
-        assert "delete" in result
+        assert "consume" in result
 
     def test_iwh_do_not_create_when_clean(self) -> None:
         """Core rules instruct agents NOT to create .iwh when work is clean."""
         result = get_core_rules().lower()
         assert "do not create" in result or "don't create" in result
+
+    def test_core_rules_references_lexi_iwh_write(self) -> None:
+        """Core rules reference lexi iwh write for leaving work incomplete."""
+        result = get_core_rules()
+        assert "lexi iwh write" in result
+
+    def test_core_rules_references_lexi_iwh_list(self) -> None:
+        """Core rules reference lexi iwh list for checking signals."""
+        result = get_core_rules()
+        assert "lexi iwh list" in result
 
     def test_no_leading_trailing_whitespace(self) -> None:
         """Returned content has no leading/trailing whitespace."""
@@ -139,14 +149,20 @@ class TestGetOrientSkillContent:
         assert "START_HERE.md" in result
 
     def test_contains_iwh_check(self) -> None:
-        """Orient skill instructs checking for .iwh signals."""
+        """Orient skill instructs checking for IWH signals."""
         result = get_orient_skill_content()
-        assert ".iwh" in result
+        assert "lexi iwh list" in result
 
     def test_contains_lexi_status(self) -> None:
         """Orient skill instructs running lexi status."""
         result = get_orient_skill_content()
         assert "lexi status" in result
+
+    def test_orient_skill_does_not_reference_ls_iwh(self) -> None:
+        """Orient skill does NOT contain raw 'ls .iwh' instructions."""
+        result = get_orient_skill_content()
+        assert "ls .iwh" not in result
+        assert "ls .lexibrary" not in result
 
     def test_no_leading_trailing_whitespace(self) -> None:
         """Returned content has no leading/trailing whitespace."""

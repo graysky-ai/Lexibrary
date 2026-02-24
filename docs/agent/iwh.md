@@ -58,13 +58,19 @@ passes. Next step: rewrite `orphan_concepts` to use the link graph index.
 | `incomplete` | Work was started but not finished; the body describes what remains |
 | `blocked` | Work cannot proceed until a specific condition is met; the body describes the blocker |
 
-## Where to Place IWH Files
+## Where IWH Files Live
 
-Place the `.iwh` file in the directory most relevant to the incomplete work:
+IWH files are stored in the `.lexibrary/` mirror tree, not in source directories.
+The path mirrors the source directory structure:
 
-- If you were working on a specific module, place it in that module's directory
-- If the work spans multiple directories, place it at the project root
-- If the work is directory-scoped (e.g., refactoring all files in `src/lexibrary/config/`), place it in that directory
+- Source directory `src/auth/` → IWH file at `.lexibrary/src/auth/.iwh`
+- Project root → IWH file at `.lexibrary/.iwh`
+
+Use the CLI to create signals:
+
+```bash
+lexi iwh write src/auth/ --scope incomplete --body "Refactoring auth module..."
+```
 
 Only one `.iwh` file can exist per directory (a new one overwrites the previous).
 
@@ -114,28 +120,31 @@ Was working on stuff. Not done yet.
 When you start a session, check for IWH files as part of the [orientation protocol](orientation.md):
 
 ```bash
-ls .iwh 2>/dev/null
+lexi iwh list
 ```
 
-If an `.iwh` file exists:
+If signals are present, consume them for each directory:
 
-1. **Read the full file** to understand the context
-2. **Act on the instructions** -- complete the incomplete work, address the warning, or work around the blocker
-3. **Delete the `.iwh` file** after acting on it
+```bash
+lexi iwh read <directory>
+```
 
-IWH files are ephemeral. Once their information has been acted upon, they should be removed. Do not leave stale IWH files in the project.
+The `read` command displays the signal and deletes the file automatically. Use `--peek` to read without consuming.
 
-If you cannot fully act on the IWH (e.g., you complete part of the remaining work but not all), update the `.iwh` file or write a new one describing the current state.
+After consuming a signal:
+
+1. **Act on the instructions** -- complete the incomplete work, address the warning, or work around the blocker
+2. If you cannot fully act on it, write a new signal describing the current state:
+   `lexi iwh write <directory> --scope incomplete --body "updated status"`
 
 ## Summary
 
 | Step | Action |
 |------|--------|
-| **Check** | Look for `.iwh` files at session start |
-| **Read** | Understand the context and instructions |
+| **Check** | Run `lexi iwh list` at session start |
+| **Read** | Run `lexi iwh read <dir>` to consume and understand the signal |
 | **Act** | Complete the work, address the warning, or work around the blocker |
-| **Delete** | Remove the `.iwh` file after acting on it |
-| **Create** | Leave a new `.iwh` file if you are leaving work incomplete |
+| **Create** | Run `lexi iwh write <dir> --scope ... --body "..."` if leaving work incomplete |
 
 ## See Also
 

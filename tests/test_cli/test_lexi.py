@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -26,12 +27,13 @@ class TestHelp:
         assert result.exit_code == 0
         for cmd in (
             "lookup",
-            "index",
             "concepts",
             "search",
             "stack",
             "concept",
             "describe",
+            "validate",
+            "status",
         ):
             assert cmd in result.output
 
@@ -44,7 +46,7 @@ class TestHelp:
 
         command_names = re.findall(r"│\s+(\w+)\s{2,}", result.output)
         # Maintenance commands should NOT be registered as top-level commands in lexi
-        for cmd in ("init", "update", "validate", "status", "setup", "daemon"):
+        for cmd in ("init", "update", "setup", "daemon", "index"):
             assert cmd not in command_names, f"Maintenance command '{cmd}' should not be in lexi"
 
 
@@ -394,89 +396,21 @@ def _setup_unified_search_project(tmp_path: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Index command
+# Verify lexi index is no longer registered
 # ---------------------------------------------------------------------------
 
 
-class TestIndexCommand:
-    """Tests for the `lexi index` command."""
+class TestIndexCommandRemoved:
+    """Verify that `lexi index` is no longer registered."""
 
-    def test_index_single_directory(self, tmp_path: Path) -> None:
-        _setup_project(tmp_path)
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            result = runner.invoke(lexi_app, ["index", "src"])
-        finally:
-            os.chdir(old_cwd)
+    def test_index_not_in_help(self) -> None:
+        """lexi --help should not list 'index' as a command."""
+        import re
 
+        result = runner.invoke(lexi_app, ["--help"])
         assert result.exit_code == 0
-        assert "Wrote" in result.output
-        assert (tmp_path / ".lexibrary" / "src" / ".aindex").exists()
-
-    def test_index_recursive(self, tmp_path: Path) -> None:
-        _setup_project(tmp_path)
-        # Add a subdirectory
-        (tmp_path / "src" / "sub").mkdir()
-        (tmp_path / "src" / "sub" / "mod.py").write_text("a = 1\n")
-
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            result = runner.invoke(lexi_app, ["index", "-r", "."])
-        finally:
-            os.chdir(old_cwd)
-
-        assert result.exit_code == 0
-        assert "Indexing complete" in result.output
-        assert "directories indexed" in result.output
-        # Root and src and src/sub should all have .aindex files
-        assert (tmp_path / ".lexibrary" / "src" / ".aindex").exists()
-        assert (tmp_path / ".lexibrary" / "src" / "sub" / ".aindex").exists()
-        assert (tmp_path / ".lexibrary" / ".aindex").exists()
-
-    def test_index_missing_project(self, tmp_path: Path) -> None:
-        """Index should fail if no .lexibrary/ exists."""
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            result = runner.invoke(lexi_app, ["index", "."])
-        finally:
-            os.chdir(old_cwd)
-
-        assert result.exit_code == 1
-        assert "No .lexibrary/" in result.output
-
-    def test_index_missing_directory(self, tmp_path: Path) -> None:
-        """Index should fail if target directory does not exist."""
-        _setup_project(tmp_path)
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            result = runner.invoke(lexi_app, ["index", "nonexistent"])
-        finally:
-            os.chdir(old_cwd)
-
-        assert result.exit_code == 1
-        assert "Directory not found" in result.output
-
-    def test_index_outside_project_root(self, tmp_path: Path) -> None:
-        """Index should fail if target directory is outside the project root."""
-        project = tmp_path / "project"
-        project.mkdir()
-        _setup_project(project)
-        outside = tmp_path / "outside"
-        outside.mkdir()
-
-        old_cwd = os.getcwd()
-        os.chdir(project)
-        try:
-            result = runner.invoke(lexi_app, ["index", str(outside)])
-        finally:
-            os.chdir(old_cwd)
-
-        assert result.exit_code == 1
-        assert "outside the project root" in result.output
+        command_names = re.findall(r"│\s+(\w+)\s{2,}", result.output)
+        assert "index" not in command_names, "'index' should not be in lexi --help"
 
 
 # ---------------------------------------------------------------------------
@@ -736,7 +670,7 @@ class TestDescribeCommand:
 
         assert result.exit_code == 1
         assert "No .aindex" in result.output
-        assert "lexi index" in result.output
+        assert "lexictl index" in result.output
 
     def test_describe_missing_directory(self, tmp_path: Path) -> None:
         """Describe with nonexistent directory should fail."""
@@ -826,6 +760,417 @@ class TestConceptsCommand:
         result = self._invoke(tmp_path, ["concepts"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Concepts --tag filtering tests (task 3.1)
+# ---------------------------------------------------------------------------
+
+
+class TestConceptsTagFilter:
+    """Tests for `lexi concepts --tag` filtering."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_tag_filter_returns_correct_subset(self, tmp_path: Path) -> None:
+        """--tag returns only concepts with that tag."""
+        _setup_project(tmp_path)
+        _create_concept_file(tmp_path, "Authentication", tags=["security", "core"])
+        _create_concept_file(tmp_path, "Rate Limiting", tags=["performance"])
+        _create_concept_file(tmp_path, "Encryption", tags=["security"])
+
+        result = self._invoke(tmp_path, ["concepts", "--tag", "security"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Authentication" in output
+        assert "Encryption" in output
+        assert "Rate Limiting" not in output
+
+    def test_multiple_tags_use_and_logic(self, tmp_path: Path) -> None:
+        """Multiple --tag flags narrow results with AND logic."""
+        _setup_project(tmp_path)
+        _create_concept_file(tmp_path, "Authentication", tags=["security", "core"])
+        _create_concept_file(tmp_path, "Encryption", tags=["security"])
+        _create_concept_file(tmp_path, "Config", tags=["core"])
+
+        result = self._invoke(
+            tmp_path, ["concepts", "--tag", "security", "--tag", "core"]
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        # Only Authentication has both tags
+        assert "Authentication" in output
+        assert "Encryption" not in output
+        assert "Config" not in output
+
+    def test_tag_filter_no_match(self, tmp_path: Path) -> None:
+        """--tag with no matching concepts shows filter message."""
+        _setup_project(tmp_path)
+        _create_concept_file(tmp_path, "Authentication", tags=["security"])
+
+        result = self._invoke(tmp_path, ["concepts", "--tag", "nonexistent"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "No concepts found matching" in result.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Concepts --status filtering tests (task 3.2)
+# ---------------------------------------------------------------------------
+
+
+class TestConceptsStatusFilter:
+    """Tests for `lexi concepts --status` filtering."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_status_active_filter(self, tmp_path: Path) -> None:
+        """--status active returns only active concepts."""
+        _setup_project(tmp_path)
+        _create_concept_file(tmp_path, "Active Concept", status="active")
+        _create_concept_file(tmp_path, "Draft Concept", status="draft")
+        _create_concept_file(tmp_path, "Old Concept", status="deprecated")
+
+        result = self._invoke(tmp_path, ["concepts", "--status", "active"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Active Concept" in output
+        assert "Draft Concept" not in output
+        assert "Old Concept" not in output
+
+    def test_status_draft_filter(self, tmp_path: Path) -> None:
+        """--status draft returns only draft concepts."""
+        _setup_project(tmp_path)
+        _create_concept_file(tmp_path, "Active Concept", status="active")
+        _create_concept_file(tmp_path, "Draft Concept", status="draft")
+
+        result = self._invoke(tmp_path, ["concepts", "--status", "draft"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Draft Concept" in output
+        assert "Active Concept" not in output
+
+    def test_status_deprecated_overrides_default_exclusion(self, tmp_path: Path) -> None:
+        """--status deprecated returns deprecated concepts despite default exclusion."""
+        _setup_project(tmp_path)
+        _create_concept_file(tmp_path, "Active Concept", status="active")
+        _create_concept_file(tmp_path, "Old Concept", status="deprecated")
+
+        result = self._invoke(tmp_path, ["concepts", "--status", "deprecated"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Old Concept" in output
+        assert "Active Concept" not in output
+
+    def test_invalid_status_value(self, tmp_path: Path) -> None:
+        """--status with invalid value shows error."""
+        _setup_project(tmp_path)
+        _create_concept_file(tmp_path, "Something", status="active")
+
+        result = self._invoke(tmp_path, ["concepts", "--status", "invalid"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Invalid status" in result.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Concepts --all flag tests (task 3.3)
+# ---------------------------------------------------------------------------
+
+
+class TestConceptsAllFlag:
+    """Tests for `lexi concepts --all` flag."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_all_flag_includes_deprecated(self, tmp_path: Path) -> None:
+        """--all includes deprecated concepts in results."""
+        _setup_project(tmp_path)
+        _create_concept_file(tmp_path, "Active Concept", status="active")
+        _create_concept_file(tmp_path, "Old Concept", status="deprecated")
+        _create_concept_file(tmp_path, "Draft Concept", status="draft")
+
+        result = self._invoke(tmp_path, ["concepts", "--all"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Active Concept" in output
+        assert "Old Concept" in output
+        assert "Draft Concept" in output
+
+
+# ---------------------------------------------------------------------------
+# Concepts default deprecated exclusion tests (task 3.4)
+# ---------------------------------------------------------------------------
+
+
+class TestConceptsDefaultDeprecatedExclusion:
+    """Tests for default deprecated concept exclusion."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_bare_concepts_hides_deprecated(self, tmp_path: Path) -> None:
+        """Bare `lexi concepts` hides deprecated concepts by default."""
+        _setup_project(tmp_path)
+        _create_concept_file(tmp_path, "Active Concept", status="active")
+        _create_concept_file(tmp_path, "Draft Concept", status="draft")
+        _create_concept_file(tmp_path, "Old Concept", status="deprecated")
+
+        result = self._invoke(tmp_path, ["concepts"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Active Concept" in output
+        assert "Draft Concept" in output
+        assert "Old Concept" not in output
+
+    def test_topic_search_hides_deprecated(self, tmp_path: Path) -> None:
+        """Topic search also hides deprecated concepts by default."""
+        _setup_project(tmp_path)
+        _create_concept_file(
+            tmp_path, "Auth Active", tags=["auth"], status="active"
+        )
+        _create_concept_file(
+            tmp_path, "Auth Old", tags=["auth"], status="deprecated"
+        )
+
+        result = self._invoke(tmp_path, ["concepts", "auth"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Auth Active" in output
+        assert "Auth Old" not in output
+
+
+# ---------------------------------------------------------------------------
+# Concepts combined filter tests (task 3.5)
+# ---------------------------------------------------------------------------
+
+
+class TestConceptsCombinedFilters:
+    """Tests for combining topic + --tag + --status filters with AND logic."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_topic_plus_tag(self, tmp_path: Path) -> None:
+        """topic + --tag narrows with AND logic."""
+        _setup_project(tmp_path)
+        _create_concept_file(
+            tmp_path, "Auth Core", tags=["security", "core"], summary="authentication"
+        )
+        _create_concept_file(
+            tmp_path, "Auth Perf", tags=["performance"], summary="authentication perf"
+        )
+        _create_concept_file(
+            tmp_path, "Encryption", tags=["security"], summary="crypto"
+        )
+
+        result = self._invoke(tmp_path, ["concepts", "auth", "--tag", "security"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        # Only "Auth Core" matches both topic "auth" and tag "security"
+        assert "Auth Core" in output
+        assert "Auth Perf" not in output
+        assert "Encryption" not in output
+
+    def test_topic_plus_status(self, tmp_path: Path) -> None:
+        """topic + --status narrows with AND logic."""
+        _setup_project(tmp_path)
+        _create_concept_file(
+            tmp_path, "Auth Active", tags=["auth"], status="active", summary="authentication"
+        )
+        _create_concept_file(
+            tmp_path, "Auth Draft", tags=["auth"], status="draft", summary="authentication draft"
+        )
+
+        result = self._invoke(
+            tmp_path, ["concepts", "auth", "--status", "draft"]
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Auth Draft" in output
+        assert "Auth Active" not in output
+
+    def test_topic_plus_tag_plus_status(self, tmp_path: Path) -> None:
+        """topic + --tag + --status all narrow with AND logic."""
+        _setup_project(tmp_path)
+        _create_concept_file(
+            tmp_path,
+            "Auth Core Active",
+            tags=["security", "core"],
+            status="active",
+            summary="authentication",
+        )
+        _create_concept_file(
+            tmp_path,
+            "Auth Core Draft",
+            tags=["security", "core"],
+            status="draft",
+            summary="authentication",
+        )
+        _create_concept_file(
+            tmp_path,
+            "Auth Perf Active",
+            tags=["performance"],
+            status="active",
+            summary="authentication",
+        )
+
+        result = self._invoke(
+            tmp_path,
+            ["concepts", "auth", "--tag", "security", "--status", "active"],
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        # Only "Auth Core Active" matches all three filters
+        assert "Auth Core Active" in output
+        assert "Auth Core Draft" not in output
+        assert "Auth Perf Active" not in output
+
+    def test_all_filters_no_match(self, tmp_path: Path) -> None:
+        """Combined filters that match nothing show appropriate message."""
+        _setup_project(tmp_path)
+        _create_concept_file(
+            tmp_path, "Authentication", tags=["security"], status="active"
+        )
+
+        result = self._invoke(
+            tmp_path,
+            ["concepts", "auth", "--tag", "nonexistent", "--status", "draft"],
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "No concepts found matching" in result.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Agent help command tests (task 3.6)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentHelpCommand:
+    """Tests for `lexi help` command."""
+
+    def test_help_succeeds_without_project_root(self, tmp_path: Path) -> None:
+        """lexi help works anywhere -- no .lexibrary/ directory required."""
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = runner.invoke(lexi_app, ["help"])
+        finally:
+            os.chdir(old_cwd)
+
+        assert result.exit_code == 0
+        assert len(result.output) > 0
+
+    def test_help_shows_command_groups(self) -> None:
+        """lexi help displays all command group sections including Inspection & Annotation."""
+        result = runner.invoke(lexi_app, ["help"])
+        assert result.exit_code == 0
+        output = result.output
+        assert "Available Commands" in output
+        assert "Lookup" in output or "lookup" in output
+        assert "Concepts" in output or "concepts" in output
+        assert "Stack" in output or "stack" in output
+        # The old "Indexing & Maintenance" section was replaced with "Inspection & Annotation"
+        assert "Inspection" in output or "Annotation" in output
+
+    def test_help_does_not_reference_lexi_index(self) -> None:
+        """lexi help should not reference the removed 'lexi index' command."""
+        result = runner.invoke(lexi_app, ["help"])
+        assert result.exit_code == 0
+        output = result.output
+        # "lexi index" should NOT appear as a command reference
+        assert "lexi index" not in output
+
+    def test_help_shows_inspection_section(self) -> None:
+        """lexi help includes 'Inspection & Annotation' with status, validate, describe."""
+        result = runner.invoke(lexi_app, ["help"])
+        assert result.exit_code == 0
+        output = result.output
+        assert "Inspection" in output
+        assert "lexi status" in output
+        assert "lexi validate" in output
+        assert "lexi describe" in output
+
+    def test_help_shows_workflows(self) -> None:
+        """lexi help displays common workflows section."""
+        result = runner.invoke(lexi_app, ["help"])
+        assert result.exit_code == 0
+        output = result.output
+        assert "Common Workflows" in output
+        # At least 4 workflows
+        assert "Understand a source file" in output
+        assert "Explore a topic" in output
+        assert "Ask a question" in output
+        # New workflow: "Check library health" replacing "Index a new directory"
+        assert "Check library health" in output
+
+    def test_help_check_library_health_workflow(self) -> None:
+        """lexi help contains the 'Check library health' workflow with status and validate."""
+        result = runner.invoke(lexi_app, ["help"])
+        assert result.exit_code == 0
+        output = result.output
+        assert "Check library health" in output
+        assert "lexi status" in output
+        assert "lexi validate" in output
+
+    def test_help_shows_navigation_tips(self) -> None:
+        """lexi help displays navigation tips section."""
+        result = runner.invoke(lexi_app, ["help"])
+        assert result.exit_code == 0
+        output = result.output
+        assert "Navigation Tips" in output
+        assert "Wikilinks" in output or "wikilink" in output
+
+    def test_help_references_all_agent_commands(self) -> None:
+        """lexi help references all current agent-facing commands (no lexi index)."""
+        result = runner.invoke(lexi_app, ["help"])
+        assert result.exit_code == 0
+        output = result.output
+        for cmd in (
+            "lookup",
+            "describe",
+            "concepts",
+            "concept new",
+            "concept link",
+            "stack post",
+            "stack search",
+            "stack view",
+            "stack answer",
+            "stack vote",
+            "stack accept",
+            "stack list",
+            "search",
+            "help",
+            "status",
+            "validate",
+        ):
+            assert cmd in output, f"Expected command '{cmd}' to be referenced in help output"
 
 
 # ---------------------------------------------------------------------------
@@ -1541,3 +1886,576 @@ class TestNoProjectRoot:
         result = self._invoke_without_project(tmp_path, ["concepts"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+    def test_validate_no_project_root(self, tmp_path: Path) -> None:
+        result = self._invoke_without_project(tmp_path, ["validate"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+    def test_status_no_project_root(self, tmp_path: Path) -> None:
+        result = self._invoke_without_project(tmp_path, ["status"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Lexi validate command tests (task 7.1)
+# ---------------------------------------------------------------------------
+
+
+def _setup_validate_project(tmp_path: Path) -> Path:
+    """Create a project with known validation state for testing."""
+    (tmp_path / ".lexibrary").mkdir()
+    (tmp_path / ".lexibrary" / "config.yaml").write_text("")
+    (tmp_path / ".lexibrary" / "concepts").mkdir(parents=True)
+    (tmp_path / "src").mkdir()
+    source_content = "def hello():\n    pass\n"
+    (tmp_path / "src" / "main.py").write_text(source_content)
+
+    # Create a design file with correct hash
+    source_hash = hashlib.sha256(source_content.encode()).hexdigest()
+    design_dir = tmp_path / ".lexibrary" / "src"
+    design_dir.mkdir(parents=True, exist_ok=True)
+    design_content = f"""---
+description: Main module
+updated_by: archivist
+---
+
+# src/main.py
+
+Main module.
+
+## Interface Contract
+
+```python
+def hello(): ...
+```
+
+## Dependencies
+
+- (none)
+
+## Dependents
+
+- (none)
+
+<!-- lexibrary:meta
+source: src/main.py
+source_hash: {source_hash}
+design_hash: placeholder
+generated: 2026-01-01T00:00:00
+generator: lexibrary-v2
+-->
+"""
+    (design_dir / "main.py.md").write_text(design_content, encoding="utf-8")
+    return tmp_path
+
+
+def _setup_validate_project_with_errors(tmp_path: Path) -> Path:
+    """Create a project with validation errors (broken concept frontmatter)."""
+    project = _setup_validate_project(tmp_path)
+    concepts_dir = project / ".lexibrary" / "concepts"
+    concepts_dir.mkdir(parents=True, exist_ok=True)
+    (concepts_dir / "BrokenConcept.md").write_text(
+        "---\ntitle: Broken\n---\n\nMissing aliases, tags, status.\n",
+        encoding="utf-8",
+    )
+    return project
+
+
+def _setup_validate_project_with_warnings(tmp_path: Path) -> Path:
+    """Create a project with stale hash (warning) but no errors."""
+    (tmp_path / ".lexibrary").mkdir()
+    (tmp_path / ".lexibrary" / "config.yaml").write_text("")
+    (tmp_path / ".lexibrary" / "concepts").mkdir(parents=True)
+    (tmp_path / "src").mkdir()
+    source_content = "def hello():\n    return 42\n"
+    (tmp_path / "src" / "main.py").write_text(source_content)
+
+    design_dir = tmp_path / ".lexibrary" / "src"
+    design_dir.mkdir(parents=True, exist_ok=True)
+    design_content = """---
+description: Main module
+updated_by: archivist
+---
+
+# src/main.py
+
+Main module.
+
+## Interface Contract
+
+```python
+def hello(): ...
+```
+
+## Dependencies
+
+- (none)
+
+## Dependents
+
+- (none)
+
+<!-- lexibrary:meta
+source: src/main.py
+source_hash: 0000000000000000000000000000000000000000000000000000000000000000
+design_hash: placeholder
+generated: 2026-01-01T00:00:00
+generator: lexibrary-v2
+-->
+"""
+    (design_dir / "main.py.md").write_text(design_content, encoding="utf-8")
+    return tmp_path
+
+
+class TestLexiValidateCommand:
+    """Tests for the `lexi validate` command (task 7.1)."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_validate_execution_clean(self, tmp_path: Path) -> None:
+        """A clean library with no issues exits with code 0."""
+        project = _setup_validate_project(tmp_path)
+        # Create .aindex files to avoid aindex_coverage info issues
+        from datetime import datetime as _dt
+
+        now = _dt.now().isoformat()
+        src_aindex = (
+            f"# src/\n\nSource\n\n## Child Map\n\n"
+            f"| Name | Type | Description |\n| --- | --- | --- |\n"
+            f"| `main.py` | file | Main |\n\n## Local Conventions\n\n(none)\n\n"
+            f'<!-- lexibrary:meta source="src" source_hash="abc"'
+            f' generated="{now}" -->\n'
+        )
+        (project / ".lexibrary" / "src" / ".aindex").write_text(
+            src_aindex, encoding="utf-8"
+        )
+        root_aindex = (
+            f"# ./\n\nRoot\n\n## Child Map\n\n"
+            f"| Name | Type | Description |\n| --- | --- | --- |\n"
+            f"| `src/` | dir | Source |\n\n## Local Conventions\n\n(none)\n\n"
+            f'<!-- lexibrary:meta source="." source_hash="abc"'
+            f' generated="{now}" -->\n'
+        )
+        (project / ".lexibrary" / ".aindex").write_text(
+            root_aindex, encoding="utf-8"
+        )
+        result = self._invoke(project, ["validate"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "No validation issues found" in result.output  # type: ignore[union-attr]
+
+    def test_validate_severity_filter(self, tmp_path: Path) -> None:
+        """The --severity flag filters checks by severity level."""
+        import json as _json
+
+        project = _setup_validate_project_with_warnings(tmp_path)
+        result = self._invoke(project, ["validate", "--severity", "error", "--json"])
+        output = result.output  # type: ignore[union-attr]
+        parsed = _json.loads(output)
+        # Only error-level checks should run; no warnings or info
+        assert parsed["summary"]["warning_count"] == 0
+        assert parsed["summary"]["info_count"] == 0
+
+    def test_validate_check_filter(self, tmp_path: Path) -> None:
+        """The --check flag runs only the specified check."""
+        import json as _json
+
+        project = _setup_validate_project(tmp_path)
+        result = self._invoke(project, ["validate", "--check", "concept_frontmatter", "--json"])
+        output = result.output  # type: ignore[union-attr]
+        parsed = _json.loads(output)
+        for issue in parsed["issues"]:
+            assert issue["check"] == "concept_frontmatter"
+
+    def test_validate_json_output(self, tmp_path: Path) -> None:
+        """The --json flag produces valid JSON output."""
+        import json as _json
+
+        project = _setup_validate_project(tmp_path)
+        result = self._invoke(project, ["validate", "--json"])
+        output = result.output  # type: ignore[union-attr]
+        parsed = _json.loads(output)
+        assert "issues" in parsed
+        assert "summary" in parsed
+        assert isinstance(parsed["issues"], list)
+        assert isinstance(parsed["summary"], dict)
+        assert "error_count" in parsed["summary"]
+        assert "warning_count" in parsed["summary"]
+        assert "info_count" in parsed["summary"]
+
+    def test_validate_errors_exit_1(self, tmp_path: Path) -> None:
+        """A library with error-severity issues exits with code 1."""
+        project = _setup_validate_project_with_errors(tmp_path)
+        result = self._invoke(project, ["validate"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "error" in output.lower()
+
+    def test_validate_warnings_only_exit_2(self, tmp_path: Path) -> None:
+        """A library with only warning-severity issues exits with code 2."""
+        project = _setup_validate_project_with_warnings(tmp_path)
+        result = self._invoke(project, ["validate", "--check", "hash_freshness"])
+        assert result.exit_code == 2  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "warning" in output.lower()
+
+    def test_validate_requires_project_root(self, tmp_path: Path) -> None:
+        """Validate without .lexibrary should fail with exit code 1."""
+        result = self._invoke(tmp_path, ["validate"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+    def test_validate_invalid_check_name(self, tmp_path: Path) -> None:
+        """An invalid --check name shows available checks and exits 1."""
+        project = _setup_validate_project(tmp_path)
+        result = self._invoke(project, ["validate", "--check", "nonexistent_check"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Available checks" in output or "Unknown check" in output
+        assert "concept_frontmatter" in output
+
+
+# ---------------------------------------------------------------------------
+# Lexi status command tests (task 7.2)
+# ---------------------------------------------------------------------------
+
+
+def _setup_status_project(tmp_path: Path) -> Path:
+    """Create a project with design files, concepts, and stack posts for status tests."""
+    (tmp_path / ".lexibrary").mkdir()
+    (tmp_path / ".lexibrary" / "config.yaml").write_text("")
+    (tmp_path / "src").mkdir()
+    return tmp_path
+
+
+class TestLexiStatusCommand:
+    """Tests for the `lexi status` command (task 7.2)."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_status_full_dashboard(self, tmp_path: Path) -> None:
+        """Status shows a dashboard with artifact counts and issues."""
+        project = _setup_status_project(tmp_path)
+
+        # Create source files and design files
+        src_content = "def hello(): pass\n"
+        (project / "src" / "main.py").write_text(src_content)
+        _create_design_file(project, "src/main.py", src_content)
+
+        # Create concepts
+        _create_concept_file(project, "Auth", tags=["security"], status="active")
+
+        # Create stack posts
+        _create_stack_post(project, post_id="ST-001", title="Test bug", status="open")
+
+        result = self._invoke(project, ["status"])
+        output = result.output  # type: ignore[union-attr]
+
+        assert "Lexibrary Status" in output
+        assert "Files:" in output
+        assert "1 tracked" in output
+        assert "Concepts:" in output
+        assert "Stack:" in output
+        assert "Issues:" in output
+        assert "Updated:" in output
+
+    def test_status_quiet_mode_with_lexi_prefix(self, tmp_path: Path) -> None:
+        """Quiet mode outputs 'lexi: library healthy' with the lexi prefix."""
+        project = _setup_status_project(tmp_path)
+        result = self._invoke(project, ["status", "--quiet"])
+        output = result.output.strip()  # type: ignore[union-attr]
+        # Key: lexi status uses "lexi:" prefix, not "lexictl:"
+        assert output == "lexi: library healthy"
+        assert result.exit_code == 0  # type: ignore[union-attr]
+
+    def test_status_quiet_with_warnings_uses_lexi_prefix(self, tmp_path: Path) -> None:
+        """Quiet mode with warnings uses 'lexi:' prefix and suggests 'lexi validate'."""
+        project = _setup_status_project(tmp_path)
+
+        # Create a stale design file
+        original_content = "def hello(): pass\n"
+        (project / "src" / "stale.py").write_text("def hello(): return 1\n")
+        _create_design_file(project, "src/stale.py", original_content)
+
+        result = self._invoke(project, ["status", "--quiet"])
+        output = result.output.strip()  # type: ignore[union-attr]
+        assert "lexi:" in output
+        assert "lexi validate" in output
+        assert result.exit_code == 2  # type: ignore[union-attr]
+
+    def test_status_exit_code_clean(self, tmp_path: Path) -> None:
+        """Clean library exits with code 0."""
+        project = _setup_status_project(tmp_path)
+        src_content = "x = 1\n"
+        (project / "src" / "main.py").write_text(src_content)
+        _create_design_file(project, "src/main.py", src_content)
+
+        result = self._invoke(project, ["status"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+
+    def test_status_exit_code_with_warnings(self, tmp_path: Path) -> None:
+        """Status exits with code 2 when only warnings exist."""
+        project = _setup_status_project(tmp_path)
+
+        original = "a = 1\n"
+        (project / "src" / "w.py").write_text("a = 2\n")
+        _create_design_file(project, "src/w.py", original)
+
+        result = self._invoke(project, ["status"])
+        assert result.exit_code == 2  # type: ignore[union-attr]
+
+    def test_status_requires_project_root(self, tmp_path: Path) -> None:
+        """Status without .lexibrary should fail with exit code 1."""
+        result = self._invoke(tmp_path, ["status"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+    def test_status_empty_library(self, tmp_path: Path) -> None:
+        """Empty library shows zero counts and 'Updated: never'."""
+        project = _setup_status_project(tmp_path)
+        result = self._invoke(project, ["status"])
+        output = result.output  # type: ignore[union-attr]
+        assert "Files: 0 tracked" in output
+        assert "Concepts: 0" in output
+        assert "Stack: 0 posts" in output
+        assert "Updated: never" in output
+
+
+# ---------------------------------------------------------------------------
+# Agent rule content tests (task 7.8)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentRuleContent:
+    """Tests for agent rule content via get_core_rules() (task 7.8)."""
+
+    def test_core_rules_includes_lexi_validate(self) -> None:
+        """get_core_rules() includes 'lexi validate' instruction."""
+        from lexibrary.init.rules.base import get_core_rules
+
+        rules = get_core_rules()
+        assert "lexi validate" in rules
+
+    def test_core_rules_excludes_lexi_index(self) -> None:
+        """get_core_rules() does NOT include 'lexi index' references."""
+        from lexibrary.init.rules.base import get_core_rules
+
+        rules = get_core_rules()
+        assert "lexi index" not in rules
+
+    def test_core_rules_excludes_lexictl_instructions(self) -> None:
+        """get_core_rules() instructs agents to never run lexictl commands."""
+        from lexibrary.init.rules.base import get_core_rules
+
+        rules = get_core_rules()
+        # The rules should mention lexictl only in a "never run" / prohibited context
+        assert "lexictl" in rules
+        assert "Never run" in rules or "never run" in rules.lower()
+
+    def test_core_rules_includes_session_start(self) -> None:
+        """get_core_rules() includes session start instructions."""
+        from lexibrary.init.rules.base import get_core_rules
+
+        rules = get_core_rules()
+        assert "Session Start" in rules
+        assert "START_HERE.md" in rules
+
+    def test_core_rules_includes_before_editing(self) -> None:
+        """get_core_rules() includes 'Before Editing Files' instructions."""
+        from lexibrary.init.rules.base import get_core_rules
+
+        rules = get_core_rules()
+        assert "Before Editing" in rules
+        assert "lexi lookup" in rules
+
+    def test_core_rules_includes_after_editing(self) -> None:
+        """get_core_rules() includes 'After Editing Files' with lexi validate."""
+        from lexibrary.init.rules.base import get_core_rules
+
+        rules = get_core_rules()
+        assert "After Editing" in rules
+        assert "lexi validate" in rules
+
+    def test_orient_skill_references_lexi_status(self) -> None:
+        """get_orient_skill_content() references 'lexi status' correctly."""
+        from lexibrary.init.rules.base import get_orient_skill_content
+
+        content = get_orient_skill_content()
+        assert "lexi status" in content
+        assert "lexi index" not in content
+
+
+# ---------------------------------------------------------------------------
+# IWH commands
+# ---------------------------------------------------------------------------
+
+
+def _setup_iwh_project(tmp_path: Path) -> Path:
+    """Create a minimal project with IWH enabled."""
+    (tmp_path / ".lexibrary").mkdir()
+    (tmp_path / ".lexibrary" / "config.yaml").write_text("iwh:\n  enabled: true\n")
+    (tmp_path / "src").mkdir()
+    return tmp_path
+
+
+class TestIWH:
+    """Tests for lexi iwh write/read/list commands."""
+
+    def test_help_lists_iwh_subgroup(self) -> None:
+        result = runner.invoke(lexi_app, ["--help"])
+        assert result.exit_code == 0
+        assert "iwh" in result.output
+
+    def test_iwh_write_creates_signal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _setup_iwh_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(
+            lexi_app,
+            ["iwh", "write", "src", "--scope", "incomplete", "--body", "test signal"],
+        )
+        assert result.exit_code == 0
+        assert "Created" in result.output
+        # Verify the file exists in the mirror tree
+        iwh_file = tmp_path / ".lexibrary" / "src" / ".iwh"
+        assert iwh_file.exists()
+        content = iwh_file.read_text(encoding="utf-8")
+        assert "test signal" in content
+        assert "incomplete" in content
+
+    def test_iwh_write_default_scope_incomplete(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _setup_iwh_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(
+            lexi_app, ["iwh", "write", "src", "--body", "wip"]
+        )
+        assert result.exit_code == 0
+        assert "incomplete" in result.output
+
+    def test_iwh_write_invalid_scope_exits_1(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _setup_iwh_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(
+            lexi_app,
+            ["iwh", "write", "src", "--scope", "critical", "--body", "bad"],
+        )
+        assert result.exit_code == 1
+        assert "Invalid scope" in result.output
+
+    def test_iwh_write_respects_disabled_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / ".lexibrary").mkdir()
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("iwh:\n  enabled: false\n")
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(
+            lexi_app, ["iwh", "write", "--scope", "incomplete", "--body", "test"]
+        )
+        assert result.exit_code == 0
+        assert "disabled" in result.output
+
+    def test_iwh_write_project_root_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _setup_iwh_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(
+            lexi_app, ["iwh", "write", "--body", "root signal"]
+        )
+        assert result.exit_code == 0
+        # Project root IWH → .lexibrary/.iwh
+        iwh_file = tmp_path / ".lexibrary" / ".iwh"
+        assert iwh_file.exists()
+
+    def test_iwh_read_consumes_signal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from lexibrary.iwh import write_iwh  # noqa: PLC0415
+
+        _setup_iwh_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        # Write a signal at the mirror path for src/
+        (tmp_path / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
+        write_iwh(tmp_path / ".lexibrary" / "src", author="agent", scope="incomplete", body="wip")
+        result = runner.invoke(lexi_app, ["iwh", "read", "src"])
+        assert result.exit_code == 0
+        assert "INCOMPLETE" in result.output
+        assert "consumed" in result.output.lower()
+        # File should be deleted
+        assert not (tmp_path / ".lexibrary" / "src" / ".iwh").exists()
+
+    def test_iwh_read_peek_preserves_signal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from lexibrary.iwh import write_iwh  # noqa: PLC0415
+
+        _setup_iwh_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
+        write_iwh(tmp_path / ".lexibrary" / "src", author="agent", scope="warning", body="note")
+        result = runner.invoke(lexi_app, ["iwh", "read", "src", "--peek"])
+        assert result.exit_code == 0
+        assert "WARNING" in result.output
+        assert "consumed" not in result.output.lower()
+        # File should still exist
+        assert (tmp_path / ".lexibrary" / "src" / ".iwh").exists()
+
+    def test_iwh_read_missing_shows_message(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _setup_iwh_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(lexi_app, ["iwh", "read", "src"])
+        assert result.exit_code == 0
+        assert "No IWH signal found" in result.output
+
+    def test_iwh_list_shows_table(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from lexibrary.iwh import write_iwh  # noqa: PLC0415
+
+        _setup_iwh_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
+        write_iwh(tmp_path / ".lexibrary" / "src", author="agent", scope="blocked", body="stuck")
+        write_iwh(tmp_path / ".lexibrary", author="agent", scope="incomplete", body="root wip")
+        result = runner.invoke(lexi_app, ["iwh", "list"])
+        assert result.exit_code == 0
+        assert "2 signal(s)" in result.output
+
+    def test_iwh_list_empty_project(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _setup_iwh_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(lexi_app, ["iwh", "list"])
+        assert result.exit_code == 0
+        assert "No IWH signals found" in result.output
+
+    def test_iwh_read_respects_disabled_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / ".lexibrary").mkdir()
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("iwh:\n  enabled: false\n")
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(lexi_app, ["iwh", "read"])
+        assert result.exit_code == 0
+        assert "disabled" in result.output

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from lexibrary.iwh.model import IWHFile
 from lexibrary.iwh.parser import parse_iwh
+from lexibrary.utils.paths import LEXIBRARY_DIR
 
 IWH_FILENAME = ".iwh"
 
@@ -47,3 +48,38 @@ def consume_iwh(directory: Path) -> IWHFile | None:
         iwh_path.unlink()
 
     return result
+
+
+def find_all_iwh(project_root: Path) -> list[tuple[Path, IWHFile]]:
+    """Discover all IWH files under ``.lexibrary/``.
+
+    Walks the ``.lexibrary/`` directory tree for ``.iwh`` files, parses
+    each, and returns a list of ``(source_directory_relative, IWHFile)``
+    tuples.  The ``source_directory_relative`` is the mirror path reversed
+    back to the corresponding source directory, relative to *project_root*.
+
+    Unparseable ``.iwh`` files are silently skipped.
+
+    Args:
+        project_root: Absolute path to the project root.
+
+    Returns:
+        List of ``(relative_source_dir, IWHFile)`` tuples, sorted by path.
+    """
+    lexibrary_dir = project_root / LEXIBRARY_DIR
+    if not lexibrary_dir.is_dir():
+        return []
+
+    results: list[tuple[Path, IWHFile]] = []
+    for iwh_file_path in sorted(lexibrary_dir.rglob(IWH_FILENAME)):
+        parsed = parse_iwh(iwh_file_path)
+        if parsed is None:
+            continue
+        # Reverse the mirror path: .lexibrary/src/auth/.iwh → src/auth
+        try:
+            relative = iwh_file_path.parent.relative_to(lexibrary_dir)
+        except ValueError:
+            continue
+        results.append((relative, parsed))
+
+    return results

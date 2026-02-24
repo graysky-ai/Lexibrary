@@ -34,45 +34,34 @@ A typical START_HERE.md navigation-by-intent table looks like this:
 
 Use this table to jump directly to the right context before starting work.
 
-## Step 2: Check for `.iwh` Signal Files
+## Step 2: Check for IWH Signal Files
 
-IWH (I Was Here) files are ephemeral signals left by a previous agent session to communicate incomplete work, warnings, or blocked tasks. They are markdown files with YAML frontmatter and can appear in any directory.
+IWH (I Was Here) files are ephemeral signals left by a previous agent session to communicate incomplete work, warnings, or blocked tasks. They live in the `.lexibrary/` mirror tree (e.g., `.lexibrary/src/auth/.iwh` for the `src/auth/` directory).
 
-Check for IWH files at the project root:
+Check for IWH signals across the project:
 
 ```
-ls .iwh 2>/dev/null
+lexi iwh list
 ```
 
-If an `.iwh` file exists, it will contain:
+If signals are present, consume them for each directory:
 
-- **`scope`** -- the severity of the signal:
-  - `warning` -- something the next agent should be aware of
-  - `incomplete` -- work was started but not finished; the body describes what remains
-  - `blocked` -- work cannot proceed; the body describes the blocker
+```
+lexi iwh read <directory>
+```
+
+The `read` command displays the signal contents and deletes it automatically. Each signal contains:
+
+- **`scope`** -- the severity: `warning`, `incomplete`, or `blocked`
 - **`author`** -- who created the signal
 - **`created`** -- when the signal was created
-- **Body** -- free-form markdown describing the situation, including what was done, what remains, and which files are affected
+- **Body** -- free-form markdown describing the situation
 
-### How to Act on an IWH File
+### How to Act on an IWH Signal
 
-1. Read the full file to understand the context
+1. Run `lexi iwh read <directory>` to consume and understand the signal
 2. Act on any instructions in the body (e.g., complete the incomplete work, address the warning)
-3. Delete the `.iwh` file after acting on it -- these are ephemeral signals, not permanent records
-
-### Example IWH File
-
-```yaml
----
-author: claude
-created: '2026-02-23T14:30:00'
-scope: incomplete
----
-Refactoring the validation checks in `validator/checks.py`. Completed the
-`hash_freshness` check rewrite but did not start on `orphan_concepts`.
-The test for `hash_freshness` in `tests/test_validator/test_checks.py`
-passes. Next step: rewrite `orphan_concepts` to use the link graph index.
-```
+3. If you cannot fully act on it, write a new signal: `lexi iwh write <directory> --scope incomplete --body "updated status"`
 
 ## Step 3: Get Library Health Overview
 
@@ -87,7 +76,7 @@ This lists all concept files in the project, showing their name, status (active/
 If the operator has set up the `/lexi-orient` skill in your environment, you can run it as a single command that performs all three steps:
 
 1. Reads `.lexibrary/START_HERE.md`
-2. Checks for `.iwh` at the project root
+2. Checks for IWH signals via `lexi iwh list`
 3. Displays library health
 
 ## After Orientation

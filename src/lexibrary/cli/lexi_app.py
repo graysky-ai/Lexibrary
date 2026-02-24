@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 
 import typer
 
-from lexibrary.cli._shared import console, load_dotenv_if_configured, require_project_root
+from lexibrary.cli._shared import (
+    _run_status,
+    _run_validate,
+    console,
+    load_dotenv_if_configured,
+    require_project_root,
+)
 from lexibrary.exceptions import LexibraryNotFoundError
 from lexibrary.utils.root import find_project_root
 
@@ -29,6 +35,9 @@ lexi_app.add_typer(stack_app, name="stack")
 
 concept_app = typer.Typer(help="Concept management commands.")
 lexi_app.add_typer(concept_app, name="concept")
+
+iwh_app = typer.Typer(help="IWH (I Was Here) signal management commands.")
+lexi_app.add_typer(iwh_app, name="iwh")
 
 
 # ---------------------------------------------------------------------------
@@ -222,82 +231,6 @@ def lookup(
 
 
 # ---------------------------------------------------------------------------
-# index
-# ---------------------------------------------------------------------------
-
-
-@lexi_app.command()
-def index(
-    directory: Annotated[
-        Path,
-        typer.Argument(help="Directory to index."),
-    ] = Path("."),
-    *,
-    recursive: Annotated[
-        bool,
-        typer.Option("-r", "--recursive", help="Recursively index all directories."),
-    ] = False,
-) -> None:
-    """Generate .aindex file(s) for a directory."""
-    from rich.progress import Progress, SpinnerColumn, TextColumn  # noqa: PLC0415
-
-    from lexibrary.config.loader import load_config  # noqa: PLC0415
-    from lexibrary.indexer.orchestrator import index_directory, index_recursive  # noqa: PLC0415
-
-    project_root = require_project_root()
-
-    # Resolve directory relative to cwd
-    target = Path(directory).resolve()
-
-    # Validate directory exists
-    if not target.exists():
-        console.print(f"[red]Directory not found:[/red] {directory}")
-        raise typer.Exit(1)
-
-    if not target.is_dir():
-        console.print(f"[red]Not a directory:[/red] {directory}")
-        raise typer.Exit(1)
-
-    # Validate directory is within project root
-    try:
-        target.relative_to(project_root)
-    except ValueError:
-        console.print(
-            f"[red]Directory is outside the project root:[/red] {directory}\n"
-            f"Project root: {project_root}"
-        )
-        raise typer.Exit(1) from None
-
-    config = load_config(project_root)
-
-    if recursive:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Indexing...", total=None)
-
-            def _progress_callback(current: int, total: int, name: str) -> None:
-                progress.update(task, description=f"Indexing [{current}/{total}] {name}")
-
-            stats = index_recursive(
-                target, project_root, config, progress_callback=_progress_callback
-            )
-
-        console.print(
-            f"\n[green]Indexing complete.[/green] "
-            f"{stats.directories_indexed} directories indexed, "
-            f"{stats.files_found} files found"
-            + (f", [red]{stats.errors} errors[/red]" if stats.errors else "")
-            + "."
-        )
-    else:
-        output_path = index_directory(target, project_root, config)
-        console.print(f"[green]Wrote[/green] {output_path}")
-
-
-# ---------------------------------------------------------------------------
 # concepts
 # ---------------------------------------------------------------------------
 
@@ -308,11 +241,36 @@ def concepts(
         str | None,
         typer.Argument(help="Optional topic to search for."),
     ] = None,
+    *,
+    tag: Annotated[
+        list[str] | None,
+        typer.Option("--tag", help="Filter by tag (repeatable, AND logic)."),
+    ] = None,
+    status: Annotated[
+        str | None,
+        typer.Option(
+            "--status",
+            help="Filter by status: active, draft, or deprecated.",
+        ),
+    ] = None,
+    show_all: Annotated[
+        bool,
+        typer.Option("--all", help="Include deprecated concepts in results."),
+    ] = False,
 ) -> None:
     """List or search concept files."""
     from rich.table import Table  # noqa: PLC0415
 
     from lexibrary.wiki.index import ConceptIndex  # noqa: PLC0415
+
+    # Validate --status value if provided
+    valid_statuses = {"active", "draft", "deprecated"}
+    if status is not None and status not in valid_statuses:
+        console.print(
+            f"[red]Invalid status:[/red] '{status}'. "
+            f"Must be one of: {', '.join(sorted(valid_statuses))}"
+        )
+        raise typer.Exit(1)
 
     project_root = require_project_root()
     concepts_dir = project_root / ".lexibrary" / "concepts"
@@ -325,6 +283,7 @@ def concepts(
         )
         return
 
+    # Start with topic search or full list
     if topic:
         results = idx.search(topic)
         if not results:
@@ -334,6 +293,24 @@ def concepts(
     else:
         results = [c for name in idx.names() if (c := idx.find(name)) is not None]
         title = "All concepts"
+
+    # Apply --tag filter(s) with AND logic: each tag narrows the result set
+    if tag:
+        for t in tag:
+            tag_set = {c.frontmatter.title for c in idx.by_tag(t)}
+            results = [c for c in results if c.frontmatter.title in tag_set]
+
+    # Apply --status filter
+    if status:
+        results = [c for c in results if c.frontmatter.status == status]
+
+    # Exclude deprecated by default unless --all or --status deprecated
+    if not show_all and status != "deprecated":
+        results = [c for c in results if c.frontmatter.status != "deprecated"]
+
+    if not results:
+        console.print("[yellow]No concepts found matching the given filters.[/yellow]")
+        return
 
     table = Table(title=title)
     table.add_column("Name", style="cyan")
@@ -356,6 +333,7 @@ def concepts(
         )
 
     console.print(table)
+    console.print(f"\nFound {len(results)} concept(s)")
 
 
 # ---------------------------------------------------------------------------
@@ -885,6 +863,169 @@ def stack_list(
 
 
 # ---------------------------------------------------------------------------
+# IWH commands
+# ---------------------------------------------------------------------------
+
+
+@iwh_app.command("write")
+def iwh_write(
+    directory: Annotated[
+        Path | None,
+        typer.Argument(help="Source directory for the signal. Defaults to project root."),
+    ] = None,
+    *,
+    scope: Annotated[
+        str,
+        typer.Option("--scope", "-s", help="Signal scope: incomplete, blocked, or warning."),
+    ] = "incomplete",
+    body: Annotated[
+        str,
+        typer.Option("--body", "-b", help="Signal body text describing the situation."),
+    ],
+    author: Annotated[
+        str,
+        typer.Option("--author", help="Agent identifier."),
+    ] = "agent",
+) -> None:
+    """Write an IWH signal for a directory."""
+    from lexibrary.config.loader import load_config  # noqa: PLC0415
+    from lexibrary.iwh import IWHScope, write_iwh  # noqa: PLC0415
+    from lexibrary.utils.paths import iwh_path  # noqa: PLC0415
+
+    project_root = require_project_root()
+    config = load_config(project_root)
+
+    if not config.iwh.enabled:
+        console.print("[yellow]IWH is disabled in project configuration.[/yellow]")
+        raise typer.Exit(0)
+
+    valid_scopes = ("warning", "incomplete", "blocked")
+    if scope not in valid_scopes:
+        console.print(
+            f"[red]Invalid scope:[/red] '{scope}'. "
+            f"Must be one of: {', '.join(valid_scopes)}"
+        )
+        raise typer.Exit(1)
+
+    source_dir = Path(directory).resolve() if directory is not None else project_root
+    target_dir = iwh_path(project_root, source_dir).parent
+
+    result_path = write_iwh(target_dir, author=author, scope=cast(IWHScope, scope), body=body)
+    rel = result_path.relative_to(project_root)
+    console.print(f"[green]Created[/green] IWH signal at {rel} (scope: {scope})")
+
+
+@iwh_app.command("read")
+def iwh_read(
+    directory: Annotated[
+        Path | None,
+        typer.Argument(help="Source directory to read signal from. Defaults to project root."),
+    ] = None,
+    *,
+    peek: Annotated[
+        bool,
+        typer.Option("--peek", help="Read without consuming (do not delete the signal)."),
+    ] = False,
+) -> None:
+    """Read (and consume) an IWH signal for a directory."""
+    from lexibrary.config.loader import load_config  # noqa: PLC0415
+    from lexibrary.iwh import consume_iwh, read_iwh  # noqa: PLC0415
+    from lexibrary.utils.paths import iwh_path  # noqa: PLC0415
+
+    project_root = require_project_root()
+    config = load_config(project_root)
+
+    if not config.iwh.enabled:
+        console.print("[yellow]IWH is disabled in project configuration.[/yellow]")
+        raise typer.Exit(0)
+
+    source_dir = Path(directory).resolve() if directory is not None else project_root
+    target_dir = iwh_path(project_root, source_dir).parent
+
+    iwh = read_iwh(target_dir) if peek else consume_iwh(target_dir)
+
+    if iwh is None:
+        console.print("[dim]No IWH signal found.[/dim]")
+        return
+
+    scope_styles = {"warning": "yellow", "incomplete": "cyan", "blocked": "red"}
+    style = scope_styles.get(iwh.scope, "dim")
+    console.print(
+        f"[{style}][{iwh.scope.upper()}][/{style}] by {iwh.author}"
+        f" at {iwh.created.isoformat()}"
+    )
+    if iwh.body:
+        console.print()
+        console.print(iwh.body)
+
+    if not peek:
+        console.print("\n[dim]Signal consumed (deleted).[/dim]")
+
+
+@iwh_app.command("list")
+def iwh_list() -> None:
+    """List all IWH signals in the project."""
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from rich.table import Table  # noqa: PLC0415
+
+    from lexibrary.config.loader import load_config  # noqa: PLC0415
+    from lexibrary.iwh.reader import find_all_iwh  # noqa: PLC0415
+
+    project_root = require_project_root()
+    config = load_config(project_root)
+
+    if not config.iwh.enabled:
+        console.print("[yellow]IWH is disabled in project configuration.[/yellow]")
+        raise typer.Exit(0)
+
+    results = find_all_iwh(project_root)
+
+    if not results:
+        console.print("[dim]No IWH signals found.[/dim]")
+        return
+
+    table = Table(title="IWH Signals")
+    table.add_column("Directory", style="cyan")
+    table.add_column("Scope")
+    table.add_column("Author")
+    table.add_column("Age")
+    table.add_column("Body", max_width=50)
+
+    now = datetime.now(tz=UTC)
+    for source_dir, iwh in results:
+        scope_styles = {"warning": "yellow", "incomplete": "cyan", "blocked": "red"}
+        style = scope_styles.get(iwh.scope, "dim")
+
+        created = iwh.created
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+        total_seconds = int((now - created).total_seconds())
+        if total_seconds < 3600:
+            age = f"{total_seconds // 60}m"
+        elif total_seconds < 86400:
+            age = f"{total_seconds // 3600}h"
+        else:
+            age = f"{total_seconds // 86400}d"
+
+        display_dir = f"{source_dir}/" if str(source_dir) != "." else "./"
+        body_preview = iwh.body.replace("\n", " ")
+        if len(body_preview) > 50:
+            body_preview = body_preview[:47] + "..."
+
+        table.add_row(
+            display_dir,
+            f"[{style}]{iwh.scope}[/{style}]",
+            iwh.author,
+            age,
+            body_preview,
+        )
+
+    console.print(table)
+    console.print(f"\nFound {len(results)} signal(s)")
+
+
+# ---------------------------------------------------------------------------
 # describe
 # ---------------------------------------------------------------------------
 
@@ -932,7 +1073,7 @@ def describe(
     if not aindex_file.exists():
         console.print(
             f"[yellow]No .aindex file found for[/yellow] {directory}\n"
-            f"Run [cyan]lexi index {directory}[/cyan] to generate one first."
+            f"Run [cyan]lexictl index {directory}[/cyan] to generate one first."
         )
         raise typer.Exit(1)
 
@@ -950,8 +1091,191 @@ def describe(
 
 
 # ---------------------------------------------------------------------------
+# validate
+# ---------------------------------------------------------------------------
+
+
+@lexi_app.command()
+def validate(
+    *,
+    severity: Annotated[
+        str | None,
+        typer.Option(
+            "--severity",
+            help="Minimum severity to report: error, warning, or info.",
+        ),
+    ] = None,
+    check: Annotated[
+        str | None,
+        typer.Option(
+            "--check",
+            help="Run only the named check (see available checks below).",
+        ),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output results as JSON instead of Rich tables.",
+        ),
+    ] = False,
+) -> None:
+    """Run consistency checks on the library."""
+    project_root = require_project_root()
+    exit_code = _run_validate(
+        project_root, severity=severity, check=check, json_output=json_output
+    )
+    raise typer.Exit(exit_code)
+
+
+# ---------------------------------------------------------------------------
+# status
+# ---------------------------------------------------------------------------
+
+
+@lexi_app.command()
+def status(
+    path: Annotated[
+        Path | None,
+        typer.Argument(help="Project directory to check."),
+    ] = None,
+    *,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Single-line output for hooks/CI."),
+    ] = False,
+) -> None:
+    """Show library health and staleness summary."""
+    project_root = require_project_root()
+    exit_code = _run_status(
+        project_root, path=path, quiet=quiet, cli_prefix="lexi"
+    )
+    raise typer.Exit(exit_code)
+
+
+# ---------------------------------------------------------------------------
 # search
 # ---------------------------------------------------------------------------
+
+
+@lexi_app.command("help")
+def agent_help() -> None:
+    """Display structured guidance for coding agents working with Lexibrary."""
+    from rich.panel import Panel  # noqa: PLC0415
+    from rich.text import Text  # noqa: PLC0415
+
+    # -- Command Groups --------------------------------------------------------
+    commands_text = Text()
+    commands_text.append("Lookup & Navigation\n", style="bold underline")
+    commands_text.append("  lexi lookup <file>", style="cyan")
+    commands_text.append("      Show design file, conventions, and reverse links\n")
+    commands_text.append("  lexi search [query]", style="cyan")
+    commands_text.append("     Search across concepts, design files, and Stack posts\n")
+    commands_text.append("  lexi help", style="cyan")
+    commands_text.append("               Show this guidance\n")
+    commands_text.append("\n")
+    commands_text.append("Concepts & Knowledge\n", style="bold underline")
+    commands_text.append("  lexi concepts [topic]", style="cyan")
+    commands_text.append("    List or search concepts (--tag, --status, --all)\n")
+    commands_text.append("  lexi concept new <name>", style="cyan")
+    commands_text.append("  Create a new concept file (--tag)\n")
+    commands_text.append("  lexi concept link <name> <file>", style="cyan")
+    commands_text.append("  Add a wikilink to a design file\n")
+    commands_text.append("\n")
+    commands_text.append("Stack Q&A\n", style="bold underline")
+    commands_text.append("  lexi stack post", style="cyan")
+    commands_text.append("            Create a question (--title, --tag, --file, --concept)\n")
+    commands_text.append("  lexi stack search [query]", style="cyan")
+    commands_text.append("   Search posts (--tag, --scope, --status, --concept)\n")
+    commands_text.append("  lexi stack view <id>", style="cyan")
+    commands_text.append("        Read a full post with answers\n")
+    commands_text.append("  lexi stack answer <id>", style="cyan")
+    commands_text.append("      Add an answer (--body, --author)\n")
+    commands_text.append("  lexi stack vote <id> up|down", style="cyan")
+    commands_text.append("  Vote on a post or answer (--answer, --comment)\n")
+    commands_text.append("  lexi stack accept <id>", style="cyan")
+    commands_text.append("      Accept an answer (--answer)\n")
+    commands_text.append("  lexi stack list", style="cyan")
+    commands_text.append("            List posts (--status, --tag)\n")
+    commands_text.append("\n")
+    commands_text.append("IWH Signals\n", style="bold underline")
+    commands_text.append("  lexi iwh write [dir]", style="cyan")
+    commands_text.append("      Create signal (--scope, --body, --author)\n")
+    commands_text.append("  lexi iwh read [dir]", style="cyan")
+    commands_text.append("       Read & consume signal (--peek to preserve)\n")
+    commands_text.append("  lexi iwh list", style="cyan")
+    commands_text.append("             List all IWH signals in the project\n")
+    commands_text.append("\n")
+    commands_text.append("Inspection & Annotation\n", style="bold underline")
+    commands_text.append("  lexi status [path]", style="cyan")
+    commands_text.append("        Show library health and staleness summary (-q for quiet)\n")
+    commands_text.append("  lexi validate", style="cyan")
+    commands_text.append("             Run consistency checks (--severity, --check, --json)\n")
+    commands_text.append("  lexi describe <dir> <desc>", style="cyan")
+    commands_text.append("  Update billboard description in .aindex\n")
+
+    console.print(Panel(commands_text, title="Available Commands", border_style="cyan"))
+
+    # -- Common Workflows ------------------------------------------------------
+    workflows_text = Text()
+    workflows_text.append("1. Understand a source file\n", style="bold")
+    workflows_text.append("   lexi lookup src/mypackage/module.py\n", style="cyan")
+    workflows_text.append("   Read the design file to understand purpose, interface, and\n")
+    workflows_text.append("   dependencies. Check the inherited conventions and reverse links\n")
+    workflows_text.append("   to see what depends on this file.\n\n")
+    workflows_text.append("2. Explore a topic across the codebase\n", style="bold")
+    workflows_text.append("   lexi concepts auth --tag security\n", style="cyan")
+    workflows_text.append("   lexi search auth --tag security\n", style="cyan")
+    workflows_text.append("   Start with concept search to find relevant knowledge articles,\n")
+    workflows_text.append("   then use cross-artifact search to find related design files and\n")
+    workflows_text.append("   Stack posts.\n\n")
+    workflows_text.append("3. Ask a question and capture knowledge\n", style="bold")
+    workflows_text.append(
+        '   lexi stack post --title "Why does X use Y?" --tag arch\n',
+        style="cyan",
+    )
+    workflows_text.append("   lexi stack answer ST-001 --body \"Because ...\"\n", style="cyan")
+    workflows_text.append("   lexi stack accept ST-001 --answer 1\n", style="cyan")
+    workflows_text.append("   Create a Stack post for decisions or questions, answer it,\n")
+    workflows_text.append("   and accept the best answer to build project knowledge.\n\n")
+    workflows_text.append("4. Check library health\n", style="bold")
+    workflows_text.append("   lexi status\n", style="cyan")
+    workflows_text.append("   lexi validate --severity warning\n", style="cyan")
+    workflows_text.append("   Use status to see staleness and coverage at a glance, then run\n")
+    workflows_text.append("   validate to find specific issues that need attention.\n")
+
+    console.print(Panel(workflows_text, title="Common Workflows", border_style="green"))
+
+    # -- Navigation Tips -------------------------------------------------------
+    tips_text = Text()
+    tips_text.append("Wikilinks: ", style="bold")
+    tips_text.append("Concept names in [[double brackets]] link design files to concept\n")
+    tips_text.append("  articles. Use ")
+    tips_text.append("lexi concept link", style="cyan")
+    tips_text.append(" to add them.\n\n")
+    tips_text.append("Link Graph: ", style="bold")
+    tips_text.append("lexi lookup", style="cyan")
+    tips_text.append(" shows reverse dependencies (who imports this file) and\n")
+    tips_text.append("  cross-references (Stack posts, concept wikilinks). Use this to trace\n")
+    tips_text.append("  impact before making changes.\n\n")
+    tips_text.append("Cross-Artifact Search: ", style="bold")
+    tips_text.append("lexi search", style="cyan")
+    tips_text.append(" queries concepts, design files, and Stack\n")
+    tips_text.append(
+        "  posts in one command. Combine with --tag and --scope to narrow results.\n\n"
+    )
+    tips_text.append("Filtering Concepts: ", style="bold")
+    tips_text.append("Deprecated concepts are hidden by default. Use ")
+    tips_text.append("--all", style="cyan")
+    tips_text.append(" to include\n")
+    tips_text.append("  them, or ")
+    tips_text.append("--status deprecated", style="cyan")
+    tips_text.append(" to show only deprecated concepts.\n\n")
+    tips_text.append("No project needed: ", style="bold")
+    tips_text.append("lexi help", style="cyan")
+    tips_text.append(" works anywhere -- no .lexibrary/ directory required.\n")
+
+    console.print(Panel(tips_text, title="Navigation Tips", border_style="yellow"))
 
 
 @lexi_app.command()

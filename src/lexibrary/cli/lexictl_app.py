@@ -7,7 +7,13 @@ from typing import Annotated
 
 import typer
 
-from lexibrary.cli._shared import console, load_dotenv_if_configured, require_project_root
+from lexibrary.cli._shared import (
+    _run_status,
+    _run_validate,
+    console,
+    load_dotenv_if_configured,
+    require_project_root,
+)
 
 lexictl_app = typer.Typer(
     name="lexictl",
@@ -18,6 +24,9 @@ lexictl_app = typer.Typer(
     no_args_is_help=True,
     callback=load_dotenv_if_configured,
 )
+
+iwh_ctl_app = typer.Typer(help="IWH signal maintenance commands.")
+lexictl_app.add_typer(iwh_ctl_app, name="iwh")
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +251,82 @@ def update(
 
 
 # ---------------------------------------------------------------------------
+# index
+# ---------------------------------------------------------------------------
+
+
+@lexictl_app.command()
+def index(
+    directory: Annotated[
+        Path,
+        typer.Argument(help="Directory to index."),
+    ] = Path("."),
+    *,
+    recursive: Annotated[
+        bool,
+        typer.Option("-r", "--recursive", help="Recursively index all directories."),
+    ] = False,
+) -> None:
+    """Generate .aindex file(s) for a directory."""
+    from rich.progress import Progress, SpinnerColumn, TextColumn  # noqa: PLC0415
+
+    from lexibrary.config.loader import load_config  # noqa: PLC0415
+    from lexibrary.indexer.orchestrator import index_directory, index_recursive  # noqa: PLC0415
+
+    project_root = require_project_root()
+
+    # Resolve directory relative to cwd
+    target = Path(directory).resolve()
+
+    # Validate directory exists
+    if not target.exists():
+        console.print(f"[red]Directory not found:[/red] {directory}")
+        raise typer.Exit(1)
+
+    if not target.is_dir():
+        console.print(f"[red]Not a directory:[/red] {directory}")
+        raise typer.Exit(1)
+
+    # Validate directory is within project root
+    try:
+        target.relative_to(project_root)
+    except ValueError:
+        console.print(
+            f"[red]Directory is outside the project root:[/red] {directory}\n"
+            f"Project root: {project_root}"
+        )
+        raise typer.Exit(1) from None
+
+    config = load_config(project_root)
+
+    if recursive:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Indexing...", total=None)
+
+            def _progress_callback(current: int, total: int, name: str) -> None:
+                progress.update(task, description=f"Indexing [{current}/{total}] {name}")
+
+            stats = index_recursive(
+                target, project_root, config, progress_callback=_progress_callback
+            )
+
+        console.print(
+            f"\n[green]Indexing complete.[/green] "
+            f"{stats.directories_indexed} directories indexed, "
+            f"{stats.files_found} files found"
+            + (f", [red]{stats.errors} errors[/red]" if stats.errors else "")
+            + "."
+        )
+    else:
+        output_path = index_directory(target, project_root, config)
+        console.print(f"[green]Wrote[/green] {output_path}")
+
+
+# ---------------------------------------------------------------------------
 # validate
 # ---------------------------------------------------------------------------
 
@@ -272,33 +357,11 @@ def validate(
     ] = False,
 ) -> None:
     """Run consistency checks on the library."""
-    import json as _json  # noqa: PLC0415
-
-    from lexibrary.validator import AVAILABLE_CHECKS, validate_library  # noqa: PLC0415
-
     project_root = require_project_root()
-    lexibrary_dir = project_root / ".lexibrary"
-
-    try:
-        report = validate_library(
-            project_root,
-            lexibrary_dir,
-            severity_filter=severity,
-            check_filter=check,
-        )
-    except ValueError as exc:
-        console.print(f"[red]Error:[/red] {exc}")
-        # Show available checks if an unknown check was requested
-        if check is not None and check not in AVAILABLE_CHECKS:
-            console.print("[dim]Available checks:[/dim] " + ", ".join(sorted(AVAILABLE_CHECKS)))
-        raise typer.Exit(1) from None
-
-    if json_output:
-        console.print(_json.dumps(report.to_dict(), indent=2))
-    else:
-        report.render(console)
-
-    raise typer.Exit(report.exit_code())
+    exit_code = _run_validate(
+        project_root, severity=severity, check=check, json_output=json_output
+    )
+    raise typer.Exit(exit_code)
 
 
 # ---------------------------------------------------------------------------
@@ -319,193 +382,11 @@ def status(
     ] = False,
 ) -> None:
     """Show library health and staleness summary."""
-    import hashlib  # noqa: PLC0415
-    from datetime import UTC, datetime  # noqa: PLC0415
-
-    from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
-        parse_design_file_metadata,
-    )
-    from lexibrary.linkgraph.health import read_index_health  # noqa: PLC0415
-    from lexibrary.stack.parser import parse_stack_post  # noqa: PLC0415
-    from lexibrary.validator import validate_library  # noqa: PLC0415
-    from lexibrary.wiki.parser import parse_concept_file  # noqa: PLC0415
-
     project_root = require_project_root()
-    lexibrary_dir = project_root / ".lexibrary"
-
-    # --- Artifact counts ---
-    # Design files: count .md files in the mirror tree (exclude concepts/ and stack/)
-    design_dir = lexibrary_dir
-    design_files: list[Path] = []
-    stale_count = 0
-    latest_generated: datetime | None = None
-
-    for md_path in sorted(design_dir.rglob("*.md")):
-        # Skip non-design-file directories
-        rel = md_path.relative_to(lexibrary_dir)
-        rel_parts = rel.parts
-        if rel_parts[0] in ("concepts", "stack"):
-            continue
-        # Skip known non-design files
-        if md_path.name in ("START_HERE.md", "HANDOFF.md"):
-            continue
-        meta = parse_design_file_metadata(md_path)
-        if meta is not None:
-            design_files.append(md_path)
-            # Check staleness via source hash
-            source_path = project_root / meta.source
-            if source_path.exists():
-                current_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
-                if current_hash != meta.source_hash:
-                    stale_count += 1
-            # Track latest generated timestamp
-            if latest_generated is None or meta.generated > latest_generated:
-                latest_generated = meta.generated
-
-    total_designs = len(design_files)
-
-    # Concepts: count by status
-    concepts_dir = lexibrary_dir / "concepts"
-    concept_counts: dict[str, int] = {"active": 0, "deprecated": 0, "draft": 0}
-    if concepts_dir.is_dir():
-        for md_path in sorted(concepts_dir.glob("*.md")):
-            concept = parse_concept_file(md_path)
-            if concept is not None:
-                s = concept.frontmatter.status
-                if s in concept_counts:
-                    concept_counts[s] += 1
-
-    # Stack posts: count by status
-    stack_dir = lexibrary_dir / "stack"
-    stack_counts: dict[str, int] = {"open": 0, "resolved": 0}
-    if stack_dir.is_dir():
-        for md_path in sorted(stack_dir.glob("ST-*-*.md")):
-            post = parse_stack_post(md_path)
-            if post is not None:
-                st = post.frontmatter.status
-                if st in stack_counts:
-                    stack_counts[st] += 1
-                else:
-                    stack_counts[st] = 1
-
-    total_stack = sum(stack_counts.values())
-
-    # --- Lightweight validation (errors + warnings only) ---
-    report = validate_library(
-        project_root,
-        lexibrary_dir,
-        severity_filter="warning",
+    exit_code = _run_status(
+        project_root, path=path, quiet=quiet, cli_prefix="lexictl"
     )
-    error_count = report.summary.error_count
-    warning_count = report.summary.warning_count
-
-    # --- Quiet mode ---
-    if quiet:
-        if error_count > 0 and warning_count > 0:
-            parts: list[str] = []
-            parts.append(f"{error_count} error{'s' if error_count != 1 else ''}")
-            parts.append(f"{warning_count} warning{'s' if warning_count != 1 else ''}")
-            console.print("lexictl: " + ", ".join(parts) + " \u2014 run `lexictl validate`")
-        elif error_count > 0:
-            console.print(
-                f"lexictl: {error_count} error{'s' if error_count != 1 else ''}"
-                " \u2014 run `lexictl validate`"
-            )
-        elif warning_count > 0:
-            console.print(
-                f"lexictl: {warning_count} warning{'s' if warning_count != 1 else ''}"
-                " \u2014 run `lexictl validate`"
-            )
-        else:
-            console.print("lexictl: library healthy")
-        raise typer.Exit(report.exit_code())
-
-    # --- Full dashboard ---
-    console.print()
-    console.print("[bold]Lexibrary Status[/bold]")
-    console.print()
-
-    # Files
-    if stale_count > 0:
-        console.print(f"  Files: {total_designs} tracked, {stale_count} stale")
-    else:
-        console.print(f"  Files: {total_designs} tracked")
-
-    # Concepts
-    concept_parts: list[str] = []
-    if concept_counts["active"] > 0:
-        concept_parts.append(f"{concept_counts['active']} active")
-    if concept_counts["deprecated"] > 0:
-        concept_parts.append(f"{concept_counts['deprecated']} deprecated")
-    if concept_counts["draft"] > 0:
-        concept_parts.append(f"{concept_counts['draft']} draft")
-    if concept_parts:
-        console.print("  Concepts: " + ", ".join(concept_parts))
-    else:
-        console.print("  Concepts: 0")
-
-    # Stack
-    if total_stack > 0:
-        console.print(
-            f"  Stack: {total_stack} post{'s' if total_stack != 1 else ''}"
-            f" ({stack_counts.get('resolved', 0)} resolved,"
-            f" {stack_counts.get('open', 0)} open)"
-        )
-    else:
-        console.print("  Stack: 0 posts")
-
-    # Link graph health
-    index_health = read_index_health(project_root)
-    if index_health.artifact_count is not None:
-        built_part = f" (built {index_health.built_at})" if index_health.built_at else ""
-        console.print(
-            f"  Link graph: {index_health.artifact_count} artifact"
-            f"{'s' if index_health.artifact_count != 1 else ''}"
-            f", {index_health.link_count} link"
-            f"{'s' if index_health.link_count != 1 else ''}"
-            f"{built_part}"
-        )
-    else:
-        console.print("  Link graph: not built (run lexictl update to create)")
-
-    console.print()
-
-    # Issues
-    console.print(
-        f"  Issues: {error_count} error{'s' if error_count != 1 else ''},"
-        f" {warning_count} warning{'s' if warning_count != 1 else ''}"
-    )
-
-    # Last updated
-    if latest_generated is not None:
-        now = datetime.now(tz=UTC)
-        gen = latest_generated
-        if gen.tzinfo is None:
-            gen = gen.replace(tzinfo=UTC)
-        delta = now - gen
-        total_seconds = int(delta.total_seconds())
-        if total_seconds < 60:
-            time_str = f"{total_seconds} second{'s' if total_seconds != 1 else ''} ago"
-        elif total_seconds < 3600:
-            minutes = total_seconds // 60
-            time_str = f"{minutes} minute{'s' if minutes != 1 else ''} ago"
-        elif total_seconds < 86400:
-            hours = total_seconds // 3600
-            time_str = f"{hours} hour{'s' if hours != 1 else ''} ago"
-        else:
-            days = total_seconds // 86400
-            time_str = f"{days} day{'s' if days != 1 else ''} ago"
-        console.print(f"  Updated: {time_str}")
-    else:
-        console.print("  Updated: never")
-
-    console.print()
-
-    # Suggest validate if issues exist
-    if error_count > 0 or warning_count > 0:
-        console.print("Run `lexictl validate` for details.")
-
-    raise typer.Exit(report.exit_code())
+    raise typer.Exit(exit_code)
 
 
 # ---------------------------------------------------------------------------
@@ -704,3 +585,50 @@ def daemon(
         except PermissionError:
             # Process exists but we can't signal it -- it's running
             console.print(f"[green]Daemon is running[/green] (PID {pid}).")
+
+
+# ---------------------------------------------------------------------------
+# iwh clean
+# ---------------------------------------------------------------------------
+
+
+@iwh_ctl_app.command("clean")
+def iwh_clean(
+    *,
+    older_than: Annotated[
+        int | None,
+        typer.Option("--older-than", help="Only remove signals older than N hours."),
+    ] = None,
+) -> None:
+    """Remove all IWH signal files from the project."""
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from lexibrary.iwh.reader import IWH_FILENAME, find_all_iwh  # noqa: PLC0415
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    project_root = require_project_root()
+    results = find_all_iwh(project_root)
+
+    if not results:
+        console.print("[dim]No IWH signals to clean.[/dim]")
+        return
+
+    now = datetime.now(tz=UTC)
+    removed = 0
+    for source_dir, iwh in results:
+        if older_than is not None:
+            created = iwh.created
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=UTC)
+            age_hours = (now - created).total_seconds() / 3600
+            if age_hours < older_than:
+                continue
+
+        iwh_file = project_root / LEXIBRARY_DIR / source_dir / IWH_FILENAME
+        if iwh_file.exists():
+            iwh_file.unlink()
+            display_dir = f"{source_dir}/" if str(source_dir) != "." else "./"
+            console.print(f"  [red]Removed[/red] {display_dir} ({iwh.scope})")
+            removed += 1
+
+    console.print(f"\n[green]Cleaned[/green] {removed} signal(s)")

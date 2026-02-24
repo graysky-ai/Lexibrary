@@ -33,15 +33,16 @@ Items where the overview or design describes a CLI command/flag that doesn't exi
 
 | Importance | Status | Item | Context |
 |------------|--------|------|---------|
-| medium | proposed | `lexi concepts --tag <t>` | Overview §4/§9 specifies this flag. Current impl only accepts positional `<topic>`. Phase 5. |
-| low | proposed | `lexi concepts --status <s>` | Filter draft/deprecated concepts. Added to overview §4/§9. Phase 5. |
-| low | proposed | `lexi concepts --all` | Overview §9. May be moot if bare `lexi concepts` already shows everything — decide if default should be "active only." Phase 5. |
+| medium | resolved | `lexi concepts --tag <t>` | Delivered via OpenSpec change `agent-navigation`. |
+| low | resolved | `lexi concepts --status <s>` | Delivered via OpenSpec change `agent-navigation`. |
+| low | resolved | `lexi concepts --all` | Delivered via OpenSpec change `agent-navigation`. |
+| critical | resolved | `lexi iwh write/read/list`, `lexictl iwh clean` | Delivered via IWH gap fix. `find_all_iwh()` discovery, archivist IWH awareness, docs/rules aligned. |
 | medium | proposed | `lexi stack mark-outdated <post-id>` | Mutation `mark_outdated()` exists in code but has no CLI surface. Phase 6. |
 | low | proposed | `lexi stack duplicate <post-id> --of <id>` | Mutation `mark_duplicate()` exists in code but has no CLI surface. Phase 6. |
 | high | planned | `lexictl update --dry-run` | Preview what would change without LLM calls. See overview Q-005. Phase 4. |
 | medium | planned | `lexictl update --start-here` | Regenerate START_HERE.md independently without a full project update. Phase 4. |
 | medium | proposed | `lexictl validate --fix` | Auto-remediate fixable issues (refresh stale hashes, remove broken wikilinks). Scope TBD. See D-047. Phase 7. |
-| high | proposed | `lexi help` | Agent-facing help command explaining available commands, workflows, and how to navigate the library. Helps agents self-orient without external docs. |
+| high | resolved | `lexi help` | Delivered via OpenSpec change `agent-navigation`. |
 | high | proposed | `lexictl help` | Operator-facing help command with workflow guidance beyond `--help` flag descriptions — e.g., "how do I set up CI?", "how do I add a new language?" |
 | medium | proposed | `lexictl validate --ci` | CI validation gate — exits non-zero when the library is stale or unhealthy. For use in CI/CD pipelines. |
 | medium | proposed | `lexictl diff` / `lexictl changelog` | Show what changed in the library since a given commit or date. Staleness report across artifacts. |
@@ -125,3 +126,7 @@ Items kept briefly for audit trail. Periodically delete these.
 | Persist agent environment in config | D-058 — `lexictl init` wizard persists `agent_environment`. |
 | `lexi stack list` | Implemented (was missing from spec, now added to overview §9). |
 | Operator-facing documentation (`docs/`) | Delivered via OpenSpec change `operator-docs`. 26 docs in `docs/user/` and `docs/agent/` covering getting started, configuration, CLI reference, workflows, deep dives, troubleshooting, and agent orientation. |
+| `lexi help` | Delivered via OpenSpec change `agent-navigation`. Agent-facing help command with Rich panels covering command groups, common workflows, and navigation tips. |
+| `lexi concepts --tag <t>` | Delivered via OpenSpec change `agent-navigation`. Repeatable tag filter with AND logic. |
+| `lexi concepts --status <s>` | Delivered via OpenSpec change `agent-navigation`. Filter by active/draft/deprecated status. |
+| `lexi concepts --all` | Delivered via OpenSpec change `agent-navigation`. Include deprecated concepts in output. |

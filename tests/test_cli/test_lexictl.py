@@ -35,6 +35,7 @@ class TestHelp:
             "setup",
             "sweep",
             "daemon",
+            "index",
         ):
             assert cmd in result.output
 
@@ -47,7 +48,8 @@ class TestHelp:
 
         command_names = re.findall(r"│\s+(\w+)\s{2,}", result.output)
         # Agent commands should NOT be registered as top-level commands in lexictl
-        for cmd in ("lookup", "index", "concepts", "search", "stack", "concept", "describe"):
+        # Note: "index" is intentionally in lexictl (moved from lexi to lexictl)
+        for cmd in ("lookup", "concepts", "search", "stack", "concept", "describe"):
             assert cmd not in command_names, f"Agent command '{cmd}' should not be in lexictl"
 
 
@@ -1443,3 +1445,185 @@ class TestNoProjectRoot:
         result = self._invoke_without_project(tmp_path, ["sweep"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+    def test_index_no_project_root(self, tmp_path: Path) -> None:
+        result = self._invoke_without_project(tmp_path, ["index", str(tmp_path)])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Lexictl index command tests (task 7.3)
+# ---------------------------------------------------------------------------
+
+
+class TestLexictlIndexCommand:
+    """Tests for the `lexictl index` command (task 7.3)."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexictl_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_index_single_directory(self, tmp_path: Path) -> None:
+        """Index a single directory writes a .aindex file."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["index", "src"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Wrote" in output
+        # Verify .aindex file was created
+        aindex_path = project / ".lexibrary" / "src" / ".aindex"
+        assert aindex_path.exists()
+
+    def test_index_recursive(self, tmp_path: Path) -> None:
+        """Index with -r flag recursively indexes directories."""
+        project = _setup_project(tmp_path)
+        # Create a subdirectory with a file
+        (project / "src" / "sub").mkdir()
+        (project / "src" / "sub" / "helper.py").write_text("h = 1\n")
+
+        result = self._invoke(project, ["index", "src", "-r"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Indexing complete" in output
+        # Should report at least 2 directories indexed
+        assert "directories indexed" in output
+
+    def test_index_recursive_long_flag(self, tmp_path: Path) -> None:
+        """Index with --recursive flag works."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["index", "src", "--recursive"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Indexing complete" in output
+
+    def test_index_requires_project_root(self, tmp_path: Path) -> None:
+        """Index without .lexibrary should fail with exit code 1."""
+        (tmp_path / "src").mkdir()
+        result = self._invoke(tmp_path, ["index", "src"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+    def test_index_summary_output(self, tmp_path: Path) -> None:
+        """Index single directory reports the output path."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["index", "src"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        # Should mention the .aindex path
+        assert ".aindex" in output
+
+    def test_index_nonexistent_directory(self, tmp_path: Path) -> None:
+        """Index a nonexistent directory should fail."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["index", "nonexistent"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Directory not found" in result.output  # type: ignore[union-attr]
+
+    def test_index_file_instead_of_directory(self, tmp_path: Path) -> None:
+        """Index a file (not a directory) should fail."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["index", "src/main.py"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Not a directory" in result.output  # type: ignore[union-attr]
+
+    def test_index_outside_project_root(self, tmp_path: Path) -> None:
+        """Index a directory outside the project root should fail."""
+        # Create project in a subdirectory, external dir is sibling
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        _setup_project(project_dir)
+        external = tmp_path / "external"
+        external.mkdir()
+        result = self._invoke(project_dir, ["index", str(external)])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "outside the project root" in result.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# IWH clean
+# ---------------------------------------------------------------------------
+
+
+class TestIWHClean:
+    """Tests for the `lexictl iwh clean` command."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexictl_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_help_lists_iwh_subgroup(self) -> None:
+        result = runner.invoke(lexictl_app, ["--help"])
+        assert result.exit_code == 0
+        assert "iwh" in result.output
+
+    def test_clean_removes_all_signals(self, tmp_path: Path) -> None:
+        from lexibrary.iwh import write_iwh
+
+        project = _setup_project(tmp_path)
+        (project / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
+        write_iwh(project / ".lexibrary" / "src", author="agent", scope="incomplete", body="wip")
+        write_iwh(project / ".lexibrary", author="agent", scope="warning", body="note")
+
+        result = self._invoke(project, ["iwh", "clean"])
+        assert result.exit_code == 0
+        assert "2 signal(s)" in result.output
+        assert not (project / ".lexibrary" / "src" / ".iwh").exists()
+        assert not (project / ".lexibrary" / ".iwh").exists()
+
+    def test_clean_empty_project(self, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["iwh", "clean"])
+        assert result.exit_code == 0
+        assert "No IWH signals to clean" in result.output
+
+    def test_clean_older_than_filter(self, tmp_path: Path) -> None:
+        from datetime import UTC, datetime
+
+        from lexibrary.iwh import IWHFile, serialize_iwh
+
+        project = _setup_project(tmp_path)
+        (project / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
+
+        # Write an old signal (48 hours ago)
+        old_iwh = IWHFile(
+            author="agent",
+            created=datetime(2020, 1, 1, 0, 0, 0, tzinfo=UTC),
+            scope="incomplete",
+            body="old signal",
+        )
+        (project / ".lexibrary" / "src" / ".iwh").write_text(
+            serialize_iwh(old_iwh), encoding="utf-8"
+        )
+
+        # Write a recent signal
+        from lexibrary.iwh import write_iwh
+
+        write_iwh(project / ".lexibrary", author="agent", scope="warning", body="new")
+
+        result = self._invoke(project, ["iwh", "clean", "--older-than", "1"])
+        assert result.exit_code == 0
+        assert "1 signal(s)" in result.output
+        # Old signal should be removed, new one preserved
+        assert not (project / ".lexibrary" / "src" / ".iwh").exists()
+        assert (project / ".lexibrary" / ".iwh").exists()
+
+    def test_clean_shows_removed_count(self, tmp_path: Path) -> None:
+        from lexibrary.iwh import write_iwh
+
+        project = _setup_project(tmp_path)
+        write_iwh(project / ".lexibrary", author="agent", scope="blocked", body="stuck")
+
+        result = self._invoke(project, ["iwh", "clean"])
+        assert result.exit_code == 0
+        assert "Cleaned" in result.output
+        assert "1 signal(s)" in result.output
+        assert "Removed" in result.output

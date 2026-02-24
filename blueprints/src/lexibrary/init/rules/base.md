@@ -22,6 +22,8 @@
 
 ## Key Concepts
 
-- Core rules instruct agents to: read START_HERE.md, check `.iwh` signals, use `lexi lookup` before editing, update design files after editing, use concepts/stack for context, create `.iwh` when leaving work incomplete, never run `lexictl` commands
+- Core rules instruct agents to: read START_HERE.md, check `.iwh` signals, use `lexi lookup` before editing, update design files after editing, run `lexi validate` after editing to check library health, use concepts/stack for context, create `.iwh` when leaving work incomplete, never run `lexictl` commands
+- The "After Editing Files" section includes `lexi validate` as a post-edit step for checking broken wikilinks, stale design files, or other library health issues
 - Content is stored as module-level string constants (`_CORE_RULES`, `_ORIENT_SKILL`, `_SEARCH_SKILL`) and returned via `.strip()`
 - No references to `lexictl` in agent-visible content -- only `lexi` commands are permitted for agents
+- No references to `lexi index` anywhere in the rules -- indexing has been moved to `lexictl` and is not an agent-facing operation
