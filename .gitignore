@@ -1,8 +1,7 @@
 # Lexibrary-specific
 .aindex
 baml_client/
-
-@ temp
+temp/
 START_HERE.md
 BLUEPRINT_INSTRUCTIONS.md
 
@@ -13,6 +12,13 @@ BLUEPRINT_INSTRUCTIONS.md
 .lexibrary/**/.aindex
 !.lexibrary/config.yaml
 .lexibrary/index.db
+
+# Agent workflow artifacts
+openspec/
+.beads/
+blueprints/
+plans/
+memory/
 
 # Python
 __pycache__/
@@ -57,6 +63,9 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
+# Linting
+.ruff_cache/
+
 # IDEs
 .vscode/
 .idea/
@@ -67,9 +76,12 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Local-only files (kept on disk, not tracked)
 CLAUDE.md
 Lexibrary.code-workspace
-
 .claude/
 .cursor/
 scripts/
+real-project-testing.md
+lexibrary-overview.md

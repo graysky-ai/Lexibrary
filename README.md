@@ -1,10 +1,27 @@
+<p align="center">
+  <img src="Lexibrary.png" alt="Lexibrary" width="200">
+</p>
+
 # Lexibrary
 
-AI-friendly codebase indexer for creating `.aindex` files
+AI-friendly codebase indexer that creates `.aindex` files for LLM context navigation.
 
-## Overview
+## About
 
-Lexibrary automatically crawls your codebase and generates `.aindex` files - AI-friendly summaries that help language models understand your code structure and navigate context more effectively.
+Lexibrary turns your codebase into a queryable semantic library that AI coding agents can navigate efficiently. Instead of dumping entire files into context windows, agents use Lexibrary to look up exactly what they need — design summaries, dependency graphs, public API skeletons, and cross-file relationships.
+
+**Key capabilities:**
+
+- **Crawl & index** — Bottom-up traversal with SHA-256 change detection
+- **Design files** — LLM-generated per-file summaries with dependency maps
+- **Link graph** — SQLite-backed cross-file dependency analysis and reverse lookups
+- **Unified search** — Full-text search across indexes, design files, and conventions
+- **AST parsing** — Language-aware public API extraction (Python, JS, TS)
+- **Conventions** — Project-wide rules and patterns as first-class artifacts
+- **Stack** — Contextual working-set management for focused exploration
+- **Daemon mode** — Watchdog-based background indexing with debounce
+
+**Architecture:** Two CLIs — `lexi` (agent-facing queries) and `lexictl` (setup/maintenance). Zero infrastructure — all state lives in repo files and a local SQLite graph.
 
 ## Installation
 
@@ -67,9 +84,11 @@ This project uses:
 - **Ruff** for linting
 - **Mypy** for type checking
 
-Run tests:
 ```bash
-uv run pytest
+uv run pytest --cov=lexibrary    # tests + coverage
+uv run ruff check src/ tests/    # lint
+uv run ruff format src/ tests/   # format
+uv run mypy src/                 # type check (strict)
 ```
 
 ## License
