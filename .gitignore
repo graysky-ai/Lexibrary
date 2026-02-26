@@ -2,6 +2,10 @@
 .aindex
 baml_client/
 
+@ temp
+START_HERE.md
+BLUEPRINT_INSTRUCTIONS.md
+
 # .lexibrary/ generated artifacts (config.yaml is tracked)
 .lexibrary/START_HERE.md
 .lexibrary/HANDOFF.md
