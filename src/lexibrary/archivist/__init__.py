@@ -9,22 +9,16 @@ from lexibrary.archivist.service import (
     ArchivistService,
     DesignFileRequest,
     DesignFileResult,
-    StartHereRequest,
-    StartHereResult,
 )
-from lexibrary.archivist.start_here import generate_start_here
 
 __all__ = [
     "ArchivistService",
     "ChangeLevel",
     "DesignFileRequest",
     "DesignFileResult",
-    "StartHereRequest",
-    "StartHereResult",
     "UpdateStats",
     "check_change",
     "generate_design_scaffold",
-    "generate_start_here",
     "update_file",
     "update_project",
 ]

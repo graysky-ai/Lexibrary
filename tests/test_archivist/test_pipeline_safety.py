@@ -2,7 +2,7 @@
 
 Covers conflict marker detection, design hash re-check, atomic write
 usage, the batch update_files() function, deleted file skipping, and
-the guarantee that update_files() does NOT regenerate START_HERE.md.
+the guarantee that update_files() does NOT regenerate TOPOLOGY.md.
 """
 
 from __future__ import annotations
@@ -605,8 +605,8 @@ class TestUpdateFiles:
         assert "code.py" in file_names
 
     @pytest.mark.asyncio()
-    async def test_no_start_here_regeneration(self, tmp_path: Path) -> None:
-        """update_files() does NOT regenerate START_HERE.md."""
+    async def test_no_topology_regeneration(self, tmp_path: Path) -> None:
+        """update_files() does NOT generate TOPOLOGY.md."""
         source = _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
 
         config = _make_config()
@@ -626,11 +626,11 @@ class TestUpdateFiles:
                 "lexibrary.archivist.pipeline.update_file",
                 side_effect=fake_update_file,
             ),
-            patch("lexibrary.archivist.pipeline.generate_start_here") as mock_start_here,
+            patch("lexibrary.archivist.pipeline.generate_topology") as mock_topology,
         ):
             await update_files([source], tmp_path, config, archivist)
 
-        mock_start_here.assert_not_called()
+        mock_topology.assert_not_called()
 
     @pytest.mark.asyncio()
     async def test_error_handling_per_file(self, tmp_path: Path) -> None:

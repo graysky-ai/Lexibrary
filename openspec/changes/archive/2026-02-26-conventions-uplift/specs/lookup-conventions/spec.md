@@ -36,6 +36,8 @@ The convention retrieval SHALL NOT include conventions scoped to directories abo
 - **WHEN** `scope_root` is configured as `src/` and the file is `src/api/auth.py`
 - **THEN** conventions with `scope: src/api` and `scope: src` are included, but conventions with `scope: .` are NOT included. Conventions with `scope: project` ARE included.
 
+## ADDED Requirements
+
 ### Requirement: Convention display format groups by scope
 Conventions SHALL be displayed grouped by their scope, with the scope path as a header. Scopes SHALL be ordered from most general (project) to most specific (closest directory).
 

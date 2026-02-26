@@ -2,37 +2,21 @@
 
 Every session in a Lexibrary-managed codebase should begin with these three steps. They take less than a minute and prevent you from working blind.
 
-## Step 1: Read `.lexibrary/START_HERE.md`
+## Step 1: Read `.lexibrary/TOPOLOGY.md`
 
 This is the single most important file for orientation. Read it first.
 
 ```
-cat .lexibrary/START_HERE.md
+cat .lexibrary/TOPOLOGY.md
 ```
 
-`START_HERE.md` contains:
+`TOPOLOGY.md` contains the **project topology** -- an annotated directory tree showing every package and module with brief descriptions drawn from `.aindex` billboard summaries. The tree uses adaptive depth based on project scale:
 
-- **Project topology** -- the full annotated directory tree showing every package and module with brief descriptions of what each does
-- **Package map** -- a table listing each package and its role (e.g., `cli` = "Two Typer CLI apps: lexi_app and lexictl_app", `archivist` = "LLM pipeline for design file generation")
-- **Navigation by intent** -- a lookup table that maps common tasks to the files you should read first. For example: "Add / modify an agent-facing CLI command" maps to `blueprints/src/lexibrary/cli/lexi_app.md`
-- **Key constraints** -- project-wide coding rules that every change must follow (e.g., `from __future__ import annotations` in every module, pathspec pattern name is `"gitignore"` not `"gitwildmatch"`)
-- **Navigation protocol** -- instructions to read design files before editing source files
+- **Small projects** (10 or fewer directories): full tree with no filtering
+- **Medium projects** (11--40 directories): depth limited to 2 levels plus hotspot directories
+- **Large projects** (41+ directories): depth limited to 1 level plus hotspots and top directories by child count
 
-After reading `START_HERE.md`, you know the project structure, where to find things, and what rules to follow.
-
-### Example
-
-A typical START_HERE.md navigation-by-intent table looks like this:
-
-```
-| Task                                    | Read first                                        |
-|-----------------------------------------|---------------------------------------------------|
-| Add / modify an agent-facing CLI command | blueprints/src/lexibrary/cli/lexi_app.md          |
-| Change config keys or defaults          | blueprints/src/lexibrary/config/                   |
-| Add / modify validation checks          | blueprints/src/lexibrary/validator/checks.md       |
-```
-
-Use this table to jump directly to the right context before starting work.
+After reading `TOPOLOGY.md`, you know the project structure and where to find things. For coding rules and navigation-by-intent, consult the project's agent rules file (e.g., `CLAUDE.md`, `.cursor/rules/`) which contains key constraints and intent-to-file mappings.
 
 ## Step 2: Check for IWH Signal Files
 
@@ -75,7 +59,7 @@ This lists all concept files in the project, showing their name, status (active/
 
 If the operator has set up the `/lexi-orient` skill in your environment, you can run it as a single command that performs all three steps:
 
-1. Reads `.lexibrary/START_HERE.md`
+1. Reads `.lexibrary/TOPOLOGY.md`
 2. Checks for IWH signals via `lexi iwh list`
 3. Displays library health
 

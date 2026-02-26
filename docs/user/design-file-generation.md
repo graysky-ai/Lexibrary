@@ -197,7 +197,7 @@ Update summary:
 | `files_failed` | Files that failed (LLM error, conflict markers, etc.) |
 | `aindex_refreshed` | `.aindex` entries updated |
 | `token_budget_warnings` | Design files exceeding their token budget |
-| `start_here_failed` | Whether `START_HERE.md` regeneration failed |
+| `topology_failed` | Whether `TOPOLOGY.md` generation failed |
 | `linkgraph_built` | Whether the link graph was successfully built |
 | `linkgraph_error` | Error message if link graph build failed |
 

@@ -3676,7 +3676,8 @@ class TestIncrementalConventions:
         # Verify convention table row
         conv_row = db_conn.execute(
             "SELECT directory_path, source, status, priority FROM conventions "
-            "WHERE artifact_id = (SELECT id FROM artifacts WHERE path = '.lexibrary/conventions/new-convention.md')"
+            "WHERE artifact_id = (SELECT id FROM artifacts "
+            "WHERE path = '.lexibrary/conventions/new-convention.md')"
         ).fetchone()
         assert conv_row is not None
         assert conv_row[0] == "."
@@ -3714,7 +3715,8 @@ class TestIncrementalConventions:
         # Verify convention table row was updated
         conv_row = db_conn.execute(
             "SELECT priority FROM conventions "
-            "WHERE artifact_id = (SELECT id FROM artifacts WHERE path = '.lexibrary/conventions/use-type-hints.md')"
+            "WHERE artifact_id = (SELECT id FROM artifacts "
+            "WHERE path = '.lexibrary/conventions/use-type-hints.md')"
         ).fetchone()
         assert conv_row is not None
         assert conv_row[0] == 10

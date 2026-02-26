@@ -11,13 +11,10 @@ from lexibrary.archivist.service import (
     ArchivistService,
     DesignFileRequest,
     DesignFileResult,
-    StartHereRequest,
-    StartHereResult,
 )
 from lexibrary.baml_client.types import (
     DesignFileDependency,
     DesignFileOutput,
-    StartHereOutput,
 )
 from lexibrary.config.schema import LLMConfig
 from lexibrary.llm.rate_limiter import RateLimiter
@@ -64,17 +61,6 @@ def sample_design_file_output() -> DesignFileOutput:
 
 
 @pytest.fixture()
-def sample_start_here_output() -> StartHereOutput:
-    return StartHereOutput(
-        topology="src/\n  auth/\n  db/",
-        ontology="**session** -- user auth session",
-        navigation_by_intent="| Task | Read first |\n| --- | --- |\n| Auth | src/auth/ |",
-        convention_index="- snake_case for modules",
-        navigation_protocol="- Read design file before editing source",
-    )
-
-
-@pytest.fixture()
 def design_file_request() -> DesignFileRequest:
     return DesignFileRequest(
         source_path="src/auth.py",
@@ -82,16 +68,6 @@ def design_file_request() -> DesignFileRequest:
         interface_skeleton="def login(): ...",
         language="python",
         existing_design_file=None,
-    )
-
-
-@pytest.fixture()
-def start_here_request() -> StartHereRequest:
-    return StartHereRequest(
-        project_name="testproject",
-        directory_tree="src/\n  auth/\n  db/",
-        aindex_summaries="auth: handles login\ndb: database layer",
-        existing_start_here=None,
     )
 
 
@@ -144,20 +120,6 @@ class TestDesignFileResult:
         )
         assert result.error is True
         assert result.design_file_output is None
-
-
-class TestStartHereResult:
-    """Verify StartHereResult field defaults."""
-
-    def test_successful_result(self, sample_start_here_output: StartHereOutput) -> None:
-        result = StartHereResult(start_here_output=sample_start_here_output)
-        assert result.error is False
-        assert result.error_message is None
-
-    def test_error_result(self) -> None:
-        result = StartHereResult(error=True, error_message="LLM down")
-        assert result.error is True
-        assert result.start_here_output is None
 
 
 # ---------------------------------------------------------------------------
@@ -282,64 +244,6 @@ class TestGenerateDesignFile:
 
 
 # ---------------------------------------------------------------------------
-# ArchivistService — generate_start_here
-# ---------------------------------------------------------------------------
-
-
-class TestGenerateStartHere:
-    """Verify generate_start_here with mocked BAML calls."""
-
-    @pytest.mark.asyncio()
-    async def test_successful_generation(
-        self,
-        rate_limiter: RateLimiter,
-        anthropic_config: LLMConfig,
-        start_here_request: StartHereRequest,
-        sample_start_here_output: StartHereOutput,
-    ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=anthropic_config)
-
-        mock_client = MagicMock()
-        mock_client.ArchivistGenerateStartHere = AsyncMock(return_value=sample_start_here_output)
-
-        with patch.object(service, "_get_baml_client", return_value=mock_client):
-            result = await service.generate_start_here(start_here_request)
-
-        assert result.error is False
-        assert result.start_here_output is not None
-        assert "auth" in result.start_here_output.topology
-
-        mock_client.ArchivistGenerateStartHere.assert_awaited_once_with(
-            project_name="testproject",
-            directory_tree="src/\n  auth/\n  db/",
-            aindex_summaries="auth: handles login\ndb: database layer",
-            existing_start_here=None,
-        )
-
-    @pytest.mark.asyncio()
-    async def test_error_returns_error_result(
-        self,
-        rate_limiter: RateLimiter,
-        anthropic_config: LLMConfig,
-        start_here_request: StartHereRequest,
-    ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=anthropic_config)
-
-        mock_client = MagicMock()
-        mock_client.ArchivistGenerateStartHere = AsyncMock(
-            side_effect=RuntimeError("Rate limit exceeded")
-        )
-
-        with patch.object(service, "_get_baml_client", return_value=mock_client):
-            result = await service.generate_start_here(start_here_request)
-
-        assert result.error is True
-        assert result.error_message is not None
-        assert "Rate limit exceeded" in result.error_message
-        assert result.start_here_output is None
-
-
-# ---------------------------------------------------------------------------
 # ArchivistService — rate limiting
 # ---------------------------------------------------------------------------
 
@@ -364,26 +268,6 @@ class TestRateLimiting:
 
         with patch.object(service, "_get_baml_client", return_value=mock_client):
             await service.generate_design_file(design_file_request)
-
-        mock_limiter.acquire.assert_awaited_once()
-
-    @pytest.mark.asyncio()
-    async def test_rate_limiter_acquired_before_start_here(
-        self,
-        anthropic_config: LLMConfig,
-        start_here_request: StartHereRequest,
-        sample_start_here_output: StartHereOutput,
-    ) -> None:
-        mock_limiter = MagicMock(spec=RateLimiter)
-        mock_limiter.acquire = AsyncMock()
-
-        service = ArchivistService(rate_limiter=mock_limiter, config=anthropic_config)
-
-        mock_client = MagicMock()
-        mock_client.ArchivistGenerateStartHere = AsyncMock(return_value=sample_start_here_output)
-
-        with patch.object(service, "_get_baml_client", return_value=mock_client):
-            await service.generate_start_here(start_here_request)
 
         mock_limiter.acquire.assert_awaited_once()
 

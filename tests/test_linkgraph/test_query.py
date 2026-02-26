@@ -664,37 +664,46 @@ class TestGetConventionsExtended:
         # Insert convention artifacts
         conn.execute(
             "INSERT INTO artifacts (id, path, kind, title, status) "
-            "VALUES (1, '.lexibrary/conventions/active-user.md', 'convention', 'Active User Conv', 'active')"
+            "VALUES (1, '.lexibrary/conventions/active-user.md', "
+            "'convention', 'Active User Conv', 'active')"
         )
         conn.execute(
             "INSERT INTO artifacts (id, path, kind, title, status) "
-            "VALUES (2, '.lexibrary/conventions/draft-agent.md', 'convention', 'Draft Agent Conv', 'draft')"
+            "VALUES (2, '.lexibrary/conventions/draft-agent.md', "
+            "'convention', 'Draft Agent Conv', 'draft')"
         )
         conn.execute(
             "INSERT INTO artifacts (id, path, kind, title, status) "
-            "VALUES (3, '.lexibrary/conventions/deprecated.md', 'convention', 'Deprecated Conv', 'deprecated')"
+            "VALUES (3, '.lexibrary/conventions/deprecated.md', "
+            "'convention', 'Deprecated Conv', 'deprecated')"
         )
         conn.execute(
             "INSERT INTO artifacts (id, path, kind, title, status) "
-            "VALUES (4, '.lexibrary/conventions/high-priority.md', 'convention', 'High Priority', 'active')"
+            "VALUES (4, '.lexibrary/conventions/high-priority.md', "
+            "'convention', 'High Priority', 'active')"
         )
 
         # Insert convention rows with extended metadata
-        conn.execute(
-            "INSERT INTO conventions (artifact_id, directory_path, ordinal, body, source, status, priority) "
-            "VALUES (1, '.', 0, 'Active user convention body.', 'user', 'active', 0)"
+        conv_insert = (
+            "INSERT INTO conventions "
+            "(artifact_id, directory_path, ordinal, body, source, status, priority) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)"
         )
         conn.execute(
-            "INSERT INTO conventions (artifact_id, directory_path, ordinal, body, source, status, priority) "
-            "VALUES (2, '.', 1, 'Draft agent convention body.', 'agent', 'draft', -1)"
+            conv_insert,
+            (1, ".", 0, "Active user convention body.", "user", "active", 0),
         )
         conn.execute(
-            "INSERT INTO conventions (artifact_id, directory_path, ordinal, body, source, status, priority) "
-            "VALUES (3, '.', 2, 'Deprecated convention body.', 'user', 'deprecated', 0)"
+            conv_insert,
+            (2, ".", 1, "Draft agent convention body.", "agent", "draft", -1),
         )
         conn.execute(
-            "INSERT INTO conventions (artifact_id, directory_path, ordinal, body, source, status, priority) "
-            "VALUES (4, '.', 3, 'High priority convention.', 'config', 'active', 10)"
+            conv_insert,
+            (3, ".", 2, "Deprecated convention body.", "user", "deprecated", 0),
+        )
+        conn.execute(
+            conv_insert,
+            (4, ".", 3, "High priority convention.", "config", "active", 10)
         )
 
         # Seed schema version

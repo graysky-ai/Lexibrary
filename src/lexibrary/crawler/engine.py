@@ -8,20 +8,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from lexibrary.config.schema import LexibraryConfig
-from lexibrary.errors import ErrorSummary
 from lexibrary.crawler.change_detector import ChangeDetector
 from lexibrary.crawler.discovery import (
     discover_directories_bottom_up,
     list_directory_files,
 )
 from lexibrary.crawler.file_reader import read_file_for_indexing
+from lexibrary.errors import ErrorSummary
 from lexibrary.ignore.matcher import IgnoreMatcher
-
-# v1 indexer retired in Phase 1 — crawler will be reworked in a later phase.
-# from lexibrary.indexer import DirEntry, FileEntry, IandexData
-# from lexibrary.indexer.generator import generate_iandex
-# from lexibrary.indexer.parser import parse_iandex
-# from lexibrary.indexer.writer import write_iandex
 from lexibrary.llm.service import (
     DirectorySummaryRequest,
     FileSummaryRequest,

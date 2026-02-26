@@ -14,33 +14,22 @@ The output format SHALL follow these rules:
 5. File names wrapped in backticks; directory names have trailing `/` and backticks
 6. `Type` column: `file` or `dir`
 7. Empty Child Map shows `(none)` instead of a table
-8. Local Conventions section always present — empty renders as `(none)`, non-empty renders as bullet list
-9. Staleness metadata as an HTML comment footer: `<!-- lexibrary:meta ... -->`
-10. Output ends with a single trailing newline
+8. Staleness metadata as an HTML comment footer: `<!-- lexibrary:meta ... -->`
+9. Output ends with a single trailing newline
+
+The output SHALL NOT contain a `## Local Conventions` section.
 
 #### Scenario: Serialize basic directory with files and subdirs
 - **WHEN** `serialize_aindex()` is called with an `AIndexFile` containing one file entry and one dir entry
-- **THEN** the output SHALL contain the H1 heading, billboard, Child Map table with both entries (file first, then dir), Local Conventions section, and metadata footer
+- **THEN** the output SHALL contain the H1 heading, billboard, Child Map table with both entries (file first, then dir), and metadata footer. No Local Conventions section SHALL be present.
 
 #### Scenario: Serialize empty directory
 - **WHEN** `serialize_aindex()` is called with an `AIndexFile` with no entries
-- **THEN** both Child Map and Local Conventions sections SHALL show `(none)`
-
-#### Scenario: Serialize files-only directory
-- **WHEN** `serialize_aindex()` is called with an `AIndexFile` containing only file entries
-- **THEN** the Child Map table SHALL list all files with no dir rows
-
-#### Scenario: Serialize dirs-only directory
-- **WHEN** `serialize_aindex()` is called with an `AIndexFile` containing only dir entries
-- **THEN** the Child Map table SHALL list all dirs with no file rows
+- **THEN** the Child Map section SHALL show `(none)`. No Local Conventions section SHALL be present.
 
 #### Scenario: Entries sorted files before dirs
 - **WHEN** `serialize_aindex()` is called with entries in random order
 - **THEN** the output Child Map SHALL have all file entries before all dir entries, each group sorted case-insensitively
-
-#### Scenario: Local conventions rendered as bullet list
-- **WHEN** `serialize_aindex()` is called with `local_conventions=["Use UTC everywhere", "No bare prints"]`
-- **THEN** the Local Conventions section SHALL render these as `- Use UTC everywhere` and `- No bare prints`
 
 #### Scenario: Metadata footer serialized as HTML comment
 - **WHEN** `serialize_aindex()` is called with a `StalenessMetadata` in the model
@@ -49,4 +38,8 @@ The output format SHALL follow these rules:
 #### Scenario: Output ends with trailing newline
 - **WHEN** `serialize_aindex()` is called with any valid input
 - **THEN** the returned string SHALL end with `\n`
+
+#### Scenario: No Local Conventions section in output
+- **WHEN** `serialize_aindex()` is called with any valid input
+- **THEN** the output SHALL NOT contain the text `## Local Conventions`
 

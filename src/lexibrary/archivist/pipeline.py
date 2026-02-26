@@ -17,7 +17,7 @@ from lexibrary.archivist.change_checker import (
 )
 from lexibrary.archivist.dependency_extractor import extract_dependencies
 from lexibrary.archivist.service import ArchivistService, DesignFileRequest
-from lexibrary.archivist.start_here import generate_start_here
+from lexibrary.archivist.topology import generate_topology
 from lexibrary.artifacts.aindex import AIndexEntry
 from lexibrary.artifacts.aindex_parser import parse_aindex
 from lexibrary.artifacts.aindex_serializer import serialize_aindex
@@ -65,7 +65,7 @@ class UpdateStats:
     files_failed: int = 0
     aindex_refreshed: int = 0
     token_budget_warnings: int = 0
-    start_here_failed: bool = False
+    topology_failed: bool = False
     linkgraph_built: bool = False
     linkgraph_error: str | None = None
     error_summary: ErrorSummary = field(default_factory=ErrorSummary)
@@ -613,7 +613,7 @@ async def update_files(
     """Process a specific list of source files through the pipeline.
 
     Unlike ``update_project()``, this does NOT discover files via rglob and
-    does NOT regenerate ``START_HERE.md``. It is designed for git-hook and
+    does NOT generate ``TOPOLOGY.md``. It is designed for git-hook and
     ``--changed-only`` usage where the caller already knows which files changed.
 
     Files that are deleted, binary, ignored, or inside ``.lexibrary/`` are
@@ -800,13 +800,13 @@ async def update_project(
         if progress_callback is not None:
             progress_callback(source_path, file_result.change)
 
-    # Step 5: Regenerate START_HERE.md after processing all files (pipeline spec SS5)
+    # Step 5: Generate TOPOLOGY.md after processing all files
     try:
-        await generate_start_here(project_root, config, archivist)
+        generate_topology(project_root)
     except Exception as exc:
-        logger.exception("Failed to regenerate START_HERE.md")
-        stats.start_here_failed = True
-        stats.error_summary.add("archivist", exc, path="START_HERE.md")
+        logger.exception("Failed to generate TOPOLOGY.md")
+        stats.topology_failed = True
+        stats.error_summary.add("archivist", exc, path="TOPOLOGY.md")
 
     # Step 6: Re-index directories containing changed files (D-2, D-3).
     # Skipped when no files were actually created, updated, or failed (4.3).

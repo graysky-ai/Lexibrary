@@ -9,7 +9,7 @@
 | `CrawlConfig` | `max_file_size_kb: int = 512`, `binary_extensions: list[str]` | Crawl behaviour -- file types to treat as binary and size limits |
 | `TokenizerConfig` | `backend`, `model`, `max_tokens_per_chunk` | Tokenizer backend selection |
 | `LLMConfig` | `provider`, `model`, `api_key_env`, `api_key_source: str = "env"`, `max_retries`, `timeout` | LLM provider settings; `api_key_source` controls how the API key is resolved (`"env"`, `"dotenv"`, or `"manual"`) |
-| `TokenBudgetConfig` | `start_here_tokens`, `design_file_tokens`, `design_file_abridged_tokens`, `aindex_tokens`, `concept_file_tokens`, `convention_file_tokens` | Per-artifact token budgets |
+| `TokenBudgetConfig` | `design_file_tokens`, `design_file_abridged_tokens`, `aindex_tokens`, `concept_file_tokens`, `convention_file_tokens` | Per-artifact token budgets |
 | `MappingConfig` | `strategies: list[dict]` | Mapping strategy config (stub for Phase 1) |
 | `IgnoreConfig` | `use_gitignore: bool`, `additional_patterns: list[str]` | Ignore pattern settings; defaults include `.env`, `.env.*`, and `*.env` to prevent API key files from being indexed |
 | `DaemonConfig` | `debounce_seconds: float = 2.0`, `sweep_interval_seconds: int = 3600`, `sweep_skip_if_unchanged: bool = True`, `git_suppression_seconds: int = 5`, `watchdog_enabled: bool = False`, `log_level: str = "info"` | Daemon sweep, watchdog, and logging settings |

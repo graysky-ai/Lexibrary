@@ -141,19 +141,33 @@ For each Stack post in `.lexibrary/stack/`, the builder SHALL:
 - **THEN** a stack artifact is inserted, a `stack_file_ref` link to `src/utils/dates.py` is created, a `stack_concept_ref` link to `Timezones` is created, and tags and FTS are populated
 
 ### Requirement: Full build indexes local conventions from .aindex files
-For each `.aindex` file, the builder SHALL process each entry in `AIndexFile.local_conventions`:
-1. Insert a `kind='convention'` artifact with synthetic path `{directory_path}::convention::{ordinal}` and title = first 120 characters of the convention text
-2. Insert a row in the `conventions` table with `directory_path`, `ordinal`, and `body`
-3. Extract `[[wikilinks]]` from the convention text and insert `convention_concept_ref` links
-4. Insert an FTS row with body = full convention text
+For each convention file in `.lexibrary/conventions/`, the builder SHALL:
+1. Parse the convention file via `parse_convention_file()`
+2. Insert a `kind='convention'` artifact with the convention file path, title from frontmatter, and the convention's status
+3. Insert a row in the `conventions` table with `directory_path` (derived from scope — `"."` for project scope), `ordinal` (0-based order within that scope), `body` (full convention body), `source` (from frontmatter), `status` (from frontmatter), and `priority` (from frontmatter)
+4. Extract `[[wikilinks]]` from the convention body and insert `convention_concept_ref` links
+5. Insert an FTS row with body = rule + body text
+6. Insert tags from `ConventionFileFrontmatter.tags`
 
-#### Scenario: .aindex file with two local conventions
-- **WHEN** `full_build()` processes `.lexibrary/src/auth/.aindex` with two local conventions
-- **THEN** two convention artifacts are inserted with paths `src/auth::convention::0` and `src/auth::convention::1`, two convention rows are created, any wikilinks are linked, and FTS rows are populated
+#### Scenario: Convention file with project scope
+- **WHEN** `full_build()` processes a convention file with `scope: project`
+- **THEN** a convention artifact is inserted, a conventions table row is created with `directory_path="."`, and FTS is populated
+
+#### Scenario: Convention file with directory scope
+- **WHEN** `full_build()` processes a convention file with `scope: src/auth`
+- **THEN** a convention artifact is inserted, a conventions table row is created with `directory_path="src/auth"`, and FTS is populated
 
 #### Scenario: Convention text contains wikilinks
-- **WHEN** a local convention contains `"All endpoints must use [[Authentication]] middleware"`
+- **WHEN** a convention body contains `"All endpoints must use [[Authentication]] middleware"`
 - **THEN** a `convention_concept_ref` link is created from the convention artifact to the `Authentication` concept artifact
+
+#### Scenario: Convention with tags
+- **WHEN** a convention file has `tags: ["python", "imports"]`
+- **THEN** two tag rows are inserted linking the convention artifact to each tag
+
+#### Scenario: Multiple conventions with same scope
+- **WHEN** `full_build()` processes two convention files both with `scope: src/auth`
+- **THEN** both get ordinal values (0 and 1) within the `src/auth` directory path
 
 ### Requirement: Full build updates meta table
 After all artifacts and links are inserted, `full_build()` SHALL update the `meta` table with:
@@ -220,4 +234,18 @@ The module SHALL expose an `open_index(project_root: Path) -> sqlite3.Connection
 #### Scenario: Index database is corrupt
 - **WHEN** `open_index()` is called and `.lexibrary/index.db` exists but is corrupt
 - **THEN** `None` is returned after catching `sqlite3.DatabaseError`
+
+### Requirement: Conventions table extended schema
+The `conventions` table SHALL include additional columns:
+- `source` (TEXT NOT NULL DEFAULT 'user') — provenance: 'user', 'agent', or 'config'
+- `status` (TEXT NOT NULL DEFAULT 'active') — lifecycle: 'draft', 'active', or 'deprecated'
+- `priority` (INTEGER NOT NULL DEFAULT 0) — display ordering within scope
+
+#### Scenario: Convention row with metadata
+- **WHEN** a convention with `source: agent`, `status: draft`, `priority: -1` is indexed
+- **THEN** the conventions table row SHALL have `source='agent'`, `status='draft'`, `priority=-1`
+
+#### Scenario: Default column values
+- **WHEN** a convention row is inserted without specifying source, status, or priority
+- **THEN** defaults SHALL be `source='user'`, `status='active'`, `priority=0`
 

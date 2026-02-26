@@ -58,8 +58,12 @@ def test_llm_config_api_key_source_via_top_level_config() -> None:
 
 def test_token_budget_defaults() -> None:
     config = TokenBudgetConfig()
-    assert config.start_here_tokens == 800
     assert config.design_file_tokens == 400
+    assert config.design_file_abridged_tokens == 100
+    assert config.aindex_tokens == 200
+    assert config.concept_file_tokens == 400
+    assert config.convention_file_tokens == 500
+    assert not hasattr(config, "start_here_tokens")
 
 
 def test_token_budget_no_handoff_tokens() -> None:
@@ -73,7 +77,15 @@ def test_stale_handoff_tokens_silently_ignored() -> None:
     config = TokenBudgetConfig.model_validate({"handoff_tokens": 100})
     assert not hasattr(config, "handoff_tokens")
     # Other defaults still work
-    assert config.start_here_tokens == 800
+    assert config.design_file_tokens == 400
+
+
+def test_stale_start_here_tokens_silently_ignored() -> None:
+    """Loading config with stale start_here_tokens key does not raise an error."""
+    config = TokenBudgetConfig.model_validate({"start_here_tokens": 800})
+    assert not hasattr(config, "start_here_tokens")
+    # Other defaults still work
+    assert config.design_file_tokens == 400
 
 
 def test_ignore_config_no_handoff_pattern() -> None:

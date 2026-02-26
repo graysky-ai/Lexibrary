@@ -22,7 +22,7 @@ src/lexibrary/
 │   ├── dependency_extractor.py  ← Tree-sitter import resolution to project-relative paths
 │   ├── pipeline.py              ← update_file() + update_project() — full generation pipeline
 │   ├── service.py               ← ArchivistService — async BAML calls with provider routing
-│   └── start_here.py            ← generate_start_here() — project-level START_HERE.md generation
+│   └── topology.py              ← generate_topology() — procedural TOPOLOGY.md generation from .aindex data
 ├── artifacts/                   ← Pydantic 2 models + parser/serializer/writer for all artifact types
 │   ├── __init__.py
 │   ├── aindex.py                ← AIndexFile + AIndexEntry models
@@ -146,7 +146,7 @@ src/lexibrary/
 | Package | Role |
 | --- | --- |
 | `cli` | Two Typer CLI apps: `lexi_app` (agent-facing: lookup, describe, validate, status, concepts, concept, stack, search) and `lexictl_app` (maintenance: init, update, index, validate, status, setup, sweep, daemon); shared helpers in `_shared.py` (`console`, `require_project_root`, `stub`, `_run_validate`, `_run_status`) |
-| `archivist` | LLM pipeline for design file + START_HERE generation: `ArchivistService`, `update_file`, `update_files`, `update_project`, `reindex_directories`, `generate_start_here`, `check_change`, `extract_dependencies`; safety features: conflict marker check, design hash TOCTOU re-check, atomic writes; automated `.aindex` regeneration for affected directories after updates |
+| `archivist` | LLM pipeline for design file + TOPOLOGY generation: `ArchivistService`, `update_file`, `update_files`, `update_project`, `reindex_directories`, `generate_topology`, `check_change`, `extract_dependencies`; safety features: conflict marker check, design hash TOCTOU re-check, atomic writes; automated `.aindex` regeneration for affected directories after updates |
 | `artifacts` | Pydantic 2 models: `DesignFile`, `AIndexFile`, `ConceptFile`; plus parsers, serializers, writer |
 | `ast_parser` | Tree-sitter interface extraction: `parse_interface`, `compute_hashes`, `hash_interface`; `InterfaceSkeleton` model; Python / TypeScript / JavaScript parsers; `render_skeleton` canonical renderer |
 | `config` | `LexibraryConfig` schema (incl. `scope_root`, `ASTConfig`), two-tier YAML loader, default config template |
@@ -176,7 +176,7 @@ src/lexibrary/
 | Modify design file generation pipeline | `blueprints/src/lexibrary/archivist/pipeline.md` |
 | Change archivist LLM service or provider routing | `blueprints/src/lexibrary/archivist/service.md` |
 | Change change detection logic | `blueprints/src/lexibrary/archivist/change_checker.md` |
-| Modify START_HERE generation | `blueprints/src/lexibrary/archivist/start_here.md` |
+| Modify TOPOLOGY generation | `blueprints/src/lexibrary/archivist/topology.md` |
 | Add a language parser or modify AST extraction | `blueprints/src/lexibrary/ast_parser/` |
 | Change config keys or defaults | `blueprints/src/lexibrary/config/` |
 | Modify crawl logic (LLM-based) | `blueprints/src/lexibrary/crawler/engine.md` |

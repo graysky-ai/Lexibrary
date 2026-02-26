@@ -38,8 +38,3 @@ The parser SHALL NOT populate a `local_conventions` field (the field no longer e
 - **WHEN** `parse_aindex()` is called with a file that still contains a `## Local Conventions` section
 - **THEN** it SHALL parse successfully, ignoring the conventions section
 
-## REMOVED Requirements
-
-### Requirement: Parse extracts local conventions
-**Reason**: The `local_conventions` field has been removed from `AIndexFile` (D9). Conventions are now stored as standalone files in `.lexibrary/conventions/`.
-**Migration**: Conventions are managed via `lexi convention new` and retrieved via `ConventionIndex`. The parser no longer extracts convention data from `.aindex` files.

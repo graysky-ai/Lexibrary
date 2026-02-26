@@ -6,7 +6,7 @@ import hashlib
 import os
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import yaml
 from typer.testing import CliRunner
@@ -324,32 +324,25 @@ class TestUpdateCommand:
         assert "5" in result.output
 
     def test_update_project(self, tmp_path: Path) -> None:
-        """Update with no args calls update_project and regenerates START_HERE."""
+        """Update with no args calls update_project and generates TOPOLOGY.md."""
         project = _setup_archivist_project(tmp_path)
 
         mock_stats = UpdateStats(files_scanned=3, files_unchanged=3)
         mock_update_project = AsyncMock(return_value=mock_stats)
-        mock_start_here = AsyncMock(return_value=project / ".lexibrary" / "START_HERE.md")
 
         old_cwd = os.getcwd()
         os.chdir(project)
         try:
-            with (
-                patch(
-                    "lexibrary.archivist.pipeline.update_project",
-                    mock_update_project,
-                ),
-                patch(
-                    "lexibrary.archivist.start_here.generate_start_here",
-                    mock_start_here,
-                ),
+            with patch(
+                "lexibrary.archivist.pipeline.update_project",
+                mock_update_project,
             ):
                 result = runner.invoke(lexictl_app, ["update"])
         finally:
             os.chdir(old_cwd)
 
         assert result.exit_code == 0
-        assert "START_HERE.md regenerated" in result.output
+        assert "TOPOLOGY.md generated" in result.output
         assert "Files scanned" in result.output
 
     def test_update_no_project_error(self, tmp_path: Path) -> None:
@@ -1743,20 +1736,20 @@ class TestUpdateStartHere:
             os.chdir(old_cwd)
 
     def test_start_here_regenerates(self, tmp_path: Path) -> None:
-        """--start-here calls generate_start_here and shows success."""
+        """--start-here calls generate_topology and shows success."""
         project = _setup_archivist_project(tmp_path)
 
-        mock_generate = AsyncMock(return_value=project / ".lexibrary" / "START_HERE.md")
+        mock_generate = MagicMock(return_value=project / ".lexibrary" / "TOPOLOGY.md")
 
         with patch(
-            "lexibrary.archivist.start_here.generate_start_here",
+            "lexibrary.archivist.topology.generate_topology",
             mock_generate,
         ):
             result = self._invoke(project, ["update", "--start-here"])
 
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
-        assert "START_HERE.md regenerated" in output
+        assert "TOPOLOGY.md generated" in output
         mock_generate.assert_called_once()
 
     def test_start_here_mutual_exclusivity_with_changed_only(self, tmp_path: Path) -> None:

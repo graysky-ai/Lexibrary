@@ -136,13 +136,13 @@ def test_generate_config_yaml_custom_token_budgets() -> None:
     """Custom token budgets are included when customized is True."""
     answers = _make_answers(
         token_budgets_customized=True,
-        token_budgets={"start_here_tokens": 1200, "design_file_tokens": 600},
+        token_budgets={"convention_file_tokens": 1200, "design_file_tokens": 600},
     )
     output = _generate_config_yaml(answers)
     parsed = yaml.safe_load(output)
 
     assert "token_budgets" in parsed
-    assert parsed["token_budgets"]["start_here_tokens"] == 1200
+    assert parsed["token_budgets"]["convention_file_tokens"] == 1200
     assert parsed["token_budgets"]["design_file_tokens"] == 600
 
 

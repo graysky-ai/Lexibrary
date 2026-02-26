@@ -388,21 +388,6 @@ def check_token_budgets(
     budgets = config.token_budgets
     counter = ApproximateCounter()
 
-    # Check START_HERE.md
-    start_here = lexibrary_dir / "START_HERE.md"
-    if start_here.is_file():
-        tokens = counter.count(start_here.read_text(encoding="utf-8", errors="replace"))
-        if tokens > budgets.start_here_tokens:
-            issues.append(
-                ValidationIssue(
-                    severity="warning",
-                    check="token_budgets",
-                    message=(f"Over budget: {tokens} tokens (limit {budgets.start_here_tokens})"),
-                    artifact="START_HERE.md",
-                    suggestion="Trim content to stay within the token budget.",
-                )
-            )
-
     # Check design files
     src_dir = lexibrary_dir / "src"
     if src_dir.is_dir():

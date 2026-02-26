@@ -300,15 +300,12 @@ class TestCheckTokenBudgets:
         assert "Over budget" in issue.message
         assert "limit 10" in issue.message
 
-    def test_start_here_over_budget(self, tmp_path: Path) -> None:
-        """START_HERE.md over budget produces warning."""
+    def test_start_here_budget_removed(self, tmp_path: Path) -> None:
+        """START_HERE.md token budget check removed (dismantled)."""
         project_root = tmp_path
         lexibrary_dir = project_root / ".lexibrary"
         lexibrary_dir.mkdir()
-        _write_config(
-            project_root,
-            token_budgets={"start_here_tokens": 5},
-        )
+        _write_config(project_root)
 
         start_here = lexibrary_dir / "START_HERE.md"
         start_here.write_text(
@@ -317,8 +314,7 @@ class TestCheckTokenBudgets:
 
         issues = check_token_budgets(project_root, lexibrary_dir)
         start_issues = [i for i in issues if i.artifact == "START_HERE.md"]
-        assert len(start_issues) == 1
-        assert start_issues[0].severity == "warning"
+        assert len(start_issues) == 0  # No longer checked
 
     def test_concept_over_budget(self, tmp_path: Path) -> None:
         """Concept files over budget produce warnings."""

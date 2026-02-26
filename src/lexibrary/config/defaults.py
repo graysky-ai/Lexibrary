@@ -32,7 +32,6 @@ llm:
 
 # Per-artifact token budgets (validation targets for generated content)
 token_budgets:
-  start_here_tokens: 800                 # START_HERE.md budget
   design_file_tokens: 400                # Full design file budget
   design_file_abridged_tokens: 100       # Abridged design file budget
   aindex_tokens: 200                     # .aindex routing table budget

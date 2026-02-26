@@ -183,7 +183,7 @@ def update(
         bool,
         typer.Option(
             "--start-here",
-            help="Regenerate START_HERE.md only, without running the full update.",
+            help="Regenerate TOPOLOGY.md only, without running the full update.",
         ),
     ] = False,
 ) -> None:
@@ -222,17 +222,15 @@ def update(
     project_root = require_project_root()
     config = load_config(project_root)
 
-    # --start-here: regenerate START_HERE.md only
+    # --start-here: regenerate TOPOLOGY.md only
     if start_here:
-        from lexibrary.archivist.start_here import generate_start_here  # noqa: PLC0415
+        from lexibrary.archivist.topology import generate_topology  # noqa: PLC0415
 
-        rate_limiter = RateLimiter()
-        archivist = ArchivistService(rate_limiter=rate_limiter, config=config.llm)
         try:
-            asyncio.run(generate_start_here(project_root, config, archivist))
-            console.print("[green]START_HERE.md regenerated.[/green]")
+            generate_topology(project_root)
+            console.print("[green]TOPOLOGY.md generated.[/green]")
         except Exception as exc:
-            console.print(f"[red]Failed to regenerate START_HERE.md:[/red] {exc}")
+            console.print(f"[red]Failed to generate TOPOLOGY.md:[/red] {exc}")
             raise typer.Exit(1) from None
         return
 
@@ -351,10 +349,10 @@ def update(
             update_project(project_root, config, archivist, progress_callback=_progress_callback)
         )
 
-    if stats.start_here_failed:
-        console.print("[red]Failed to regenerate START_HERE.md.[/red]")
+    if stats.topology_failed:
+        console.print("[red]Failed to generate TOPOLOGY.md.[/red]")
     else:
-        console.print("[green]START_HERE.md regenerated.[/green]")
+        console.print("[green]TOPOLOGY.md generated.[/green]")
 
     # Print summary stats
     console.print()

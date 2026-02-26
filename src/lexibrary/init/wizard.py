@@ -59,12 +59,11 @@ class WizardAnswers:
 # ---------------------------------------------------------------------------
 
 _DEFAULT_TOKEN_BUDGETS: dict[str, int] = {
-    "start_here_tokens": 800,
-    "handoff_tokens": 100,
     "design_file_tokens": 400,
     "design_file_abridged_tokens": 100,
     "aindex_tokens": 200,
     "concept_file_tokens": 400,
+    "convention_file_tokens": 500,
 }
 
 

@@ -72,12 +72,12 @@ def test_load_config_partial_project(tmp_path: Path) -> None:
 
     (tmp_path / ".lexibrary").mkdir()
     (tmp_path / ".lexibrary" / "config.yaml").write_text(
-        "token_budgets:\n  start_here_tokens: 1200\n"
+        "token_budgets:\n  design_file_tokens: 1200\n"
     )
 
     config = load_config(project_root=tmp_path, global_config_path=global_cfg)
     assert config.llm.provider == "openai"  # from global
-    assert config.token_budgets.start_here_tokens == 1200  # from project
+    assert config.token_budgets.design_file_tokens == 1200  # from project
 
 
 def test_load_config_api_key_source_from_project_yaml(tmp_path: Path) -> None:

@@ -1,4 +1,4 @@
-"""Archivist service: LLM-powered design file and START_HERE generation."""
+"""Archivist service: LLM-powered design file generation."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 
 from lexibrary.baml_client.async_client import BamlAsyncClient, b
-from lexibrary.baml_client.types import DesignFileOutput, StartHereOutput
+from lexibrary.baml_client.types import DesignFileOutput
 from lexibrary.config.schema import LLMConfig
 from lexibrary.llm.rate_limiter import RateLimiter
 
@@ -41,27 +41,8 @@ class DesignFileResult:
     error_message: str | None = None
 
 
-@dataclass
-class StartHereRequest:
-    """Request for generating START_HERE.md content."""
-
-    project_name: str
-    directory_tree: str
-    aindex_summaries: str
-    existing_start_here: str | None = None
-
-
-@dataclass
-class StartHereResult:
-    """Result of a START_HERE.md generation."""
-
-    start_here_output: StartHereOutput | None = None
-    error: bool = False
-    error_message: str | None = None
-
-
 class ArchivistService:
-    """Stateless async service for generating design files and START_HERE via BAML.
+    """Stateless async service for generating design files via BAML.
 
     Routes BAML calls to the appropriate provider client based on LLMConfig.provider.
     Respects rate limiting before each LLM call. Safe for future concurrent use.
@@ -117,38 +98,6 @@ class ArchivistService:
             logger.error(error_msg, exc_info=True)
             return DesignFileResult(
                 source_path=request.source_path,
-                error=True,
-                error_message=error_msg,
-            )
-
-    async def generate_start_here(self, request: StartHereRequest) -> StartHereResult:
-        """Generate START_HERE.md content via BAML.
-
-        Respects rate limiting before the LLM call. Returns an error result
-        (never raises) on LLM failure.
-        """
-        logger.info(
-            "Generating START_HERE.md for project '%s' (provider=%s)",
-            request.project_name,
-            self._config.provider,
-        )
-
-        await self._rate_limiter.acquire()
-        logger.debug("Rate limiter acquired for START_HERE generation")
-
-        try:
-            client = self._get_baml_client()
-            output = await client.ArchivistGenerateStartHere(
-                project_name=request.project_name,
-                directory_tree=request.directory_tree,
-                aindex_summaries=request.aindex_summaries,
-                existing_start_here=request.existing_start_here,
-            )
-            return StartHereResult(start_here_output=output)
-        except Exception as exc:
-            error_msg = f"LLM error generating START_HERE.md: {exc}"
-            logger.error(error_msg, exc_info=True)
-            return StartHereResult(
                 error=True,
                 error_message=error_msg,
             )

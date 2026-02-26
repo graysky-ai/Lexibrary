@@ -212,11 +212,11 @@ def _generate_settings_json(project_root: Path) -> Path:
     if not isinstance(permissions, dict):
         permissions = {}
 
-    existing_allow: list[str] = permissions.get("allow", [])  # type: ignore[assignment]
+    existing_allow: list[str] = permissions.get("allow", [])
     if not isinstance(existing_allow, list):
         existing_allow = []
 
-    existing_deny: list[str] = permissions.get("deny", [])  # type: ignore[assignment]
+    existing_deny: list[str] = permissions.get("deny", [])
     if not isinstance(existing_deny, list):
         existing_deny = []
 
@@ -233,7 +233,7 @@ def _generate_settings_json(project_root: Path) -> Path:
         existing_hooks = {}
 
     for event_type, our_entries in _HOOKS_CONFIG.items():
-        existing_entries: list[dict[str, object]] = existing_hooks.get(event_type, [])  # type: ignore[assignment]
+        existing_entries: list[dict[str, object]] = existing_hooks.get(event_type, [])
         if not isinstance(existing_entries, list):
             existing_entries = []
 

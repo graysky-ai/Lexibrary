@@ -444,7 +444,9 @@ class TestStepTokenBudgetsInteractive:
         assert budgets == {}
 
     def test_user_customizes_a_budget(self, console: Console) -> None:
-        prompt_responses = iter(["800", "100", "500", "100", "200", "400"])
+        # Responses for: design_file_tokens, design_file_abridged_tokens,
+        # aindex_tokens, concept_file_tokens, convention_file_tokens
+        prompt_responses = iter(["500", "100", "200", "400", "500"])
         with (
             patch("lexibrary.init.wizard.Confirm.ask", return_value=True),
             patch(

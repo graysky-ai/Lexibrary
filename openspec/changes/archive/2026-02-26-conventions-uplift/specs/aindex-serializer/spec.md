@@ -40,8 +40,3 @@ The output SHALL NOT contain a `## Local Conventions` section.
 - **WHEN** `serialize_aindex()` is called with any valid input
 - **THEN** the output SHALL NOT contain the text `## Local Conventions`
 
-## REMOVED Requirements
-
-### Requirement: Local conventions rendered as bullet list
-**Reason**: The `local_conventions` field has been removed from `AIndexFile` (D9). Conventions are now stored as standalone files in `.lexibrary/conventions/`.
-**Migration**: Conventions are managed via `lexi convention new` and stored in `.lexibrary/conventions/*.md`. The `.aindex` serializer no longer handles convention output.

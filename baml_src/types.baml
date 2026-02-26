@@ -31,10 +31,3 @@ class DesignFileOutput {
   wikilinks string[]
   tags string[]
 }
-
-class StartHereOutput {
-  topology string
-  ontology string
-  navigation_by_intent string
-  navigation_protocol string
-}

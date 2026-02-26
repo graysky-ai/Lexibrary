@@ -92,7 +92,6 @@ class TokenBudgetConfig(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    start_here_tokens: int = 800
     design_file_tokens: int = 400
     design_file_abridged_tokens: int = 100
     aindex_tokens: int = 200
