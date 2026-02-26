@@ -122,7 +122,6 @@ def _make_aindex(tmp_path: Path, dir_rel: str, entries: list[AIndexEntry]) -> Pa
         directory_path=dir_rel,
         billboard="Test directory.",
         entries=entries,
-        local_conventions=[],
         metadata=StalenessMetadata(
             source=dir_rel,
             source_hash="dir_hash",

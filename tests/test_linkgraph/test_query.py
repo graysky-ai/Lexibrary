@@ -634,6 +634,127 @@ class TestGetConventions:
         assert results[0].directory_path == "src/auth"
         graph.close()
 
+    def test_convention_result_extended_fields_have_defaults(
+        self, graph: LinkGraph
+    ) -> None:
+        """ConventionResult extended fields (source, status, priority) have SQL defaults."""
+        results = graph.get_conventions(["src"])
+        assert len(results) >= 1
+        # Existing test data uses SQL defaults: source='user', status='active', priority=0
+        for r in results:
+            assert r.source == "user"
+            assert r.status == "active"
+            assert r.priority == 0
+        graph.close()
+
+
+class TestGetConventionsExtended:
+    """Tests for get_conventions() with extended metadata (source, status, priority).
+
+    These tests use a fresh database with conventions that exercise the new columns.
+    """
+
+    @pytest.fixture()
+    def extended_graph(self, tmp_path: Path) -> LinkGraph:
+        """Build a database with conventions using extended metadata columns."""
+        db_path = tmp_path / "extended.db"
+        conn = sqlite3.connect(str(db_path))
+        ensure_schema(conn)
+
+        # Insert convention artifacts
+        conn.execute(
+            "INSERT INTO artifacts (id, path, kind, title, status) "
+            "VALUES (1, '.lexibrary/conventions/active-user.md', 'convention', 'Active User Conv', 'active')"
+        )
+        conn.execute(
+            "INSERT INTO artifacts (id, path, kind, title, status) "
+            "VALUES (2, '.lexibrary/conventions/draft-agent.md', 'convention', 'Draft Agent Conv', 'draft')"
+        )
+        conn.execute(
+            "INSERT INTO artifacts (id, path, kind, title, status) "
+            "VALUES (3, '.lexibrary/conventions/deprecated.md', 'convention', 'Deprecated Conv', 'deprecated')"
+        )
+        conn.execute(
+            "INSERT INTO artifacts (id, path, kind, title, status) "
+            "VALUES (4, '.lexibrary/conventions/high-priority.md', 'convention', 'High Priority', 'active')"
+        )
+
+        # Insert convention rows with extended metadata
+        conn.execute(
+            "INSERT INTO conventions (artifact_id, directory_path, ordinal, body, source, status, priority) "
+            "VALUES (1, '.', 0, 'Active user convention body.', 'user', 'active', 0)"
+        )
+        conn.execute(
+            "INSERT INTO conventions (artifact_id, directory_path, ordinal, body, source, status, priority) "
+            "VALUES (2, '.', 1, 'Draft agent convention body.', 'agent', 'draft', -1)"
+        )
+        conn.execute(
+            "INSERT INTO conventions (artifact_id, directory_path, ordinal, body, source, status, priority) "
+            "VALUES (3, '.', 2, 'Deprecated convention body.', 'user', 'deprecated', 0)"
+        )
+        conn.execute(
+            "INSERT INTO conventions (artifact_id, directory_path, ordinal, body, source, status, priority) "
+            "VALUES (4, '.', 3, 'High priority convention.', 'config', 'active', 10)"
+        )
+
+        # Seed schema version
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)",
+            (str(SCHEMA_VERSION),),
+        )
+        conn.commit()
+        conn.close()
+
+        g = LinkGraph.open(db_path)
+        assert g is not None
+        return g
+
+    def test_extended_metadata_returned(self, extended_graph: LinkGraph) -> None:
+        """get_conventions() returns source, status, and priority in results."""
+        results = extended_graph.get_conventions(["."], include_deprecated=True)
+        assert len(results) == 4
+
+        active_user = next(r for r in results if r.body == "Active user convention body.")
+        assert active_user.source == "user"
+        assert active_user.status == "active"
+        assert active_user.priority == 0
+
+        draft_agent = next(r for r in results if r.body == "Draft agent convention body.")
+        assert draft_agent.source == "agent"
+        assert draft_agent.status == "draft"
+        assert draft_agent.priority == -1
+
+        deprecated = next(r for r in results if r.body == "Deprecated convention body.")
+        assert deprecated.source == "user"
+        assert deprecated.status == "deprecated"
+        assert deprecated.priority == 0
+        extended_graph.close()
+
+    def test_deprecated_excluded_by_default(self, extended_graph: LinkGraph) -> None:
+        """get_conventions() excludes deprecated conventions by default."""
+        results = extended_graph.get_conventions(["."])
+        statuses = {r.status for r in results}
+        assert "deprecated" not in statuses
+        assert len(results) == 3
+        extended_graph.close()
+
+    def test_include_deprecated_flag(self, extended_graph: LinkGraph) -> None:
+        """get_conventions(include_deprecated=True) includes deprecated conventions."""
+        results = extended_graph.get_conventions(["."], include_deprecated=True)
+        statuses = {r.status for r in results}
+        assert "deprecated" in statuses
+        assert len(results) == 4
+        extended_graph.close()
+
+    def test_priority_ordering(self, extended_graph: LinkGraph) -> None:
+        """Higher priority conventions come before lower priority within same scope."""
+        results = extended_graph.get_conventions(["."])
+        # All are in "." scope; ordered by priority descending then ordinal
+        # High priority (10) should come first, then active (0), then draft (-1)
+        assert results[0].priority == 10
+        assert results[0].body == "High priority convention."
+        extended_graph.close()
+
 
 # ---------------------------------------------------------------------------
 # 7.11 -- build_summary() with and without log entries

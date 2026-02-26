@@ -6,7 +6,7 @@
 
 | Name | Signature | Purpose |
 | --- | --- | --- |
-| `serialize_aindex` | `(data: AIndexFile) -> str` | Render AIndexFile to markdown string with H1, billboard, Child Map, Local Conventions, and metadata footer |
+| `serialize_aindex` | `(data: AIndexFile) -> str` | Render AIndexFile to markdown string with H1, billboard, Child Map, and metadata footer |
 
 ## Dependencies
 
@@ -21,4 +21,5 @@
 - Child Map: files sorted alphabetically first, then directories; dirs shown with trailing `/`
 - Metadata footer: `<!-- lexibrary:meta source="..." source_hash="..." generated="..." generator="..." -->`
 - `interface_hash` is omitted from the footer when `None`
-- Empty entries section renders `(none)`; empty conventions section renders `(none)`
+- Empty entries section renders `(none)`
+- `## Local Conventions` section has been removed (conventions-uplift TG4)

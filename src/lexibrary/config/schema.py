@@ -97,6 +97,7 @@ class TokenBudgetConfig(BaseModel):
     design_file_abridged_tokens: int = 100
     aindex_tokens: int = 200
     concept_file_tokens: int = 400
+    convention_file_tokens: int = 500
 
 
 class MappingConfig(BaseModel):
@@ -153,6 +154,28 @@ class ASTConfig(BaseModel):
     languages: list[str] = Field(default_factory=lambda: ["python", "typescript", "javascript"])
 
 
+class ConventionConfig(BaseModel):
+    """Convention system configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    lookup_display_limit: int = 5
+
+
+class ConventionDeclaration(BaseModel):
+    """A user-declared convention seeded from config.
+
+    These declarations are materialized into `.lexibrary/conventions/` files
+    by the build pipeline with `source: config` and `status: active`.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    body: str
+    scope: str = "project"
+    tags: list[str] = Field(default_factory=list)
+
+
 class IWHConfig(BaseModel):
     """I Was Here (IWH) configuration."""
 
@@ -169,6 +192,8 @@ class LexibraryConfig(BaseModel):
     scope_root: str = "."
     project_name: str = ""
     agent_environment: list[str] = Field(default_factory=list)
+    conventions: ConventionConfig = Field(default_factory=ConventionConfig)
+    convention_declarations: list[ConventionDeclaration] = Field(default_factory=list)
     iwh: IWHConfig = Field(default_factory=IWHConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     token_budgets: TokenBudgetConfig = Field(default_factory=TokenBudgetConfig)

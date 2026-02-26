@@ -32,11 +32,11 @@ class TestGenerateAIndexEmptyDir:
         result = generate_aindex(src, tmp_path, _matcher(tmp_path), _BINARY_EXTS)
         assert result.billboard == "Empty directory."
 
-    def test_empty_dir_local_conventions_empty(self, tmp_path: Path) -> None:
+    def test_empty_dir_has_no_local_conventions_field(self, tmp_path: Path) -> None:
         src = tmp_path / "src"
         src.mkdir()
         result = generate_aindex(src, tmp_path, _matcher(tmp_path), _BINARY_EXTS)
-        assert result.local_conventions == []
+        assert not hasattr(result, "local_conventions")
 
 
 class TestGenerateAIndexFiles:

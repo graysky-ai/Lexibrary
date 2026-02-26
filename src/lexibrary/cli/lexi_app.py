@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated, cast
+from typing import TYPE_CHECKING, Annotated, Literal, cast
 
 import typer
 
@@ -16,6 +17,10 @@ from lexibrary.cli._shared import (
 )
 from lexibrary.exceptions import LexibraryNotFoundError
 from lexibrary.utils.root import find_project_root
+
+if TYPE_CHECKING:
+    from lexibrary.artifacts.convention import ConventionFile
+    from lexibrary.conventions.index import ConventionIndex
 
 lexi_app = typer.Typer(
     name="lexi",
@@ -35,6 +40,9 @@ lexi_app.add_typer(stack_app, name="stack")
 
 concept_app = typer.Typer(help="Concept management commands.")
 lexi_app.add_typer(concept_app, name="concept")
+
+convention_app = typer.Typer(help="Convention lifecycle management commands.")
+lexi_app.add_typer(convention_app, name="convention")
 
 iwh_app = typer.Typer(help="IWH (I Was Here) signal management commands.")
 lexi_app.add_typer(iwh_app, name="iwh")
@@ -92,6 +100,52 @@ def _find_post_path(project_root: Path, post_id: str) -> Path | None:
 # ---------------------------------------------------------------------------
 # lookup
 # ---------------------------------------------------------------------------
+
+
+def _render_conventions(
+    conventions: Sequence[object],
+    total_count: int,
+    display_limit: int,
+    rel_target: str,
+) -> None:
+    """Render an Applicable Conventions section grouped by scope.
+
+    Conventions are grouped by their scope field, ordered from most general
+    (project) to most specific. Draft conventions are marked with ``[draft]``.
+    When truncated, a notice is appended.
+    """
+    from collections import OrderedDict  # noqa: PLC0415
+
+    from lexibrary.artifacts.convention import ConventionFile  # noqa: PLC0415
+
+    typed_conventions: list[ConventionFile] = [
+        c for c in conventions if isinstance(c, ConventionFile)
+    ]
+    if not typed_conventions:
+        return
+
+    console.print("\n## Applicable Conventions\n")
+
+    # Group by scope, preserving order (already sorted root-to-leaf)
+    groups: OrderedDict[str, list[ConventionFile]] = OrderedDict()
+    for conv in typed_conventions:
+        scope = conv.frontmatter.scope
+        groups.setdefault(scope, []).append(conv)
+
+    for scope, group in groups.items():
+        scope_label = scope if scope != "project" else "project"
+        console.print(f"### {scope_label}\n")
+        for conv in group:
+            draft_marker = " [dim]\\[draft][/dim]" if conv.frontmatter.status == "draft" else ""
+            rule_text = conv.rule or conv.frontmatter.title
+            console.print(f"- {rule_text}{draft_marker}")
+        console.print()
+
+    if total_count > display_limit:
+        omitted = total_count - display_limit
+        console.print(
+            f"[dim]... and {omitted} more -- run `lexi conventions {rel_target}` to see all[/dim]\n"
+        )
 
 
 @lexi_app.command()
@@ -161,37 +215,24 @@ def lookup(
     content = design_path.read_text(encoding="utf-8")
     console.print(content)
 
-    # Walk parent .aindex files for inherited conventions
-    from lexibrary.artifacts.aindex_parser import parse_aindex  # noqa: PLC0415
-    from lexibrary.utils.paths import aindex_path  # noqa: PLC0415
+    # Convention delivery via ConventionIndex
+    from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
 
-    conventions_by_dir: list[tuple[str, list[str]]] = []
-    current_dir = target.parent
-    while True:
-        try:
-            current_dir.relative_to(scope_abs)
-        except ValueError:
-            break
-        idx_path = aindex_path(project_root, current_dir)
-        if idx_path.exists():
-            aindex = parse_aindex(idx_path)
-            if aindex is not None and aindex.local_conventions:
-                rel_dir = str(current_dir.relative_to(project_root))
-                if rel_dir == ".":
-                    rel_dir = ""
-                display_dir = f"{rel_dir}/" if rel_dir else "./"
-                conventions_by_dir.append((display_dir, list(aindex.local_conventions)))
-        if current_dir == scope_abs:
-            break
-        current_dir = current_dir.parent
+    conventions_dir = project_root / ".lexibrary" / "conventions"
+    convention_index = ConventionIndex(conventions_dir)
+    convention_index.load()
 
-    if conventions_by_dir:
-        console.print("\n## Applicable Conventions\n")
-        for dir_path, convs in conventions_by_dir:
-            console.print(f"**From `{dir_path}`:**\n")
-            for conv in convs:
-                console.print(f"- {conv}")
-            console.print()
+    if len(convention_index) > 0:
+        rel_target = str(target.relative_to(project_root))
+        display_limit = config.conventions.lookup_display_limit
+        conventions, total_count = convention_index.find_by_scope_limited(
+            rel_target,
+            scope_root=config.scope_root,
+            limit=display_limit,
+        )
+
+        if conventions:
+            _render_conventions(conventions, total_count, display_limit, rel_target)
 
     # Reverse links from the link graph index (graceful degradation)
     from lexibrary.linkgraph import open_index  # noqa: PLC0415
@@ -453,6 +494,341 @@ def concept_link(
 
 
 # ---------------------------------------------------------------------------
+# conventions (top-level list command)
+# ---------------------------------------------------------------------------
+
+
+@lexi_app.command()
+def conventions(
+    path: Annotated[
+        str | None,
+        typer.Argument(help="File or directory path to filter conventions by scope."),
+    ] = None,
+    *,
+    tag: Annotated[
+        list[str] | None,
+        typer.Option("--tag", help="Filter by tag (repeatable, AND logic)."),
+    ] = None,
+    status: Annotated[
+        str | None,
+        typer.Option(
+            "--status",
+            help="Filter by status: active, draft, or deprecated.",
+        ),
+    ] = None,
+    scope: Annotated[
+        str | None,
+        typer.Option("--scope", help="Filter by scope value."),
+    ] = None,
+    show_all: Annotated[
+        bool,
+        typer.Option("--all", help="Include deprecated conventions in results."),
+    ] = False,
+) -> None:
+    """List or filter convention files."""
+    from rich.table import Table  # noqa: PLC0415
+
+    from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
+
+    # Validate --status value if provided
+    valid_statuses = {"active", "draft", "deprecated"}
+    if status is not None and status not in valid_statuses:
+        console.print(
+            f"[red]Invalid status:[/red] '{status}'. "
+            f"Must be one of: {', '.join(sorted(valid_statuses))}"
+        )
+        raise typer.Exit(1)
+
+    project_root = require_project_root()
+    conventions_dir = project_root / ".lexibrary" / "conventions"
+
+    if not conventions_dir.is_dir():
+        console.print(
+            "[yellow]No conventions found.[/yellow] "
+            'Run [cyan]lexi convention new --scope project --body "..."[/cyan] to create one.'
+        )
+        return
+
+    idx = ConventionIndex(conventions_dir)
+    idx.load()
+
+    if len(idx) == 0:
+        console.print(
+            "[yellow]No conventions found.[/yellow] "
+            'Run [cyan]lexi convention new --scope project --body "..."[/cyan] to create one.'
+        )
+        return
+
+    # If a path argument is given, use scope-based retrieval
+    if path is not None:
+        from lexibrary.config.loader import load_config  # noqa: PLC0415
+
+        config = load_config(project_root)
+        results = idx.find_by_scope(path, scope_root=config.scope_root)
+        title = f"Conventions for '{path}'"
+    else:
+        results = list(idx.conventions)
+        title = "All conventions"
+
+    # Apply --tag filter(s) with AND logic
+    if tag:
+        for t in tag:
+            tag_lower = t.strip().lower()
+            results = [
+                c
+                for c in results
+                if any(ct.strip().lower() == tag_lower for ct in c.frontmatter.tags)
+            ]
+
+    # Apply --status filter
+    if status:
+        results = [c for c in results if c.frontmatter.status == status]
+
+    # Apply --scope filter
+    if scope:
+        results = [c for c in results if c.frontmatter.scope == scope]
+
+    # Exclude deprecated by default unless --all or --status deprecated
+    if not show_all and status != "deprecated":
+        results = [c for c in results if c.frontmatter.status != "deprecated"]
+
+    if not results:
+        console.print("[yellow]No conventions matching the given filters.[/yellow]")
+        return
+
+    table = Table(title=title)
+    table.add_column("Title", style="cyan")
+    table.add_column("Scope")
+    table.add_column("Status")
+    table.add_column("Tags")
+    table.add_column("Rule", max_width=60)
+
+    for conv in results:
+        fm = conv.frontmatter
+        status_style = {
+            "active": "green",
+            "draft": "yellow",
+            "deprecated": "red",
+        }.get(fm.status, "dim")
+        rule_text = conv.rule[:60] if conv.rule else ""
+        table.add_row(
+            fm.title,
+            fm.scope,
+            f"[{status_style}]{fm.status}[/{status_style}]",
+            ", ".join(fm.tags) if fm.tags else "",
+            rule_text,
+        )
+
+    console.print(table)
+    console.print(f"\nFound {len(results)} convention(s)")
+
+
+# ---------------------------------------------------------------------------
+# convention new
+# ---------------------------------------------------------------------------
+
+
+@convention_app.command("new")
+def convention_new(
+    *,
+    scope_value: Annotated[
+        str,
+        typer.Option("--scope", help="Convention scope: 'project' or a directory path."),
+    ],
+    body: Annotated[
+        str,
+        typer.Option("--body", help="Convention body text (first paragraph is the rule)."),
+    ],
+    tag: Annotated[
+        list[str] | None,
+        typer.Option("--tag", help="Tag to add (repeatable)."),
+    ] = None,
+    title: Annotated[
+        str | None,
+        typer.Option("--title", help="Convention title (derived from body if omitted)."),
+    ] = None,
+    source: Annotated[
+        str,
+        typer.Option("--source", help="Convention source: 'user' or 'agent'."),
+    ] = "user",
+) -> None:
+    """Create a new convention file."""
+    from lexibrary.artifacts.convention import (  # noqa: PLC0415
+        ConventionFile,
+        ConventionFileFrontmatter,
+        convention_file_path,
+        convention_slug,
+    )
+    from lexibrary.conventions.serializer import serialize_convention_file  # noqa: PLC0415
+
+    project_root = require_project_root()
+    conventions_dir = project_root / ".lexibrary" / "conventions"
+    conventions_dir.mkdir(parents=True, exist_ok=True)
+
+    # Derive title from body if not provided
+    resolved_title = title if title else body[:60].strip()
+
+    # Check for duplicate slug
+    slug = convention_slug(resolved_title)
+    existing = conventions_dir / f"{slug}.md"
+    if existing.exists():
+        console.print(
+            f"[red]Convention already exists:[/red] {existing.relative_to(project_root)}\n"
+            f"Edit the existing file instead of creating a duplicate."
+        )
+        raise typer.Exit(1)
+
+    # Set defaults based on source
+    conv_status: Literal["draft", "active", "deprecated"]
+    if source == "agent":
+        conv_status = "draft"
+        conv_priority = -1
+    else:
+        conv_status = "active"
+        conv_priority = 0
+
+    frontmatter = ConventionFileFrontmatter(
+        title=resolved_title,
+        scope=scope_value,
+        tags=tag or [],
+        status=conv_status,
+        source=source,  # type: ignore[arg-type]
+        priority=conv_priority,
+    )
+    convention = ConventionFile(frontmatter=frontmatter, body=body)
+    content = serialize_convention_file(convention)
+    target = convention_file_path(resolved_title, conventions_dir)
+    target.write_text(content, encoding="utf-8")
+
+    console.print(f"[green]Created[/green] {target.relative_to(project_root)}")
+
+
+# ---------------------------------------------------------------------------
+# convention approve
+# ---------------------------------------------------------------------------
+
+
+@convention_app.command("approve")
+def convention_approve(
+    name: Annotated[
+        str,
+        typer.Argument(help="Convention title or file slug to approve."),
+    ],
+) -> None:
+    """Promote a draft convention to active status."""
+    from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
+    from lexibrary.conventions.serializer import serialize_convention_file  # noqa: PLC0415
+
+    project_root = require_project_root()
+    conventions_dir = project_root / ".lexibrary" / "conventions"
+
+    idx = ConventionIndex(conventions_dir)
+    idx.load()
+
+    conv = _find_convention_by_name_or_slug(idx, name)
+    if conv is None:
+        console.print(
+            f"[red]Convention not found:[/red] '{name}'\n"
+            + (
+                "Available conventions: " + ", ".join(idx.names())
+                if idx.names()
+                else "No conventions exist yet. Run [cyan]lexi convention new[/cyan] first."
+            )
+        )
+        raise typer.Exit(1)
+
+    if conv.frontmatter.status == "active":
+        console.print(f"[yellow]Already active:[/yellow] '{conv.frontmatter.title}'")
+        return
+
+    if conv.frontmatter.status == "deprecated":
+        console.print(
+            f"[red]Cannot approve a deprecated convention.[/red] "
+            f"'{conv.frontmatter.title}' has status 'deprecated'."
+        )
+        raise typer.Exit(1)
+
+    # Update status and re-serialize
+    conv.frontmatter.status = "active"
+    content = serialize_convention_file(conv)
+    if conv.file_path is not None:
+        conv.file_path.write_text(content, encoding="utf-8")
+
+    console.print(f"[green]Approved[/green] '{conv.frontmatter.title}' — status set to active")
+
+
+# ---------------------------------------------------------------------------
+# convention deprecate
+# ---------------------------------------------------------------------------
+
+
+@convention_app.command("deprecate")
+def convention_deprecate(
+    name: Annotated[
+        str,
+        typer.Argument(help="Convention title or file slug to deprecate."),
+    ],
+) -> None:
+    """Set a convention's status to deprecated."""
+    from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
+    from lexibrary.conventions.serializer import serialize_convention_file  # noqa: PLC0415
+
+    project_root = require_project_root()
+    conventions_dir = project_root / ".lexibrary" / "conventions"
+
+    idx = ConventionIndex(conventions_dir)
+    idx.load()
+
+    conv = _find_convention_by_name_or_slug(idx, name)
+    if conv is None:
+        console.print(
+            f"[red]Convention not found:[/red] '{name}'\n"
+            + (
+                "Available conventions: " + ", ".join(idx.names())
+                if idx.names()
+                else "No conventions exist yet. Run [cyan]lexi convention new[/cyan] first."
+            )
+        )
+        raise typer.Exit(1)
+
+    # Update status and re-serialize
+    conv.frontmatter.status = "deprecated"
+    content = serialize_convention_file(conv)
+    if conv.file_path is not None:
+        conv.file_path.write_text(content, encoding="utf-8")
+
+    console.print(
+        f"[green]Deprecated[/green] '{conv.frontmatter.title}' — status set to deprecated"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Convention helpers (private)
+# ---------------------------------------------------------------------------
+
+
+def _find_convention_by_name_or_slug(idx: ConventionIndex, name: str) -> ConventionFile | None:
+    """Find a convention by title (case-insensitive) or file slug.
+
+    Returns the ConventionFile or None if not found.
+    """
+    from lexibrary.artifacts.convention import convention_slug  # noqa: PLC0415
+
+    needle_lower = name.strip().lower()
+    needle_slug = convention_slug(name)
+
+    for conv in idx.conventions:
+        # Match by title (case-insensitive)
+        if conv.frontmatter.title.lower() == needle_lower:
+            return conv
+        # Match by slug
+        if conv.file_path is not None and conv.file_path.stem == needle_slug:
+            return conv
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Design commands
 # ---------------------------------------------------------------------------
 
@@ -504,8 +880,7 @@ def design_update(
         console.print(f"[cyan]{rel_design}[/cyan]\n")
         console.print(content)
         console.print(
-            "\n[dim]Reminder: set `updated_by: agent` in frontmatter "
-            "after making changes.[/dim]"
+            "\n[dim]Reminder: set `updated_by: agent` in frontmatter after making changes.[/dim]"
         )
     else:
         # Scaffold new design file
@@ -974,9 +1349,7 @@ def stack_duplicate(
         raise typer.Exit(1)
 
     mark_duplicate(post_path, duplicate_of=of)
-    console.print(
-        f"[green]Marked {post_id} as duplicate of {of}[/green]"
-    )
+    console.print(f"[green]Marked {post_id} as duplicate of {of}[/green]")
 
 
 # ---------------------------------------------------------------------------
@@ -1019,8 +1392,7 @@ def iwh_write(
     valid_scopes = ("warning", "incomplete", "blocked")
     if scope not in valid_scopes:
         console.print(
-            f"[red]Invalid scope:[/red] '{scope}'. "
-            f"Must be one of: {', '.join(valid_scopes)}"
+            f"[red]Invalid scope:[/red] '{scope}'. Must be one of: {', '.join(valid_scopes)}"
         )
         raise typer.Exit(1)
 
@@ -1068,8 +1440,7 @@ def iwh_read(
     scope_styles = {"warning": "yellow", "incomplete": "cyan", "blocked": "red"}
     style = scope_styles.get(iwh.scope, "dim")
     console.print(
-        f"[{style}][{iwh.scope.upper()}][/{style}] by {iwh.author}"
-        f" at {iwh.created.isoformat()}"
+        f"[{style}][{iwh.scope.upper()}][/{style}] by {iwh.author} at {iwh.created.isoformat()}"
     )
     if iwh.body:
         console.print()
@@ -1239,9 +1610,7 @@ def validate(
 ) -> None:
     """Run consistency checks on the library."""
     project_root = require_project_root()
-    exit_code = _run_validate(
-        project_root, severity=severity, check=check, json_output=json_output
-    )
+    exit_code = _run_validate(project_root, severity=severity, check=check, json_output=json_output)
     raise typer.Exit(exit_code)
 
 
@@ -1264,9 +1633,7 @@ def status(
 ) -> None:
     """Show library health and staleness summary."""
     project_root = require_project_root()
-    exit_code = _run_status(
-        project_root, path=path, quiet=quiet, cli_prefix="lexi"
-    )
+    exit_code = _run_status(project_root, path=path, quiet=quiet, cli_prefix="lexi")
     raise typer.Exit(exit_code)
 
 
@@ -1291,13 +1658,21 @@ def agent_help() -> None:
     commands_text.append("  lexi help", style="cyan")
     commands_text.append("               Show this guidance\n")
     commands_text.append("\n")
-    commands_text.append("Concepts & Knowledge\n", style="bold underline")
+    commands_text.append("Knowledge Management\n", style="bold underline")
     commands_text.append("  lexi concepts [topic]", style="cyan")
     commands_text.append("    List or search concepts (--tag, --status, --all)\n")
     commands_text.append("  lexi concept new <name>", style="cyan")
     commands_text.append("  Create a new concept file (--tag)\n")
     commands_text.append("  lexi concept link <name> <file>", style="cyan")
     commands_text.append("  Add a wikilink to a design file\n")
+    commands_text.append("  lexi conventions [path]", style="cyan")
+    commands_text.append("  List conventions (--tag, --status, --scope, --all)\n")
+    commands_text.append("  lexi convention new", style="cyan")
+    commands_text.append("      Create a convention (--scope, --body, --tag, --title)\n")
+    commands_text.append("  lexi convention approve <name>", style="cyan")
+    commands_text.append("  Promote draft to active\n")
+    commands_text.append("  lexi convention deprecate <name>", style="cyan")
+    commands_text.append("  Set status to deprecated\n")
     commands_text.append("\n")
     commands_text.append("Stack Q&A\n", style="bold underline")
     commands_text.append("  lexi stack post", style="cyan")
@@ -1351,11 +1726,20 @@ def agent_help() -> None:
         '   lexi stack post --title "Why does X use Y?" --tag arch\n',
         style="cyan",
     )
-    workflows_text.append("   lexi stack answer ST-001 --body \"Because ...\"\n", style="cyan")
+    workflows_text.append('   lexi stack answer ST-001 --body "Because ..."\n', style="cyan")
     workflows_text.append("   lexi stack accept ST-001 --answer 1\n", style="cyan")
     workflows_text.append("   Create a Stack post for decisions or questions, answer it,\n")
     workflows_text.append("   and accept the best answer to build project knowledge.\n\n")
-    workflows_text.append("4. Check library health\n", style="bold")
+    workflows_text.append("4. Create and manage conventions\n", style="bold")
+    workflows_text.append(
+        '   lexi convention new --scope project --body "Use rich console"\n',
+        style="cyan",
+    )
+    workflows_text.append("   lexi conventions\n", style="cyan")
+    workflows_text.append('   lexi convention approve "use-rich-console"\n', style="cyan")
+    workflows_text.append("   Create conventions to codify project rules, list them, and\n")
+    workflows_text.append("   approve drafts when they are ready for enforcement.\n\n")
+    workflows_text.append("5. Check library health\n", style="bold")
     workflows_text.append("   lexi status\n", style="cyan")
     workflows_text.append("   lexi validate --severity warning\n", style="cyan")
     workflows_text.append("   Use status to see staleness and coverage at a glance, then run\n")

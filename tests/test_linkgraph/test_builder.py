@@ -1968,380 +1968,342 @@ def _create_aindex_file(
 
 
 # ---------------------------------------------------------------------------
-# _scan_aindex_files tests
+# _scan_convention_files tests
 # ---------------------------------------------------------------------------
 
 
-class TestScanAindexFiles:
-    """Tests for IndexBuilder._scan_aindex_files."""
+class TestScanConventionFiles:
+    """Tests for IndexBuilder._scan_convention_files."""
 
-    def test_discovers_aindex_files(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Discovers all .aindex files under .lexibrary/."""
-        _create_aindex_file(tmp_path, ".lexibrary/src/auth/.aindex")
-        _create_aindex_file(tmp_path, ".lexibrary/src/api/.aindex", _SAMPLE_AINDEX_WITH_WIKILINKS)
+    def test_discovers_convention_files(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+        """Discovers all .md files under .lexibrary/conventions/."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        (conv_dir / "use-type-hints.md").write_text(
+            "---\ntitle: Use Type Hints\nscope: project\n---\nAlways use type hints.\n",
+            encoding="utf-8",
+        )
+        (conv_dir / "auth-middleware.md").write_text(
+            "---\ntitle: Auth Middleware\nscope: src/auth\n---\nUse middleware.\n",
+            encoding="utf-8",
+        )
 
         builder = IndexBuilder(db_conn, tmp_path)
-        files = builder._scan_aindex_files()
+        files = builder._scan_convention_files()
 
         assert len(files) == 2
-        names = [f.parent.name for f in files]
-        assert "auth" in names
-        assert "api" in names
+        names = [f.name for f in files]
+        assert "auth-middleware.md" in names
+        assert "use-type-hints.md" in names
 
     def test_empty_when_no_dir(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Returns empty list when .lexibrary/ does not exist."""
+        """Returns empty list when .lexibrary/conventions/ does not exist."""
         builder = IndexBuilder(db_conn, tmp_path)
-        assert builder._scan_aindex_files() == []
+        assert builder._scan_convention_files() == []
 
-    def test_empty_when_no_aindex_files(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Returns empty list when .lexibrary/ exists but has no .aindex files."""
-        (tmp_path / ".lexibrary" / "src").mkdir(parents=True)
+    def test_empty_when_no_convention_files(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Returns empty list when conventions dir exists but has no .md files."""
+        (tmp_path / ".lexibrary" / "conventions").mkdir(parents=True)
         builder = IndexBuilder(db_conn, tmp_path)
-        assert builder._scan_aindex_files() == []
+        assert builder._scan_convention_files() == []
 
     def test_sorted_order(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """Results are sorted by path for deterministic processing order."""
-        _create_aindex_file(tmp_path, ".lexibrary/src/zebra/.aindex", _SAMPLE_AINDEX_NO_CONVENTIONS)
-        _create_aindex_file(tmp_path, ".lexibrary/src/alpha/.aindex", _SAMPLE_AINDEX_FILE)
-
-        builder = IndexBuilder(db_conn, tmp_path)
-        files = builder._scan_aindex_files()
-
-        assert files[0].parent.name == "alpha"
-        assert files[1].parent.name == "zebra"
-
-    def test_nested_aindex_files(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Discovers .aindex files in deeply nested directories."""
-        _create_aindex_file(
-            tmp_path, ".lexibrary/src/auth/permissions/.aindex", _SAMPLE_AINDEX_FILE
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        (conv_dir / "zebra.md").write_text(
+            "---\ntitle: Zebra\nscope: project\n---\nBody.\n", encoding="utf-8"
         )
-        _create_aindex_file(tmp_path, ".lexibrary/src/auth/.aindex")
+        (conv_dir / "alpha.md").write_text(
+            "---\ntitle: Alpha\nscope: project\n---\nBody.\n", encoding="utf-8"
+        )
 
         builder = IndexBuilder(db_conn, tmp_path)
-        files = builder._scan_aindex_files()
+        files = builder._scan_convention_files()
 
-        assert len(files) == 2
+        assert files[0].name == "alpha.md"
+        assert files[1].name == "zebra.md"
+
+    def test_ignores_non_md_files(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+        """Only .md files are discovered; other files are ignored."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        (conv_dir / "convention.md").write_text(
+            "---\ntitle: Test\nscope: project\n---\nBody.\n", encoding="utf-8"
+        )
+        (conv_dir / ".gitkeep").write_text("", encoding="utf-8")
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        files = builder._scan_convention_files()
+
+        assert len(files) == 1
+        assert files[0].name == "convention.md"
 
 
 # ---------------------------------------------------------------------------
-# _process_aindex_conventions integration tests
+# _process_convention_file integration tests
 # ---------------------------------------------------------------------------
 
 
-class TestProcessAindexConventions:
-    """Integration tests for IndexBuilder._process_aindex_conventions.
+class TestProcessConventionFile:
+    """Integration tests for IndexBuilder._process_convention_file.
 
-    Each test creates a real .aindex file in tmp_path, runs the processing
+    Each test creates a real convention file in tmp_path, runs the processing
     method, and verifies the database contents.
     """
 
-    def test_creates_convention_artifacts(
+    def test_creates_convention_artifact(
         self, db_conn: sqlite3.Connection, tmp_path: Path
     ) -> None:
-        """Processing an .aindex file creates convention artifacts with synthetic paths."""
-        aindex_path = _create_aindex_file(tmp_path)
+        """Processing a convention file creates a convention artifact."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "use-type-hints.md"
+        conv_path.write_text(
+            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "source: user\npriority: 0\ntags:\n  - python\n---\n"
+            "Always use type hints in function signatures.\n",
+            encoding="utf-8",
+        )
+
         builder = IndexBuilder(db_conn, tmp_path)
-        build_ts = "2025-06-15T12:00:00+00:00"
-
-        builder._process_aindex_conventions(aindex_path, build_ts)
-
-        # Two conventions should be created
-        conventions = db_conn.execute(
-            "SELECT path, kind, title FROM artifacts WHERE kind = 'convention' ORDER BY path"
-        ).fetchall()
-        assert len(conventions) == 2
-
-        # Check synthetic paths
-        assert conventions[0][0] == "src/auth::convention::0"
-        assert conventions[1][0] == "src/auth::convention::1"
-
-        # Check kind
-        assert conventions[0][1] == "convention"
-        assert conventions[1][1] == "convention"
-
-    def test_synthetic_path_format(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Synthetic paths follow the {directory_path}::convention::{ordinal} format."""
-        aindex_path = _create_aindex_file(tmp_path)
-        builder = IndexBuilder(db_conn, tmp_path)
-        builder._process_aindex_conventions(aindex_path, "2025-06-15T12:00:00+00:00")
-
-        paths = db_conn.execute(
-            "SELECT path FROM artifacts WHERE kind = 'convention' ORDER BY path"
-        ).fetchall()
-        assert paths[0][0] == "src/auth::convention::0"
-        assert paths[1][0] == "src/auth::convention::1"
-
-    def test_convention_title_truncated(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Convention title is the first 120 characters of the convention text."""
-        aindex_path = _create_aindex_file(tmp_path)
-        builder = IndexBuilder(db_conn, tmp_path)
-        builder._process_aindex_conventions(aindex_path, "2025-06-15T12:00:00+00:00")
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
 
         row = db_conn.execute(
-            "SELECT title FROM artifacts WHERE path = 'src/auth::convention::0'"
+            "SELECT path, kind, title, status FROM artifacts WHERE kind = 'convention'"
         ).fetchone()
         assert row is not None
-        # Title should be the first convention text
-        assert "All endpoints must use" in row[0]
+        assert row[0] == ".lexibrary/conventions/use-type-hints.md"
+        assert row[1] == "convention"
+        assert row[2] == "Use Type Hints"
+        assert row[3] == "active"
 
-    def test_conventions_table_populated(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Conventions table rows are inserted with correct directory_path, ordinal, and body."""
-        aindex_path = _create_aindex_file(tmp_path)
-        builder = IndexBuilder(db_conn, tmp_path)
-        builder._process_aindex_conventions(aindex_path, "2025-06-15T12:00:00+00:00")
-
-        rows = db_conn.execute(
-            "SELECT directory_path, ordinal, body FROM conventions ORDER BY ordinal"
-        ).fetchall()
-        assert len(rows) == 2
-
-        assert rows[0][0] == "src/auth"
-        assert rows[0][1] == 0
-        assert "Authentication" in rows[0][2]
-
-        assert rows[1][0] == "src/auth"
-        assert rows[1][1] == 1
-        assert "bcrypt" in rows[1][2]
-
-    def test_wikilink_extraction_from_conventions(
+    def test_convention_table_row_with_extended_metadata(
         self, db_conn: sqlite3.Connection, tmp_path: Path
     ) -> None:
-        """Wikilinks in convention text create convention_concept_ref links."""
-        aindex_path = _create_aindex_file(tmp_path)
-        builder = IndexBuilder(db_conn, tmp_path)
-        builder._process_aindex_conventions(aindex_path, "2025-06-15T12:00:00+00:00")
+        """Convention table row includes source, status, and priority columns."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "agent-convention.md"
+        conv_path.write_text(
+            "---\ntitle: Agent Convention\nscope: src/auth\nstatus: draft\n"
+            "source: agent\npriority: -1\n---\n"
+            "Agents should follow this convention.\n",
+            encoding="utf-8",
+        )
 
-        # The first convention contains [[Authentication]]
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
+
+        row = db_conn.execute(
+            "SELECT directory_path, ordinal, body, source, status, priority FROM conventions"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "src/auth"
+        assert row[1] == 0
+        assert "Agents should follow" in row[2]
+        assert row[3] == "agent"
+        assert row[4] == "draft"
+        assert row[5] == -1
+
+    def test_project_scope_maps_to_dot(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Convention with scope 'project' gets directory_path '.'."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "global-convention.md"
+        conv_path.write_text(
+            "---\ntitle: Global Convention\nscope: project\n---\n"
+            "This applies everywhere.\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
+
+        row = db_conn.execute(
+            "SELECT directory_path FROM conventions"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "."
+
+    def test_directory_scope(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Convention with directory scope gets the scope value as directory_path."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "auth-convention.md"
+        conv_path.write_text(
+            "---\ntitle: Auth Convention\nscope: src/auth\n---\n"
+            "Auth-specific rule.\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
+
+        row = db_conn.execute(
+            "SELECT directory_path FROM conventions"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "src/auth"
+
+    def test_wikilinks_create_convention_concept_ref_links(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Wikilinks in convention body create convention_concept_ref links."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "auth-convention.md"
+        conv_path.write_text(
+            "---\ntitle: Auth Convention\nscope: project\n---\n"
+            "All endpoints must use [[Authentication]] middleware.\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
+
         links = db_conn.execute(
-            "SELECT tgt.path FROM links l "
-            "JOIN artifacts tgt ON l.target_id = tgt.id "
+            "SELECT l.link_type, a.path FROM links l "
+            "JOIN artifacts a ON l.target_id = a.id "
             "WHERE l.link_type = 'convention_concept_ref'"
         ).fetchall()
-        paths = [r[0] for r in links]
-        assert ".lexibrary/concepts/Authentication.md" in paths
+        assert len(links) == 1
+        assert links[0][0] == "convention_concept_ref"
+        assert links[0][1] == ".lexibrary/concepts/Authentication.md"
 
-    def test_multiple_wikilinks_in_convention(
-        self, db_conn: sqlite3.Connection, tmp_path: Path
-    ) -> None:
-        """Multiple wikilinks in .aindex conventions create correct concept ref links."""
-        aindex_path = _create_aindex_file(
-            tmp_path, ".lexibrary/src/api/.aindex", _SAMPLE_AINDEX_WITH_WIKILINKS
+    def test_tags_inserted(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+        """Tags from convention frontmatter are inserted into the tags table."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "tagged-convention.md"
+        conv_path.write_text(
+            "---\ntitle: Tagged Convention\nscope: project\ntags:\n  - python\n  - imports\n---\n"
+            "Follow import conventions.\n",
+            encoding="utf-8",
         )
-        builder = IndexBuilder(db_conn, tmp_path)
-        builder._process_aindex_conventions(aindex_path, "2025-06-15T12:00:00+00:00")
 
-        links = db_conn.execute(
-            "SELECT tgt.path FROM links l "
-            "JOIN artifacts tgt ON l.target_id = tgt.id "
-            "WHERE l.link_type = 'convention_concept_ref'"
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
+
+        tags = db_conn.execute(
+            "SELECT tag FROM tags ORDER BY tag"
         ).fetchall()
-        paths = sorted(r[0] for r in links)
-        assert ".lexibrary/concepts/APIStandards.md" in paths
-        assert ".lexibrary/concepts/Logging.md" in paths
-        assert ".lexibrary/concepts/Security.md" in paths
+        assert [t[0] for t in tags] == ["imports", "python"]
 
-    def test_stub_concept_artifacts_created(
-        self, db_conn: sqlite3.Connection, tmp_path: Path
-    ) -> None:
-        """Wikilinks to concepts that have no file create stub concept artifacts."""
-        aindex_path = _create_aindex_file(tmp_path)
+    def test_fts_row_created(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+        """FTS row is created with convention title and body."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "fts-convention.md"
+        conv_path.write_text(
+            "---\ntitle: FTS Convention\nscope: project\n---\n"
+            "All modules must have type annotations.\n\n"
+            "This is rationale for the convention.\n",
+            encoding="utf-8",
+        )
+
         builder = IndexBuilder(db_conn, tmp_path)
-        builder._process_aindex_conventions(aindex_path, "2025-06-15T12:00:00+00:00")
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
 
-        concept_row = db_conn.execute(
-            "SELECT kind, title FROM artifacts WHERE path = '.lexibrary/concepts/Authentication.md'"
-        ).fetchone()
-        assert concept_row is not None
-        assert concept_row[0] == "concept"
-        assert concept_row[1] == "Authentication"
-
-    def test_fts_rows_inserted(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """FTS rows are inserted for each convention with the full convention text as body."""
-        aindex_path = _create_aindex_file(tmp_path)
-        builder = IndexBuilder(db_conn, tmp_path)
-        builder._process_aindex_conventions(aindex_path, "2025-06-15T12:00:00+00:00")
-
-        conv_0_id = db_conn.execute(
-            "SELECT id FROM artifacts WHERE path = 'src/auth::convention::0'"
-        ).fetchone()[0]
-        fts_row = db_conn.execute(
-            "SELECT title, body FROM artifacts_fts WHERE rowid = ?",
-            (conv_0_id,),
-        ).fetchone()
-        assert fts_row is not None
-        assert "endpoints" in fts_row[0]
-        assert "Authentication" in fts_row[1]
-
-        conv_1_id = db_conn.execute(
-            "SELECT id FROM artifacts WHERE path = 'src/auth::convention::1'"
-        ).fetchone()[0]
-        fts_row_1 = db_conn.execute(
-            "SELECT title, body FROM artifacts_fts WHERE rowid = ?",
-            (conv_1_id,),
-        ).fetchone()
-        assert fts_row_1 is not None
-        assert "bcrypt" in fts_row_1[1]
-
-    def test_build_log_entries_created(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Build log entries are created for each convention processed."""
-        aindex_path = _create_aindex_file(tmp_path)
-        builder = IndexBuilder(db_conn, tmp_path)
-        build_ts = "2025-06-15T12:00:00+00:00"
-        builder._process_aindex_conventions(aindex_path, build_ts)
-
-        logs = db_conn.execute(
-            "SELECT build_type, artifact_path, artifact_kind, action "
-            "FROM build_log WHERE artifact_kind = 'convention' ORDER BY artifact_path"
+        fts_rows = db_conn.execute(
+            "SELECT title, body FROM artifacts_fts"
         ).fetchall()
-        assert len(logs) == 2
-        assert logs[0][0] == "full"
-        assert logs[0][1] == "src/auth::convention::0"
-        assert logs[0][2] == "convention"
-        assert logs[0][3] == "created"
-        assert logs[1][1] == "src/auth::convention::1"
+        assert len(fts_rows) == 1
+        assert fts_rows[0][0] == "FTS Convention"
+        assert "type annotations" in fts_rows[0][1]
 
-    def test_no_conventions_no_artifacts(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """An .aindex file with no local conventions creates no convention artifacts."""
-        aindex_path = _create_aindex_file(
-            tmp_path, ".lexibrary/src/utils/.aindex", _SAMPLE_AINDEX_NO_CONVENTIONS
+    def test_build_log_entry(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+        """Successful processing creates a 'created' build_log entry."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "logged-convention.md"
+        conv_path.write_text(
+            "---\ntitle: Logged Convention\nscope: project\n---\nBody.\n",
+            encoding="utf-8",
         )
+
         builder = IndexBuilder(db_conn, tmp_path)
-        builder._process_aindex_conventions(aindex_path, "2025-06-15T12:00:00+00:00")
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
 
-        conv_count = db_conn.execute(
-            "SELECT COUNT(*) FROM artifacts WHERE kind = 'convention'"
-        ).fetchone()[0]
-        assert conv_count == 0
-
-        conv_table_count = db_conn.execute("SELECT COUNT(*) FROM conventions").fetchone()[0]
-        assert conv_table_count == 0
-
-    def test_empty_conventions_section_no_artifacts(
-        self, db_conn: sqlite3.Connection, tmp_path: Path
-    ) -> None:
-        """An .aindex file with missing conventions section creates no convention artifacts."""
-        aindex_path = _create_aindex_file(
-            tmp_path, ".lexibrary/src/config/.aindex", _SAMPLE_AINDEX_EMPTY_CONVENTIONS
-        )
-        builder = IndexBuilder(db_conn, tmp_path)
-        builder._process_aindex_conventions(aindex_path, "2025-06-15T12:00:00+00:00")
-
-        conv_count = db_conn.execute(
-            "SELECT COUNT(*) FROM artifacts WHERE kind = 'convention'"
-        ).fetchone()[0]
-        assert conv_count == 0
+        log = db_conn.execute(
+            "SELECT action, artifact_kind FROM build_log WHERE artifact_kind = 'convention'"
+        ).fetchone()
+        assert log is not None
+        assert log[0] == "created"
+        assert log[1] == "convention"
 
     def test_failed_parse_logged(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """A malformed .aindex file results in a 'failed' build_log entry."""
-        malformed = "No proper format here.\n"
-        aindex_path = _create_aindex_file(tmp_path, content=malformed)
+        """A malformed convention file results in a 'failed' build_log entry."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "malformed.md"
+        conv_path.write_text("No frontmatter here.\n", encoding="utf-8")
+
         builder = IndexBuilder(db_conn, tmp_path)
-        build_ts = "2025-06-15T12:00:00+00:00"
-        builder._process_aindex_conventions(aindex_path, build_ts)
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
 
         log = db_conn.execute(
             "SELECT action, error_message FROM build_log WHERE artifact_kind = 'convention'"
         ).fetchone()
         assert log is not None
         assert log[0] == "failed"
-        assert log[1] is not None
         assert "Failed to parse" in log[1]
 
-    def test_convention_no_wikilinks(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """A convention with no wikilinks creates no convention_concept_ref links."""
-        aindex_content = """\
-# src/simple
-
-Simple module.
-
-## Child Map
-
-| Name | Type | Description |
-|------|------|-------------|
-| `main.py` | file | Entry point |
-
-## Local Conventions
-
-- Use consistent indentation (4 spaces)
-- All functions must have docstrings
-
-<!-- lexibrary:meta source="src/simple" source_hash="aaa111"
-generated="2025-06-15T12:00:00" generator="lexibrary-test" -->
-"""
-        aindex_path = _create_aindex_file(tmp_path, ".lexibrary/src/simple/.aindex", aindex_content)
-        builder = IndexBuilder(db_conn, tmp_path)
-        builder._process_aindex_conventions(aindex_path, "2025-06-15T12:00:00+00:00")
-
-        # Two convention artifacts but no links
-        conv_count = db_conn.execute(
-            "SELECT COUNT(*) FROM artifacts WHERE kind = 'convention'"
-        ).fetchone()[0]
-        assert conv_count == 2
-
-        link_count = db_conn.execute(
-            "SELECT COUNT(*) FROM links WHERE link_type = 'convention_concept_ref'"
-        ).fetchone()[0]
-        assert link_count == 0
-
-    def test_multiple_aindex_files_processed(
+    def test_multiple_conventions_same_scope_get_ordinals(
         self, db_conn: sqlite3.Connection, tmp_path: Path
     ) -> None:
-        """Multiple .aindex files can be processed sequentially without conflict."""
-        _create_aindex_file(tmp_path, ".lexibrary/src/auth/.aindex", _SAMPLE_AINDEX_FILE)
-        _create_aindex_file(tmp_path, ".lexibrary/src/api/.aindex", _SAMPLE_AINDEX_WITH_WIKILINKS)
+        """Multiple conventions with same scope get incrementing ordinals."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+
+        (conv_dir / "conv-a.md").write_text(
+            "---\ntitle: Convention A\nscope: src/auth\n---\nFirst.\n",
+            encoding="utf-8",
+        )
+        (conv_dir / "conv-b.md").write_text(
+            "---\ntitle: Convention B\nscope: src/auth\n---\nSecond.\n",
+            encoding="utf-8",
+        )
 
         builder = IndexBuilder(db_conn, tmp_path)
         build_ts = "2025-06-15T12:00:00+00:00"
+        for f in builder._scan_convention_files():
+            builder._process_convention_file(f, build_ts)
 
-        for aindex in builder._scan_aindex_files():
-            builder._process_aindex_conventions(aindex, build_ts)
+        ordinals = db_conn.execute(
+            "SELECT ordinal FROM conventions WHERE directory_path = 'src/auth' ORDER BY ordinal"
+        ).fetchall()
+        assert [o[0] for o in ordinals] == [0, 1]
 
-        conv_count = db_conn.execute(
-            "SELECT COUNT(*) FROM artifacts WHERE kind = 'convention'"
-        ).fetchone()[0]
-        # src/auth: 2 conventions + src/api: 3 conventions = 5
-        assert conv_count == 5
-
-        # Conventions table should have all entries
-        table_count = db_conn.execute("SELECT COUNT(*) FROM conventions").fetchone()[0]
-        assert table_count == 5
-
-        # Convention concept refs: src/auth has 1 (Authentication), src/api has 3
-        link_count = db_conn.execute(
-            "SELECT COUNT(*) FROM links WHERE link_type = 'convention_concept_ref'"
-        ).fetchone()[0]
-        assert link_count == 4
-
-    def test_convention_title_long_text_truncated(
+    def test_default_column_values(
         self, db_conn: sqlite3.Connection, tmp_path: Path
     ) -> None:
-        """Convention titles longer than 120 characters are truncated."""
-        long_convention = "A" * 200
-        aindex_content = f"""\
-# src/long
+        """Convention with no explicit source/status/priority uses defaults from frontmatter."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "defaults.md"
+        conv_path.write_text(
+            "---\ntitle: Defaults Convention\nscope: project\n---\nBody.\n",
+            encoding="utf-8",
+        )
 
-Long convention module.
-
-## Child Map
-
-(none)
-
-## Local Conventions
-
-- {long_convention}
-
-<!-- lexibrary:meta source="src/long" source_hash="bbb222"
-generated="2025-06-15T12:00:00" generator="lexibrary-test" -->
-"""
-        aindex_path = _create_aindex_file(tmp_path, ".lexibrary/src/long/.aindex", aindex_content)
         builder = IndexBuilder(db_conn, tmp_path)
-        builder._process_aindex_conventions(aindex_path, "2025-06-15T12:00:00+00:00")
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
 
         row = db_conn.execute(
-            "SELECT title FROM artifacts WHERE path = 'src/long::convention::0'"
+            "SELECT source, status, priority FROM conventions"
         ).fetchone()
         assert row is not None
-        assert len(row[0]) == 120
+        # ConventionFileFrontmatter defaults: source='user', status='draft', priority=0
+        assert row[0] == "user"
+        assert row[1] == "draft"
+        assert row[2] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -2350,7 +2312,7 @@ generated="2025-06-15T12:00:00" generator="lexibrary-test" -->
 
 
 def _create_full_project_tree(tmp_path: Path) -> None:
-    """Create a sample project tree with design files, concepts, Stack posts, and .aindex files.
+    """Create a sample project tree with design files, concepts, Stack posts, and conventions.
 
     This sets up a realistic project with cross-references between all artifact
     types to exercise the full_build() pipeline end-to-end.
@@ -2392,9 +2354,26 @@ def _create_full_project_tree(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    # .aindex file with conventions
+    # .aindex file
     (design_dir / ".aindex").write_text(
         _SAMPLE_AINDEX_FILE,
+        encoding="utf-8",
+    )
+
+    # Convention files
+    conv_dir = tmp_path / ".lexibrary" / "conventions"
+    conv_dir.mkdir(parents=True, exist_ok=True)
+    (conv_dir / "use-type-hints.md").write_text(
+        "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+        "source: user\npriority: 0\ntags:\n  - python\n  - typing\n---\n"
+        "All functions must have type annotations.\n\n"
+        "This ensures code readability and IDE support.\n",
+        encoding="utf-8",
+    )
+    (conv_dir / "auth-middleware.md").write_text(
+        "---\ntitle: Auth Middleware Required\nscope: src/auth\nstatus: active\n"
+        "source: user\npriority: 1\ntags:\n  - auth\n---\n"
+        "All endpoints must use [[Authentication]] middleware.\n",
         encoding="utf-8",
     )
 
@@ -2415,7 +2394,7 @@ class TestFullBuild:
     def test_full_build_populates_all_artifact_types(
         self, db_conn: sqlite3.Connection, tmp_path: Path
     ) -> None:
-        """full_build processes design files, concepts, Stack posts, and .aindex conventions."""
+        """full_build processes design files, concepts, and Stack posts."""
         _create_full_project_tree(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
         result = builder.full_build()
@@ -2428,10 +2407,10 @@ class TestFullBuild:
         kinds = db_conn.execute("SELECT DISTINCT kind FROM artifacts ORDER BY kind").fetchall()
         kind_set = {row[0] for row in kinds}
         assert "source" in kind_set
+        assert "convention" in kind_set
         assert "design" in kind_set
         assert "concept" in kind_set
         assert "stack" in kind_set
-        assert "convention" in kind_set
 
     def test_full_build_returns_correct_counts(
         self, db_conn: sqlite3.Connection, tmp_path: Path
@@ -2477,7 +2456,7 @@ class TestFullBuild:
     def test_full_build_creates_links_between_artifact_types(
         self, db_conn: sqlite3.Connection, tmp_path: Path
     ) -> None:
-        """Cross-artifact links are created: design_source, wikilink, stack/convention refs."""
+        """Cross-artifact links are created: design_source, wikilink, stack refs."""
         _create_full_project_tree(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
         builder.full_build()
@@ -2490,7 +2469,8 @@ class TestFullBuild:
         assert "design_source" in link_type_set
         assert "wikilink" in link_type_set
         assert "design_stack_ref" in link_type_set
-        assert "convention_concept_ref" in link_type_set
+        # convention_concept_ref no longer created from .aindex;
+        # TG7 will rewrite convention processing to read from files
 
     def test_full_build_populates_fts(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """FTS rows are inserted for searchable artifact types."""
@@ -2525,21 +2505,16 @@ class TestFullBuild:
         assert "authn" in alias_names
         assert "authz" in alias_names
 
-    def test_full_build_populates_conventions_table(
+    def test_full_build_conventions_table_populated(
         self, db_conn: sqlite3.Connection, tmp_path: Path
     ) -> None:
-        """Convention rows are inserted into the conventions table."""
+        """Convention table is populated from .lexibrary/conventions/ files during full_build."""
         _create_full_project_tree(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
         builder.full_build()
 
         conv_count = db_conn.execute("SELECT COUNT(*) FROM conventions").fetchone()[0]
-        assert conv_count > 0
-
-        # Check a convention body is populated
-        conv = db_conn.execute("SELECT body FROM conventions WHERE ordinal = 0").fetchone()
-        assert conv is not None
-        assert len(conv[0]) > 0
+        assert conv_count == 2
 
     def test_full_build_populates_tags(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """Tags from design files and concept files are stored in the tags table."""
@@ -2763,6 +2738,11 @@ class TestClassifyPath:
         p = builder.project_root / ".lexibrary" / "stack" / "ST-001.md"
         assert builder._classify_path(p) == "stack"
 
+    def test_convention_file(self, builder: IndexBuilder) -> None:
+        """A .md file under .lexibrary/conventions/ is classified as 'convention'."""
+        p = builder.project_root / ".lexibrary" / "conventions" / "use-type-hints.md"
+        assert builder._classify_path(p) == "convention"
+
     def test_aindex_file(self, builder: IndexBuilder) -> None:
         """A .aindex file under .lexibrary/ is classified as 'aindex'."""
         p = builder.project_root / ".lexibrary" / "src" / "auth" / ".aindex"
@@ -2782,6 +2762,11 @@ class TestClassifyPath:
         """Relative concept paths are correctly classified."""
         p = Path(".lexibrary/concepts/Auth.md")
         assert builder._classify_path(p) == "concept"
+
+    def test_relative_convention_path(self, builder: IndexBuilder) -> None:
+        """Relative convention paths are correctly classified."""
+        p = Path(".lexibrary/conventions/use-type-hints.md")
+        assert builder._classify_path(p) == "convention"
 
     def test_relative_source_path(self, builder: IndexBuilder) -> None:
         """Relative source paths are correctly classified."""
@@ -3039,62 +3024,33 @@ See also [[Authorization]] for related concepts.
         # SessionManagement should NOT be linked anymore
         assert ".lexibrary/concepts/SessionManagement.md" not in wikilink_paths
 
-    def test_modified_aindex_conventions(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Modifying a .aindex file replaces convention artifacts."""
+    def test_aindex_change_does_not_affect_conventions(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Modifying an .aindex file does not change convention artifacts.
+
+        Conventions come from .lexibrary/conventions/ files, not .aindex.
+        """
         _create_full_project_tree(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
         builder.full_build()
 
-        # Count conventions before
+        # Conventions are populated from .lexibrary/conventions/ files
         conv_count_before = db_conn.execute(
-            "SELECT COUNT(*) FROM conventions WHERE directory_path = 'src/auth'"
+            "SELECT COUNT(*) FROM conventions"
         ).fetchone()[0]
-        assert conv_count_before == 2  # the sample has 2 conventions
+        assert conv_count_before == 2
 
-        # Modify .aindex with 3 conventions
-        modified_aindex = """\
-# src/auth
-
-Updated authentication module.
-
-## Child Map
-
-| Name | Type | Description |
-|------|------|-------------|
-| `login.py` | file | Handles user login |
-| `middleware.py` | file | Auth middleware |
-
-## Local Conventions
-
-- All endpoints must use [[Authentication]] middleware
-- Password hashing must use bcrypt with cost factor 12
-- All auth tokens must be [[Security]] validated on every request
-
-<!-- lexibrary:meta source="src/auth" source_hash="newdef"
-generated="2025-06-15T12:00:00" generator="lexibrary-test" -->
-"""
-        aindex_file = tmp_path / ".lexibrary" / "src" / "auth" / ".aindex"
-        aindex_file.write_text(modified_aindex, encoding="utf-8")
-
-        result = builder.incremental_update([Path(".lexibrary/src/auth/.aindex")])
-
+        # Modify the .aindex file
+        aindex_path = tmp_path / ".lexibrary" / "src" / "auth" / ".aindex"
+        result = builder.incremental_update([aindex_path])
         assert result.errors == []
 
-        # Should now have 3 conventions
+        # Convention count should remain unchanged
         conv_count_after = db_conn.execute(
-            "SELECT COUNT(*) FROM conventions WHERE directory_path = 'src/auth'"
+            "SELECT COUNT(*) FROM conventions"
         ).fetchone()[0]
-        assert conv_count_after == 3
-
-        # All convention artifacts should have FTS rows
-        conv_ids = db_conn.execute(
-            "SELECT artifact_id FROM conventions WHERE directory_path = 'src/auth'"
-        ).fetchall()
-        for (cid,) in conv_ids:
-            fts = db_conn.execute(
-                "SELECT COUNT(*) FROM artifacts_fts WHERE rowid = ?", (cid,)
-            ).fetchone()[0]
-            assert fts == 1
+        assert conv_count_after == conv_count_before
 
     def test_incremental_update_returns_build_result(
         self, db_conn: sqlite3.Connection, tmp_path: Path
@@ -3517,6 +3473,308 @@ class TestOpenIndex:
 
         result = open_index(tmp_path)
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Convention full build integration tests (TG7)
+# ---------------------------------------------------------------------------
+
+
+class TestFullBuildConventions:
+    """Integration tests for convention processing during full_build().
+
+    Verifies that convention files under .lexibrary/conventions/ are correctly
+    indexed during a full build -- artifacts, conventions table rows, links,
+    tags, and FTS entries.
+    """
+
+    def test_full_build_indexes_convention_files(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """full_build() indexes convention files as convention artifacts."""
+        _create_full_project_tree(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        result = builder.full_build()
+
+        assert result.errors == []
+
+        conv_artifacts = db_conn.execute(
+            "SELECT path, kind, title, status FROM artifacts "
+            "WHERE kind = 'convention' ORDER BY path"
+        ).fetchall()
+        assert len(conv_artifacts) == 2
+
+        paths = [r[0] for r in conv_artifacts]
+        assert ".lexibrary/conventions/auth-middleware.md" in paths
+        assert ".lexibrary/conventions/use-type-hints.md" in paths
+
+    def test_full_build_populates_conventions_table_with_metadata(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """full_build() creates conventions table rows with source, status, priority."""
+        _create_full_project_tree(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder.full_build()
+
+        rows = db_conn.execute(
+            "SELECT directory_path, body, source, status, priority "
+            "FROM conventions ORDER BY directory_path, ordinal"
+        ).fetchall()
+
+        # We have a project-scope convention and an src/auth-scope convention
+        assert len(rows) == 2
+
+        # Project-scope convention (directory_path = ".")
+        project_row = next(r for r in rows if r[0] == ".")
+        assert "type annotations" in project_row[1]
+        assert project_row[2] == "user"
+        assert project_row[3] == "active"
+        assert project_row[4] == 0
+
+        # Directory-scope convention (directory_path = "src/auth")
+        auth_row = next(r for r in rows if r[0] == "src/auth")
+        assert "middleware" in auth_row[1].lower()
+        assert auth_row[2] == "user"
+        assert auth_row[3] == "active"
+        assert auth_row[4] == 1
+
+    def test_full_build_convention_wikilinks_create_links(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """full_build() extracts wikilinks from convention bodies and creates links."""
+        _create_full_project_tree(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder.full_build()
+
+        links = db_conn.execute(
+            "SELECT l.link_type, target.path "
+            "FROM links l "
+            "JOIN artifacts source ON l.source_id = source.id "
+            "JOIN artifacts target ON l.target_id = target.id "
+            "WHERE source.kind = 'convention' AND l.link_type = 'convention_concept_ref'"
+        ).fetchall()
+
+        # The auth-middleware convention references [[Authentication]]
+        assert len(links) >= 1
+        target_paths = [r[1] for r in links]
+        assert ".lexibrary/concepts/Authentication.md" in target_paths
+
+    def test_full_build_convention_tags_indexed(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """full_build() indexes convention tags."""
+        _create_full_project_tree(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder.full_build()
+
+        conv_tags = db_conn.execute(
+            "SELECT t.tag FROM tags t "
+            "JOIN artifacts a ON t.artifact_id = a.id "
+            "WHERE a.kind = 'convention' ORDER BY t.tag"
+        ).fetchall()
+
+        tag_set = {r[0] for r in conv_tags}
+        assert "python" in tag_set
+        assert "typing" in tag_set
+        assert "auth" in tag_set
+
+    def test_full_build_convention_fts_searchable(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """full_build() populates FTS for convention files."""
+        _create_full_project_tree(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder.full_build()
+
+        fts_rows = db_conn.execute(
+            "SELECT f.title, f.body FROM artifacts_fts f "
+            "JOIN artifacts a ON f.rowid = a.id "
+            "WHERE a.kind = 'convention'"
+        ).fetchall()
+
+        assert len(fts_rows) == 2
+        titles = {r[0] for r in fts_rows}
+        assert "Use Type Hints" in titles
+        assert "Auth Middleware Required" in titles
+
+    def test_full_build_convention_build_log(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """full_build() creates build_log entries for conventions."""
+        _create_full_project_tree(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder.full_build()
+
+        logs = db_conn.execute(
+            "SELECT action, artifact_kind FROM build_log "
+            "WHERE artifact_kind = 'convention' ORDER BY artifact_path"
+        ).fetchall()
+
+        assert len(logs) == 2
+        assert all(r[0] == "created" for r in logs)
+        assert all(r[1] == "convention" for r in logs)
+
+    def test_full_build_idempotent_for_conventions(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Running full_build() twice produces the same convention count."""
+        _create_full_project_tree(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+
+        builder.full_build()
+        count1 = db_conn.execute(
+            "SELECT COUNT(*) FROM conventions"
+        ).fetchone()[0]
+
+        builder.full_build()
+        count2 = db_conn.execute(
+            "SELECT COUNT(*) FROM conventions"
+        ).fetchone()[0]
+
+        assert count1 == count2 == 2
+
+
+# ---------------------------------------------------------------------------
+# Convention incremental update tests (TG7)
+# ---------------------------------------------------------------------------
+
+
+class TestIncrementalConventions:
+    """Integration tests for convention file handling during incremental_update()."""
+
+    def test_new_convention_file_added(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """incremental_update() indexes a new convention file."""
+        _create_full_project_tree(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder.full_build()
+
+        # Add a new convention file
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        new_conv = conv_dir / "new-convention.md"
+        new_conv.write_text(
+            "---\ntitle: New Convention\nscope: project\nstatus: active\n"
+            "source: agent\npriority: 5\ntags:\n  - new\n---\n"
+            "A newly added convention.\n",
+            encoding="utf-8",
+        )
+
+        result = builder.incremental_update([new_conv])
+        assert result.errors == []
+
+        # Verify the new convention artifact was created
+        row = db_conn.execute(
+            "SELECT path, kind, title, status FROM artifacts "
+            "WHERE path = '.lexibrary/conventions/new-convention.md'"
+        ).fetchone()
+        assert row is not None
+        assert row[1] == "convention"
+        assert row[2] == "New Convention"
+        assert row[3] == "active"
+
+        # Verify convention table row
+        conv_row = db_conn.execute(
+            "SELECT directory_path, source, status, priority FROM conventions "
+            "WHERE artifact_id = (SELECT id FROM artifacts WHERE path = '.lexibrary/conventions/new-convention.md')"
+        ).fetchone()
+        assert conv_row is not None
+        assert conv_row[0] == "."
+        assert conv_row[1] == "agent"
+        assert conv_row[2] == "active"
+        assert conv_row[3] == 5
+
+    def test_modified_convention_file_updated(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """incremental_update() re-indexes a modified convention file."""
+        _create_full_project_tree(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder.full_build()
+
+        # Modify an existing convention file
+        conv_path = tmp_path / ".lexibrary" / "conventions" / "use-type-hints.md"
+        conv_path.write_text(
+            "---\ntitle: Use Type Hints (Updated)\nscope: project\nstatus: active\n"
+            "source: user\npriority: 10\ntags:\n  - python\n  - updated\n---\n"
+            "Updated rule: all functions MUST have type annotations.\n",
+            encoding="utf-8",
+        )
+
+        result = builder.incremental_update([conv_path])
+        assert result.errors == []
+
+        # Verify the artifact was updated
+        row = db_conn.execute(
+            "SELECT title FROM artifacts WHERE path = '.lexibrary/conventions/use-type-hints.md'"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "Use Type Hints (Updated)"
+
+        # Verify convention table row was updated
+        conv_row = db_conn.execute(
+            "SELECT priority FROM conventions "
+            "WHERE artifact_id = (SELECT id FROM artifacts WHERE path = '.lexibrary/conventions/use-type-hints.md')"
+        ).fetchone()
+        assert conv_row is not None
+        assert conv_row[0] == 10
+
+        # Verify tags were updated
+        tags = db_conn.execute(
+            "SELECT tag FROM tags t JOIN artifacts a ON t.artifact_id = a.id "
+            "WHERE a.path = '.lexibrary/conventions/use-type-hints.md' ORDER BY tag"
+        ).fetchall()
+        tag_list = [t[0] for t in tags]
+        assert "updated" in tag_list
+        assert "python" in tag_list
+        # Old tag 'typing' should be gone
+        assert "typing" not in tag_list
+
+    def test_deleted_convention_file_removed(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """incremental_update() removes a deleted convention file from the index."""
+        _create_full_project_tree(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder.full_build()
+
+        # Verify convention exists before deletion
+        pre_count = db_conn.execute(
+            "SELECT COUNT(*) FROM artifacts WHERE kind = 'convention'"
+        ).fetchone()[0]
+        assert pre_count == 2
+
+        # Delete a convention file
+        conv_path = tmp_path / ".lexibrary" / "conventions" / "use-type-hints.md"
+        conv_path.unlink()
+
+        result = builder.incremental_update([conv_path])
+        assert result.errors == []
+
+        # Should have one fewer convention artifact
+        post_count = db_conn.execute(
+            "SELECT COUNT(*) FROM artifacts WHERE kind = 'convention'"
+        ).fetchone()[0]
+        assert post_count == 1
+
+    def test_malformed_convention_raises_and_logs(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """incremental_update() logs errors for malformed convention files."""
+        _create_full_project_tree(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder.full_build()
+
+        # Write a malformed convention file
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        bad_conv = conv_dir / "bad-convention.md"
+        bad_conv.write_text("No frontmatter at all\n", encoding="utf-8")
+
+        result = builder.incremental_update([bad_conv])
+
+        # The error is caught and logged
+        assert len(result.errors) == 1
+        assert "bad-convention.md" in result.errors[0]
 
     def test_connection_can_query_schema(self, tmp_path: Path) -> None:
         """The connection from open_index can query schema version from meta."""

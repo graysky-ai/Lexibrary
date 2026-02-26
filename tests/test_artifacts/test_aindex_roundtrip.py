@@ -28,7 +28,6 @@ def _aindex(**overrides: object) -> AIndexFile:
         "directory_path": "src",
         "billboard": "Source code directory.",
         "entries": [],
-        "local_conventions": [],
         "metadata": _meta(),
     }
     base.update(overrides)
@@ -69,7 +68,6 @@ class TestRoundTripBasic:
             assert parsed_entry.name == orig_entry.name
             assert parsed_entry.entry_type == orig_entry.entry_type
             assert parsed_entry.description == orig_entry.description
-        assert result.local_conventions == original.local_conventions
         assert result.metadata == original.metadata
 
     def test_round_trip_preserves_metadata(self, tmp_path: Path) -> None:
@@ -146,7 +144,6 @@ class TestRoundTripEmptyDirectory:
             directory_path="empty_dir",
             billboard="An empty directory.",
             entries=[],
-            local_conventions=[],
         )
 
         result = _round_trip(original, tmp_path)
@@ -155,43 +152,7 @@ class TestRoundTripEmptyDirectory:
         assert result.directory_path == "empty_dir"
         assert result.billboard == "An empty directory."
         assert result.entries == []
-        assert result.local_conventions == []
         assert result.metadata == original.metadata
-
-
-class TestRoundTripLocalConventions:
-    """Task 4.2: round-trip test for local conventions."""
-
-    def test_single_convention_round_trip(self, tmp_path: Path) -> None:
-        original = _aindex(
-            local_conventions=["All modules use from __future__ import annotations"],
-        )
-
-        result = _round_trip(original, tmp_path)
-
-        assert result is not None
-        assert result.local_conventions == ["All modules use from __future__ import annotations"]
-
-    def test_multiple_conventions_round_trip(self, tmp_path: Path) -> None:
-        conventions = [
-            "Use UTC everywhere",
-            "No bare prints",
-            "Type hints required on all public functions",
-        ]
-        original = _aindex(local_conventions=conventions)
-
-        result = _round_trip(original, tmp_path)
-
-        assert result is not None
-        assert result.local_conventions == conventions
-
-    def test_empty_conventions_round_trip(self, tmp_path: Path) -> None:
-        original = _aindex(local_conventions=[])
-
-        result = _round_trip(original, tmp_path)
-
-        assert result is not None
-        assert result.local_conventions == []
 
 
 class TestRoundTripUnicode:
@@ -258,16 +219,6 @@ class TestRoundTripUnicode:
         assert result is not None
         assert result.billboard == "Biblioth\u00e8que de donn\u00e9es \u2014 data library."
 
-    def test_unicode_local_convention(self, tmp_path: Path) -> None:
-        original = _aindex(
-            local_conventions=["Use \u00abguillemets\u00bb for French strings"],
-        )
-
-        result = _round_trip(original, tmp_path)
-
-        assert result is not None
-        assert result.local_conventions == ["Use \u00abguillemets\u00bb for French strings"]
-
     def test_mixed_unicode_round_trip(self, tmp_path: Path) -> None:
         """Full round-trip with Unicode in every field."""
         entries = [
@@ -286,7 +237,6 @@ class TestRoundTripUnicode:
             directory_path="projet/\u00e9l\u00e8ves",
             billboard="R\u00e9pertoire des \u00e9l\u00e8ves.",
             entries=entries,
-            local_conventions=["\u00c9crire en fran\u00e7ais"],
         )
 
         result = _round_trip(original, tmp_path)
@@ -302,5 +252,4 @@ class TestRoundTripUnicode:
             result.entries[1].description
             == "\u65e5\u672c\u8a9e\u306e\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8"
         )
-        assert result.local_conventions == ["\u00c9crire en fran\u00e7ais"]
         assert result.metadata == original.metadata

@@ -6,6 +6,8 @@ import pytest
 from pydantic import ValidationError
 
 from lexibrary.config.schema import (
+    ConventionConfig,
+    ConventionDeclaration,
     CrawlConfig,
     DaemonConfig,
     IgnoreConfig,
@@ -247,3 +249,131 @@ def test_iwh_config_importable_from_package() -> None:
     from lexibrary.config import IWHConfig as PackageIWHConfig
 
     assert PackageIWHConfig is IWHConfig
+
+
+# --- ConventionConfig tests ---
+
+
+def test_convention_config_defaults() -> None:
+    """ConventionConfig() defaults to lookup_display_limit=5."""
+    config = ConventionConfig()
+    assert config.lookup_display_limit == 5
+
+
+def test_convention_config_custom_display_limit() -> None:
+    """ConventionConfig accepts a custom lookup_display_limit from YAML."""
+    config = ConventionConfig.model_validate({"lookup_display_limit": 10})
+    assert config.lookup_display_limit == 10
+
+
+def test_convention_config_extra_fields_ignored() -> None:
+    """ConventionConfig tolerates unknown extra fields without raising."""
+    config = ConventionConfig.model_validate(
+        {"lookup_display_limit": 5, "unknown_field": "value"}
+    )
+    assert config.lookup_display_limit == 5
+    assert not hasattr(config, "unknown_field")
+
+
+def test_convention_config_accessible_from_lexibrary_config() -> None:
+    """LexibraryConfig includes ConventionConfig sub-model with default values."""
+    config = LexibraryConfig()
+    assert isinstance(config.conventions, ConventionConfig)
+    assert config.conventions.lookup_display_limit == 5
+
+
+def test_convention_config_from_yaml() -> None:
+    """conventions.lookup_display_limit can be set via top-level config."""
+    config = LexibraryConfig.model_validate(
+        {"conventions": {"lookup_display_limit": 10}}
+    )
+    assert config.conventions.lookup_display_limit == 10
+
+
+# --- ConventionDeclaration tests ---
+
+
+def test_convention_declaration_full() -> None:
+    """ConventionDeclaration with all fields populated."""
+    decl = ConventionDeclaration(
+        body="Use UTC everywhere", scope="project", tags=["time"]
+    )
+    assert decl.body == "Use UTC everywhere"
+    assert decl.scope == "project"
+    assert decl.tags == ["time"]
+
+
+def test_convention_declaration_minimal() -> None:
+    """ConventionDeclaration with only body defaults scope and tags."""
+    decl = ConventionDeclaration(body="No bare prints")
+    assert decl.body == "No bare prints"
+    assert decl.scope == "project"
+    assert decl.tags == []
+
+
+def test_convention_declaration_extra_fields_ignored() -> None:
+    """ConventionDeclaration tolerates unknown extra fields."""
+    decl = ConventionDeclaration.model_validate(
+        {"body": "Rule text", "unknown": "value"}
+    )
+    assert decl.body == "Rule text"
+    assert not hasattr(decl, "unknown")
+
+
+def test_convention_declarations_in_lexibrary_config() -> None:
+    """convention_declarations can be populated from YAML on LexibraryConfig."""
+    config = LexibraryConfig.model_validate(
+        {
+            "convention_declarations": [
+                {"body": "Use UTC everywhere", "scope": "project", "tags": ["time"]},
+                {"body": "No bare prints"},
+            ]
+        }
+    )
+    assert len(config.convention_declarations) == 2
+    assert config.convention_declarations[0].body == "Use UTC everywhere"
+    assert config.convention_declarations[0].scope == "project"
+    assert config.convention_declarations[0].tags == ["time"]
+    assert config.convention_declarations[1].body == "No bare prints"
+    assert config.convention_declarations[1].scope == "project"
+    assert config.convention_declarations[1].tags == []
+
+
+def test_convention_declarations_default_empty() -> None:
+    """convention_declarations defaults to empty list on LexibraryConfig."""
+    config = LexibraryConfig()
+    assert config.convention_declarations == []
+
+
+# --- TokenBudgetConfig convention_file_tokens tests ---
+
+
+def test_convention_file_tokens_default() -> None:
+    """TokenBudgetConfig.convention_file_tokens defaults to 500."""
+    config = TokenBudgetConfig()
+    assert config.convention_file_tokens == 500
+
+
+def test_convention_file_tokens_custom() -> None:
+    """convention_file_tokens can be overridden from YAML."""
+    config = LexibraryConfig.model_validate(
+        {"token_budgets": {"convention_file_tokens": 800}}
+    )
+    assert config.token_budgets.convention_file_tokens == 800
+
+
+# --- Config package re-export tests ---
+
+
+def test_convention_config_importable_from_package() -> None:
+    """ConventionConfig is re-exported from lexibrary.config."""
+    from lexibrary.config import ConventionConfig as PackageConventionConfig
+
+    assert PackageConventionConfig is ConventionConfig
+
+
+def test_convention_declaration_importable_from_package() -> None:
+    """ConventionDeclaration is re-exported from lexibrary.config."""
+    from lexibrary.config import ConventionDeclaration as PackageConventionDeclaration
+
+    assert PackageConventionDeclaration is ConventionDeclaration

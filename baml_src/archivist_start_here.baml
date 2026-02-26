@@ -39,10 +39,7 @@ function ArchivistGenerateStartHere(
        | --- | --- |
        Include 5-10 rows covering the most common development tasks.
 
-    4. **convention_index**: A compact bulleted list of naming conventions,
-       patterns, or rules observed in the project. 3-8 items.
-
-    5. **navigation_protocol**: 3-5 bullet instructions telling a reader
+    4. **navigation_protocol**: 3-5 bullet instructions telling a reader
        how to use the .lexibrary knowledge layer effectively (e.g. "read
        the design file before editing a source file").
 

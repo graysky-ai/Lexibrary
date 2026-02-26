@@ -17,7 +17,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 """Schema version. Mismatch on open triggers a full rebuild."""
 
 
@@ -102,6 +102,9 @@ CREATE TABLE IF NOT EXISTS conventions (
     directory_path TEXT    NOT NULL,
     ordinal        INTEGER NOT NULL DEFAULT 0,
     body           TEXT    NOT NULL,
+    source         TEXT    NOT NULL DEFAULT 'user',
+    status         TEXT    NOT NULL DEFAULT 'active',
+    priority       INTEGER NOT NULL DEFAULT 0,
     UNIQUE(directory_path, ordinal)
 );
 """
@@ -162,6 +165,7 @@ _INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_aliases_artifact ON aliases(artifact_id);",
     # conventions
     "CREATE INDEX IF NOT EXISTS idx_conventions_dir ON conventions(directory_path);",
+    "CREATE INDEX IF NOT EXISTS idx_conventions_status ON conventions(status);",
     # build_log
     "CREATE INDEX IF NOT EXISTS idx_build_log_started ON build_log(build_started);",
     "CREATE INDEX IF NOT EXISTS idx_build_log_path    ON build_log(artifact_path);",

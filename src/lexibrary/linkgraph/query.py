@@ -80,7 +80,7 @@ class TraversalNode:
 
 @dataclass
 class ConventionResult:
-    """A local convention body scoped to a directory path.
+    """A convention body scoped to a directory path with lifecycle metadata.
 
     Returned by ``get_conventions``, ordered by directory depth
     (root-to-leaf) then ordinal within each directory.
@@ -89,6 +89,9 @@ class ConventionResult:
     body: str
     directory_path: str
     ordinal: int
+    source: str = "user"
+    status: str = "active"
+    priority: int = 0
 
 
 @dataclass
@@ -432,20 +435,28 @@ class LinkGraph:
             for row in rows
         ]
 
-    def get_conventions(self, directory_paths: list[str]) -> list[ConventionResult]:
+    def get_conventions(
+        self,
+        directory_paths: list[str],
+        *,
+        include_deprecated: bool = False,
+    ) -> list[ConventionResult]:
         """Retrieve conventions for a list of directory paths.
 
         Returns conventions ordered by their position in
         *directory_paths* (which should be ordered root-to-leaf),
-        then by ``ordinal`` within each directory.  This gives
-        convention inheritance: root conventions first, then
-        progressively more specific overrides.
+        then by ``priority`` descending, then ``ordinal`` within
+        each directory.  This gives convention inheritance: root
+        conventions first, then progressively more specific overrides.
 
         Parameters
         ----------
         directory_paths:
             Directory paths to query, ordered from root to leaf
-            (e.g. ``["src", "src/auth", "src/auth/middleware"]``).
+            (e.g. ``[".", "src", "src/auth", "src/auth/middleware"]``).
+        include_deprecated:
+            If ``False`` (default), conventions with ``status='deprecated'``
+            are excluded.  Set to ``True`` to include them.
 
         Returns
         -------
@@ -461,10 +472,11 @@ class LinkGraph:
         path_order = {p: i for i, p in enumerate(directory_paths)}
 
         placeholders = ", ".join("?" for _ in directory_paths)
+        status_filter = "" if include_deprecated else " AND status != 'deprecated'"
         rows = self._conn.execute(
-            "SELECT body, directory_path, ordinal "
+            "SELECT body, directory_path, ordinal, source, status, priority "
             "FROM conventions "
-            f"WHERE directory_path IN ({placeholders}) "
+            f"WHERE directory_path IN ({placeholders}){status_filter} "
             "ORDER BY directory_path, ordinal",
             tuple(directory_paths),
         ).fetchall()
@@ -474,12 +486,16 @@ class LinkGraph:
                 body=row[0],
                 directory_path=row[1],
                 ordinal=row[2],
+                source=row[3],
+                status=row[4],
+                priority=row[5],
             )
             for row in rows
         ]
 
-        # Sort by the caller-specified path order, then ordinal
-        results.sort(key=lambda c: (path_order.get(c.directory_path, 0), c.ordinal))
+        # Sort by the caller-specified path order, then priority descending,
+        # then ordinal within each directory
+        results.sort(key=lambda c: (path_order.get(c.directory_path, 0), -c.priority, c.ordinal))
 
         return results
 

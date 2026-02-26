@@ -46,7 +46,7 @@ class TestSerializeAIndex:
 
     def test_empty_child_map_shows_none(self) -> None:
         result = serialize_aindex(_aindex(entries=[]))
-        child_map_section = result.split("## Child Map")[1].split("## Local")[0]
+        child_map_section = result.split("## Child Map")[1].split("<!--")[0]
         assert "(none)" in child_map_section
 
     def test_basic_file_and_dir_entry(self) -> None:
@@ -102,7 +102,7 @@ class TestSerializeAIndex:
         ]
         result = serialize_aindex(_aindex(entries=entries))
         assert "| `foo.py` | file | Foo |" in result
-        child_map_body = result.split("## Child Map")[1].split("## Local")[0]
+        child_map_body = result.split("## Child Map")[1].split("<!--")[0]
         assert "| dir |" not in child_map_body
 
     def test_dirs_only_no_file_rows(self) -> None:
@@ -111,21 +111,12 @@ class TestSerializeAIndex:
         ]
         result = serialize_aindex(_aindex(entries=entries))
         assert "| `utils/` | dir | Utils |" in result
-        child_map_body = result.split("## Child Map")[1].split("## Local")[0]
+        child_map_body = result.split("## Child Map")[1].split("<!--")[0]
         assert "| file |" not in child_map_body
 
-    def test_local_conventions_empty_shows_none(self) -> None:
-        result = serialize_aindex(_aindex(local_conventions=[]))
-        assert "## Local Conventions" in result
-        conventions_section = result.split("## Local Conventions")[1]
-        assert "(none)" in conventions_section
-
-    def test_local_conventions_bullet_list(self) -> None:
-        result = serialize_aindex(
-            _aindex(local_conventions=["Use UTC everywhere", "No bare prints"])
-        )
-        assert "- Use UTC everywhere" in result
-        assert "- No bare prints" in result
+    def test_no_local_conventions_section(self) -> None:
+        result = serialize_aindex(_aindex())
+        assert "## Local Conventions" not in result
 
     def test_metadata_footer_required_fields(self) -> None:
         result = serialize_aindex(_aindex())

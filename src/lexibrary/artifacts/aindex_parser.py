@@ -127,14 +127,8 @@ def parse_aindex(path: Path) -> AIndexFile | None:
                 )
             )
 
-    # --- Parse Local Conventions ---
-    local_conventions: list[str] = []
-    for line in _section_lines("Local Conventions"):
-        stripped = line.strip()
-        if stripped == "(none)":
-            break
-        if stripped.startswith("- "):
-            local_conventions.append(stripped[2:])
+    # NOTE: Legacy files may contain a "## Local Conventions" section.
+    # The parser silently ignores it for backward compatibility.
 
     # --- Parse metadata footer ---
     meta_match = _META_RE.search(text)
@@ -148,6 +142,5 @@ def parse_aindex(path: Path) -> AIndexFile | None:
         directory_path=directory_path,
         billboard=billboard,
         entries=entries,
-        local_conventions=local_conventions,
         metadata=metadata,
     )

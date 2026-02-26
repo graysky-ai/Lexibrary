@@ -7,7 +7,7 @@
 | Name | Key Fields | Purpose |
 | --- | --- | --- |
 | `AIndexEntry` | `name: str`, `entry_type: Literal["file", "dir"]`, `description: str` | One entry (file or subdir) in the index |
-| `AIndexFile` | `directory_path`, `billboard`, `entries: list[AIndexEntry]`, `local_conventions: list[str]`, `metadata: StalenessMetadata` | Full `.aindex` model for a directory |
+| `AIndexFile` | `directory_path`, `billboard`, `entries: list[AIndexEntry]`, `metadata: StalenessMetadata` | Full `.aindex` model for a directory |
 
 ## Dependencies
 

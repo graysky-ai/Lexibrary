@@ -32,6 +32,15 @@ def test_creates_stack_directory(tmp_path: Path) -> None:
     assert (stack_dir / ".gitkeep").exists(), ".lexibrary/stack/.gitkeep should exist"
 
 
+def test_creates_conventions_directory(tmp_path: Path) -> None:
+    """lexictl init creates .lexibrary/conventions/ directory with .gitkeep."""
+    create_lexibrary_skeleton(tmp_path)
+
+    conventions_dir = tmp_path / ".lexibrary" / "conventions"
+    assert conventions_dir.is_dir(), ".lexibrary/conventions/ should be created"
+    assert (conventions_dir / ".gitkeep").exists(), ".lexibrary/conventions/.gitkeep should exist"
+
+
 def test_does_not_create_guardrails_directory(tmp_path: Path) -> None:
     """lexictl init does NOT create .lexibrary/guardrails/ directory."""
     create_lexibrary_skeleton(tmp_path)
@@ -47,6 +56,7 @@ def test_creates_full_skeleton(tmp_path: Path) -> None:
     base = tmp_path / ".lexibrary"
     assert base.is_dir()
     assert (base / "concepts").is_dir()
+    assert (base / "conventions").is_dir()
     assert (base / "stack").is_dir()
     assert (base / "config.yaml").is_file()
     assert (base / "START_HERE.md").is_file()
@@ -225,15 +235,17 @@ def test_skeleton_lexignore_contains_env_patterns(tmp_path: Path) -> None:
 
 
 def test_wizard_creates_directory_structure(tmp_path: Path) -> None:
-    """Wizard scaffolder creates .lexibrary/, concepts/, and stack/."""
+    """Wizard scaffolder creates .lexibrary/, concepts/, conventions/, and stack/."""
     answers = _make_answers()
     create_lexibrary_from_wizard(tmp_path, answers)
 
     base = tmp_path / ".lexibrary"
     assert base.is_dir()
     assert (base / "concepts").is_dir()
+    assert (base / "conventions").is_dir()
     assert (base / "stack").is_dir()
     assert (base / "concepts" / ".gitkeep").exists()
+    assert (base / "conventions" / ".gitkeep").exists()
     assert (base / "stack" / ".gitkeep").exists()
 
 
@@ -294,6 +306,7 @@ def test_wizard_returns_created_paths(tmp_path: Path) -> None:
     assert any("START_HERE.md" in s for s in path_strs)
     assert any(".lexignore" in s for s in path_strs)
     assert any("concepts" in s for s in path_strs)
+    assert any("conventions" in s for s in path_strs)
     assert any("stack" in s for s in path_strs)
 
 

@@ -6,7 +6,7 @@
 
 | Name | Signature | Purpose |
 | --- | --- | --- |
-| `parse_aindex` | `(path: Path) -> AIndexFile \| None` | Full parse: H1→directory_path, billboard, Child Map table, Local Conventions, metadata footer |
+| `parse_aindex` | `(path: Path) -> AIndexFile \| None` | Full parse: H1→directory_path, billboard, Child Map table, metadata footer; silently ignores legacy Local Conventions sections |
 | `parse_aindex_metadata` | `(path: Path) -> StalenessMetadata \| None` | Cheap parse: extracts only the `<!-- lexibrary:meta ... -->` footer comment |
 
 ## Dependencies

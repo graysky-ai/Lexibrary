@@ -65,7 +65,6 @@ class TestParseAIndex:
         assert result.directory_path == "src"
         assert result.billboard == "Source code directory."
         assert result.entries == []
-        assert result.local_conventions == []
 
     def test_parse_directory_path_strips_trailing_slash(self, tmp_path: Path) -> None:
         # The serializer adds trailing slash in the H1 heading; parser must strip it
@@ -115,19 +114,20 @@ class TestParseAIndex:
         assert result is not None
         assert result.entries == []
 
-    def test_parse_local_conventions(self, tmp_path: Path) -> None:
-        model = _aindex(local_conventions=["Use UTC everywhere", "No bare prints"])
-        p = _write_aindex(tmp_path, ".aindex", serialize_aindex(model))
+    def test_tolerates_legacy_local_conventions_section(self, tmp_path: Path) -> None:
+        """Legacy .aindex files with a Local Conventions section are parsed without error."""
+        content = (
+            "# src\n\nBillboard.\n\n## Child Map\n\n(none)\n\n"
+            "## Local Conventions\n\n- Use UTC everywhere\n- No bare prints\n\n"
+            '<!-- lexibrary:meta source="src" source_hash="abc"'
+            ' generated="2026-01-01T00:00:00" generator="g" -->\n'
+        )
+        p = _write_aindex(tmp_path, ".aindex", content)
         result = parse_aindex(p)
         assert result is not None
-        assert result.local_conventions == ["Use UTC everywhere", "No bare prints"]
-
-    def test_parse_empty_local_conventions(self, tmp_path: Path) -> None:
-        model = _aindex(local_conventions=[])
-        p = _write_aindex(tmp_path, ".aindex", serialize_aindex(model))
-        result = parse_aindex(p)
-        assert result is not None
-        assert result.local_conventions == []
+        assert result.directory_path == "src"
+        assert result.billboard == "Billboard."
+        assert not hasattr(result, "local_conventions")
 
     def test_parse_metadata_fields(self, tmp_path: Path) -> None:
         model = _aindex()

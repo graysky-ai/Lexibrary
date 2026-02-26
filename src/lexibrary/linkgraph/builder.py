@@ -1,8 +1,8 @@
 """LinkGraph index builder -- populates the SQLite index from parsed artifacts.
 
-Reads four artifact families (design files, concept files, Stack posts, and
-``.aindex`` convention files), resolves cross-references, and writes rows into
-the link graph schema created by :mod:`lexibrary.linkgraph.schema`.
+Reads five artifact families (design files, concept files, Stack posts,
+convention files, and ``.aindex`` files), resolves cross-references, and writes
+rows into the link graph schema created by :mod:`lexibrary.linkgraph.schema`.
 
 Two entry modes:
 
@@ -25,13 +25,13 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from lexibrary.archivist.dependency_extractor import extract_dependencies
-from lexibrary.errors import ErrorSummary
 from lexibrary.artifacts.aindex import AIndexFile  # noqa: F401
-from lexibrary.artifacts.aindex_parser import parse_aindex
 from lexibrary.artifacts.concept import ConceptFile  # noqa: F401
+from lexibrary.artifacts.convention import ConventionFile  # noqa: F401
 from lexibrary.artifacts.design_file import DesignFile  # noqa: F401
 from lexibrary.artifacts.design_file_parser import parse_design_file
+from lexibrary.conventions.parser import parse_convention_file
+from lexibrary.errors import ErrorSummary
 from lexibrary.linkgraph.schema import (
     ensure_schema,
     set_pragmas,
@@ -562,6 +562,10 @@ class IndexBuilder:
         if not source_abs.is_file():
             return
 
+        # Lazy import to break circular dependency:
+        # builder -> archivist.dependency_extractor -> archivist -> pipeline -> builder
+        from lexibrary.archivist.dependency_extractor import extract_dependencies
+
         try:
             deps = extract_dependencies(source_abs, self.project_root)
         except Exception:
@@ -833,111 +837,131 @@ class IndexBuilder:
             (build_started, stack_relpath, duration_ms),
         )
 
-    # -- .aindex convention processing (task group 6) ----------------------
+    # -- convention file processing -------------------------------------------
 
-    def _scan_aindex_files(self) -> list[Path]:
-        """Discover all ``.aindex`` files under ``.lexibrary/``.
+    def _scan_convention_files(self) -> list[Path]:
+        """Discover all ``.md`` files under ``.lexibrary/conventions/``.
 
         Returns a sorted list of absolute ``Path`` objects for deterministic
-        processing order.
+        processing order (sorted by path ensures stable ordinal assignment
+        within each scope).
         """
-        lex_root = self.project_root / LEXIBRARY_DIR
-        if not lex_root.is_dir():
+        conventions_root = self.project_root / LEXIBRARY_DIR / "conventions"
+        if not conventions_root.is_dir():
             return []
-        return sorted(lex_root.rglob(".aindex"))
+        return sorted(conventions_root.glob("*.md"))
 
-    def _process_aindex_conventions(self, aindex_path: Path, build_started: str) -> None:
-        """Parse an ``.aindex`` file and insert convention artifacts and metadata.
+    def _process_convention_file(self, conv_path: Path, build_started: str) -> None:
+        """Parse a convention file and insert all related artifacts, links, tags, and FTS.
 
-        For each entry in ``AIndexFile.local_conventions``, this method:
+        For each convention file in ``.lexibrary/conventions/``, this method:
 
-        1. Inserts a ``kind='convention'`` artifact with a synthetic path
-           using the ``{directory_path}::convention::{ordinal}`` format
-        2. Inserts a row in the ``conventions`` table with ``directory_path``,
-           ``ordinal``, and ``body``
-        3. Extracts ``[[wikilinks]]`` from the convention text and inserts
+        1. Parses the convention file via ``parse_convention_file()``
+        2. Inserts a ``kind='convention'`` artifact with the convention file path
+           and title from frontmatter
+        3. Inserts a row in the ``conventions`` table with ``directory_path``
+           (derived from scope), ``ordinal``, ``body``, ``source``, ``status``,
+           and ``priority``
+        4. Extracts ``[[wikilinks]]`` from the convention body and inserts
            ``convention_concept_ref`` links
-        4. Inserts an FTS row with body = full convention text
+        5. Inserts an FTS row with body = rule + body text
+        6. Inserts tags from ``ConventionFileFrontmatter.tags``
 
         Parameters
         ----------
-        aindex_path:
-            Absolute path to the ``.aindex`` file on disk.
+        conv_path:
+            Absolute path to the convention file on disk.
         build_started:
             ISO 8601 timestamp of the current build (for ``build_log``).
         """
         start_ns = time.monotonic_ns()
 
-        # Parse the .aindex file
-        aindex_file = parse_aindex(aindex_path)
-        if aindex_file is None:
-            error_msg = f"Failed to parse .aindex file: {aindex_path}"
+        # Parse the convention file
+        conv_file = parse_convention_file(conv_path)
+        if conv_file is None:
+            error_msg = f"Failed to parse convention file: {conv_path}"
             logger.warning(error_msg)
-            aindex_rel = str(aindex_path.relative_to(self.project_root))
+            conv_rel = str(conv_path.relative_to(self.project_root))
             self.conn.execute(
                 "INSERT INTO build_log (build_started, build_type, artifact_path, "
                 "artifact_kind, action, duration_ms, error_message) "
                 "VALUES (?, 'full', ?, 'convention', 'failed', ?, ?)",
                 (
                     build_started,
-                    aindex_rel,
+                    conv_rel,
                     (time.monotonic_ns() - start_ns) // 1_000_000,
                     error_msg,
                 ),
             )
             return
 
-        if not aindex_file.local_conventions:
-            return
+        conv_relpath = str(conv_path.relative_to(self.project_root))
 
-        directory_path = aindex_file.directory_path
+        # Derive directory_path from scope: "project" -> ".", otherwise use
+        # scope value directly (e.g. "src/auth")
+        scope = conv_file.frontmatter.scope
+        directory_path = "." if scope == "project" else scope
 
-        for ordinal, convention_text in enumerate(aindex_file.local_conventions):
-            conv_start_ns = time.monotonic_ns()
+        # Compute ordinal: count existing conventions for this directory_path
+        row = self.conn.execute(
+            "SELECT COALESCE(MAX(ordinal), -1) FROM conventions WHERE directory_path = ?",
+            (directory_path,),
+        ).fetchone()
+        ordinal = row[0] + 1
 
-            # 1. Synthetic path for the convention artifact
-            synthetic_path = f"{directory_path}::convention::{ordinal}"
+        # 1. Convention artifact
+        conv_id = self._insert_artifact(
+            path=conv_relpath,
+            kind="convention",
+            title=conv_file.frontmatter.title,
+            status=conv_file.frontmatter.status,
+            last_hash=None,
+            created_at=None,
+        )
 
-            # Title: first 120 characters of the convention text
-            title = convention_text[:120] if len(convention_text) > 120 else convention_text
+        # 2. Conventions table row with extended metadata
+        self.conn.execute(
+            "INSERT INTO conventions "
+            "(artifact_id, directory_path, ordinal, body, source, status, priority) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                conv_id,
+                directory_path,
+                ordinal,
+                conv_file.body,
+                conv_file.frontmatter.source,
+                conv_file.frontmatter.status,
+                conv_file.frontmatter.priority,
+            ),
+        )
 
-            # Insert convention artifact
-            conv_id = self._insert_artifact(
-                path=synthetic_path,
-                kind="convention",
-                title=title,
-                status=None,
-                last_hash=None,
-                created_at=None,
-            )
+        # 3. Extract wikilinks and insert convention_concept_ref links
+        wikilink_names = _extract_wikilinks(conv_file.body)
+        for wikilink_name in wikilink_names:
+            concept_path = f".lexibrary/concepts/{wikilink_name}.md"
+            concept_id = self._get_or_create_artifact(concept_path, "concept", title=wikilink_name)
+            self._insert_link(conv_id, concept_id, "convention_concept_ref")
 
-            # 2. Insert conventions table row
-            self.conn.execute(
-                "INSERT INTO conventions (artifact_id, directory_path, ordinal, body) "
-                "VALUES (?, ?, ?, ?)",
-                (conv_id, directory_path, ordinal, convention_text),
-            )
+        # 4. FTS row -- body = rule + "\n" + body
+        fts_body_parts = []
+        if conv_file.rule:
+            fts_body_parts.append(conv_file.rule)
+        if conv_file.body:
+            fts_body_parts.append(conv_file.body)
+        fts_body = "\n".join(fts_body_parts)
+        self._insert_fts(conv_id, conv_file.frontmatter.title, fts_body)
 
-            # 3. Extract wikilinks and insert convention_concept_ref links
-            wikilink_names = _extract_wikilinks(convention_text)
-            for wikilink_name in wikilink_names:
-                concept_path = f".lexibrary/concepts/{wikilink_name}.md"
-                concept_id = self._get_or_create_artifact(
-                    concept_path, "concept", title=wikilink_name
-                )
-                self._insert_link(conv_id, concept_id, "convention_concept_ref")
+        # 5. Tags
+        for tag in conv_file.frontmatter.tags:
+            self._insert_tag(conv_id, tag)
 
-            # 4. FTS row -- body = full convention text
-            self._insert_fts(conv_id, title, convention_text)
-
-            # Log success for each convention
-            conv_duration_ms = (time.monotonic_ns() - conv_start_ns) // 1_000_000
-            self.conn.execute(
-                "INSERT INTO build_log (build_started, build_type, artifact_path, "
-                "artifact_kind, action, duration_ms) "
-                "VALUES (?, 'full', ?, 'convention', 'created', ?)",
-                (build_started, synthetic_path, conv_duration_ms),
-            )
+        # Log success
+        duration_ms = (time.monotonic_ns() - start_ns) // 1_000_000
+        self.conn.execute(
+            "INSERT INTO build_log (build_started, build_type, artifact_path, "
+            "artifact_kind, action, duration_ms) VALUES (?, 'full', ?, 'convention', 'created', ?)",
+            (build_started, conv_relpath, duration_ms),
+        )
 
     # -- full build orchestration (task group 7) ----------------------------
 
@@ -950,7 +974,7 @@ class IndexBuilder:
         2. Ensure schema (create or recreate if version mismatched)
         3. Clear all existing data rows
         4. Process all artifact types (design files, concepts, Stack posts,
-           ``.aindex`` conventions).  The ``_get_or_create_artifact`` helper
+           convention files).  The ``_get_or_create_artifact`` helper
            handles forward references, so artifacts are created on first
            encounter and reused thereafter -- functionally equivalent to
            the two-pass design (D3).
@@ -1027,15 +1051,15 @@ class IndexBuilder:
                     errors.append(error_msg)
                     error_summary.add("linkgraph", exc, path=str(stack_path))
 
-            # 4d. .aindex conventions (creates convention artifacts, links, FTS)
-            for aindex_path in self._scan_aindex_files():
+            # 4d. Convention files (creates convention artifacts, links, tags, FTS)
+            for conv_path in self._scan_convention_files():
                 try:
-                    self._process_aindex_conventions(aindex_path, build_started)
+                    self._process_convention_file(conv_path, build_started)
                 except Exception as exc:
-                    error_msg = f"Error processing .aindex file {aindex_path}: {exc}"
+                    error_msg = f"Error processing convention file {conv_path}: {exc}"
                     logger.error(error_msg, exc_info=True)
                     errors.append(error_msg)
-                    error_summary.add("linkgraph", exc, path=str(aindex_path))
+                    error_summary.add("linkgraph", exc, path=str(conv_path))
 
             # Step 5: Update meta table with build summary
             self._update_meta(build_started)
@@ -1087,6 +1111,7 @@ class IndexBuilder:
 
         - Paths under ``.lexibrary/concepts/`` are concept files
         - Paths under ``.lexibrary/stack/`` are Stack posts
+        - Paths under ``.lexibrary/conventions/`` are convention files
         - Paths ending in ``.aindex`` under ``.lexibrary/`` are aindex files
         - Paths ending in ``.md`` under ``.lexibrary/src/`` are design files
         - All other paths are treated as source files
@@ -1099,8 +1124,8 @@ class IndexBuilder:
         Returns
         -------
         str
-            One of ``'concept'``, ``'stack'``, ``'aindex'``, ``'design'``,
-            or ``'source'``.
+            One of ``'concept'``, ``'stack'``, ``'convention'``, ``'aindex'``,
+            ``'design'``, or ``'source'``.
         """
         # Normalise to a project-relative string for prefix matching
         try:
@@ -1115,6 +1140,8 @@ class IndexBuilder:
             return "concept"
         if rel_str.startswith(f"{lex_prefix}stack/"):
             return "stack"
+        if rel_str.startswith(f"{lex_prefix}conventions/"):
+            return "convention"
         if rel_str.startswith(lex_prefix) and rel.name == ".aindex":
             return "aindex"
         if rel_str.startswith(f"{lex_prefix}src/") and rel_str.endswith(".md"):
@@ -1550,17 +1577,17 @@ class IndexBuilder:
             (build_started, design_relpath, duration_ms),
         )
 
-    def _handle_changed_aindex(self, file_path: Path, build_started: str) -> None:
-        """Handle a changed ``.aindex`` file during incremental update.
+    def _handle_changed_convention(self, file_path: Path, build_started: str) -> None:
+        """Handle a changed convention file during incremental update.
 
-        Deletes all convention artifacts for the directory, re-parses the
-        ``.aindex`` file, and reinserts convention artifacts, convention rows,
-        links, and FTS rows.
+        Re-parses the convention file, deletes the existing convention artifact
+        and its outbound data, and reinserts the artifact, convention row,
+        links, tags, and FTS.
 
         Parameters
         ----------
         file_path:
-            Absolute path to the changed ``.aindex`` file.
+            Absolute path to the changed convention file.
         build_started:
             ISO 8601 timestamp of the current incremental build.
         """
@@ -1571,96 +1598,103 @@ class IndexBuilder:
         except ValueError:
             rel = file_path
 
-        aindex_relpath = str(rel)
+        conv_relpath = str(rel)
 
-        # Determine the directory path from the .aindex file.
-        # The .aindex file is at .lexibrary/src/<dir>/.aindex
-        # The directory_path in the conventions table is the source dir,
-        # e.g. "src/auth".
-        # We parse the aindex file to get the correct directory_path.
+        # Parse the convention file
+        conv_file = parse_convention_file(file_path)
+        if conv_file is None:
+            error_msg = f"Failed to parse convention file: {file_path}"
+            logger.warning(error_msg)
+            duration_ms = (time.monotonic_ns() - start_ns) // 1_000_000
+            self.conn.execute(
+                "INSERT INTO build_log (build_started, build_type, artifact_path, "
+                "artifact_kind, action, duration_ms, error_message) "
+                "VALUES (?, 'incremental', ?, 'convention', 'failed', ?, ?)",
+                (build_started, conv_relpath, duration_ms, error_msg),
+            )
+            raise ValueError(error_msg)
 
-        # First, delete ALL convention artifacts for this directory.
-        # We need to find existing convention artifacts that match the
-        # directory prefix used in synthetic paths.
-        # Parse the current or previous .aindex to find the directory_path.
-        # If the file still exists, parse it to get directory_path.
-        # If deleted, we need to derive it from the path.
+        # Derive directory_path from scope
+        scope = conv_file.frontmatter.scope
+        directory_path = "." if scope == "project" else scope
 
-        # Try to parse the .aindex file to get the directory_path
-        aindex_file = None
-        if file_path.is_file():
-            aindex_file = parse_aindex(file_path)
-
-        if aindex_file is not None:
-            directory_path = aindex_file.directory_path
+        # Delete existing convention artifact if it exists
+        existing_id = self._get_artifact_id(conv_relpath)
+        if existing_id is not None:
+            # Delete the convention row for this artifact
+            self.conn.execute(
+                "DELETE FROM conventions WHERE artifact_id = ?",
+                (existing_id,),
+            )
+            # Delete outbound data (links, tags, aliases, FTS)
+            self._delete_artifact_outbound(existing_id)
+            # Update the existing artifact row
+            self.conn.execute(
+                "UPDATE artifacts SET title = ?, status = ? WHERE id = ?",
+                (conv_file.frontmatter.title, conv_file.frontmatter.status, existing_id),
+            )
+            conv_id = existing_id
         else:
-            # File was deleted or unparseable -- derive directory_path from the
-            # .aindex path.  E.g. .lexibrary/src/auth/.aindex -> src/auth
-            parts = rel.parts
-            if parts[0] == LEXIBRARY_DIR:
-                parts = parts[1:]
-            # Remove the .aindex filename
-            directory_path = (str(Path(*parts[:-1])) if len(parts) > 1 else "") if parts else ""
+            # Insert new convention artifact
+            conv_id = self._insert_artifact(
+                path=conv_relpath,
+                kind="convention",
+                title=conv_file.frontmatter.title,
+                status=conv_file.frontmatter.status,
+                last_hash=None,
+                created_at=None,
+            )
 
-        # Delete all convention artifacts for this directory (they use synthetic
-        # paths with the format "{directory_path}::convention::{ordinal}")
-        existing_conv_rows = self.conn.execute(
-            "SELECT a.id FROM artifacts a "
-            "JOIN conventions c ON a.id = c.artifact_id "
-            "WHERE c.directory_path = ?",
+        # Compute ordinal: count existing conventions for this directory_path
+        # (excluding the one we just deleted/updated)
+        row = self.conn.execute(
+            "SELECT COALESCE(MAX(ordinal), -1) FROM conventions WHERE directory_path = ?",
             (directory_path,),
-        ).fetchall()
+        ).fetchone()
+        ordinal = row[0] + 1
 
-        for (conv_id,) in existing_conv_rows:
-            # Delete FTS row (not covered by CASCADE from artifacts)
-            self.conn.execute(
-                "DELETE FROM artifacts_fts WHERE rowid = ?",
-                (conv_id,),
-            )
-            # Delete the artifact row -- CASCADE handles conventions, links, tags
-            self.conn.execute(
-                "DELETE FROM artifacts WHERE id = ?",
-                (conv_id,),
-            )
+        # Insert conventions table row with extended metadata
+        self.conn.execute(
+            "INSERT INTO conventions "
+            "(artifact_id, directory_path, ordinal, body, source, status, priority) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                conv_id,
+                directory_path,
+                ordinal,
+                conv_file.body,
+                conv_file.frontmatter.source,
+                conv_file.frontmatter.status,
+                conv_file.frontmatter.priority,
+            ),
+        )
 
-        # If the file still exists and was parsed successfully, reinsert
-        if aindex_file is not None and aindex_file.local_conventions:
-            for ordinal, convention_text in enumerate(aindex_file.local_conventions):
-                synthetic_path = f"{directory_path}::convention::{ordinal}"
-                title = convention_text[:120] if len(convention_text) > 120 else convention_text
+        # Extract wikilinks and insert convention_concept_ref links
+        wikilink_names = _extract_wikilinks(conv_file.body)
+        for wikilink_name in wikilink_names:
+            concept_path = f".lexibrary/concepts/{wikilink_name}.md"
+            concept_id = self._get_or_create_artifact(concept_path, "concept", title=wikilink_name)
+            self._insert_link(conv_id, concept_id, "convention_concept_ref")
 
-                conv_id = self._insert_artifact(
-                    path=synthetic_path,
-                    kind="convention",
-                    title=title,
-                    status=None,
-                    last_hash=None,
-                    created_at=None,
-                )
+        # FTS row
+        fts_body_parts = []
+        if conv_file.rule:
+            fts_body_parts.append(conv_file.rule)
+        if conv_file.body:
+            fts_body_parts.append(conv_file.body)
+        fts_body = "\n".join(fts_body_parts)
+        self._insert_fts(conv_id, conv_file.frontmatter.title, fts_body)
 
-                self.conn.execute(
-                    "INSERT INTO conventions (artifact_id, directory_path, ordinal, body) "
-                    "VALUES (?, ?, ?, ?)",
-                    (conv_id, directory_path, ordinal, convention_text),
-                )
-
-                wikilink_names = _extract_wikilinks(convention_text)
-                for wikilink_name in wikilink_names:
-                    concept_path = f".lexibrary/concepts/{wikilink_name}.md"
-                    concept_id = self._get_or_create_artifact(
-                        concept_path, "concept", title=wikilink_name
-                    )
-                    self._insert_link(conv_id, concept_id, "convention_concept_ref")
-
-                self._insert_fts(conv_id, title, convention_text)
+        # Tags
+        for tag in conv_file.frontmatter.tags:
+            self._insert_tag(conv_id, tag)
 
         duration_ms = (time.monotonic_ns() - start_ns) // 1_000_000
-        action = "updated" if aindex_file is not None else "deleted"
         self.conn.execute(
             "INSERT INTO build_log (build_started, build_type, artifact_path, "
             "artifact_kind, action, duration_ms) "
-            "VALUES (?, 'incremental', ?, 'convention', ?, ?)",
-            (build_started, aindex_relpath, action, duration_ms),
+            "VALUES (?, 'incremental', ?, 'convention', 'updated', ?)",
+            (build_started, conv_relpath, duration_ms),
         )
 
     def incremental_update(self, changed_paths: list[Path]) -> BuildResult:
@@ -1717,8 +1751,8 @@ class IndexBuilder:
                         self._handle_changed_concept(abs_path, build_started)
                     elif kind == "stack":
                         self._handle_changed_stack(abs_path, build_started)
-                    elif kind == "aindex":
-                        self._handle_changed_aindex(abs_path, build_started)
+                    elif kind == "convention":
+                        self._handle_changed_convention(abs_path, build_started)
                     elif kind == "design":
                         self._handle_changed_design(abs_path, build_started)
                     else:

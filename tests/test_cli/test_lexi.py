@@ -31,6 +31,8 @@ class TestHelp:
             "search",
             "stack",
             "concept",
+            "convention",
+            "conventions",
             "describe",
             "validate",
             "status",
@@ -498,134 +500,253 @@ class TestLookupCommand:
 # ---------------------------------------------------------------------------
 
 
-class TestLookupConventionInheritance:
-    """Tests for convention inheritance in `lexi lookup`."""
+def _create_convention_file(
+    project: Path,
+    title: str,
+    *,
+    scope: str = "project",
+    rule: str = "",
+    body: str = "",
+    status: str = "active",
+    source: str = "user",
+    priority: int = 0,
+    tags: list[str] | None = None,
+) -> Path:
+    """Create a convention file in .lexibrary/conventions/."""
+    conventions_dir = project / ".lexibrary" / "conventions"
+    conventions_dir.mkdir(parents=True, exist_ok=True)
 
-    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+    # Build slug from title
+    slug = title.lower().replace(" ", "-")
+    path = conventions_dir / f"{slug}.md"
+
+    fm_data = {
+        "title": title,
+        "scope": scope,
+        "tags": tags or [],
+        "status": status,
+        "source": source,
+        "priority": priority,
+    }
+    fm_str = yaml.dump(fm_data, default_flow_style=False, sort_keys=False).rstrip("\n")
+
+    # If no explicit body, use the rule as the first paragraph
+    if not body and rule:
+        body = f"\n{rule}\n"
+    elif not body:
+        body = f"\n{title}\n"
+
+    content = f"---\n{fm_str}\n---\n{body}"
+    if not content.endswith("\n"):
+        content += "\n"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+class TestLookupConventionDelivery:
+    """Tests for convention delivery in `lexi lookup` via ConventionIndex."""
+
+    def _invoke(self, project: Path, args: list[str]) -> object:
         old_cwd = os.getcwd()
-        os.chdir(tmp_path)
+        os.chdir(project)
         try:
             return runner.invoke(lexi_app, args)
         finally:
             os.chdir(old_cwd)
 
-    def test_conventions_from_multiple_parents(self, tmp_path: Path) -> None:
-        """Conventions from multiple parent directories shown in bottom-up order."""
+    def test_no_conventions_section_when_none_exist(self, tmp_path: Path) -> None:
+        """Lookup with no convention files should not show conventions section."""
         project = _setup_archivist_project(tmp_path)
-        # Create nested structure: src/payments/stripe/charge.py
-        (project / "src" / "payments").mkdir(parents=True)
-        (project / "src" / "payments" / "stripe").mkdir()
-        source_content = "def charge(): pass\n"
-        (project / "src" / "payments" / "stripe" / "charge.py").write_text(source_content)
-
-        # Create design file for the source
-        _create_design_file(project, "src/payments/stripe/charge.py", source_content)
-
-        # Create .aindex files with conventions at different levels
-        _create_aindex_with_conventions(
-            project,
-            "src/payments",
-            "Payment processing",
-            ["All monetary values use Decimal"],
-        )
-        _create_aindex_with_conventions(
-            project,
-            "src",
-            "Source code root",
-            ["Use UTC everywhere"],
-        )
-
-        result = self._invoke(project, ["lookup", "src/payments/stripe/charge.py"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-
-        # Should have conventions section
-        assert "Applicable Conventions" in output
-        # Closest directory first
-        assert "src/payments/" in output
-        assert "All monetary values use Decimal" in output
-        assert "Use UTC everywhere" in output
-        # payments/ should appear before src/ (closest first)
-        payments_idx = output.index("src/payments/")
-        src_idx = output.index("From `src/`")
-        assert payments_idx < src_idx
-
-    def test_no_conventions_means_no_section(self, tmp_path: Path) -> None:
-        """No conventions in any parent means no extra section appended."""
-        project = _setup_archivist_project(tmp_path)
-        source_content = "def hello():\n    pass\n"
-        _create_design_file(project, "src/main.py", source_content)
-
-        # Create .aindex with no conventions
-        _create_aindex_with_conventions(project, "src", "Source root", conventions=None)
-
-        result = self._invoke(project, ["lookup", "src/main.py"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-
-        # Should NOT have conventions section
-        assert "Applicable Conventions" not in output
-
-    def test_missing_aindex_silently_skipped(self, tmp_path: Path) -> None:
-        """Missing .aindex files are silently skipped without errors."""
-        project = _setup_archivist_project(tmp_path)
-        # Create nested dir without .aindex at intermediate level
-        (project / "src" / "api").mkdir(parents=True)
-        source_content = "def endpoint(): pass\n"
-        (project / "src" / "api" / "auth.py").write_text(source_content)
-        _create_design_file(project, "src/api/auth.py", source_content)
-
-        # Only create .aindex at src/ level (not src/api/)
-        _create_aindex_with_conventions(
-            project,
-            "src",
-            "Source root",
-            ["Use type hints everywhere"],
-        )
-
-        result = self._invoke(project, ["lookup", "src/api/auth.py"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-
-        # Should still pick up conventions from src/
-        assert "Applicable Conventions" in output
-        assert "Use type hints everywhere" in output
-        # No errors about missing .aindex
-        assert "Error" not in output
-
-    def test_walk_stops_at_scope_root(self, tmp_path: Path) -> None:
-        """Convention walk does not traverse above scope_root."""
-        project = _setup_archivist_project(tmp_path)
-        # Set scope_root to src/
-        (project / ".lexibrary" / "config.yaml").write_text("scope_root: src\n")
-
-        source_content = "def handler(): pass\n"
+        source_content = "def hello(): pass\n"
         (project / "src" / "main.py").write_text(source_content)
         _create_design_file(project, "src/main.py", source_content)
 
-        # Create .aindex at project root (above scope_root) with conventions
-        _create_aindex_with_conventions(
+        result = self._invoke(project, ["lookup", "src/main.py"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Applicable Conventions" not in result.output  # type: ignore[union-attr]
+
+    def test_conventions_section_with_matching_scope(self, tmp_path: Path) -> None:
+        """Lookup shows conventions matching the file's directory scope."""
+        project = _setup_archivist_project(tmp_path)
+        source_content = "def charge(): pass\n"
+        (project / "src").mkdir(exist_ok=True)
+        (project / "src" / "main.py").write_text(source_content)
+        _create_design_file(project, "src/main.py", source_content)
+
+        _create_convention_file(
             project,
-            ".",
-            "Project root",
-            ["Root convention that should NOT appear"],
-        )
-        # Create .aindex at src/ (within scope_root) with conventions
-        _create_aindex_with_conventions(
-            project,
-            "src",
-            "Source root",
-            ["Src convention that SHOULD appear"],
+            "Use UTC Everywhere",
+            scope="src",
+            rule="All timestamps must use UTC.",
         )
 
         result = self._invoke(project, ["lookup", "src/main.py"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
+        assert "Applicable Conventions" in output
+        assert "All timestamps must use UTC." in output
 
-        # Conventions from src/ should appear (within scope_root)
-        assert "Src convention that SHOULD appear" in output
-        # Conventions from project root should NOT appear (above scope_root)
-        assert "Root convention that should NOT appear" not in output
+    def test_conventions_grouped_by_scope(self, tmp_path: Path) -> None:
+        """Conventions from multiple scopes are grouped and ordered root-to-leaf."""
+        project = _setup_archivist_project(tmp_path)
+        # Create nested directory structure
+        (project / "src" / "payments").mkdir(parents=True, exist_ok=True)
+        source_content = "def charge(): pass\n"
+        (project / "src" / "payments" / "processor.py").write_text(source_content)
+        _create_design_file(project, "src/payments/processor.py", source_content)
+
+        _create_convention_file(
+            project,
+            "UTC Convention",
+            scope="project",
+            rule="Use UTC everywhere.",
+        )
+        _create_convention_file(
+            project,
+            "Decimal Convention",
+            scope="src/payments",
+            rule="Use Decimal for money.",
+        )
+
+        result = self._invoke(project, ["lookup", "src/payments/processor.py"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Applicable Conventions" in output
+        assert "Use UTC everywhere." in output
+        assert "Use Decimal for money." in output
+        # Project scope header should appear before directory scope header
+        # within the conventions section
+        conv_start = output.index("Applicable Conventions")
+        conv_output = output[conv_start:]
+        project_pos = conv_output.index("project")
+        payments_pos = conv_output.index("src/payments")
+        assert project_pos < payments_pos
+
+    def test_draft_conventions_marked(self, tmp_path: Path) -> None:
+        """Draft conventions display with [draft] marker."""
+        project = _setup_archivist_project(tmp_path)
+        source_content = "def login(): pass\n"
+        (project / "src" / "main.py").write_text(source_content)
+        _create_design_file(project, "src/main.py", source_content)
+
+        _create_convention_file(
+            project,
+            "Auth Draft Convention",
+            scope="project",
+            rule="Always validate tokens.",
+            status="draft",
+        )
+
+        result = self._invoke(project, ["lookup", "src/main.py"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Applicable Conventions" in output
+        assert "Always validate tokens." in output
+        assert "[draft]" in output
+
+    def test_active_conventions_no_draft_marker(self, tmp_path: Path) -> None:
+        """Active conventions do not display a [draft] marker."""
+        project = _setup_archivist_project(tmp_path)
+        source_content = "def hello(): pass\n"
+        (project / "src" / "main.py").write_text(source_content)
+        _create_design_file(project, "src/main.py", source_content)
+
+        _create_convention_file(
+            project,
+            "Active Convention",
+            scope="project",
+            rule="Always use type hints.",
+            status="active",
+        )
+
+        result = self._invoke(project, ["lookup", "src/main.py"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Always use type hints." in output
+        assert "[draft]" not in output
+
+    def test_display_limit_truncation(self, tmp_path: Path) -> None:
+        """When conventions exceed display limit, a truncation notice is shown."""
+        project = _setup_archivist_project(tmp_path)
+        source_content = "def main(): pass\n"
+        (project / "src" / "main.py").write_text(source_content)
+        _create_design_file(project, "src/main.py", source_content)
+
+        # Set display limit to 3
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "conventions:\n  lookup_display_limit: 3\n"
+        )
+
+        # Create 6 project-scoped conventions
+        for i in range(6):
+            _create_convention_file(
+                project,
+                f"Convention {i}",
+                scope="project",
+                rule=f"Rule number {i}.",
+            )
+
+        result = self._invoke(project, ["lookup", "src/main.py"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Applicable Conventions" in output
+        # Should show truncation notice with correct count
+        assert "3 more" in output
+        assert "lexi conventions" in output
+
+    def test_no_conventions_for_unmatched_scope(self, tmp_path: Path) -> None:
+        """File outside convention scope should not see that convention."""
+        project = _setup_archivist_project(tmp_path)
+        source_content = "x = 1\n"
+        (project / "src" / "utils.py").write_text(source_content)
+        _create_design_file(project, "src/utils.py", source_content)
+
+        # Convention scoped to src/payments only
+        _create_convention_file(
+            project,
+            "Payments Only",
+            scope="src/payments",
+            rule="Use Decimal for money.",
+        )
+
+        result = self._invoke(project, ["lookup", "src/utils.py"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        # No conventions should apply to src/utils.py
+        assert "Applicable Conventions" not in output
+
+    def test_conventions_appear_before_reverse_links(self, tmp_path: Path) -> None:
+        """Conventions section appears before link graph reverse-link sections.
+
+        The design file itself may contain a ``## Dependents`` section in its
+        content.  We verify ordering by checking that the ``## Applicable
+        Conventions`` header in the output comes before any link-graph-generated
+        ``## Dependents (imports this file)`` or ``## Also Referenced By``.
+        """
+        project = _setup_archivist_project(tmp_path)
+        source_content = "def hello(): pass\n"
+        (project / "src" / "main.py").write_text(source_content)
+        _create_design_file(project, "src/main.py", source_content)
+
+        _create_convention_file(
+            project,
+            "Project Convention",
+            scope="project",
+            rule="Convention rule text.",
+        )
+
+        result = self._invoke(project, ["lookup", "src/main.py"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Applicable Conventions" in output
+        conv_pos = output.index("Applicable Conventions")
+        # Link graph sections use specific header text distinct from the
+        # design file's own "## Dependents" section.
+        linkgraph_header = "Dependents (imports this file)"
+        if linkgraph_header in output:
+            assert conv_pos < output.index(linkgraph_header)
+        if "Also Referenced By" in output:
+            assert conv_pos < output.index("Also Referenced By")
 
 
 # ---------------------------------------------------------------------------
@@ -799,9 +920,7 @@ class TestConceptsTagFilter:
         _create_concept_file(tmp_path, "Encryption", tags=["security"])
         _create_concept_file(tmp_path, "Config", tags=["core"])
 
-        result = self._invoke(
-            tmp_path, ["concepts", "--tag", "security", "--tag", "core"]
-        )
+        result = self._invoke(tmp_path, ["concepts", "--tag", "security", "--tag", "core"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         # Only Authentication has both tags
@@ -947,12 +1066,8 @@ class TestConceptsDefaultDeprecatedExclusion:
     def test_topic_search_hides_deprecated(self, tmp_path: Path) -> None:
         """Topic search also hides deprecated concepts by default."""
         _setup_project(tmp_path)
-        _create_concept_file(
-            tmp_path, "Auth Active", tags=["auth"], status="active"
-        )
-        _create_concept_file(
-            tmp_path, "Auth Old", tags=["auth"], status="deprecated"
-        )
+        _create_concept_file(tmp_path, "Auth Active", tags=["auth"], status="active")
+        _create_concept_file(tmp_path, "Auth Old", tags=["auth"], status="deprecated")
 
         result = self._invoke(tmp_path, ["concepts", "auth"])
         assert result.exit_code == 0  # type: ignore[union-attr]
@@ -986,9 +1101,7 @@ class TestConceptsCombinedFilters:
         _create_concept_file(
             tmp_path, "Auth Perf", tags=["performance"], summary="authentication perf"
         )
-        _create_concept_file(
-            tmp_path, "Encryption", tags=["security"], summary="crypto"
-        )
+        _create_concept_file(tmp_path, "Encryption", tags=["security"], summary="crypto")
 
         result = self._invoke(tmp_path, ["concepts", "auth", "--tag", "security"])
         assert result.exit_code == 0  # type: ignore[union-attr]
@@ -1008,9 +1121,7 @@ class TestConceptsCombinedFilters:
             tmp_path, "Auth Draft", tags=["auth"], status="draft", summary="authentication draft"
         )
 
-        result = self._invoke(
-            tmp_path, ["concepts", "auth", "--status", "draft"]
-        )
+        result = self._invoke(tmp_path, ["concepts", "auth", "--status", "draft"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Auth Draft" in output
@@ -1055,9 +1166,7 @@ class TestConceptsCombinedFilters:
     def test_all_filters_no_match(self, tmp_path: Path) -> None:
         """Combined filters that match nothing show appropriate message."""
         _setup_project(tmp_path)
-        _create_concept_file(
-            tmp_path, "Authentication", tags=["security"], status="active"
-        )
+        _create_concept_file(tmp_path, "Authentication", tags=["security"], status="active")
 
         result = self._invoke(
             tmp_path,
@@ -1317,6 +1426,427 @@ class TestConceptLinkCommand:
         result = self._invoke(tmp_path, ["concept", "link", "Test", "file.py"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Convention CLI command tests
+# ---------------------------------------------------------------------------
+
+
+class TestConventionNewCommand:
+    """Tests for the `lexi convention new` command."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_create_convention_with_all_flags(self, tmp_path: Path) -> None:
+        """Create a convention with --scope, --body, --tag, --title flags."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(
+            project,
+            [
+                "convention",
+                "new",
+                "--scope",
+                "src/auth",
+                "--body",
+                "All endpoints require auth",
+                "--tag",
+                "auth",
+                "--title",
+                "Auth required",
+            ],
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Created" in result.output  # type: ignore[union-attr]
+        assert "auth-required.md" in result.output  # type: ignore[union-attr]
+
+        # Verify file was created
+        conv_path = project / ".lexibrary" / "conventions" / "auth-required.md"
+        assert conv_path.exists()
+        content = conv_path.read_text(encoding="utf-8")
+        assert "Auth required" in content
+        assert "src/auth" in content
+        assert "auth" in content
+
+    def test_create_convention_auto_title(self, tmp_path: Path) -> None:
+        """Create a convention with auto-generated title from body."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(
+            project,
+            [
+                "convention",
+                "new",
+                "--scope",
+                "project",
+                "--body",
+                "Use from __future__ import annotations in every module",
+            ],
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Created" in result.output  # type: ignore[union-attr]
+
+    def test_agent_source_defaults(self, tmp_path: Path) -> None:
+        """Agent-created convention should default to draft status and priority -1."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(
+            project,
+            [
+                "convention",
+                "new",
+                "--scope",
+                "project",
+                "--body",
+                "Use rich console",
+                "--source",
+                "agent",
+            ],
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+
+        # Read the file and check status and priority
+        conventions_dir = project / ".lexibrary" / "conventions"
+        files = list(conventions_dir.glob("*.md"))
+        assert len(files) == 1
+        content = files[0].read_text(encoding="utf-8")
+        assert "status: draft" in content
+        assert "priority: -1" in content
+        assert "source: agent" in content
+
+    def test_user_source_defaults(self, tmp_path: Path) -> None:
+        """User-created convention should default to active status and priority 0."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(
+            project,
+            [
+                "convention",
+                "new",
+                "--scope",
+                "project",
+                "--body",
+                "Use rich console",
+                "--title",
+                "Rich console",
+            ],
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+
+        conventions_dir = project / ".lexibrary" / "conventions"
+        files = list(conventions_dir.glob("*.md"))
+        assert len(files) == 1
+        content = files[0].read_text(encoding="utf-8")
+        assert "status: active" in content
+        assert "priority: 0" in content
+        assert "source: user" in content
+
+    def test_creates_conventions_directory(self, tmp_path: Path) -> None:
+        """Convention new should create .lexibrary/conventions/ if it does not exist."""
+        project = _setup_project(tmp_path)
+        conventions_dir = project / ".lexibrary" / "conventions"
+        assert not conventions_dir.exists()
+
+        result = self._invoke(
+            project,
+            [
+                "convention",
+                "new",
+                "--scope",
+                "project",
+                "--body",
+                "Test convention",
+                "--title",
+                "Test",
+            ],
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert conventions_dir.is_dir()
+
+    def test_refuse_duplicate_slug(self, tmp_path: Path) -> None:
+        """Creating a convention with an existing slug should fail."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Auth required")
+
+        result = self._invoke(
+            project,
+            [
+                "convention",
+                "new",
+                "--scope",
+                "project",
+                "--body",
+                "...",
+                "--title",
+                "Auth required",
+            ],
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "already exists" in result.output  # type: ignore[union-attr]
+
+    def test_no_project(self, tmp_path: Path) -> None:
+        """Convention new without .lexibrary should fail."""
+        result = self._invoke(
+            tmp_path,
+            [
+                "convention",
+                "new",
+                "--scope",
+                "project",
+                "--body",
+                "test",
+            ],
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+
+
+class TestConventionApproveCommand:
+    """Tests for the `lexi convention approve` command."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_approve_draft(self, tmp_path: Path) -> None:
+        """Approve a draft convention sets status to active."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Auth required", status="draft")
+
+        result = self._invoke(project, ["convention", "approve", "Auth required"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Approved" in result.output  # type: ignore[union-attr]
+
+        # Verify file was updated
+        conv_path = project / ".lexibrary" / "conventions" / "auth-required.md"
+        content = conv_path.read_text(encoding="utf-8")
+        assert "status: active" in content
+
+    def test_approve_by_slug(self, tmp_path: Path) -> None:
+        """Approve a convention by its slug."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Auth required", status="draft")
+
+        result = self._invoke(project, ["convention", "approve", "auth-required"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Approved" in result.output  # type: ignore[union-attr]
+
+    def test_approve_already_active(self, tmp_path: Path) -> None:
+        """Approving an already active convention should show message and exit 0."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Auth required", status="active")
+
+        result = self._invoke(project, ["convention", "approve", "Auth required"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Already active" in result.output  # type: ignore[union-attr]
+
+    def test_approve_deprecated(self, tmp_path: Path) -> None:
+        """Approving a deprecated convention should fail."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Auth required", status="deprecated")
+
+        result = self._invoke(project, ["convention", "approve", "Auth required"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Cannot approve" in result.output  # type: ignore[union-attr]
+
+    def test_approve_not_found(self, tmp_path: Path) -> None:
+        """Approving a nonexistent convention should fail."""
+        project = _setup_project(tmp_path)
+        (project / ".lexibrary" / "conventions").mkdir(parents=True, exist_ok=True)
+
+        result = self._invoke(project, ["convention", "approve", "nonexistent"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Convention not found" in result.output  # type: ignore[union-attr]
+
+
+class TestConventionDeprecateCommand:
+    """Tests for the `lexi convention deprecate` command."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_deprecate_active(self, tmp_path: Path) -> None:
+        """Deprecating an active convention sets status to deprecated."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Auth required", status="active")
+
+        result = self._invoke(project, ["convention", "deprecate", "Auth required"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Deprecated" in result.output  # type: ignore[union-attr]
+
+        conv_path = project / ".lexibrary" / "conventions" / "auth-required.md"
+        content = conv_path.read_text(encoding="utf-8")
+        assert "status: deprecated" in content
+
+    def test_deprecate_draft(self, tmp_path: Path) -> None:
+        """Deprecating a draft convention works."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Auth required", status="draft")
+
+        result = self._invoke(project, ["convention", "deprecate", "Auth required"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Deprecated" in result.output  # type: ignore[union-attr]
+
+    def test_deprecate_not_found(self, tmp_path: Path) -> None:
+        """Deprecating a nonexistent convention should fail."""
+        project = _setup_project(tmp_path)
+        (project / ".lexibrary" / "conventions").mkdir(parents=True, exist_ok=True)
+
+        result = self._invoke(project, ["convention", "deprecate", "nonexistent"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Convention not found" in result.output  # type: ignore[union-attr]
+
+    def test_deprecate_by_slug(self, tmp_path: Path) -> None:
+        """Deprecate a convention by its slug."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Auth required", status="active")
+
+        result = self._invoke(project, ["convention", "deprecate", "auth-required"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Deprecated" in result.output  # type: ignore[union-attr]
+
+
+class TestConventionsListCommand:
+    """Tests for the `lexi conventions` command."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_list_all_non_deprecated(self, tmp_path: Path) -> None:
+        """List conventions should exclude deprecated by default."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Conv Active", status="active")
+        _create_convention_file(project, "Conv Draft", status="draft")
+        _create_convention_file(project, "Conv Deprecated", status="deprecated")
+
+        result = self._invoke(project, ["conventions"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Conv Active" in result.output  # type: ignore[union-attr]
+        assert "Conv Draft" in result.output  # type: ignore[union-attr]
+        assert "Conv Deprecated" not in result.output  # type: ignore[union-attr]
+        assert "Found 2 convention(s)" in result.output  # type: ignore[union-attr]
+
+    def test_list_with_all_flag(self, tmp_path: Path) -> None:
+        """--all flag includes deprecated conventions."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Conv Active", status="active")
+        _create_convention_file(project, "Conv Deprecated", status="deprecated")
+
+        result = self._invoke(project, ["conventions", "--all"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Conv Active" in result.output  # type: ignore[union-attr]
+        assert "Conv Deprecated" in result.output  # type: ignore[union-attr]
+        assert "Found 2 convention(s)" in result.output  # type: ignore[union-attr]
+
+    def test_filter_by_tag(self, tmp_path: Path) -> None:
+        """Filter conventions by tag."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Python Style", tags=["python"])
+        _create_convention_file(project, "Auth Rules", tags=["auth"])
+
+        result = self._invoke(project, ["conventions", "--tag", "python"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Python Style" in result.output  # type: ignore[union-attr]
+        assert "Auth Rules" not in result.output  # type: ignore[union-attr]
+        assert "Found 1 convention(s)" in result.output  # type: ignore[union-attr]
+
+    def test_filter_by_status(self, tmp_path: Path) -> None:
+        """Filter conventions by status."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Active Conv", status="active")
+        _create_convention_file(project, "Draft Conv", status="draft")
+
+        result = self._invoke(project, ["conventions", "--status", "draft"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Draft Conv" in result.output  # type: ignore[union-attr]
+        assert "Active Conv" not in result.output  # type: ignore[union-attr]
+
+    def test_filter_by_scope(self, tmp_path: Path) -> None:
+        """Filter conventions by scope value."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Project Wide", scope="project")
+        _create_convention_file(project, "Auth Scope", scope="src/auth")
+
+        result = self._invoke(project, ["conventions", "--scope", "src/auth"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Auth Scope" in result.output  # type: ignore[union-attr]
+        assert "Project Wide" not in result.output  # type: ignore[union-attr]
+
+    def test_no_conventions_directory(self, tmp_path: Path) -> None:
+        """When no conventions directory exists, suggest creating one."""
+        project = _setup_project(tmp_path)
+
+        result = self._invoke(project, ["conventions"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "No conventions found" in result.output  # type: ignore[union-attr]
+        assert "lexi convention new" in result.output  # type: ignore[union-attr]
+
+    def test_no_matching_conventions(self, tmp_path: Path) -> None:
+        """When no conventions match filters, show message."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Active Conv", tags=["python"])
+
+        result = self._invoke(project, ["conventions", "--tag", "nonexistent"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "No conventions matching" in result.output  # type: ignore[union-attr]
+
+    def test_filter_by_path(self, tmp_path: Path) -> None:
+        """Filter conventions by path argument for scope-based retrieval."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Project Wide", scope="project")
+        _create_convention_file(project, "Auth Scope", scope="src/auth")
+
+        result = self._invoke(project, ["conventions", "src/auth/login.py"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        # Both project-wide and auth-scoped conventions should match
+        assert "Project Wide" in result.output  # type: ignore[union-attr]
+        assert "Auth Scope" in result.output  # type: ignore[union-attr]
+
+    def test_invalid_status_value(self, tmp_path: Path) -> None:
+        """Invalid status value should show error."""
+        project = _setup_project(tmp_path)
+
+        result = self._invoke(project, ["conventions", "--status", "invalid"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Invalid status" in result.output  # type: ignore[union-attr]
+
+    def test_table_shows_rule_column(self, tmp_path: Path) -> None:
+        """Table output includes the Rule column with truncated rule text."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(
+            project, "Long Rule Conv", body="This is the rule text for the convention."
+        )
+
+        result = self._invoke(project, ["conventions"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "This is the rule text" in result.output  # type: ignore[union-attr]
+
+    def test_tag_filter_and_logic(self, tmp_path: Path) -> None:
+        """Multiple --tag options use AND logic."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Both Tags", tags=["python", "auth"])
+        _create_convention_file(project, "Python Only", tags=["python"])
+
+        result = self._invoke(project, ["conventions", "--tag", "python", "--tag", "auth"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Both Tags" in result.output  # type: ignore[union-attr]
+        assert "Python Only" not in result.output  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------
@@ -2034,9 +2564,7 @@ class TestLexiValidateCommand:
             f'<!-- lexibrary:meta source="src" source_hash="abc"'
             f' generated="{now}" -->\n'
         )
-        (project / ".lexibrary" / "src" / ".aindex").write_text(
-            src_aindex, encoding="utf-8"
-        )
+        (project / ".lexibrary" / "src" / ".aindex").write_text(src_aindex, encoding="utf-8")
         root_aindex = (
             f"# ./\n\nRoot\n\n## Child Map\n\n"
             f"| Name | Type | Description |\n| --- | --- | --- |\n"
@@ -2044,9 +2572,7 @@ class TestLexiValidateCommand:
             f'<!-- lexibrary:meta source="." source_hash="abc"'
             f' generated="{now}" -->\n'
         )
-        (project / ".lexibrary" / ".aindex").write_text(
-            root_aindex, encoding="utf-8"
-        )
+        (project / ".lexibrary" / ".aindex").write_text(root_aindex, encoding="utf-8")
         result = self._invoke(project, ["validate"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "No validation issues found" in result.output  # type: ignore[union-attr]
@@ -2342,9 +2868,7 @@ class TestIWH:
     ) -> None:
         _setup_iwh_project(tmp_path)
         monkeypatch.chdir(tmp_path)
-        result = runner.invoke(
-            lexi_app, ["iwh", "write", "src", "--body", "wip"]
-        )
+        result = runner.invoke(lexi_app, ["iwh", "write", "src", "--body", "wip"])
         assert result.exit_code == 0
         assert "incomplete" in result.output
 
@@ -2377,9 +2901,7 @@ class TestIWH:
     ) -> None:
         _setup_iwh_project(tmp_path)
         monkeypatch.chdir(tmp_path)
-        result = runner.invoke(
-            lexi_app, ["iwh", "write", "--body", "root signal"]
-        )
+        result = runner.invoke(lexi_app, ["iwh", "write", "--body", "root signal"])
         assert result.exit_code == 0
         # Project root IWH → .lexibrary/.iwh
         iwh_file = tmp_path / ".lexibrary" / ".iwh"
@@ -2427,9 +2949,7 @@ class TestIWH:
         assert result.exit_code == 0
         assert "No IWH signal found" in result.output
 
-    def test_iwh_list_shows_table(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_iwh_list_shows_table(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         from lexibrary.iwh import write_iwh  # noqa: PLC0415
 
         _setup_iwh_project(tmp_path)
@@ -2441,9 +2961,7 @@ class TestIWH:
         assert result.exit_code == 0
         assert "2 signal(s)" in result.output
 
-    def test_iwh_list_empty_project(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_iwh_list_empty_project(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _setup_iwh_project(tmp_path)
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(lexi_app, ["iwh", "list"])
@@ -2670,9 +3188,7 @@ class TestStackDuplicateCommand:
         _setup_stack_project(tmp_path)
         _create_stack_post(tmp_path, post_id="ST-001", title="Original bug")
         _create_stack_post(tmp_path, post_id="ST-003", title="Duplicate bug")
-        result = self._invoke(
-            tmp_path, ["stack", "duplicate", "ST-003", "--of", "ST-001"]
-        )
+        result = self._invoke(tmp_path, ["stack", "duplicate", "ST-003", "--of", "ST-001"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "duplicate" in result.output.lower()  # type: ignore[union-attr]
         assert "ST-001" in result.output  # type: ignore[union-attr]
@@ -2685,9 +3201,7 @@ class TestStackDuplicateCommand:
     def test_duplicate_nonexistent_post(self, tmp_path: Path) -> None:
         """Duplicating a nonexistent post should fail."""
         _setup_stack_project(tmp_path)
-        result = self._invoke(
-            tmp_path, ["stack", "duplicate", "ST-999", "--of", "ST-001"]
-        )
+        result = self._invoke(tmp_path, ["stack", "duplicate", "ST-999", "--of", "ST-001"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "not found" in result.output.lower()  # type: ignore[union-attr]
 
@@ -2700,8 +3214,6 @@ class TestStackDuplicateCommand:
 
     def test_duplicate_no_project(self, tmp_path: Path) -> None:
         """Running without .lexibrary should fail."""
-        result = self._invoke(
-            tmp_path, ["stack", "duplicate", "ST-001", "--of", "ST-002"]
-        )
+        result = self._invoke(tmp_path, ["stack", "duplicate", "ST-001", "--of", "ST-002"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]

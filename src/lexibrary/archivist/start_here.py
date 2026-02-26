@@ -88,10 +88,14 @@ def _assemble_start_here(
     topology: str,
     ontology: str,
     navigation_by_intent: str,
-    convention_index: str,
     navigation_protocol: str,
 ) -> str:
-    """Assemble final START_HERE.md markdown from StartHereOutput sections."""
+    """Assemble final START_HERE.md markdown from StartHereOutput sections.
+
+    Convention information is no longer embedded in START_HERE.md.  Instead,
+    a pointer directs readers to the ``lexi lookup`` and ``lexi conventions``
+    commands where conventions are managed as first-class artifacts.
+    """
     sections = [
         "# START HERE",
         "",
@@ -107,9 +111,10 @@ def _assemble_start_here(
         "",
         navigation_by_intent,
         "",
-        "## Convention Index",
+        "## Conventions",
         "",
-        convention_index,
+        "Run `lexi lookup <file>` to see applicable conventions, "
+        "or `lexi conventions` to list all project conventions.",
         "",
         "## Navigation Protocol",
         "",
@@ -191,12 +196,12 @@ async def generate_start_here(
 
     output = result.start_here_output
 
-    # 5. Assemble final markdown
+    # 5. Assemble final markdown (convention_index removed — conventions
+    #    are now a first-class artifact accessed via lexi lookup / lexi conventions)
     content = _assemble_start_here(
         topology=output.topology,
         ontology=output.ontology,
         navigation_by_intent=output.navigation_by_intent,
-        convention_index=output.convention_index,
         navigation_protocol=output.navigation_protocol,
     )
 

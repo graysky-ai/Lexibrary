@@ -36,6 +36,5 @@ class StartHereOutput {
   topology string
   ontology string
   navigation_by_intent string
-  convention_index string
   navigation_protocol string
 }

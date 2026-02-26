@@ -12,6 +12,7 @@ from lexibrary.archivist.service import (
     ArchivistService,
 )
 from lexibrary.archivist.start_here import (
+    _assemble_start_here,
     _build_directory_tree,
     _collect_aindex_summaries,
     _count_tokens_approx,
@@ -55,7 +56,6 @@ def _make_sample_output() -> StartHereOutput:
         topology="src/\n  core/\n  utils/",
         ontology="**design file** -- per-file documentation artifact",
         navigation_by_intent="| Task | Read first |\n| --- | --- |\n| Config | src/config/ |",
-        convention_index="- snake_case for all modules",
         navigation_protocol="- Read the design file before editing any source file",
     )
 
@@ -218,7 +218,10 @@ class TestGenerateStartHere:
         assert "## Project Topology" in content
         assert "## Ontology" in content
         assert "## Navigation by Intent" in content
-        assert "## Convention Index" in content
+        assert "## Convention Index" not in content
+        assert "## Conventions" in content
+        assert "lexi lookup" in content
+        assert "lexi conventions" in content
         assert "## Navigation Protocol" in content
         assert sample_output.topology in content
 
@@ -360,3 +363,62 @@ class TestCountTokensApprox:
     def test_multiline(self) -> None:
         text = "line one\nline two\nline three"
         assert _count_tokens_approx(text) == 6
+
+
+# ---------------------------------------------------------------------------
+# _assemble_start_here
+# ---------------------------------------------------------------------------
+
+
+class TestAssembleStartHere:
+    """Verify START_HERE.md assembly from sections."""
+
+    def test_does_not_include_convention_index_section(self) -> None:
+        """Assembled output has no '## Convention Index' section."""
+        content = _assemble_start_here(
+            topology="project/",
+            ontology="**term** -- definition",
+            navigation_by_intent="| Task | File |",
+            navigation_protocol="- Read design files first",
+        )
+        assert "## Convention Index" not in content
+
+    def test_includes_conventions_pointer(self) -> None:
+        """Assembled output contains a conventions pointer with lexi commands."""
+        content = _assemble_start_here(
+            topology="project/",
+            ontology="**term** -- definition",
+            navigation_by_intent="| Task | File |",
+            navigation_protocol="- Read design files first",
+        )
+        assert "## Conventions" in content
+        assert "lexi lookup" in content
+        assert "lexi conventions" in content
+
+    def test_includes_all_required_sections(self) -> None:
+        """Assembled output includes topology, ontology, navigation, conventions, protocol."""
+        content = _assemble_start_here(
+            topology="src/",
+            ontology="**design file** -- doc",
+            navigation_by_intent="| Task | Read |",
+            navigation_protocol="- Read design file first",
+        )
+        assert "# START HERE" in content
+        assert "## Project Topology" in content
+        assert "## Ontology" in content
+        assert "## Navigation by Intent" in content
+        assert "## Conventions" in content
+        assert "## Navigation Protocol" in content
+
+    def test_sections_contain_provided_content(self) -> None:
+        """Each section body contains the text that was passed in."""
+        content = _assemble_start_here(
+            topology="my-topology-content",
+            ontology="my-ontology-content",
+            navigation_by_intent="my-navigation-content",
+            navigation_protocol="my-protocol-content",
+        )
+        assert "my-topology-content" in content
+        assert "my-ontology-content" in content
+        assert "my-navigation-content" in content
+        assert "my-protocol-content" in content

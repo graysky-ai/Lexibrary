@@ -23,5 +23,4 @@ class AIndexFile(BaseModel):
     directory_path: str
     billboard: str
     entries: list[AIndexEntry]
-    local_conventions: list[str] = []
     metadata: StalenessMetadata

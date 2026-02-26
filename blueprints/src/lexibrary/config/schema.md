@@ -9,13 +9,15 @@
 | `CrawlConfig` | `max_file_size_kb: int = 512`, `binary_extensions: list[str]` | Crawl behaviour -- file types to treat as binary and size limits |
 | `TokenizerConfig` | `backend`, `model`, `max_tokens_per_chunk` | Tokenizer backend selection |
 | `LLMConfig` | `provider`, `model`, `api_key_env`, `api_key_source: str = "env"`, `max_retries`, `timeout` | LLM provider settings; `api_key_source` controls how the API key is resolved (`"env"`, `"dotenv"`, or `"manual"`) |
-| `TokenBudgetConfig` | `start_here_tokens`, `design_file_tokens`, `design_file_abridged_tokens`, `aindex_tokens`, `concept_file_tokens` | Per-artifact token budgets |
+| `TokenBudgetConfig` | `start_here_tokens`, `design_file_tokens`, `design_file_abridged_tokens`, `aindex_tokens`, `concept_file_tokens`, `convention_file_tokens` | Per-artifact token budgets |
 | `MappingConfig` | `strategies: list[dict]` | Mapping strategy config (stub for Phase 1) |
 | `IgnoreConfig` | `use_gitignore: bool`, `additional_patterns: list[str]` | Ignore pattern settings; defaults include `.env`, `.env.*`, and `*.env` to prevent API key files from being indexed |
 | `DaemonConfig` | `debounce_seconds: float = 2.0`, `sweep_interval_seconds: int = 3600`, `sweep_skip_if_unchanged: bool = True`, `git_suppression_seconds: int = 5`, `watchdog_enabled: bool = False`, `log_level: str = "info"` | Daemon sweep, watchdog, and logging settings |
 | `ASTConfig` | `enabled: bool`, `languages: list[str]` | AST-based interface extraction settings |
+| `ConventionConfig` | `lookup_display_limit: int = 5` | Convention system settings -- max conventions shown in `lexi lookup` |
+| `ConventionDeclaration` | `body: str`, `scope: str = "project"`, `tags: list[str] = []` | User-declared convention seeded from config; materialized into `.lexibrary/conventions/` files with `source: config`, `status: active` |
 | `IWHConfig` | `enabled: bool = True` | I Was Here (IWH) agent trace configuration |
-| `LexibraryConfig` | `scope_root`, `project_name`, `agent_environment`, `iwh`, `llm`, `token_budgets`, `mapping`, `ignore`, `daemon`, `crawl`, `ast` | Top-level config container |
+| `LexibraryConfig` | `scope_root`, `project_name`, `agent_environment`, `conventions`, `convention_declarations`, `iwh`, `llm`, `token_budgets`, `mapping`, `ignore`, `daemon`, `crawl`, `ast` | Top-level config container |
 
 ## Dependencies
 
@@ -49,6 +51,10 @@
   - `git_suppression_seconds` -- suppress watchdog events after git operations
   - `watchdog_enabled` -- opt-in real-time file watching (default `False`); replaces the former `enabled` field
   - `log_level` -- daemon log level for `RotatingFileHandler` (default `"info"`)
+
+- `ConventionConfig.lookup_display_limit` -- maximum number of conventions displayed in `lexi lookup` output (default 5); when truncating, leaf-ward (more specific) conventions are kept over root-ward (general) ones
+- `ConventionDeclaration` -- seeding mechanism for conventions declared in `config.yaml`; once materialized into `.lexibrary/conventions/` files by the build pipeline, the files become source of truth
+- `TokenBudgetConfig.convention_file_tokens` -- target token budget for individual convention files (default 500)
 
 ## Dragons
 

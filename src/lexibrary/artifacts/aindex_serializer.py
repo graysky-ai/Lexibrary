@@ -49,18 +49,6 @@ def serialize_aindex(data: AIndexFile) -> str:
 
     parts.append("")
 
-    # Local Conventions section
-    parts.append("## Local Conventions")
-    parts.append("")
-
-    if not data.local_conventions:
-        parts.append("(none)")
-    else:
-        for convention in data.local_conventions:
-            parts.append(f"- {convention}")
-
-    parts.append("")
-
     # Staleness metadata footer as HTML comment
     meta = data.metadata
     meta_fields: list[str] = [

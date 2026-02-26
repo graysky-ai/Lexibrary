@@ -163,6 +163,5 @@ def generate_aindex(
         directory_path=rel_source,
         billboard=billboard,
         entries=entries,
-        local_conventions=[],
         metadata=metadata,
     )

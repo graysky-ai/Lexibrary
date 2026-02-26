@@ -109,7 +109,6 @@ class TestAIndexFile:
             metadata=StalenessMetadata(**_meta()),
         )
         assert len(aindex.entries) == 1
-        assert aindex.local_conventions == []
 
     def test_dir_entry_type(self) -> None:
         entry = AIndexEntry(name="config", entry_type="dir", description="Contains 3 files")

@@ -9,7 +9,7 @@
 | `ArtifactResult` | dataclass: `id: int`, `path: str`, `kind: str`, `title: str \| None`, `status: str \| None` | Common return type for artifact lookups, tag search, and FTS search |
 | `LinkResult` | dataclass: `source_id: int`, `source_path: str`, `link_type: str`, `link_context: str \| None` | Inbound link edge returned by `reverse_deps` |
 | `TraversalNode` | dataclass: `artifact_id: int`, `path: str`, `kind: str`, `depth: int`, `via_link_type: str \| None` | Node discovered during multi-hop graph traversal |
-| `ConventionResult` | dataclass: `body: str`, `directory_path: str`, `ordinal: int` | Local convention body scoped to a directory path |
+| `ConventionResult` | dataclass: `body: str`, `directory_path: str`, `ordinal: int`, `source: str = "user"`, `status: str = "active"`, `priority: int = 0` | Convention body scoped to a directory path with lifecycle metadata |
 | `BuildSummaryEntry` | dataclass: `action: str`, `count: int`, `total_duration_ms: int \| None` | Aggregate statistics for one action type in the most recent build |
 | `LinkGraph` | class | Read-only query interface wrapping a SQLite connection |
 | `open_index` | `(project_root: Path) -> LinkGraph \| None` | Module-level convenience: open `index.db` for queries, or `None` for graceful degradation |
@@ -39,7 +39,7 @@
 | `reverse_deps` | `(path: str, link_type: str \| None = None) -> list[LinkResult]` | Return all inbound links to the artifact at path; optionally filter by link type |
 | `search_by_tag` | `(tag: str) -> list[ArtifactResult]` | Find all artifacts tagged with the given tag (exact match) |
 | `full_text_search` | `(query: str, limit: int = 20) -> list[ArtifactResult]` | FTS5 full-text search; query is literal-quoted to prevent FTS5 syntax errors; results ranked by relevance |
-| `get_conventions` | `(directory_paths: list[str]) -> list[ConventionResult]` | Retrieve conventions for a list of directory paths, ordered root-to-leaf then by ordinal (convention inheritance) |
+| `get_conventions` | `(directory_paths: list[str], *, include_deprecated: bool = False) -> list[ConventionResult]` | Retrieve conventions for a list of directory paths, ordered root-to-leaf then by priority descending then ordinal; excludes deprecated by default |
 | `traverse` | `(start_path: str, max_depth: int = 3, link_types: list[str] \| None = None, direction: str = "outbound") -> list[TraversalNode]` | Multi-hop graph traversal via recursive CTE; supports outbound (forward deps) and inbound (reverse dep chain) directions |
 | `build_summary` | `() -> list[BuildSummaryEntry]` | Aggregate statistics for the most recent build from build_log |
 
@@ -95,4 +95,6 @@ if graph is None:
 - All queries use parameterised statements (`?` placeholders) for safety
 - The read-only SQLite URI mode (`?mode=ro`) prevents accidental writes
 - `open_index()` is the preferred consumer entry point; `LinkGraph.__init__` is for advanced use cases with pre-opened connections
-- Convention inheritance is achieved by passing directory paths root-to-leaf to `get_conventions()`, which sorts results by caller-specified path order then ordinal
+- Convention inheritance is achieved by passing directory paths root-to-leaf to `get_conventions()`, which sorts results by caller-specified path order, then priority descending, then ordinal
+- `get_conventions()` excludes deprecated conventions by default; pass `include_deprecated=True` to include them
+- `ConventionResult` includes extended metadata: `source` (user/agent/config), `status` (draft/active/deprecated), `priority` (int)

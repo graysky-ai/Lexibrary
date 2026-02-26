@@ -38,6 +38,7 @@
 | `_next_stack_id` | Scan existing `ST-NNN-*.md` files and return the next available number |
 | `_slugify` | Convert a title to a URL-friendly slug (lowercase, max 50 chars) |
 | `_find_post_path` | Resolve a post ID (e.g. `ST-001`) to its file path by globbing the stack directory |
+| `_render_conventions` | Render applicable conventions grouped by scope with `[draft]` markers and truncation notice; called by `lookup` |
 
 ## Dependencies
 
@@ -57,6 +58,8 @@
 - `lexibrary.stack.mutations` -- `add_answer`, `record_vote`, `accept_answer` (lazy imports)
 - `lexibrary.stack.parser` -- `parse_stack_post` (lazy import in `stack_view`)
 - `lexibrary.search` -- `unified_search` (lazy import in `search`)
+- `lexibrary.conventions.index` -- `ConventionIndex` (lazy import in `lookup`)
+- `lexibrary.artifacts.convention` -- `ConventionFile` (lazy import in `_render_conventions`)
 - `lexibrary.linkgraph` -- `open_index` (lazy import in `lookup` and `search`)
 - `lexibrary.iwh` -- `write_iwh`, `consume_iwh`, `read_iwh` (lazy imports in `iwh_write`, `iwh_read`)
 - `lexibrary.iwh.reader` -- `find_all_iwh` (lazy import in `iwh_list`)
@@ -80,7 +83,7 @@
 - Stack helpers (`_stack_dir`, `_next_stack_id`, `_slugify`, `_find_post_path`) are private to this module per design decision D2
 - All heavy imports are lazy (inside command functions) to keep CLI startup fast
 - Stack post IDs are auto-assigned by scanning `.lexibrary/stack/ST-*-*.md` files and incrementing
-- `lookup` walks parent `.aindex` files upward to show inherited local conventions
+- `lookup` delivers applicable conventions via `ConventionIndex.find_by_scope_limited()` from `.lexibrary/conventions/`, rendered grouped by scope (project first, then directory scopes root-to-leaf) with `[draft]` markers and truncation notice when display limit is exceeded; the `_render_conventions()` helper handles grouping and formatting
 - `lookup` opens the link graph via `open_index()` and displays reverse links in two sections: "Dependents (imports this file)" for `ast_import` links, and "Also Referenced By" for all other link types (wikilinks, stack refs, etc.) with human-readable labels; both sections are silently omitted when the index is unavailable or the file has no inbound links (graceful degradation)
 - `search` opens the link graph via `open_index()` and passes it to `unified_search()` for index-accelerated tag and FTS queries; closes the graph in a `finally` block; falls back to file scanning when the index is unavailable
 - `iwh_app` is a Typer sub-group registered as `lexi iwh`; all three IWH commands check `config.iwh.enabled` and exit early with a warning if disabled
