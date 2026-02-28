@@ -75,7 +75,7 @@ class TestFullFlowPerEnvironment:
 
         assert "claude" in results
         paths = results["claude"]
-        assert len(paths) == 9
+        assert len(paths) == 11
 
         # CLAUDE.md
         claude_md = tmp_path / "CLAUDE.md"
@@ -522,9 +522,7 @@ class TestEndToEndFlow:
 
         claude_content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
         agents_content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-        mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").read_text(
-            encoding="utf-8"
-        )
+        mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").read_text(encoding="utf-8")
 
         # All environments should warn against running lexictl
         for content in (claude_content, agents_content, mdc_content):
@@ -536,9 +534,7 @@ class TestEndToEndFlow:
 
         claude_content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
         agents_content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-        mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").read_text(
-            encoding="utf-8"
-        )
+        mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").read_text(encoding="utf-8")
 
         for content in (claude_content, agents_content, mdc_content):
             assert "START_HERE.md" in content
@@ -549,9 +545,7 @@ class TestEndToEndFlow:
 
         claude_content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
         agents_content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-        mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").read_text(
-            encoding="utf-8"
-        )
+        mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").read_text(encoding="utf-8")
 
         for content in (claude_content, agents_content, mdc_content):
             assert ".iwh" in content

@@ -1,20 +1,23 @@
 """Claude Code environment rule generation.
 
 Generates:
-- ``CLAUDE.md`` — marker-delimited Lexibrary section with core agent rules
-- ``.claude/settings.json`` — pre-approved permissions and hook configuration
-- ``.claude/hooks/lexi-pre-edit.sh`` — PreToolUse hook for auto-lookup
-- ``.claude/hooks/lexi-post-edit.sh`` — PostToolUse hook for design reminders
-- ``.claude/commands/lexi-orient.md`` — orient session-start command
-- ``.claude/commands/lexi-search.md`` — cross-artifact search command
-- ``.claude/commands/lexi-lookup.md`` — file lookup command
-- ``.claude/commands/lexi-concepts.md`` — concept search command
-- ``.claude/commands/lexi-stack.md`` — Stack Q&A command
+- ``CLAUDE.md`` -- marker-delimited Lexibrary section with core agent rules
+- ``.claude/settings.json`` -- pre-approved permissions and hook configuration
+- ``.claude/hooks/lexi-pre-edit.sh`` -- PreToolUse hook for auto-lookup
+- ``.claude/hooks/lexi-post-edit.sh`` -- PostToolUse hook for design reminders
+- ``.claude/hooks/lexi-explore-context.sh`` -- SubagentStart hook for Explore/Plan context injection
+- ``.claude/agents/explore.md`` -- custom Explore agent with Lexibrary awareness
+- ``.claude/commands/lexi-orient.md`` -- orient session-start command
+- ``.claude/commands/lexi-search.md`` -- cross-artifact search command
+- ``.claude/commands/lexi-lookup.md`` -- file lookup command
+- ``.claude/commands/lexi-concepts.md`` -- concept search command
+- ``.claude/commands/lexi-stack.md`` -- Stack Q&A command
 
 The ``CLAUDE.md`` file uses marker-based section management so that
 user-authored content outside the markers is preserved across updates.
 ``settings.json`` uses additive merge to preserve user customizations.
-Command files and hook scripts are standalone and overwritten on each generation.
+Command files, hook scripts, and agent files are standalone and overwritten
+on each generation.
 """
 
 from __future__ import annotations
@@ -45,6 +48,7 @@ _PERMISSIONS_ALLOW: list[str] = [
     "Bash(lexi *)",
     "Bash(lexi concepts *)",
     "Bash(lexi concept *)",
+    "Bash(lexi context-dump)",
     "Bash(lexi describe *)",
     "Bash(lexi help)",
     "Bash(lexi iwh *)",
@@ -88,6 +92,18 @@ _HOOKS_CONFIG: dict[str, list[dict[str, object]]] = {
             ],
         },
     ],
+    "SubagentStart": [
+        {
+            "matcher": "Explore|Plan",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": '"$CLAUDE_PROJECT_DIR"/.claude/hooks/lexi-explore-context.sh',
+                    "timeout": 5000,
+                },
+            ],
+        },
+    ],
 }
 
 # ---------------------------------------------------------------------------
@@ -96,7 +112,7 @@ _HOOKS_CONFIG: dict[str, list[dict[str, object]]] = {
 
 _PRE_EDIT_SCRIPT = """\
 #!/usr/bin/env bash
-# lexi-pre-edit.sh — Claude Code PreToolUse hook
+# lexi-pre-edit.sh -- Claude Code PreToolUse hook
 # Runs `lexi lookup` before file edits to inject design context.
 
 set -euo pipefail
@@ -132,9 +148,97 @@ fi
 exit 0
 """
 
+_EXPLORE_CONTEXT_SCRIPT = """\
+#!/usr/bin/env bash
+# lexi-explore-context.sh -- Claude Code SubagentStart hook
+# Injects Lexibrary orientation context into Explore/Plan subagents.
+
+set -euo pipefail
+
+# Only inject context if the project has a Lexibrary index
+if [ ! -d ".lexibrary" ]; then
+    exit 0
+fi
+
+# Collect orientation context; fail silently on error
+CONTEXT=$(lexi context-dump 2>/dev/null || true)
+
+if [ -z "$CONTEXT" ]; then
+    exit 0
+fi
+
+# Build hookSpecificOutput JSON using jq for proper escaping
+jq -n --arg ctx "$CONTEXT" '{
+  "hookSpecificOutput": {
+    "hookEventName": "SubagentStart",
+    "additionalContext": $ctx
+  }
+}'
+
+exit 0
+"""
+
+# ---------------------------------------------------------------------------
+# Custom Explore agent content
+# ---------------------------------------------------------------------------
+
+_EXPLORE_AGENT_CONTENT = """\
+---
+name: Explore
+description: >-
+  Explore the codebase to answer questions about how it works, find relevant
+  files and code, and understand architecture and patterns.
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+model: haiku
+---
+
+You are an exploration agent for a software codebase.
+
+## Orientation
+
+First, check if a `.lexibrary/` directory exists at the project root.
+
+### If `.lexibrary/` exists (Lexibrary-indexed project)
+
+Prefer Lexibrary commands over raw Glob/Grep. They return focused, pre-indexed
+results that reduce the number of tool calls needed.
+
+Available commands (run via Bash):
+
+- `lexi search <query>` -- cross-artifact full-text search
+- `lexi lookup <file>` -- design file, conventions, and reverse dependencies for a file
+- `lexi concepts <topic>` -- domain vocabulary search
+- `lexi conventions <path>` -- coding standards for a file or directory
+
+You may still use Glob, Grep, and Read when you need raw file access, pattern
+matching beyond what Lexibrary indexes, or to read specific file contents.
+
+### If `.lexibrary/` does not exist (unindexed project)
+
+Fall back to standard exploration using Glob, Grep, and Read.
+
+## Output
+
+- Be concise. Include absolute file paths and line numbers in all references.
+- Return findings as a structured summary, not a narrative.
+
+## Thoroughness
+
+Adapt your depth based on the caller's request:
+
+- **quick**: Limit to 2-3 tool calls maximum. Return the most likely answer fast.
+- **medium** (default): Use up to 8-10 tool calls. Follow one level of cross-references.
+- **very thorough**: Explore systematically across all relevant directories.
+  Follow all cross-references. No tool-call limit.
+"""
+
 _POST_EDIT_SCRIPT = """\
 #!/usr/bin/env bash
-# lexi-post-edit.sh — Claude Code PostToolUse hook
+# lexi-post-edit.sh -- Claude Code PostToolUse hook
 # Reminds agents to update design files after editing source files.
 
 set -euo pipefail
@@ -154,7 +258,7 @@ if [ -z "$FILE_PATH" ]; then
     exit 0
 fi
 
-# Skip non-source paths — no reminder needed for library/config files
+# Skip non-source paths -- no reminder needed for library/config files
 case "$FILE_PATH" in
     *.lexibrary/*|*blueprints/*|*.claude/*|*.cursor/*)
         exit 0
@@ -275,10 +379,11 @@ def _generate_hook_scripts(project_root: Path) -> list[Path]:
 
     Creates (or overwrites) the following scripts:
 
-    - ``.claude/hooks/lexi-pre-edit.sh`` — PreToolUse auto-lookup
-    - ``.claude/hooks/lexi-post-edit.sh`` — PostToolUse design reminder
+    - ``.claude/hooks/lexi-pre-edit.sh`` -- PreToolUse auto-lookup
+    - ``.claude/hooks/lexi-post-edit.sh`` -- PostToolUse design reminder
+    - ``.claude/hooks/lexi-explore-context.sh`` -- SubagentStart context injection
 
-    Both scripts are made executable (chmod +x).
+    All scripts are made executable (chmod +x).
 
     Args:
         project_root: Absolute path to the project root directory.
@@ -301,7 +406,47 @@ def _generate_hook_scripts(project_root: Path) -> list[Path]:
     post_edit.chmod(post_edit.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     scripts.append(post_edit)
 
+    explore_context = hooks_dir / "lexi-explore-context.sh"
+    explore_context.write_text(_EXPLORE_CONTEXT_SCRIPT, encoding="utf-8")
+    explore_context.chmod(
+        explore_context.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    )
+    scripts.append(explore_context)
+
     return scripts
+
+
+# ---------------------------------------------------------------------------
+# Agent file generation
+# ---------------------------------------------------------------------------
+
+
+def _generate_agent_files(project_root: Path) -> list[Path]:
+    """Generate custom agent definition files in ``.claude/agents/``.
+
+    Creates (or overwrites) the following agent files:
+
+    - ``.claude/agents/explore.md`` -- Custom Explore agent that overrides
+      the built-in Explore subagent with Lexibrary-aware exploration.
+
+    The ``.claude/agents/`` directory is created if it does not exist.
+
+    Args:
+        project_root: Absolute path to the project root directory.
+
+    Returns:
+        List of absolute paths to the generated agent files.
+    """
+    agents_dir = project_root / ".claude" / "agents"
+    agents_dir.mkdir(parents=True, exist_ok=True)
+
+    agents: list[Path] = []
+
+    explore_agent = agents_dir / "explore.md"
+    explore_agent.write_text(_EXPLORE_AGENT_CONTENT, encoding="utf-8")
+    agents.append(explore_agent)
+
+    return agents
 
 
 # ---------------------------------------------------------------------------
@@ -314,16 +459,18 @@ def generate_claude_rules(project_root: Path) -> list[Path]:
 
     Creates or updates:
 
-    1. ``CLAUDE.md`` — Lexibrary section appended (new file / no markers)
-       or replaced (existing markers).
-    2. ``.claude/settings.json`` — permissions and hooks configuration.
-    3. ``.claude/hooks/lexi-pre-edit.sh`` — PreToolUse hook script.
-    4. ``.claude/hooks/lexi-post-edit.sh`` — PostToolUse hook script.
-    5. ``.claude/commands/lexi-orient.md`` — orient skill command file.
-    6. ``.claude/commands/lexi-search.md`` — search skill command file.
-    7. ``.claude/commands/lexi-lookup.md`` — lookup skill command file.
-    8. ``.claude/commands/lexi-concepts.md`` — concepts skill command file.
-    9. ``.claude/commands/lexi-stack.md`` — stack skill command file.
+    1.  ``CLAUDE.md`` -- Lexibrary section appended (new file / no markers)
+        or replaced (existing markers).
+    2.  ``.claude/settings.json`` -- permissions and hooks configuration.
+    3.  ``.claude/hooks/lexi-pre-edit.sh`` -- PreToolUse hook script.
+    4.  ``.claude/hooks/lexi-post-edit.sh`` -- PostToolUse hook script.
+    5.  ``.claude/hooks/lexi-explore-context.sh`` -- SubagentStart hook script.
+    6.  ``.claude/agents/explore.md`` -- custom Explore agent definition.
+    7.  ``.claude/commands/lexi-orient.md`` -- orient skill command file.
+    8.  ``.claude/commands/lexi-search.md`` -- search skill command file.
+    9.  ``.claude/commands/lexi-lookup.md`` -- lookup skill command file.
+    10. ``.claude/commands/lexi-concepts.md`` -- concepts skill command file.
+    11. ``.claude/commands/lexi-stack.md`` -- stack skill command file.
 
     Args:
         project_root: Absolute path to the project root directory.
@@ -356,6 +503,10 @@ def generate_claude_rules(project_root: Path) -> list[Path]:
     # --- .claude/hooks/ ---
     hook_paths = _generate_hook_scripts(project_root)
     created.extend(hook_paths)
+
+    # --- .claude/agents/ ---
+    agent_paths = _generate_agent_files(project_root)
+    created.extend(agent_paths)
 
     # --- .claude/commands/ ---
     commands_dir = project_root / ".claude" / "commands"

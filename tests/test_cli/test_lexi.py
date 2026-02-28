@@ -3217,3 +3217,307 @@ class TestStackDuplicateCommand:
         result = self._invoke(tmp_path, ["stack", "duplicate", "ST-001", "--of", "ST-002"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# context-dump
+# ---------------------------------------------------------------------------
+
+
+def _write_test_aindex(
+    project_root: Path,
+    directory_path: str,
+    billboard: str,
+    entries: list[dict[str, str]] | None = None,
+) -> Path:
+    """Create a serialised .aindex file under .lexibrary/ for testing.
+
+    ``entries`` should be a list of dicts with keys: name, entry_type, description.
+    Returns the path to the written .aindex file.
+    """
+    from datetime import UTC  # noqa: PLC0415
+
+    from lexibrary.artifacts.aindex import AIndexEntry, AIndexFile  # noqa: PLC0415
+    from lexibrary.artifacts.aindex_serializer import serialize_aindex  # noqa: PLC0415
+    from lexibrary.artifacts.design_file import StalenessMetadata  # noqa: PLC0415
+
+    if entries is None:
+        entry_objects = [
+            AIndexEntry(name="example.py", entry_type="file", description="Example file"),
+        ]
+    else:
+        entry_objects = [
+            AIndexEntry(
+                name=e["name"],
+                entry_type=e["entry_type"],  # type: ignore[arg-type]
+                description=e["description"],
+            )
+            for e in entries
+        ]
+
+    aindex = AIndexFile(
+        directory_path=directory_path,
+        billboard=billboard,
+        entries=entry_objects,
+        metadata=StalenessMetadata(
+            source=directory_path,
+            source_hash="abc123",
+            generated=datetime(2025, 1, 1, tzinfo=UTC),
+            generator="test",
+        ),
+    )
+    text = serialize_aindex(aindex)
+
+    mirror_dir = project_root / ".lexibrary" / directory_path
+    mirror_dir.mkdir(parents=True, exist_ok=True)
+    aindex_path = mirror_dir / ".aindex"
+    aindex_path.write_text(text, encoding="utf-8")
+    return aindex_path
+
+
+class TestContextDump:
+    """Tests for the hidden context-dump command."""
+
+    @staticmethod
+    def _invoke(cwd: Path, args: list[str]) -> object:
+        return runner.invoke(lexi_app, args, catch_exceptions=False, env={"PWD": str(cwd)})
+
+    # -- Task 1.1: Hidden command registered --
+
+    def test_hidden_from_help(self) -> None:
+        """context-dump should NOT appear in --help output."""
+        result = runner.invoke(lexi_app, ["--help"])
+        assert result.exit_code == 0
+        assert "context-dump" not in result.output
+
+    def test_command_exists(self, tmp_path: Path) -> None:
+        """context-dump should be callable (even if project has no .lexibrary)."""
+        result = runner.invoke(
+            lexi_app, ["context-dump"], catch_exceptions=False, env={"PWD": str(tmp_path)}
+        )
+        # Should exit 0 gracefully
+        assert result.exit_code == 0
+
+    # -- Task 1.1/1.2: Indexed project with TOPOLOGY.md and file descriptions --
+
+    def test_indexed_project_includes_topology(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """context-dump should include TOPOLOGY.md content when present."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary").mkdir()
+        topology_content = (
+            "# Project Topology\n\n```\n"
+            "root/ -- Main project\n  src/ -- Source code\n```\n"
+        )
+        (tmp_path / ".lexibrary" / "TOPOLOGY.md").write_text(
+            topology_content, encoding="utf-8"
+        )
+
+        result = runner.invoke(lexi_app, ["context-dump"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "Project Topology" in result.output
+        assert "Main project" in result.output
+
+    def test_indexed_project_includes_file_descriptions(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """context-dump should include file-level descriptions from .aindex entries."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary").mkdir()
+
+        _write_test_aindex(
+            tmp_path,
+            "src",
+            "Main source code",
+            entries=[
+                {"name": "main.py", "entry_type": "file", "description": "Application entry point"},
+                {
+                    "name": "utils.py",
+                    "entry_type": "file",
+                    "description": "Shared utility functions",
+                },
+                {"name": "auth", "entry_type": "dir", "description": "Authentication module"},
+            ],
+        )
+
+        result = runner.invoke(lexi_app, ["context-dump"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "src/main.py: Application entry point" in result.output
+        assert "src/utils.py: Shared utility functions" in result.output
+        # dir entries should NOT appear in file descriptions
+        assert "src/auth:" not in result.output
+
+    def test_indexed_project_includes_topology_and_descriptions(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """context-dump should include both TOPOLOGY.md and file descriptions."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary").mkdir()
+        topology_content = "# Project Topology\n\n```\nroot/ -- My project\n```\n"
+        (tmp_path / ".lexibrary" / "TOPOLOGY.md").write_text(topology_content, encoding="utf-8")
+
+        _write_test_aindex(
+            tmp_path,
+            "src",
+            "Source code",
+            entries=[
+                {"name": "app.py", "entry_type": "file", "description": "Main application"},
+            ],
+        )
+
+        result = runner.invoke(lexi_app, ["context-dump"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "Project Topology" in result.output
+        assert "src/app.py: Main application" in result.output
+
+    # -- Scenario: No .lexibrary directory --
+
+    def test_no_lexibrary_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """context-dump should exit 0 with empty output when no .lexibrary/ exists."""
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(lexi_app, ["context-dump"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert result.output.strip() == ""
+
+    # -- Scenario: Empty .lexibrary (no .aindex files) --
+
+    def test_empty_lexibrary_no_topology(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Empty .lexibrary with no TOPOLOGY.md should produce empty output."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary").mkdir()
+        result = runner.invoke(lexi_app, ["context-dump"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert result.output.strip() == ""
+
+    def test_empty_lexibrary_with_topology(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Empty .lexibrary with TOPOLOGY.md should still output topology content."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary").mkdir()
+        topology_content = "# Project Topology\n\n```\nroot/ -- Bare project\n```\n"
+        (tmp_path / ".lexibrary" / "TOPOLOGY.md").write_text(topology_content, encoding="utf-8")
+
+        result = runner.invoke(lexi_app, ["context-dump"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "Bare project" in result.output
+
+    # -- Task 1.3: Truncation behavior --
+
+    def test_truncation_omits_deepest_entries(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When output exceeds budget, deepest-path entries should be omitted first."""
+        import sys  # noqa: PLC0415
+
+        app_module = sys.modules["lexibrary.cli.lexi_app"]
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary").mkdir()
+
+        # Use a tiny budget to force truncation easily
+        monkeypatch.setattr(app_module, "_CONTEXT_DUMP_CHAR_BUDGET", 400)
+
+        # Create a small TOPOLOGY.md
+        topology_content = "# Project Topology\n\nroot/ -- My project\n"
+        (tmp_path / ".lexibrary" / "TOPOLOGY.md").write_text(topology_content, encoding="utf-8")
+
+        # Add many file descriptions at various depths
+        _write_test_aindex(
+            tmp_path,
+            "src",
+            "Source code",
+            entries=[
+                {
+                    "name": f"file_{i}.py",
+                    "entry_type": "file",
+                    "description": f"Shallow file {i} desc",
+                }
+                for i in range(10)
+            ],
+        )
+        _write_test_aindex(
+            tmp_path,
+            "src/deep/nested/dir",
+            "Deeply nested",
+            entries=[
+                {
+                    "name": f"deep_{i}.py",
+                    "entry_type": "file",
+                    "description": f"Deep file {i} desc",
+                }
+                for i in range(10)
+            ],
+        )
+
+        result = runner.invoke(lexi_app, ["context-dump"], catch_exceptions=False)
+        assert result.exit_code == 0
+        # Should include the omission notice
+        assert "omitted for brevity" in result.output
+
+    def test_truncation_preserves_shallow_entries(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Truncation should prioritise shallow (fewer /) entries over deep ones."""
+        import sys  # noqa: PLC0415
+
+        app_module = sys.modules["lexibrary.cli.lexi_app"]
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary").mkdir()
+
+        # Minimal topology
+        (tmp_path / ".lexibrary" / "TOPOLOGY.md").write_text(
+            "# Topology\nSmall.", encoding="utf-8"
+        )
+
+        # Use a very small budget to force truncation
+        monkeypatch.setattr(app_module, "_CONTEXT_DUMP_CHAR_BUDGET", 200)
+
+        _write_test_aindex(
+            tmp_path,
+            "src",
+            "Source code",
+            entries=[
+                {"name": "top.py", "entry_type": "file", "description": "Top level"},
+            ],
+        )
+        _write_test_aindex(
+            tmp_path,
+            "src/a/b/c/d",
+            "Very deep",
+            entries=[
+                {"name": "deep.py", "entry_type": "file", "description": "Very deep file"},
+            ],
+        )
+
+        result = runner.invoke(lexi_app, ["context-dump"], catch_exceptions=False)
+        assert result.exit_code == 0
+        output = result.output
+
+        # With a 200-char budget, not everything fits.
+        # Shallow entry (src/top.py, 1 slash) should be prioritised over
+        # deep entry (src/a/b/c/d/deep.py, 4 slashes).
+        if "omitted" in output:
+            # Truncation happened — shallow should be preferred
+            assert "src/top.py" in output
+
+    # -- Output format --
+
+    def test_output_is_plain_text(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Output should be plain text without Rich formatting markers."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary").mkdir()
+        (tmp_path / ".lexibrary" / "TOPOLOGY.md").write_text(
+            "# Project Topology\n\nPlain text.\n", encoding="utf-8"
+        )
+
+        result = runner.invoke(lexi_app, ["context-dump"], catch_exceptions=False)
+        assert result.exit_code == 0
+        # No Rich markup in output
+        assert "[red]" not in result.output
+        assert "[green]" not in result.output
+        assert "[dim]" not in result.output
