@@ -394,6 +394,83 @@ class TestStepLLMProviderInteractiveStorageModes:
         assert "node_modules/" in gitignore
         assert ".env" in gitignore
 
+    def test_dotenv_prompt_uses_password_mode(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The API key prompt must use password=True to mask input."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        call_kwargs: list[dict[str, object]] = []
+
+        def _capture_ask(*args: object, **kwargs: object) -> str:
+            call_kwargs.append(kwargs)
+            # 1st call: provider, 2nd: storage, 3rd: api key
+            if len(call_kwargs) == 1:
+                return "anthropic"
+            if len(call_kwargs) == 2:
+                return "dotenv"
+            return "sk-test-key"
+
+        with patch("lexibrary.init.wizard.Prompt.ask", side_effect=_capture_ask):
+            _step_llm_provider(tmp_path, console, use_defaults=False)
+
+        # The third call (API key input) must have password=True
+        assert len(call_kwargs) >= 3, "Expected at least 3 Prompt.ask calls for dotenv flow"
+        assert call_kwargs[2].get("password") is True
+
+    def test_dotenv_empty_api_key(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """User selects dotenv but presses Enter without typing a key."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        prompt_values = iter(["anthropic", "dotenv", ""])
+        with patch(
+            "lexibrary.init.wizard.Prompt.ask",
+            side_effect=lambda *a, **kw: next(prompt_values),
+        ):
+            provider, model, env, source, value = _step_llm_provider(
+                tmp_path, console, use_defaults=False
+            )
+
+        assert source == "dotenv"
+        assert value == ""
+        # .env file is still created (with empty value)
+        assert (tmp_path / ".env").exists()
+
+    def test_no_provider_detected_dotenv_flow(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No provider detected, user selects dotenv — key is written for ANTHROPIC_API_KEY."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        # No provider detected → skips provider selection, goes straight to storage
+        prompt_values = iter(["dotenv", "sk-fresh-key"])
+        with patch(
+            "lexibrary.init.wizard.Prompt.ask",
+            side_effect=lambda *a, **kw: next(prompt_values),
+        ):
+            provider, model, env, source, value = _step_llm_provider(
+                tmp_path, console, use_defaults=False
+            )
+
+        assert provider == "anthropic"
+        assert env == "ANTHROPIC_API_KEY"
+        assert source == "dotenv"
+        assert value == "sk-fresh-key"
+        assert (tmp_path / ".env").exists()
+        dotenv_content = (tmp_path / ".env").read_text()
+        assert "ANTHROPIC_API_KEY" in dotenv_content
+
     def test_no_provider_detected_uses_anthropic_default(
         self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
     ) -> None:
