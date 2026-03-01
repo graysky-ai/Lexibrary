@@ -104,6 +104,7 @@ def _generate_config_yaml(answers: WizardAnswers) -> str:
             "provider": answers.llm_provider,
             "model": answers.llm_model,
             "api_key_env": answers.llm_api_key_env,
+            "api_key_source": answers.llm_api_key_source,
         },
     }
 

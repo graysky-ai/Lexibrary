@@ -155,6 +155,24 @@ def test_generate_config_yaml_default_token_budgets_omitted() -> None:
     assert "token_budgets" not in parsed
 
 
+def test_generate_config_yaml_api_key_source_dotenv() -> None:
+    """api_key_source appears in generated config YAML when set to 'dotenv'."""
+    answers = _make_answers(llm_api_key_source="dotenv")
+    output = _generate_config_yaml(answers)
+    parsed = yaml.safe_load(output)
+
+    assert parsed["llm"]["api_key_source"] == "dotenv"
+
+
+def test_generate_config_yaml_default_api_key_source_is_env() -> None:
+    """Default api_key_source is 'env' in generated config."""
+    answers = _make_answers()
+    output = _generate_config_yaml(answers)
+    parsed = yaml.safe_load(output)
+
+    assert parsed["llm"]["api_key_source"] == "env"
+
+
 def test_generate_config_yaml_has_header() -> None:
     """Generated config starts with a descriptive header comment."""
     answers = _make_answers()

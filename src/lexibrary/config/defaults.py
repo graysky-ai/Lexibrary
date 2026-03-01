@@ -46,9 +46,7 @@ mapping:
 ignore:
   use_gitignore: true                    # Respect .gitignore files
   additional_patterns:
-    - .lexibrary/START_HERE.md
-    - ".lexibrary/**/*.md"
-    - ".lexibrary/**/.aindex"
+    - ".lexibrary/"
     - node_modules/
     - __pycache__/
     - .git/

@@ -115,9 +115,7 @@ class IgnoreConfig(BaseModel):
     use_gitignore: bool = True
     additional_patterns: list[str] = Field(
         default_factory=lambda: [
-            ".lexibrary/START_HERE.md",
-            ".lexibrary/**/*.md",
-            ".lexibrary/**/.aindex",
+            ".lexibrary/",
             "node_modules/",
             "__pycache__/",
             ".git/",

@@ -138,6 +138,16 @@ def detect_agent_environments(project_root: Path) -> list[str]:
     return found
 
 
+def get_all_agent_environments() -> list[str]:
+    """Return all supported agent environment names from the registry.
+
+    Unlike :func:`detect_agent_environments`, this does not inspect the
+    filesystem — it returns every known environment name.  Used by the
+    wizard to populate the full checkbox list.
+    """
+    return [env_name for env_name, _markers in _AGENT_MARKERS]
+
+
 def check_existing_agent_rules(
     project_root: Path,
     environment: str,
@@ -172,9 +182,7 @@ def check_missing_agent_dirs(
     missing: dict[str, list[str]] = {}
     for env in environments:
         dirs = _AGENT_REQUIRED_DIRS.get(env, [])
-        env_missing = [
-            d for d in dirs if not (project_root / d.rstrip("/")).is_dir()
-        ]
+        env_missing = [d for d in dirs if not (project_root / d.rstrip("/")).is_dir()]
         if env_missing:
             missing[env] = env_missing
     return missing
@@ -189,6 +197,19 @@ def detect_llm_providers() -> list[DetectedLLMProvider]:
         DetectedLLMProvider(provider=provider, api_key_env=env_var, model=model)
         for provider, env_var, model in _LLM_PROVIDERS
         if os.environ.get(env_var)
+    ]
+
+
+def get_all_llm_providers() -> list[DetectedLLMProvider]:
+    """Return all known LLM providers from the registry in priority order.
+
+    Unlike :func:`detect_llm_providers`, this returns every provider
+    regardless of whether its environment variable is set.  Used by the
+    wizard to populate the full selection list.
+    """
+    return [
+        DetectedLLMProvider(provider=provider, api_key_env=env_var, model=model)
+        for provider, env_var, model in _LLM_PROVIDERS
     ]
 
 

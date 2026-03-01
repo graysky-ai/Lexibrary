@@ -16,6 +16,8 @@ from lexibrary.init.detection import (
     detect_project_name,
     detect_project_type,
     detect_scope_roots,
+    get_all_agent_environments,
+    get_all_llm_providers,
     suggest_ignore_patterns,
 )
 
@@ -205,6 +207,45 @@ class TestDetectAgentEnvironments:
 
 
 # -----------------------------------------------------------------------
+# get_all_agent_environments
+# -----------------------------------------------------------------------
+
+
+class TestGetAllAgentEnvironments:
+    def test_returns_all_three_environments(self) -> None:
+        result = get_all_agent_environments()
+        assert len(result) == 3
+
+    def test_contains_expected_names(self) -> None:
+        result = get_all_agent_environments()
+        assert "claude" in result
+        assert "cursor" in result
+        assert "codex" in result
+
+    def test_returns_list_of_strings(self) -> None:
+        result = get_all_agent_environments()
+        assert isinstance(result, list)
+        for name in result:
+            assert isinstance(name, str)
+
+    def test_independent_of_filesystem(self, tmp_path: Path) -> None:
+        """Result does not change based on what marker files exist on disk."""
+        # No markers exist in tmp_path, but we still get all environments
+        result_without_markers = get_all_agent_environments()
+        # Create all markers
+        (tmp_path / ".claude").mkdir()
+        (tmp_path / "CLAUDE.md").touch()
+        (tmp_path / ".cursor").mkdir()
+        (tmp_path / "AGENTS.md").touch()
+        result_with_markers = get_all_agent_environments()
+        assert result_without_markers == result_with_markers
+
+    def test_preserves_registry_order(self) -> None:
+        result = get_all_agent_environments()
+        assert result == ["claude", "cursor", "codex"]
+
+
+# -----------------------------------------------------------------------
 # check_existing_agent_rules
 # -----------------------------------------------------------------------
 
@@ -349,6 +390,77 @@ class TestDetectLLMProviders:
         # Anthropic should come first (priority order)
         assert result[0].provider == "anthropic"
         assert result[1].provider == "ollama"
+
+
+# -----------------------------------------------------------------------
+# get_all_llm_providers
+# -----------------------------------------------------------------------
+
+
+class TestGetAllLLMProviders:
+    def test_returns_all_four_providers(self) -> None:
+        result = get_all_llm_providers()
+        assert len(result) == 4
+
+    def test_contains_expected_providers(self) -> None:
+        result = get_all_llm_providers()
+        provider_names = [p.provider for p in result]
+        assert "anthropic" in provider_names
+        assert "openai" in provider_names
+        assert "google" in provider_names
+        assert "ollama" in provider_names
+
+    def test_correct_fields_anthropic(self) -> None:
+        result = get_all_llm_providers()
+        anthropic = [p for p in result if p.provider == "anthropic"][0]
+        assert anthropic.api_key_env == "ANTHROPIC_API_KEY"
+        assert anthropic.model == "claude-sonnet-4-6"
+
+    def test_correct_fields_openai(self) -> None:
+        result = get_all_llm_providers()
+        openai = [p for p in result if p.provider == "openai"][0]
+        assert openai.api_key_env == "OPENAI_API_KEY"
+        assert openai.model == "gpt-4o"
+
+    def test_correct_fields_google(self) -> None:
+        result = get_all_llm_providers()
+        google = [p for p in result if p.provider == "google"][0]
+        assert google.api_key_env == "GEMINI_API_KEY"
+        assert google.model == "gemini-2.0-flash"
+
+    def test_correct_fields_ollama(self) -> None:
+        result = get_all_llm_providers()
+        ollama = [p for p in result if p.provider == "ollama"][0]
+        assert ollama.api_key_env == "OLLAMA_HOST"
+        assert ollama.model == "llama3"
+
+    def test_returns_detected_llm_provider_instances(self) -> None:
+        result = get_all_llm_providers()
+        for provider in result:
+            assert isinstance(provider, DetectedLLMProvider)
+
+    def test_independent_of_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Result does not change based on whether env vars are set."""
+        # Clear all provider env vars
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+        result_without_env = get_all_llm_providers()
+
+        # Set all provider env vars
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
+        result_with_env = get_all_llm_providers()
+
+        assert result_without_env == result_with_env
+
+    def test_preserves_priority_order(self) -> None:
+        result = get_all_llm_providers()
+        provider_names = [p.provider for p in result]
+        assert provider_names == ["anthropic", "openai", "google", "ollama"]
 
 
 # -----------------------------------------------------------------------

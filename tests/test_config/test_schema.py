@@ -102,6 +102,8 @@ def test_mapping_config_defaults() -> None:
 def test_ignore_config_defaults() -> None:
     config = IgnoreConfig()
     assert config.use_gitignore is True
+    # Single ".lexibrary/" pattern replaces the old three child patterns
+    assert ".lexibrary/" in config.additional_patterns
     assert "node_modules/" in config.additional_patterns
     assert "__pycache__/" in config.additional_patterns
 

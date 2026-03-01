@@ -17,6 +17,9 @@ def test_config_patterns_match(tmp_path: Path) -> None:
     config = IgnoreConfig()
     spec = load_config_patterns(config)
 
+    # Single ".lexibrary/" pattern matches everything under the directory
+    assert spec.match_file(".lexibrary/config.yaml")
+    assert spec.match_file(".lexibrary/designs/src/foo.py.md")
     assert spec.match_file(".lexibrary/src/.aindex")
     assert spec.match_file("node_modules/foo")
     assert spec.match_file("file.lock")
@@ -99,8 +102,9 @@ def test_create_ignore_matcher_with_gitignore(tmp_path: Path) -> None:
     config = LexibraryConfig()
     matcher = create_ignore_matcher(config, tmp_path)
 
-    # Config patterns should work
-    assert matcher.is_ignored(tmp_path / ".lexibrary" / "src" / ".aindex")
+    # Single ".lexibrary/" pattern ignores entire directory
+    assert matcher.is_ignored(tmp_path / ".lexibrary" / "config.yaml")
+    assert matcher.is_ignored(tmp_path / ".lexibrary" / "designs" / "src" / "foo.py.md")
 
     # Gitignore patterns should work
     assert matcher.is_ignored(tmp_path / "test.pyc")
@@ -118,8 +122,9 @@ def test_create_ignore_matcher_without_gitignore(tmp_path: Path) -> None:
     config.ignore.use_gitignore = False
     matcher = create_ignore_matcher(config, tmp_path)
 
-    # Config patterns should work
-    assert matcher.is_ignored(tmp_path / ".lexibrary" / "src" / ".aindex")
+    # Single ".lexibrary/" pattern ignores entire directory
+    assert matcher.is_ignored(tmp_path / ".lexibrary" / "config.yaml")
+    assert matcher.is_ignored(tmp_path / ".lexibrary" / "designs" / "src" / "foo.py.md")
 
     # Gitignore patterns should NOT work
     assert not matcher.is_ignored(tmp_path / "test.pyc")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +22,28 @@ from lexibrary.init.wizard import (
     _step_token_budgets,
     run_wizard,
 )
+
+# -----------------------------------------------------------------------
+# Mock helper for questionary widgets
+# -----------------------------------------------------------------------
+
+
+class _MockQuestionaryResult:
+    """Lightweight stand-in for a questionary widget's return value.
+
+    ``questionary.select(...)`` and ``questionary.checkbox(...)`` return an
+    intermediate *Question* object whose ``.ask()`` method actually runs the
+    prompt.  In tests we replace the factory (``questionary.select``,
+    ``questionary.checkbox``) with a callable that returns an instance of
+    this class so that ``.ask()`` returns the predetermined *value* without
+    any terminal interaction.
+    """
+
+    def __init__(self, value: Any) -> None:  # noqa: ANN401
+        self._value = value
+
+    def ask(self) -> Any:  # noqa: ANN401
+        return self._value
 
 
 @pytest.fixture()
@@ -244,36 +267,56 @@ class TestStepScopeRootInteractive:
 
 class TestStepAgentEnvironmentInteractive:
     def test_user_selects_existing_env(self, tmp_path: Path, console: Console) -> None:
-        """Selecting an env whose directories exist skips the create prompt."""
+        """Selecting envs whose directories exist skips the create prompt."""
         (tmp_path / ".claude" / "commands").mkdir(parents=True)
         (tmp_path / ".cursor" / "rules").mkdir(parents=True)
         (tmp_path / ".cursor" / "skills").mkdir(parents=True)
-        with patch("lexibrary.init.wizard.Prompt.ask", return_value="claude, cursor"):
+        with patch(
+            "lexibrary.init.wizard.questionary.checkbox",
+            return_value=_MockQuestionaryResult(["claude", "cursor"]),
+        ):
             result = _step_agent_environment(tmp_path, console, use_defaults=False)
         assert result == ["claude", "cursor"]
 
-    def test_user_enters_empty(self, tmp_path: Path, console: Console) -> None:
-        with patch("lexibrary.init.wizard.Prompt.ask", return_value=""):
+    def test_user_selects_none(self, tmp_path: Path, console: Console) -> None:
+        """User deselects all checkboxes — returns empty list."""
+        with patch(
+            "lexibrary.init.wizard.questionary.checkbox",
+            return_value=_MockQuestionaryResult([]),
+        ):
             result = _step_agent_environment(tmp_path, console, use_defaults=False)
         assert result == []
 
-    def test_missing_dirs_user_accepts_creation(
-        self, tmp_path: Path, console: Console
-    ) -> None:
+    def test_non_tty_falls_back_to_detected(self, tmp_path: Path, console: Console) -> None:
+        """Non-TTY (questionary returns None) falls back to detected envs."""
+        # Create .claude/ with full directory structure so no missing-dir prompt
+        (tmp_path / ".claude" / "commands").mkdir(parents=True)
+        with patch(
+            "lexibrary.init.wizard.questionary.checkbox",
+            return_value=_MockQuestionaryResult(None),
+        ):
+            result = _step_agent_environment(tmp_path, console, use_defaults=False)
+        assert result == ["claude"]
+
+    def test_missing_dirs_user_accepts_creation(self, tmp_path: Path, console: Console) -> None:
         """User selects 'claude' without .claude/ dir, accepts creation."""
         with (
-            patch("lexibrary.init.wizard.Prompt.ask", return_value="claude"),
+            patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                return_value=_MockQuestionaryResult(["claude"]),
+            ),
             patch("lexibrary.init.wizard.Confirm.ask", return_value=True),
         ):
             result = _step_agent_environment(tmp_path, console, use_defaults=False)
         assert result == ["claude"]
 
-    def test_missing_dirs_user_declines_creation(
-        self, tmp_path: Path, console: Console
-    ) -> None:
+    def test_missing_dirs_user_declines_creation(self, tmp_path: Path, console: Console) -> None:
         """User selects 'claude' without .claude/ dir, declines — env removed."""
         with (
-            patch("lexibrary.init.wizard.Prompt.ask", return_value="claude"),
+            patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                return_value=_MockQuestionaryResult(["claude"]),
+            ),
             patch("lexibrary.init.wizard.Confirm.ask", return_value=False),
         ):
             result = _step_agent_environment(tmp_path, console, use_defaults=False)
@@ -283,7 +326,10 @@ class TestStepAgentEnvironmentInteractive:
         """One env has dirs, one doesn't — declining removes only the missing one."""
         (tmp_path / ".claude" / "commands").mkdir(parents=True)
         with (
-            patch("lexibrary.init.wizard.Prompt.ask", return_value="claude, cursor"),
+            patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                return_value=_MockQuestionaryResult(["claude", "cursor"]),
+            ),
             patch("lexibrary.init.wizard.Confirm.ask", return_value=False),
         ):
             result = _step_agent_environment(tmp_path, console, use_defaults=False)
@@ -291,7 +337,12 @@ class TestStepAgentEnvironmentInteractive:
 
 
 class TestStepLLMProviderInteractiveStorageModes:
-    """Test _step_llm_provider() interactive mode covering all three storage modes."""
+    """Test _step_llm_provider() interactive mode covering all three storage modes.
+
+    The wizard now uses questionary.select() for provider selection (4a) and
+    storage method (4b).  Prompt.ask is used only for the env-var NAME in
+    dotenv flow (4c).  The wizard never writes to .env or .gitignore.
+    """
 
     def test_storage_mode_env(
         self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
@@ -302,10 +353,10 @@ class TestStepLLMProviderInteractiveStorageModes:
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
 
-        prompt_values = iter(["anthropic", "env"])
+        select_values = iter(["anthropic", "env"])
         with patch(
-            "lexibrary.init.wizard.Prompt.ask",
-            side_effect=lambda *a, **kw: next(prompt_values),
+            "lexibrary.init.wizard.questionary.select",
+            side_effect=lambda *a, **kw: _MockQuestionaryResult(next(select_values)),
         ):
             provider, model, env, source, value = _step_llm_provider(
                 tmp_path, console, use_defaults=False
@@ -326,10 +377,10 @@ class TestStepLLMProviderInteractiveStorageModes:
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
 
-        prompt_values = iter(["anthropic", "manual"])
+        select_values = iter(["anthropic", "manual"])
         with patch(
-            "lexibrary.init.wizard.Prompt.ask",
-            side_effect=lambda *a, **kw: next(prompt_values),
+            "lexibrary.init.wizard.questionary.select",
+            side_effect=lambda *a, **kw: _MockQuestionaryResult(next(select_values)),
         ):
             provider, model, env, source, value = _step_llm_provider(
                 tmp_path, console, use_defaults=False
@@ -338,22 +389,27 @@ class TestStepLLMProviderInteractiveStorageModes:
         assert provider == "anthropic"
         assert source == "manual"
         assert value == ""
-        # No .env file should be created
         assert not (tmp_path / ".env").exists()
 
-    def test_storage_mode_dotenv(
+    def test_storage_mode_dotenv_asks_var_name_only(
         self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """User selects 'dotenv' storage mode — key is written to .env."""
+        """User selects 'dotenv' — wizard asks for env var NAME only, never writes .env."""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
 
-        prompt_values = iter(["anthropic", "dotenv", "sk-my-secret-key"])
-        with patch(
-            "lexibrary.init.wizard.Prompt.ask",
-            side_effect=lambda *a, **kw: next(prompt_values),
+        select_values = iter(["anthropic", "dotenv"])
+        with (
+            patch(
+                "lexibrary.init.wizard.questionary.select",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(select_values)),
+            ),
+            patch(
+                "lexibrary.init.wizard.Prompt.ask",
+                return_value="ANTHROPIC_API_KEY",
+            ),
         ):
             provider, model, env, source, value = _step_llm_provider(
                 tmp_path, console, use_defaults=False
@@ -361,129 +417,121 @@ class TestStepLLMProviderInteractiveStorageModes:
 
         assert provider == "anthropic"
         assert source == "dotenv"
-        assert value == "sk-my-secret-key"
-        # .env file should be created with the key
-        assert (tmp_path / ".env").exists()
-        dotenv_content = (tmp_path / ".env").read_text()
-        assert "ANTHROPIC_API_KEY" in dotenv_content
-        # .gitignore should be created/updated with .env entry
-        assert (tmp_path / ".gitignore").exists()
-        gitignore_content = (tmp_path / ".gitignore").read_text()
-        assert ".env" in gitignore_content
+        assert env == "ANTHROPIC_API_KEY"
+        # api_key_value is always empty in the new wizard
+        assert value == ""
+        # No .env file should be created by the wizard
+        assert not (tmp_path / ".env").exists()
 
-    def test_storage_mode_dotenv_appends_gitignore(
+    def test_dotenv_custom_env_var_name(
         self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """dotenv mode appends .env to existing .gitignore if not already present."""
+        """User can override the env var name in dotenv flow."""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
 
-        # Pre-create .gitignore without .env
-        (tmp_path / ".gitignore").write_text("node_modules/\n")
-
-        prompt_values = iter(["anthropic", "dotenv", "sk-key"])
-        with patch(
-            "lexibrary.init.wizard.Prompt.ask",
-            side_effect=lambda *a, **kw: next(prompt_values),
-        ):
-            _step_llm_provider(tmp_path, console, use_defaults=False)
-
-        gitignore = (tmp_path / ".gitignore").read_text()
-        assert "node_modules/" in gitignore
-        assert ".env" in gitignore
-
-    def test_dotenv_prompt_uses_password_mode(
-        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The API key prompt must use password=True to mask input."""
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-        monkeypatch.delenv("OLLAMA_HOST", raising=False)
-
-        call_kwargs: list[dict[str, object]] = []
-
-        def _capture_ask(*args: object, **kwargs: object) -> str:
-            call_kwargs.append(kwargs)
-            # 1st call: provider, 2nd: storage, 3rd: api key
-            if len(call_kwargs) == 1:
-                return "anthropic"
-            if len(call_kwargs) == 2:
-                return "dotenv"
-            return "sk-test-key"
-
-        with patch("lexibrary.init.wizard.Prompt.ask", side_effect=_capture_ask):
-            _step_llm_provider(tmp_path, console, use_defaults=False)
-
-        # The third call (API key input) must have password=True
-        assert len(call_kwargs) >= 3, "Expected at least 3 Prompt.ask calls for dotenv flow"
-        assert call_kwargs[2].get("password") is True
-
-    def test_dotenv_empty_api_key(
-        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """User selects dotenv but presses Enter without typing a key."""
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-        monkeypatch.delenv("OLLAMA_HOST", raising=False)
-
-        prompt_values = iter(["anthropic", "dotenv", ""])
-        with patch(
-            "lexibrary.init.wizard.Prompt.ask",
-            side_effect=lambda *a, **kw: next(prompt_values),
+        select_values = iter(["anthropic", "dotenv"])
+        with (
+            patch(
+                "lexibrary.init.wizard.questionary.select",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(select_values)),
+            ),
+            patch(
+                "lexibrary.init.wizard.Prompt.ask",
+                return_value="MY_CUSTOM_KEY",
+            ),
         ):
             provider, model, env, source, value = _step_llm_provider(
                 tmp_path, console, use_defaults=False
             )
 
+        assert env == "MY_CUSTOM_KEY"
         assert source == "dotenv"
         assert value == ""
-        # .env file is still created (with empty value)
-        assert (tmp_path / ".env").exists()
 
-    def test_no_provider_detected_dotenv_flow(
+    def test_all_providers_shown_in_select(
         self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """No provider detected, user selects dotenv — key is written for ANTHROPIC_API_KEY."""
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        """All 4 providers appear in the questionary.select() choices."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
 
-        # No provider detected → skips provider selection, goes straight to storage
-        prompt_values = iter(["dotenv", "sk-fresh-key"])
+        captured_kwargs: list[dict[str, object]] = []
+
+        def _capture_select(*args: object, **kwargs: object) -> _MockQuestionaryResult:
+            captured_kwargs.append(kwargs)
+            # Return "anthropic" for provider, "env" for storage
+            if len(captured_kwargs) == 1:
+                return _MockQuestionaryResult("anthropic")
+            return _MockQuestionaryResult("env")
+
         with patch(
-            "lexibrary.init.wizard.Prompt.ask",
-            side_effect=lambda *a, **kw: next(prompt_values),
+            "lexibrary.init.wizard.questionary.select",
+            side_effect=_capture_select,
+        ):
+            _step_llm_provider(tmp_path, console, use_defaults=False)
+
+        # First select call is for provider — check all 4 are present
+        assert len(captured_kwargs) >= 1
+        provider_choices = captured_kwargs[0].get("choices", [])
+        assert "anthropic" in provider_choices
+        assert "openai" in provider_choices
+        assert "google" in provider_choices
+        assert "ollama" in provider_choices
+
+    def test_detected_provider_is_default(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The detected provider is pre-selected as default in questionary.select()."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-test")
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        captured_kwargs: list[dict[str, object]] = []
+
+        def _capture_select(*args: object, **kwargs: object) -> _MockQuestionaryResult:
+            captured_kwargs.append(kwargs)
+            if len(captured_kwargs) == 1:
+                return _MockQuestionaryResult("openai")
+            return _MockQuestionaryResult("env")
+
+        with patch(
+            "lexibrary.init.wizard.questionary.select",
+            side_effect=_capture_select,
         ):
             provider, model, env, source, value = _step_llm_provider(
                 tmp_path, console, use_defaults=False
             )
 
-        assert provider == "anthropic"
-        assert env == "ANTHROPIC_API_KEY"
-        assert source == "dotenv"
-        assert value == "sk-fresh-key"
-        assert (tmp_path / ".env").exists()
-        dotenv_content = (tmp_path / ".env").read_text()
-        assert "ANTHROPIC_API_KEY" in dotenv_content
+        assert provider == "openai"
+        # First select call default should be the detected provider
+        assert captured_kwargs[0].get("default") == "openai"
 
-    def test_no_provider_detected_uses_anthropic_default(
+    def test_no_provider_detected_defaults_to_anthropic(
         self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When no provider is detected, defaults to anthropic and still prompts for storage."""
+        """When no provider is detected, questionary.select() defaults to anthropic."""
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
 
-        prompt_values = iter(["env"])
+        captured_kwargs: list[dict[str, object]] = []
+
+        def _capture_select(*args: object, **kwargs: object) -> _MockQuestionaryResult:
+            captured_kwargs.append(kwargs)
+            if len(captured_kwargs) == 1:
+                return _MockQuestionaryResult("anthropic")
+            return _MockQuestionaryResult("env")
+
         with patch(
-            "lexibrary.init.wizard.Prompt.ask",
-            side_effect=lambda *a, **kw: next(prompt_values),
+            "lexibrary.init.wizard.questionary.select",
+            side_effect=_capture_select,
         ):
             provider, model, env, source, value = _step_llm_provider(
                 tmp_path, console, use_defaults=False
@@ -494,23 +542,106 @@ class TestStepLLMProviderInteractiveStorageModes:
         assert env == "ANTHROPIC_API_KEY"
         assert source == "env"
         assert value == ""
+        assert captured_kwargs[0].get("default") == "anthropic"
+
+    def test_no_env_file_created_for_dotenv(
+        self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Dotenv mode no longer creates a .env file — user must do it themselves."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        select_values = iter(["anthropic", "dotenv"])
+        with (
+            patch(
+                "lexibrary.init.wizard.questionary.select",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(select_values)),
+            ),
+            patch(
+                "lexibrary.init.wizard.Prompt.ask",
+                return_value="ANTHROPIC_API_KEY",
+            ),
+        ):
+            _step_llm_provider(tmp_path, console, use_defaults=False)
+
+        assert not (tmp_path / ".env").exists()
+        assert not (tmp_path / ".gitignore").exists()
 
 
 class TestStepIgnorePatternsInteractive:
-    def test_user_accepts_suggestions(self, tmp_path: Path, console: Console) -> None:
+    def test_user_accepts_all_suggestions(self, tmp_path: Path, console: Console) -> None:
+        """User keeps all suggested patterns checked in questionary.checkbox."""
         (tmp_path / "pyproject.toml").touch()
-        with patch("lexibrary.init.wizard.Confirm.ask", return_value=True):
+        # Detect python patterns first to know what to return
+        from lexibrary.init.detection import detect_project_type, suggest_ignore_patterns
+
+        project_type = detect_project_type(tmp_path)
+        patterns = suggest_ignore_patterns(project_type)
+
+        with (
+            patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                return_value=_MockQuestionaryResult(patterns),
+            ),
+            patch("lexibrary.init.wizard.Prompt.ask", return_value=""),
+        ):
             result = _step_ignore_patterns(tmp_path, console, use_defaults=False)
         assert "**/migrations/" in result
+        assert "**/__generated__/" in result
 
-    def test_user_rejects_and_provides_custom(self, tmp_path: Path, console: Console) -> None:
+    def test_user_deselects_some_patterns(self, tmp_path: Path, console: Console) -> None:
+        """User deselects some patterns via checkbox."""
         (tmp_path / "pyproject.toml").touch()
         with (
-            patch("lexibrary.init.wizard.Confirm.ask", return_value=False),
+            patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                return_value=_MockQuestionaryResult(["**/migrations/"]),
+            ),
+            patch("lexibrary.init.wizard.Prompt.ask", return_value=""),
+        ):
+            result = _step_ignore_patterns(tmp_path, console, use_defaults=False)
+        assert result == ["**/migrations/"]
+
+    def test_user_deselects_all_and_provides_custom(self, tmp_path: Path, console: Console) -> None:
+        """User deselects all checkboxes and adds custom patterns via free-text."""
+        (tmp_path / "pyproject.toml").touch()
+        with (
+            patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                return_value=_MockQuestionaryResult([]),
+            ),
             patch("lexibrary.init.wizard.Prompt.ask", return_value="build/, dist/"),
         ):
             result = _step_ignore_patterns(tmp_path, console, use_defaults=False)
         assert result == ["build/", "dist/"]
+
+    def test_checkbox_plus_additional_patterns(self, tmp_path: Path, console: Console) -> None:
+        """User keeps some suggestions checked and also adds custom patterns."""
+        (tmp_path / "pyproject.toml").touch()
+        with (
+            patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                return_value=_MockQuestionaryResult(["**/migrations/"]),
+            ),
+            patch("lexibrary.init.wizard.Prompt.ask", return_value="vendor/"),
+        ):
+            result = _step_ignore_patterns(tmp_path, console, use_defaults=False)
+        assert result == ["**/migrations/", "vendor/"]
+
+    def test_non_tty_falls_back_to_suggestions(self, tmp_path: Path, console: Console) -> None:
+        """Non-TTY (checkbox returns None) falls back to all suggested patterns."""
+        (tmp_path / "pyproject.toml").touch()
+        with (
+            patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                return_value=_MockQuestionaryResult(None),
+            ),
+            patch("lexibrary.init.wizard.Prompt.ask", return_value=""),
+        ):
+            result = _step_ignore_patterns(tmp_path, console, use_defaults=False)
+        assert "**/migrations/" in result
 
 
 class TestStepTokenBudgetsInteractive:
@@ -684,6 +815,13 @@ class TestRunWizardDefaults:
 
 
 class TestRunWizardInteractive:
+    """Integration tests for run_wizard() in interactive mode.
+
+    Steps 3, 4a, 4b, and 5 now use questionary widgets, so we must mock
+    ``questionary.checkbox`` and ``questionary.select`` alongside the
+    traditional ``Prompt.ask`` / ``Confirm.ask`` mocks.
+    """
+
     def test_cancellation_returns_none(
         self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -693,13 +831,26 @@ class TestRunWizardInteractive:
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
 
+        # Prompt.ask calls: step 1 (project name), step 2 (scope root),
+        # step 5 (additional patterns — no suggestions since no project type)
         prompt_values = iter(
             [
                 tmp_path.name,  # step 1: project name
                 ".",  # step 2: scope root
-                "",  # step 3: agent environments
-                "env",  # step 4: storage method
-                "",  # step 5: custom patterns (no type detected, no suggestions)
+                "",  # step 5: additional patterns
+            ]
+        )
+        # questionary.checkbox calls: step 3 (agent envs) — no suggestions for step 5
+        checkbox_values = iter(
+            [
+                [],  # step 3: no envs selected
+            ]
+        )
+        # questionary.select calls: step 4a (provider), step 4b (storage)
+        select_values = iter(
+            [
+                "anthropic",  # step 4a: provider
+                "env",  # step 4b: storage
             ]
         )
         confirm_values = iter(
@@ -715,6 +866,14 @@ class TestRunWizardInteractive:
             patch(
                 "lexibrary.init.wizard.Prompt.ask",
                 side_effect=lambda *a, **kw: next(prompt_values),
+            ),
+            patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(checkbox_values)),
+            ),
+            patch(
+                "lexibrary.init.wizard.questionary.select",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(select_values)),
             ),
             patch(
                 "lexibrary.init.wizard.Confirm.ask",
@@ -736,19 +895,35 @@ class TestRunWizardInteractive:
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
 
+        from lexibrary.init.detection import detect_project_type, suggest_ignore_patterns
+
+        patterns = suggest_ignore_patterns(detect_project_type(tmp_path))
+
+        # Prompt.ask calls: step 1, step 2, step 5 (additional patterns)
         prompt_values = iter(
             [
                 "my-app",  # step 1: accept project name
                 "src/",  # step 2: accept scope root
-                "claude",  # step 3: agent environments
-                "anthropic",  # step 4: select LLM provider
-                "env",  # step 4: storage method
+                "",  # step 5: no additional patterns
+            ]
+        )
+        # questionary.checkbox: step 3 (agent envs), step 5 (ignore patterns)
+        checkbox_values = iter(
+            [
+                ["claude"],  # step 3: select claude
+                patterns,  # step 5: accept all suggested patterns
+            ]
+        )
+        # questionary.select: step 4a (provider), step 4b (storage)
+        select_values = iter(
+            [
+                "anthropic",  # step 4a: provider
+                "env",  # step 4b: storage
             ]
         )
         confirm_values = iter(
             [
                 True,  # step 3: create missing .claude/ dirs
-                True,  # step 5: accept ignore patterns (python detected)
                 False,  # step 6: don't customize budgets
                 True,  # step 7: IWH enabled
                 True,  # step 8: install hooks
@@ -760,6 +935,14 @@ class TestRunWizardInteractive:
             patch(
                 "lexibrary.init.wizard.Prompt.ask",
                 side_effect=lambda *a, **kw: next(prompt_values),
+            ),
+            patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(checkbox_values)),
+            ),
+            patch(
+                "lexibrary.init.wizard.questionary.select",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(select_values)),
             ),
             patch(
                 "lexibrary.init.wizard.Confirm.ask",
@@ -778,10 +961,10 @@ class TestRunWizardInteractive:
         assert result.llm_api_key_value == ""
         assert result.install_hooks is True
 
-    def test_interactive_dotenv_populates_api_key_value(
+    def test_interactive_dotenv_sets_source_and_empty_value(
         self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Interactive dotenv mode populates llm_api_key_value on the answers."""
+        """Interactive dotenv mode sets source to 'dotenv' and value to empty."""
         (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-app"\n', encoding="utf-8")
         (tmp_path / "src").mkdir()
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
@@ -789,20 +972,36 @@ class TestRunWizardInteractive:
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
 
+        from lexibrary.init.detection import detect_project_type, suggest_ignore_patterns
+
+        patterns = suggest_ignore_patterns(detect_project_type(tmp_path))
+
+        # Prompt.ask calls: step 1, step 2, step 4c (env var name), step 5 (additional)
         prompt_values = iter(
             [
                 "my-app",  # step 1: accept project name
                 "src/",  # step 2: accept scope root
-                "claude",  # step 3: agent environments
-                "anthropic",  # step 4: select LLM provider
-                "dotenv",  # step 4: storage method
-                "sk-my-secret-key",  # step 4: API key value
+                "ANTHROPIC_API_KEY",  # step 4c: env var name for dotenv
+                "",  # step 5: no additional patterns
+            ]
+        )
+        # questionary.checkbox: step 3 (agent envs), step 5 (ignore patterns)
+        checkbox_values = iter(
+            [
+                ["claude"],  # step 3: select claude
+                patterns,  # step 5: accept all suggested patterns
+            ]
+        )
+        # questionary.select: step 4a (provider), step 4b (storage = dotenv)
+        select_values = iter(
+            [
+                "anthropic",  # step 4a: provider
+                "dotenv",  # step 4b: storage
             ]
         )
         confirm_values = iter(
             [
                 True,  # step 3: create missing .claude/ dirs
-                True,  # step 5: accept ignore patterns (python detected)
                 False,  # step 6: don't customize budgets
                 True,  # step 7: IWH enabled
                 False,  # step 8: don't install hooks
@@ -816,6 +1015,14 @@ class TestRunWizardInteractive:
                 side_effect=lambda *a, **kw: next(prompt_values),
             ),
             patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(checkbox_values)),
+            ),
+            patch(
+                "lexibrary.init.wizard.questionary.select",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(select_values)),
+            ),
+            patch(
                 "lexibrary.init.wizard.Confirm.ask",
                 side_effect=lambda *a, **kw: next(confirm_values),
             ),
@@ -825,9 +1032,10 @@ class TestRunWizardInteractive:
         assert result is not None
         assert result.confirmed is True
         assert result.llm_api_key_source == "dotenv"
-        assert result.llm_api_key_value == "sk-my-secret-key"
-        # .env file should have been written
-        assert (tmp_path / ".env").exists()
+        # api_key_value is always empty in the new wizard
+        assert result.llm_api_key_value == ""
+        # No .env file should be created by the wizard
+        assert not (tmp_path / ".env").exists()
 
     def test_interactive_hooks_accepted(
         self, tmp_path: Path, console: Console, monkeypatch: pytest.MonkeyPatch
@@ -838,13 +1046,25 @@ class TestRunWizardInteractive:
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
 
+        # Prompt.ask: step 1, step 2, step 5 (additional patterns)
         prompt_values = iter(
             [
                 tmp_path.name,  # step 1: project name
                 ".",  # step 2: scope root
-                "",  # step 3: agent environments
-                "env",  # step 4: storage method
-                "",  # step 5: custom patterns
+                "",  # step 5: additional patterns
+            ]
+        )
+        # questionary.checkbox: step 3 (no envs)
+        checkbox_values = iter(
+            [
+                [],  # step 3: no envs
+            ]
+        )
+        # questionary.select: step 4a, 4b
+        select_values = iter(
+            [
+                "anthropic",  # step 4a: provider
+                "env",  # step 4b: storage
             ]
         )
         confirm_values = iter(
@@ -860,6 +1080,14 @@ class TestRunWizardInteractive:
             patch(
                 "lexibrary.init.wizard.Prompt.ask",
                 side_effect=lambda *a, **kw: next(prompt_values),
+            ),
+            patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(checkbox_values)),
+            ),
+            patch(
+                "lexibrary.init.wizard.questionary.select",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(select_values)),
             ),
             patch(
                 "lexibrary.init.wizard.Confirm.ask",
@@ -885,9 +1113,18 @@ class TestRunWizardInteractive:
             [
                 tmp_path.name,  # step 1: project name
                 ".",  # step 2: scope root
-                "",  # step 3: agent environments
-                "env",  # step 4: storage method
-                "",  # step 5: custom patterns
+                "",  # step 5: additional patterns
+            ]
+        )
+        checkbox_values = iter(
+            [
+                [],  # step 3: no envs
+            ]
+        )
+        select_values = iter(
+            [
+                "anthropic",  # step 4a: provider
+                "env",  # step 4b: storage
             ]
         )
         confirm_values = iter(
@@ -905,6 +1142,14 @@ class TestRunWizardInteractive:
                 side_effect=lambda *a, **kw: next(prompt_values),
             ),
             patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(checkbox_values)),
+            ),
+            patch(
+                "lexibrary.init.wizard.questionary.select",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(select_values)),
+            ),
+            patch(
                 "lexibrary.init.wizard.Confirm.ask",
                 side_effect=lambda *a, **kw: next(confirm_values),
             ),
@@ -914,3 +1159,75 @@ class TestRunWizardInteractive:
         assert result is not None
         assert result.confirmed is True
         assert result.install_hooks is False
+
+    def test_post_wizard_dotenv_reminder(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When dotenv storage is selected, a reminder message is printed after confirmation."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+
+        # Use a non-quiet console so we can capture output
+        console = Console(file=__import__("io").StringIO(), force_terminal=True)
+
+        # Prompt.ask: step 1, step 2, step 4c (env var name), step 5 (additional)
+        prompt_values = iter(
+            [
+                tmp_path.name,  # step 1: project name
+                ".",  # step 2: scope root
+                "ANTHROPIC_API_KEY",  # step 4c: env var name
+                "",  # step 5: additional patterns
+            ]
+        )
+        checkbox_values = iter(
+            [
+                [],  # step 3: no envs
+            ]
+        )
+        select_values = iter(
+            [
+                "anthropic",  # step 4a: provider
+                "dotenv",  # step 4b: storage
+            ]
+        )
+        confirm_values = iter(
+            [
+                False,  # step 6: don't customize budgets
+                True,  # step 7: IWH enabled
+                False,  # step 8: don't install hooks
+                True,  # step 9: confirm
+            ]
+        )
+
+        with (
+            patch(
+                "lexibrary.init.wizard.Prompt.ask",
+                side_effect=lambda *a, **kw: next(prompt_values),
+            ),
+            patch(
+                "lexibrary.init.wizard.questionary.checkbox",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(checkbox_values)),
+            ),
+            patch(
+                "lexibrary.init.wizard.questionary.select",
+                side_effect=lambda *a, **kw: _MockQuestionaryResult(next(select_values)),
+            ),
+            patch(
+                "lexibrary.init.wizard.Confirm.ask",
+                side_effect=lambda *a, **kw: next(confirm_values),
+            ),
+        ):
+            result = run_wizard(tmp_path, console, use_defaults=False)
+
+        assert result is not None
+        assert result.confirmed is True
+        assert result.llm_api_key_source == "dotenv"
+
+        # Verify the reminder message was printed
+        output = console.file.getvalue()  # type: ignore[union-attr]
+        assert "Reminder" in output
+        assert "dotenv" in output
+        assert "ANTHROPIC_API_KEY" in output
+        assert ".env" in output

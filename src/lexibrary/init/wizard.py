@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from dotenv import set_key
+import questionary
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
@@ -23,6 +23,8 @@ from lexibrary.init.detection import (
     detect_project_name,
     detect_project_type,
     detect_scope_roots,
+    get_all_agent_environments,
+    get_all_llm_providers,
     suggest_ignore_patterns,
 )
 
@@ -133,6 +135,7 @@ def _step_agent_environment(
 ) -> list[str]:
     """Step 3: Detect and select agent environments."""
     detected_envs = detect_agent_environments(project_root)
+    all_envs = get_all_agent_environments()
 
     console.print(
         f"\n[bold]Step 3/9: Agent Environment[/bold]\n  Detected: {detected_envs or ['(none)']}"
@@ -150,16 +153,16 @@ def _step_agent_environment(
         console.print(f"  Using: {detected_envs}")
         selected = detected_envs
     else:
-        default_str = ", ".join(detected_envs) if detected_envs else ""
-        raw = Prompt.ask(
-            "  Agent environments (comma-separated, e.g. claude, cursor)",
-            default=default_str,
-            console=console,
-        )
+        choices = [
+            questionary.Choice(title=env, checked=(env in detected_envs)) for env in all_envs
+        ]
+        result = questionary.checkbox(
+            "Select agent environments:",
+            choices=choices,
+        ).ask()
 
-        if not raw.strip():
-            return []
-        selected = [e.strip() for e in raw.split(",") if e.strip()]
+        # Non-TTY guard: questionary returns None when stdin is not a TTY
+        selected = detected_envs if result is None else result
 
     if not selected:
         return []
@@ -200,99 +203,86 @@ def _step_llm_provider(
     """Step 4: Detect and select LLM provider and API key storage method.
 
     Returns ``(provider, model, api_key_env, api_key_source, api_key_value)``.
+    ``api_key_value`` is always ``""`` (deprecated).
     """
-    providers = detect_llm_providers()
+    detected_providers = detect_llm_providers()
+    all_providers = get_all_llm_providers()
+
+    # Determine default provider
+    default_provider = detected_providers[0].provider if detected_providers else "anthropic"
 
     console.print("\n[bold]Step 4/9: LLM Provider[/bold]")
     console.print("  [dim]We never store, log, or transmit your API key.[/dim]")
 
-    # --- Provider selection ---
-    if providers:
-        primary = providers[0]
+    if detected_providers:
+        primary = detected_providers[0]
         console.print(
             f"  Detected: [cyan]{primary.provider}[/cyan] (env var: {primary.api_key_env})"
         )
-        if len(providers) > 1:
-            others = ", ".join(p.provider for p in providers[1:])
+        if len(detected_providers) > 1:
+            others = ", ".join(p.provider for p in detected_providers[1:])
             console.print(f"  Also available: {others}")
-
-        if use_defaults:
-            console.print(f"  Using: {primary.provider}")
-            console.print("  API key storage: env")
-            return primary.provider, primary.model, primary.api_key_env, "env", ""
-
-        choices = [p.provider for p in providers]
-        choice = Prompt.ask(
-            "  Provider",
-            choices=choices,
-            default=primary.provider,
-            console=console,
-        )
-        selected = next(p for p in providers if p.provider == choice)
-        provider, model, api_key_env = selected.provider, selected.model, selected.api_key_env
     else:
         console.print(
             "  [yellow]No LLM provider API keys detected.[/yellow]"
             "\n  Set one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OLLAMA_HOST"
             "\n  Defaulting to anthropic."
         )
-        provider, model, api_key_env = "anthropic", "claude-sonnet-4-6", "ANTHROPIC_API_KEY"
 
-        if use_defaults:
-            console.print("  API key storage: env")
-            return provider, model, api_key_env, "env", ""
+    if use_defaults:
+        console.print(f"  Using: {default_provider}")
+        console.print("  API key storage: env")
+        selected_p = next(p for p in all_providers if p.provider == default_provider)
+        return selected_p.provider, selected_p.model, selected_p.api_key_env, "env", ""
 
-    # --- Storage-method sub-step ---
-    console.print(
-        "\n  [bold]API Key Storage[/bold]"
-        "\n    env    - Already set in shell environment"
-        "\n    dotenv - Store in .env file at project root"
-        "\n    manual - You will manage the key yourself"
-    )
-    source = Prompt.ask(
-        "  Storage method",
-        choices=["env", "dotenv", "manual"],
+    # --- 4a: Provider selection via questionary.select() ---
+    provider_choices = [p.provider for p in all_providers]
+    choice = questionary.select(
+        "Select LLM provider:",
+        choices=provider_choices,
+        default=default_provider,
+    ).ask()
+
+    # Non-TTY guard
+    if choice is None:
+        choice = default_provider
+
+    selected_p = next(p for p in all_providers if p.provider == choice)
+    provider, model, api_key_env = selected_p.provider, selected_p.model, selected_p.api_key_env
+
+    # --- 4b: Storage method via questionary.select() ---
+    storage_choices = [
+        questionary.Choice(title="env — Already set in shell environment", value="env"),
+        questionary.Choice(title="dotenv — Read from .env file at project root", value="dotenv"),
+        questionary.Choice(title="manual — You will manage the key yourself", value="manual"),
+    ]
+    source = questionary.select(
+        "API key storage method:",
+        choices=storage_choices,
         default="env",
-        console=console,
-    )
+    ).ask()
 
-    api_key_value = ""
+    # Non-TTY guard
+    if source is None:
+        source = "env"
+
+    # --- 4c: Dotenv flow — ask for env var NAME only ---
     if source == "dotenv":
-        api_key_value = Prompt.ask(
-            f"  Enter your API key ({api_key_env})",
-            password=True,
+        console.print(
+            "\n  [bold yellow]Do NOT enter your actual API key here.[/bold yellow]"
+            "\n  Enter the environment variable NAME that will hold your key."
+        )
+        api_key_env = Prompt.ask(
+            "  Env var name",
+            default=api_key_env,
             console=console,
         )
-        _write_dotenv_key(project_root, api_key_env, api_key_value, console)
+        console.print(
+            f"\n  [dim]Note: Your .env file has NOT been updated."
+            f"\n  Please ensure {api_key_env} is set in your .env file.[/dim]"
+        )
 
-    return provider, model, api_key_env, source, api_key_value
-
-
-def _write_dotenv_key(
-    project_root: Path,
-    key_name: str,
-    key_value: str,
-    console: Console,
-) -> None:
-    """Write an API key to ``.env`` and ensure ``.env`` is gitignored."""
-    dotenv_path = project_root / ".env"
-    set_key(str(dotenv_path), key_name, key_value)
-    console.print(f"  [green]Wrote {key_name} to {dotenv_path}[/green]")
-
-    # Ensure .env is in .gitignore
-    gitignore_path = project_root / ".gitignore"
-    if gitignore_path.exists():
-        content = gitignore_path.read_text(encoding="utf-8")
-        lines = content.splitlines()
-        if ".env" not in lines:
-            with gitignore_path.open("a", encoding="utf-8") as fh:
-                if content and not content.endswith("\n"):
-                    fh.write("\n")
-                fh.write(".env\n")
-            console.print("  [green]Added .env to .gitignore[/green]")
-    else:
-        gitignore_path.write_text(".env\n", encoding="utf-8")
-        console.print("  [green]Created .gitignore with .env entry[/green]")
+    return provider, model, api_key_env, source, ""
 
 
 def _step_ignore_patterns(
@@ -318,23 +308,28 @@ def _step_ignore_patterns(
         console.print(f"  Using: {patterns}")
         return patterns
 
+    selected: list[str] = []
     if patterns:
-        accept = Confirm.ask(
-            "  Accept suggested patterns?",
-            default=True,
-            console=console,
-        )
-        if accept:
-            return patterns
+        choices = [questionary.Choice(title=p, checked=True) for p in patterns]
+        result = questionary.checkbox(
+            "Select ignore patterns:",
+            choices=choices,
+        ).ask()
 
+        # Non-TTY guard
+        selected = patterns if result is None else result
+
+    # Always offer free-text input for additional patterns
     raw = Prompt.ask(
-        "  Custom patterns (comma-separated, or empty for none)",
+        "  Additional patterns (comma-separated, or empty for none)",
         default="",
         console=console,
     )
-    if not raw.strip():
-        return []
-    return [p.strip() for p in raw.split(",") if p.strip()]
+    if raw.strip():
+        extra = [p.strip() for p in raw.split(",") if p.strip()]
+        selected.extend(extra)
+
+    return selected
 
 
 def _step_token_budgets(
@@ -557,6 +552,15 @@ def run_wizard(
 
     if confirmed:
         answers.confirmed = True
+
+        # Post-wizard dotenv reminder
+        if answers.llm_api_key_source == "dotenv":
+            console.print(
+                f"\n  [bold yellow]Reminder:[/bold yellow] You selected dotenv storage."
+                f"\n  Please ensure [cyan]{answers.llm_api_key_env}[/cyan] is set"
+                f" in your [cyan].env[/cyan] file at the project root."
+            )
+
         return answers
 
     return None
