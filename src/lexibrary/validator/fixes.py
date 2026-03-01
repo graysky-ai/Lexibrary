@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from lexibrary.config.schema import LexibraryConfig
+from lexibrary.utils.paths import DESIGNS_DIR
 from lexibrary.validator.report import ValidationIssue
 
 logger = logging.getLogger(__name__)
@@ -98,10 +99,14 @@ def fix_orphan_artifacts(
         )
 
     # Determine corresponding source path from the design file
-    # Design files are at .lexibrary/<source-rel>.md
+    # Design files are at .lexibrary/designs/<source-rel>.md
     source_rel = issue.artifact
     if source_rel.endswith(".md"):
         source_rel = source_rel[:-3]  # Strip trailing .md
+    # Strip the designs/ prefix to recover the source-relative path
+    designs_prefix = DESIGNS_DIR + "/"
+    if source_rel.startswith(designs_prefix):
+        source_rel = source_rel[len(designs_prefix):]
 
     source_path = project_root / source_rel
     if source_path.exists():

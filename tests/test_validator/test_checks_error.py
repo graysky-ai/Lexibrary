@@ -30,7 +30,7 @@ def _write_design_file(
 
     Returns the path to the design file.
     """
-    design_path = lexibrary_dir / f"{source_path}.md"
+    design_path = lexibrary_dir / "designs" / f"{source_path}.md"
     design_path.parent.mkdir(parents=True, exist_ok=True)
 
     wiki_section = ""
@@ -366,7 +366,7 @@ class TestCheckFileExistence:
             lexibrary_dir / "stack",
             "ST-002",
             "design-ref",
-            design_refs=[".lexibrary/src/missing.py.md"],
+            design_refs=[".lexibrary/designs/src/missing.py.md"],
         )
 
         issues = check_file_existence(project_root, lexibrary_dir)

@@ -8,9 +8,9 @@ from pathlib import Path
 from lexibrary.archivist.change_checker import (
     ChangeLevel,
     _compute_design_content_hash,
-    _design_file_path,
     check_change,
 )
+from lexibrary.utils.paths import mirror_path
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -37,9 +37,9 @@ def _make_design_file(
     If ``design_hash`` is None (and ``include_footer`` is True) the
     design_hash is computed from the body content.
     """
-    design_dir = tmp_path / ".lexibrary" / Path(source_rel).parent
+    design_dir = tmp_path / ".lexibrary" / "designs" / Path(source_rel).parent
     design_dir.mkdir(parents=True, exist_ok=True)
-    design_path = tmp_path / ".lexibrary" / f"{source_rel}.md"
+    design_path = tmp_path / ".lexibrary" / "designs" / f"{source_rel}.md"
 
     if body is None:
         body = (
@@ -109,15 +109,15 @@ class TestChangeLevelEnum:
 
 
 # ---------------------------------------------------------------------------
-# _design_file_path
+# mirror_path (was _design_file_path, now delegated to utils.paths)
 # ---------------------------------------------------------------------------
 
 
 class TestDesignFilePath:
     def test_mirror_path(self, tmp_path: Path) -> None:
         source = tmp_path / "src" / "foo.py"
-        result = _design_file_path(source, tmp_path)
-        assert result == tmp_path / ".lexibrary" / "src" / "foo.py.md"
+        result = mirror_path(tmp_path, source)
+        assert result == tmp_path / ".lexibrary" / "designs" / "src" / "foo.py.md"
 
 
 # ---------------------------------------------------------------------------

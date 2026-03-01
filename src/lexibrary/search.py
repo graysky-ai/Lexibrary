@@ -349,24 +349,16 @@ def _search_design_files(
 ) -> list[_DesignFileResult]:
     """Search design files by scanning YAML frontmatter and tags."""
     from lexibrary.artifacts.design_file_parser import parse_design_file
+    from lexibrary.utils.paths import DESIGNS_DIR
 
-    lexibrary_dir = project_root / ".lexibrary"
-    if not lexibrary_dir.is_dir():
+    designs_dir = project_root / ".lexibrary" / DESIGNS_DIR
+    if not designs_dir.is_dir():
         return []
 
     results: list[_DesignFileResult] = []
 
-    # Scan all .md files in .lexibrary/ (excluding concepts/ and stack/)
-    for md_path in sorted(lexibrary_dir.rglob("*.md")):
-        # Skip non-design-file directories
-        rel = md_path.relative_to(lexibrary_dir)
-        parts = rel.parts
-        if parts and parts[0] in ("concepts", "stack"):
-            continue
-        # Skip known non-design files
-        if md_path.name in ("START_HERE.md", "HANDOFF.md"):
-            continue
-
+    # Scan all .md files in .lexibrary/designs/ directly
+    for md_path in sorted(designs_dir.rglob("*.md")):
         design = parse_design_file(md_path)
         if design is None:
             continue

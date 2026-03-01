@@ -60,7 +60,8 @@ def populated_db(tmp_path: Path) -> Path:
     )
     conn.execute(
         "INSERT INTO artifacts (id, path, kind, title, status) "
-        "VALUES (2, '.lexibrary/src/auth/service.py.md', 'design', 'Auth service design', NULL)"
+        "VALUES (2, '.lexibrary/designs/src/auth/service.py.md', "
+        "'design', 'Auth service design', NULL)"
     )
     conn.execute(
         "INSERT INTO artifacts (id, path, kind, title, status) "
@@ -191,7 +192,7 @@ def populated_db(tmp_path: Path) -> Path:
     conn.execute(_blog_sql, (build_ts, "full", "src/auth/service.py", "source", "created", 100))
     conn.execute(
         _blog_sql,
-        (build_ts, "full", ".lexibrary/src/auth/service.py.md", "design", "created", 50),
+        (build_ts, "full", ".lexibrary/designs/src/auth/service.py.md", "design", "created", 50),
     )
     conn.execute(_blog_sql, (build_ts, "full", "src/api/controller.py", "source", "created", 75))
     conn.execute(_blog_sql, (build_ts, "full", "src/core/utils.py", "source", "unchanged", 10))
@@ -372,7 +373,7 @@ class TestGetArtifact:
 
     def test_design_artifact(self, graph: LinkGraph) -> None:
         """get_artifact() can return design-type artifacts."""
-        result = graph.get_artifact(".lexibrary/src/auth/service.py.md")
+        result = graph.get_artifact(".lexibrary/designs/src/auth/service.py.md")
         assert result is not None
         assert result.kind == "design"
         graph.close()
@@ -449,7 +450,7 @@ class TestSearchByTag:
         assert len(results) >= 2
         assert all(isinstance(r, ArtifactResult) for r in results)
         paths = {r.path for r in results}
-        assert ".lexibrary/src/auth/service.py.md" in paths
+        assert ".lexibrary/designs/src/auth/service.py.md" in paths
         assert ".lexibrary/concepts/Authentication.md" in paths
         graph.close()
 
@@ -464,7 +465,7 @@ class TestSearchByTag:
         results = graph.search_by_tag("security")
         assert len(results) >= 2
         paths = {r.path for r in results}
-        assert ".lexibrary/src/auth/service.py.md" in paths
+        assert ".lexibrary/designs/src/auth/service.py.md" in paths
         assert ".lexibrary/concepts/Authorization.md" in paths
         graph.close()
 

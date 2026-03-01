@@ -583,7 +583,7 @@ def _create_design_file_tree(
     source_content: str | None = _SAMPLE_SOURCE_FILE,
     design_content: str = _SAMPLE_DESIGN_FILE,
     source_relpath: str = "src/auth/login.py",
-    design_relpath: str = ".lexibrary/src/auth/login.py.md",
+    design_relpath: str = ".lexibrary/designs/src/auth/login.py.md",
 ) -> Path:
     """Create a minimal project tree with a source file and its design file.
 
@@ -612,10 +612,10 @@ class TestScanDesignFiles:
     """Tests for IndexBuilder._scan_design_files."""
 
     def test_discovers_md_files(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Discovers all .md files under .lexibrary/src/."""
+        """Discovers all .md files under .lexibrary/designs/."""
         _create_design_file_tree(tmp_path)
         # Add a second design file
-        second = tmp_path / ".lexibrary" / "src" / "utils" / "hashing.py.md"
+        second = tmp_path / ".lexibrary" / "designs" / "src" / "utils" / "hashing.py.md"
         second.parent.mkdir(parents=True, exist_ok=True)
         second.write_text(_SAMPLE_DESIGN_FILE, encoding="utf-8")
 
@@ -628,13 +628,13 @@ class TestScanDesignFiles:
         assert files[1].name == "hashing.py.md"
 
     def test_empty_when_no_dir(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Returns empty list when .lexibrary/src/ does not exist."""
+        """Returns empty list when .lexibrary/designs/ does not exist."""
         builder = IndexBuilder(db_conn, tmp_path)
         assert builder._scan_design_files() == []
 
     def test_empty_when_no_md_files(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Returns empty list when .lexibrary/src/ exists but contains no .md files."""
-        (tmp_path / ".lexibrary" / "src").mkdir(parents=True)
+        """Returns empty list when .lexibrary/designs/ exists but contains no .md files."""
+        (tmp_path / ".lexibrary" / "designs").mkdir(parents=True)
         builder = IndexBuilder(db_conn, tmp_path)
         assert builder._scan_design_files() == []
 
@@ -648,23 +648,23 @@ class TestDesignPathToSourceRelpath:
     """Tests for IndexBuilder._design_path_to_source_relpath."""
 
     def test_standard_path(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """Converts .lexibrary/src/auth/login.py.md to src/auth/login.py."""
+        """Converts .lexibrary/designs/src/auth/login.py.md to src/auth/login.py."""
         builder = IndexBuilder(db_conn, tmp_path)
-        design_path = tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md"
+        design_path = tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md"
         result = builder._design_path_to_source_relpath(design_path)
         assert result == "src/auth/login.py"
 
     def test_nested_path(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """Handles deeply nested design file paths."""
         builder = IndexBuilder(db_conn, tmp_path)
-        design_path = tmp_path / ".lexibrary" / "src" / "a" / "b" / "c.py.md"
+        design_path = tmp_path / ".lexibrary" / "designs" / "src" / "a" / "b" / "c.py.md"
         result = builder._design_path_to_source_relpath(design_path)
         assert result == "src/a/b/c.py"
 
     def test_top_level_source(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """Handles design file for a source file directly under src/."""
         builder = IndexBuilder(db_conn, tmp_path)
-        design_path = tmp_path / ".lexibrary" / "src" / "main.py.md"
+        design_path = tmp_path / ".lexibrary" / "designs" / "src" / "main.py.md"
         result = builder._design_path_to_source_relpath(design_path)
         assert result == "src/main.py"
 
@@ -712,7 +712,7 @@ class TestProcessDesignFile:
         builder = IndexBuilder(db_conn, tmp_path)
         build_ts = "2025-06-15T12:00:00+00:00"
 
-        design_path = tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md"
+        design_path = tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md"
         builder._process_design_file(design_path, build_ts)
 
         # Check source artifact
@@ -725,7 +725,8 @@ class TestProcessDesignFile:
 
         # Check design artifact
         design_row = db_conn.execute(
-            "SELECT path, kind, title FROM artifacts WHERE path = '.lexibrary/src/auth/login.py.md'"
+            "SELECT path, kind, title FROM artifacts "
+            "WHERE path = '.lexibrary/designs/src/auth/login.py.md'"
         ).fetchone()
         assert design_row is not None
         assert design_row[1] == "design"
@@ -736,7 +737,7 @@ class TestProcessDesignFile:
         _create_design_file_tree(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_design_file(
-            tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md",
+            tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md",
             "2025-06-15T12:00:00+00:00",
         )
 
@@ -744,7 +745,7 @@ class TestProcessDesignFile:
             "SELECT l.link_type FROM links l "
             "JOIN artifacts src ON l.source_id = src.id "
             "JOIN artifacts tgt ON l.target_id = tgt.id "
-            "WHERE src.path = '.lexibrary/src/auth/login.py.md' "
+            "WHERE src.path = '.lexibrary/designs/src/auth/login.py.md' "
             "  AND tgt.path = 'src/auth/login.py' "
             "  AND l.link_type = 'design_source'"
         ).fetchone()
@@ -757,7 +758,7 @@ class TestProcessDesignFile:
         _create_design_file_tree(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_design_file(
-            tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md",
+            tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md",
             "2025-06-15T12:00:00+00:00",
         )
 
@@ -775,7 +776,7 @@ class TestProcessDesignFile:
         _create_design_file_tree(tmp_path, source_content=None)
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_design_file(
-            tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md",
+            tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md",
             "2025-06-15T12:00:00+00:00",
         )
 
@@ -790,7 +791,7 @@ class TestProcessDesignFile:
         _create_design_file_tree(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_design_file(
-            tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md",
+            tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md",
             "2025-06-15T12:00:00+00:00",
         )
 
@@ -810,7 +811,7 @@ class TestProcessDesignFile:
         _create_design_file_tree(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_design_file(
-            tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md",
+            tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md",
             "2025-06-15T12:00:00+00:00",
         )
 
@@ -826,7 +827,7 @@ class TestProcessDesignFile:
         _create_design_file_tree(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_design_file(
-            tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md",
+            tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md",
             "2025-06-15T12:00:00+00:00",
         )
 
@@ -843,14 +844,14 @@ class TestProcessDesignFile:
         _create_design_file_tree(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_design_file(
-            tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md",
+            tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md",
             "2025-06-15T12:00:00+00:00",
         )
 
         tags = db_conn.execute(
             "SELECT t.tag FROM tags t "
             "JOIN artifacts a ON t.artifact_id = a.id "
-            "WHERE a.path = '.lexibrary/src/auth/login.py.md'"
+            "WHERE a.path = '.lexibrary/designs/src/auth/login.py.md'"
         ).fetchall()
         tag_names = sorted(r[0] for r in tags)
         assert tag_names == ["auth", "security"]
@@ -860,12 +861,12 @@ class TestProcessDesignFile:
         _create_design_file_tree(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_design_file(
-            tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md",
+            tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md",
             "2025-06-15T12:00:00+00:00",
         )
 
         design_id = db_conn.execute(
-            "SELECT id FROM artifacts WHERE path = '.lexibrary/src/auth/login.py.md'"
+            "SELECT id FROM artifacts WHERE path = '.lexibrary/designs/src/auth/login.py.md'"
         ).fetchone()[0]
         fts_row = db_conn.execute(
             "SELECT title, body FROM artifacts_fts WHERE rowid = ?",
@@ -883,13 +884,13 @@ class TestProcessDesignFile:
         builder = IndexBuilder(db_conn, tmp_path)
         build_ts = "2025-06-15T12:00:00+00:00"
         builder._process_design_file(
-            tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md",
+            tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md",
             build_ts,
         )
 
         log = db_conn.execute(
             "SELECT build_type, artifact_path, artifact_kind, action "
-            "FROM build_log WHERE artifact_path = '.lexibrary/src/auth/login.py.md'"
+            "FROM build_log WHERE artifact_path = '.lexibrary/designs/src/auth/login.py.md'"
         ).fetchone()
         assert log is not None
         assert log[0] == "full"
@@ -904,13 +905,13 @@ class TestProcessDesignFile:
         builder = IndexBuilder(db_conn, tmp_path)
         build_ts = "2025-06-15T12:00:00+00:00"
         builder._process_design_file(
-            tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md",
+            tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md",
             build_ts,
         )
 
         log = db_conn.execute(
             "SELECT action, error_message FROM build_log "
-            "WHERE artifact_path = '.lexibrary/src/auth/login.py.md'"
+            "WHERE artifact_path = '.lexibrary/designs/src/auth/login.py.md'"
         ).fetchone()
         assert log is not None
         assert log[0] == "failed"
@@ -954,11 +955,11 @@ generator: lexibrary-test
             source_content="def simple() -> None: pass\n",
             design_content=minimal_design,
             source_relpath="src/simple.py",
-            design_relpath=".lexibrary/src/simple.py.md",
+            design_relpath=".lexibrary/designs/src/simple.py.md",
         )
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_design_file(
-            tmp_path / ".lexibrary" / "src" / "simple.py.md",
+            tmp_path / ".lexibrary" / "designs" / "src" / "simple.py.md",
             "2025-06-15T12:00:00+00:00",
         )
 
@@ -1009,7 +1010,7 @@ generator: lexibrary-test
 -->
 """
         second_source = "def helper() -> str: return 'hi'\n"
-        helpers_design = tmp_path / ".lexibrary" / "src" / "utils" / "helpers.py.md"
+        helpers_design = tmp_path / ".lexibrary" / "designs" / "src" / "utils" / "helpers.py.md"
         helpers_design.parent.mkdir(parents=True, exist_ok=True)
         helpers_design.write_text(second_design, encoding="utf-8")
         helpers_source = tmp_path / "src" / "utils" / "helpers.py"
@@ -2327,7 +2328,7 @@ def _create_full_project_tree(tmp_path: Path) -> None:
     )
 
     # Design file for the source
-    design_dir = tmp_path / ".lexibrary" / "src" / "auth"
+    design_dir = tmp_path / ".lexibrary" / "designs" / "src" / "auth"
     design_dir.mkdir(parents=True, exist_ok=True)
     (design_dir / "login.py.md").write_text(
         _SAMPLE_DESIGN_FILE,
@@ -2619,7 +2620,7 @@ class TestFullBuild:
         # For the per-artifact error path, we need an exception that escapes
         # _process_*. We can do this by creating a file whose content causes
         # a non-parse error.
-        malformed_design = tmp_path / ".lexibrary" / "src" / "bad" / "broken.py.md"
+        malformed_design = tmp_path / ".lexibrary" / "designs" / "src" / "bad" / "broken.py.md"
         malformed_design.parent.mkdir(parents=True, exist_ok=True)
         # Write malformed content that won't parse
         malformed_design.write_text("not a valid design file at all", encoding="utf-8")
@@ -2749,8 +2750,8 @@ class TestClassifyPath:
         assert builder._classify_path(p) == "aindex"
 
     def test_design_file(self, builder: IndexBuilder) -> None:
-        """A .md file under .lexibrary/src/ is classified as 'design'."""
-        p = builder.project_root / ".lexibrary" / "src" / "auth" / "login.py.md"
+        """A .md file under .lexibrary/designs/ is classified as 'design'."""
+        p = builder.project_root / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md"
         assert builder._classify_path(p) == "design"
 
     def test_source_file(self, builder: IndexBuilder) -> None:
@@ -3167,7 +3168,7 @@ See also [[Authorization]] for related concepts.
         builder = IndexBuilder(db_conn, tmp_path)
         builder.full_build()
 
-        design_path = ".lexibrary/src/auth/login.py.md"
+        design_path = ".lexibrary/designs/src/auth/login.py.md"
         design_id = db_conn.execute(
             "SELECT id FROM artifacts WHERE path = ?", (design_path,)
         ).fetchone()[0]
@@ -3218,10 +3219,10 @@ generated: 2025-06-15T12:00:00
 generator: lexibrary-test
 -->
 """
-        design_file_path = tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md"
+        design_file_path = tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md"
         design_file_path.write_text(modified_design, encoding="utf-8")
 
-        result = builder.incremental_update([Path(".lexibrary/src/auth/login.py.md")])
+        result = builder.incremental_update([Path(".lexibrary/designs/src/auth/login.py.md")])
 
         assert result.errors == []
 

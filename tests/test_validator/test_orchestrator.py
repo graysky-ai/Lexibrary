@@ -41,7 +41,7 @@ def _write_design_file(
     wikilinks: list[str] | None = None,
 ) -> Path:
     """Write a design file to the expected mirror path."""
-    design_path = lexibrary_dir / f"{source_path}.md"
+    design_path = lexibrary_dir / "designs" / f"{source_path}.md"
     design_path.parent.mkdir(parents=True, exist_ok=True)
 
     wiki_section = "(none)"

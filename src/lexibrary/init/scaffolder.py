@@ -170,7 +170,13 @@ def create_lexibrary_skeleton(project_root: Path) -> list[Path]:
     created: list[Path] = []
 
     # Directories
-    for subdir in [base, base / "concepts", base / "conventions", base / "stack"]:
+    for subdir in [
+        base,
+        base / "concepts",
+        base / "conventions",
+        base / "designs",
+        base / "stack",
+    ]:
         if not subdir.exists():
             subdir.mkdir(parents=True)
             created.append(subdir)
@@ -179,6 +185,7 @@ def create_lexibrary_skeleton(project_root: Path) -> list[Path]:
     for gitkeep in [
         base / "concepts" / ".gitkeep",
         base / "conventions" / ".gitkeep",
+        base / "designs" / ".gitkeep",
         base / "stack" / ".gitkeep",
     ]:
         if not gitkeep.exists():
@@ -226,7 +233,13 @@ def create_lexibrary_from_wizard(
     created: list[Path] = []
 
     # Directories
-    for subdir in [base, base / "concepts", base / "conventions", base / "stack"]:
+    for subdir in [
+        base,
+        base / "concepts",
+        base / "conventions",
+        base / "designs",
+        base / "stack",
+    ]:
         if not subdir.exists():
             subdir.mkdir(parents=True)
             created.append(subdir)
@@ -235,6 +248,7 @@ def create_lexibrary_from_wizard(
     for gitkeep in [
         base / "concepts" / ".gitkeep",
         base / "conventions" / ".gitkeep",
+        base / "designs" / ".gitkeep",
         base / "stack" / ".gitkeep",
     ]:
         if not gitkeep.exists():

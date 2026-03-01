@@ -29,7 +29,7 @@ from lexibrary.linkgraph.schema import SCHEMA_VERSION, check_schema_version, set
 from lexibrary.stack.parser import parse_stack_post
 from lexibrary.tokenizer.approximate import ApproximateCounter
 from lexibrary.utils.hashing import hash_file
-from lexibrary.utils.paths import aindex_path
+from lexibrary.utils.paths import DESIGNS_DIR, aindex_path
 from lexibrary.validator.report import ValidationIssue
 from lexibrary.wiki.index import ConceptIndex
 from lexibrary.wiki.resolver import UnresolvedLink, WikilinkResolver
@@ -336,12 +336,12 @@ def check_hash_freshness(
     """
     issues: list[ValidationIssue] = []
 
-    # Design files live under lexibrary_dir/src/ mirroring the project structure
-    src_dir = lexibrary_dir / "src"
-    if not src_dir.is_dir():
+    # Design files live under lexibrary_dir/designs/ mirroring the project structure
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+    if not designs_dir.is_dir():
         return issues
 
-    for design_path in sorted(src_dir.rglob("*.md")):
+    for design_path in sorted(designs_dir.rglob("*.md")):
         metadata = parse_design_file_metadata(design_path)
         if metadata is None:
             continue
@@ -389,9 +389,9 @@ def check_token_budgets(
     counter = ApproximateCounter()
 
     # Check design files
-    src_dir = lexibrary_dir / "src"
-    if src_dir.is_dir():
-        for file_path in sorted(src_dir.rglob("*.md")):
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+    if designs_dir.is_dir():
+        for file_path in sorted(designs_dir.rglob("*.md")):
             if not file_path.is_file():
                 continue
             tokens = counter.count(file_path.read_text(encoding="utf-8", errors="replace"))
@@ -476,9 +476,9 @@ def check_orphan_concepts(
     referenced: set[str] = set()
 
     # Scan design files
-    src_dir = lexibrary_dir / "src"
-    if src_dir.is_dir():
-        for md_path in src_dir.rglob("*.md"):
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+    if designs_dir.is_dir():
+        for md_path in designs_dir.rglob("*.md"):
             try:
                 text = md_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
@@ -569,9 +569,9 @@ def check_deprecated_concept_usage(
     # Scan artifacts for references to deprecated concepts
     artifact_dirs: list[tuple[Path, str]] = []
 
-    src_dir = lexibrary_dir / "src"
-    if src_dir.is_dir():
-        artifact_dirs.append((src_dir, "design"))
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+    if designs_dir.is_dir():
+        artifact_dirs.append((designs_dir, "design"))
 
     stack_dir = lexibrary_dir / "stack"
     if stack_dir.is_dir():
@@ -697,7 +697,7 @@ def check_stack_staleness(
         for ref_file in refs_files:
             # Build the design file path for the referenced source file
             ref_path = Path(ref_file)
-            design_file_path = lexibrary_dir / f"{ref_path}.md"
+            design_file_path = lexibrary_dir / DESIGNS_DIR / f"{ref_path}.md"
 
             metadata = parse_design_file_metadata(design_file_path)
             if metadata is None:
@@ -1073,26 +1073,12 @@ def _rel(path: Path, root: Path) -> str:
 
 
 def _iter_design_files(lexibrary_dir: Path) -> list[Path]:
-    """Iterate over design file paths in .lexibrary/, excluding special files."""
-    if not lexibrary_dir.is_dir():
+    """Iterate over design file paths in .lexibrary/designs/."""
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+    if not designs_dir.is_dir():
         return []
 
-    results: list[Path] = []
-    special_names = {"START_HERE.md"}
-
-    for md_path in sorted(lexibrary_dir.rglob("*.md")):
-        # Skip special files
-        if md_path.name in special_names:
-            continue
-        # Skip stack posts
-        if "stack" in md_path.relative_to(lexibrary_dir).parts:
-            continue
-        # Skip concepts
-        if "concepts" in md_path.relative_to(lexibrary_dir).parts:
-            continue
-        results.append(md_path)
-
-    return results
+    return sorted(designs_dir.rglob("*.md"))
 
 
 def _iter_directories(

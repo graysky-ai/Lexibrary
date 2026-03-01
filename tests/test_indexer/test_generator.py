@@ -239,7 +239,7 @@ class TestGenerateAIndexMetadata:
 
 def _create_design_file(tmp_path: Path, rel_source: str, description: str) -> None:
     """Helper: create a minimal design file at the .lexibrary mirror path."""
-    design_path = tmp_path / ".lexibrary" / (rel_source + ".md")
+    design_path = tmp_path / ".lexibrary" / "designs" / (rel_source + ".md")
     design_path.parent.mkdir(parents=True, exist_ok=True)
     frontmatter = (
         "---\n"

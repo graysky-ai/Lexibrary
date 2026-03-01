@@ -39,7 +39,7 @@ from lexibrary.linkgraph.schema import (
 from lexibrary.stack.models import StackPost  # noqa: F401
 from lexibrary.stack.parser import parse_stack_post  # noqa: F401
 from lexibrary.utils.hashing import hash_file
-from lexibrary.utils.paths import LEXIBRARY_DIR
+from lexibrary.utils.paths import DESIGNS_DIR, LEXIBRARY_DIR
 from lexibrary.wiki.parser import parse_concept_file  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -485,12 +485,12 @@ class IndexBuilder:
     # -- design file processing (task group 3) ------------------------------
 
     def _scan_design_files(self) -> list[Path]:
-        """Discover all ``.md`` files under ``.lexibrary/src/`` (the design file mirror tree).
+        """Discover all ``.md`` files under ``.lexibrary/designs/`` (the design file mirror tree).
 
         Returns a sorted list of absolute ``Path`` objects for deterministic
         processing order.
         """
-        design_root = self.project_root / LEXIBRARY_DIR / "src"
+        design_root = self.project_root / LEXIBRARY_DIR / DESIGNS_DIR
         if not design_root.is_dir():
             return []
         return sorted(design_root.rglob("*.md"))
@@ -498,20 +498,23 @@ class IndexBuilder:
     def _design_path_to_source_relpath(self, design_path: Path) -> str:
         """Convert an absolute design file path to the project-relative source path.
 
-        ``.lexibrary/src/auth/login.py.md`` -> ``src/auth/login.py``
+        ``.lexibrary/designs/src/auth/login.py.md`` -> ``src/auth/login.py``
 
         The design mirror tree stores ``<source_path>.md`` under
-        ``.lexibrary/``, so we strip the ``.lexibrary/`` prefix and the
-        trailing ``.md`` extension.
+        ``.lexibrary/designs/``, so we strip the ``.lexibrary/designs/``
+        prefix and the trailing ``.md`` extension.
         """
         # Make the design path relative to project_root
         rel = design_path.relative_to(self.project_root)
         # Strip leading ".lexibrary/" prefix
-        # rel looks like: .lexibrary/src/auth/login.py.md
+        # rel looks like: .lexibrary/designs/src/auth/login.py.md
         parts = rel.parts
         if parts[0] == LEXIBRARY_DIR:
             parts = parts[1:]
-        # Reconstruct without the .lexibrary prefix
+        # Strip leading "designs/" segment
+        if parts and parts[0] == DESIGNS_DIR:
+            parts = parts[1:]
+        # Reconstruct without the .lexibrary/designs prefix
         inner = Path(*parts) if parts else rel
         # Strip trailing .md to get the source path
         source_relpath = str(inner)[: -len(".md")] if str(inner).endswith(".md") else str(inner)
@@ -1113,7 +1116,7 @@ class IndexBuilder:
         - Paths under ``.lexibrary/stack/`` are Stack posts
         - Paths under ``.lexibrary/conventions/`` are convention files
         - Paths ending in ``.aindex`` under ``.lexibrary/`` are aindex files
-        - Paths ending in ``.md`` under ``.lexibrary/src/`` are design files
+        - Paths ending in ``.md`` under ``.lexibrary/designs/`` are design files
         - All other paths are treated as source files
 
         Parameters
@@ -1144,7 +1147,7 @@ class IndexBuilder:
             return "convention"
         if rel_str.startswith(lex_prefix) and rel.name == ".aindex":
             return "aindex"
-        if rel_str.startswith(f"{lex_prefix}src/") and rel_str.endswith(".md"):
+        if rel_str.startswith(f"{lex_prefix}{DESIGNS_DIR}/") and rel_str.endswith(".md"):
             return "design"
         return "source"
 

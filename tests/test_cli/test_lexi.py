@@ -79,9 +79,9 @@ def _setup_archivist_project(tmp_path: Path) -> Path:
 
 
 def _create_design_file(tmp_path: Path, source_rel: str, source_content: str) -> Path:
-    """Create a design file in .lexibrary mirror tree with correct metadata footer."""
+    """Create a design file in .lexibrary/designs/ mirror tree with correct metadata footer."""
     content_hash = hashlib.sha256(source_content.encode()).hexdigest()
-    design_path = tmp_path / ".lexibrary" / f"{source_rel}.md"
+    design_path = tmp_path / ".lexibrary" / "designs" / f"{source_rel}.md"
     design_path.parent.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now().isoformat()
@@ -310,7 +310,7 @@ def _create_design_file_with_tags(
 ) -> Path:
     """Create a design file with tags for unified search testing."""
     content_hash = hashlib.sha256(b"test").hexdigest()
-    design_path = tmp_path / ".lexibrary" / f"{source_rel}.md"
+    design_path = tmp_path / ".lexibrary" / "designs" / f"{source_rel}.md"
     design_path.parent.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now().isoformat()
@@ -1375,7 +1375,10 @@ class TestConceptLinkCommand:
         assert "Linked" in result.output  # type: ignore[union-attr]
 
         # Verify wikilink was added to design file
-        design_content = (project / ".lexibrary" / "src" / "main.py.md").read_text(encoding="utf-8")
+        design_path = (
+            project / ".lexibrary" / "designs" / "src" / "main.py.md"
+        )
+        design_content = design_path.read_text(encoding="utf-8")
         assert "[[Authentication]]" in design_content
 
     def test_link_concept_already_linked(self, tmp_path: Path) -> None:
@@ -2444,7 +2447,7 @@ def _setup_validate_project(tmp_path: Path) -> Path:
 
     # Create a design file with correct hash
     source_hash = hashlib.sha256(source_content.encode()).hexdigest()
-    design_dir = tmp_path / ".lexibrary" / "src"
+    design_dir = tmp_path / ".lexibrary" / "designs" / "src"
     design_dir.mkdir(parents=True, exist_ok=True)
     design_content = f"""---
 description: Main module
@@ -2502,7 +2505,7 @@ def _setup_validate_project_with_warnings(tmp_path: Path) -> Path:
     source_content = "def hello():\n    return 42\n"
     (tmp_path / "src" / "main.py").write_text(source_content)
 
-    design_dir = tmp_path / ".lexibrary" / "src"
+    design_dir = tmp_path / ".lexibrary" / "designs" / "src"
     design_dir.mkdir(parents=True, exist_ok=True)
     design_content = """---
 description: Main module
@@ -2564,6 +2567,7 @@ class TestLexiValidateCommand:
             f'<!-- lexibrary:meta source="src" source_hash="abc"'
             f' generated="{now}" -->\n'
         )
+        (project / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
         (project / ".lexibrary" / "src" / ".aindex").write_text(src_aindex, encoding="utf-8")
         root_aindex = (
             f"# ./\n\nRoot\n\n## Child Map\n\n"
@@ -3072,7 +3076,7 @@ class TestDesignUpdateCommand:
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Created design scaffold" in result.output  # type: ignore[union-attr]
         # Design file should exist in mirror tree
-        design_path = tmp_path / ".lexibrary" / "src" / "main.py.md"
+        design_path = tmp_path / ".lexibrary" / "designs" / "src" / "main.py.md"
         assert design_path.exists()
         content = design_path.read_text(encoding="utf-8")
         assert "source_path:" in content

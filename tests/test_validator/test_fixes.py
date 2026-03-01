@@ -46,7 +46,7 @@ def _make_issue(
 def _create_design_file(tmp_path: Path, source_rel: str, source_content: str) -> Path:
     """Create a design file in .lexibrary mirror tree with metadata footer."""
     content_hash = hashlib.sha256(source_content.encode()).hexdigest()
-    design_path = tmp_path / ".lexibrary" / f"{source_rel}.md"
+    design_path = tmp_path / ".lexibrary" / "designs" / f"{source_rel}.md"
     design_path.parent.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now().isoformat()
@@ -206,13 +206,13 @@ class TestFixOrphanArtifacts:
     def test_orphan_deleted(self, tmp_path: Path) -> None:
         """Orphan design file is deleted when source does not exist."""
         # Create design file but NOT the source file
-        design_path = tmp_path / ".lexibrary" / "src" / "deleted.py.md"
+        design_path = tmp_path / ".lexibrary" / "designs" / "src" / "deleted.py.md"
         design_path.parent.mkdir(parents=True, exist_ok=True)
         design_path.write_text("orphan design file\n")
 
         issue = _make_issue(
             check="orphan_artifacts",
-            artifact="src/deleted.py.md",
+            artifact="designs/src/deleted.py.md",
         )
         config = _make_config()
 
@@ -227,13 +227,13 @@ class TestFixOrphanArtifacts:
         (tmp_path / "src").mkdir(parents=True)
         (tmp_path / "src" / "exists.py").write_text("x = 1\n")
 
-        design_path = tmp_path / ".lexibrary" / "src" / "exists.py.md"
+        design_path = tmp_path / ".lexibrary" / "designs" / "src" / "exists.py.md"
         design_path.parent.mkdir(parents=True, exist_ok=True)
         design_path.write_text("design file\n")
 
         issue = _make_issue(
             check="orphan_artifacts",
-            artifact="src/exists.py.md",
+            artifact="designs/src/exists.py.md",
         )
         config = _make_config()
 
@@ -248,7 +248,7 @@ class TestFixOrphanArtifacts:
 
         issue = _make_issue(
             check="orphan_artifacts",
-            artifact="src/gone.py.md",
+            artifact="designs/src/gone.py.md",
         )
         config = _make_config()
 

@@ -60,9 +60,9 @@ def _make_design_file(
     description: str = "Test file.",
 ) -> Path:
     """Create a design file at the mirror path within tmp_path."""
-    design_dir = tmp_path / ".lexibrary" / Path(source_rel).parent
+    design_dir = tmp_path / ".lexibrary" / "designs" / Path(source_rel).parent
     design_dir.mkdir(parents=True, exist_ok=True)
-    design_path = tmp_path / ".lexibrary" / f"{source_rel}.md"
+    design_path = tmp_path / ".lexibrary" / "designs" / f"{source_rel}.md"
 
     if body is None:
         body = (
@@ -262,7 +262,7 @@ class TestUpdateFileNewFile:
         assert result.change == ChangeLevel.NEW_FILE
         assert not result.failed
 
-        design_path = tmp_path / ".lexibrary" / "src" / "foo.py.md"
+        design_path = tmp_path / ".lexibrary" / "designs" / "src" / "foo.py.md"
         assert design_path.exists()
         content = design_path.read_text()
         assert "Foo module for testing." in content
@@ -358,7 +358,7 @@ class TestUpdateFileFooterless:
         archivist.generate_design_file.assert_not_awaited()
 
         # Verify footer was added
-        design_path = tmp_path / ".lexibrary" / f"{source_rel}.md"
+        design_path = tmp_path / ".lexibrary" / "designs" / f"{source_rel}.md"
         content = design_path.read_text()
         assert "lexibrary:meta" in content
 
@@ -585,7 +585,7 @@ class TestUpdateFileTokenBudget:
         assert result.token_budget_exceeded is True
 
         # File was still written
-        design_path = tmp_path / ".lexibrary" / f"{source_rel}.md"
+        design_path = tmp_path / ".lexibrary" / "designs" / f"{source_rel}.md"
         assert design_path.exists()
 
 
@@ -686,7 +686,7 @@ class TestUpdateProjectDiscovery:
     async def test_skips_lexibrary_contents(self, tmp_path: Path) -> None:
         _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
         # Create a file inside .lexibrary
-        lexi_file = tmp_path / ".lexibrary" / "src" / "foo.py.md"
+        lexi_file = tmp_path / ".lexibrary" / "designs" / "src" / "foo.py.md"
         lexi_file.parent.mkdir(parents=True, exist_ok=True)
         lexi_file.write_text("design file", encoding="utf-8")
 

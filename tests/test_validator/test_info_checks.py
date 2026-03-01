@@ -113,7 +113,7 @@ def _write_design_file(
     description: str = "Test design file",
 ) -> Path:
     """Write a design file to the expected mirror path."""
-    design_path = lexibrary_dir / f"{source_path}.md"
+    design_path = lexibrary_dir / "designs" / f"{source_path}.md"
     design_path.parent.mkdir(parents=True, exist_ok=True)
     design_path.write_text(
         _DESIGN_FILE_TEMPLATE.format(
@@ -616,7 +616,7 @@ class TestCheckDanglingLinks:
         src_dir.mkdir()
         (src_dir / "main.py").write_text("pass", encoding="utf-8")
 
-        design_dir = lexibrary_dir / "src"
+        design_dir = lexibrary_dir / "designs" / "src"
         design_dir.mkdir(parents=True)
         (design_dir / "main.py.md").write_text("# design", encoding="utf-8")
 
@@ -625,7 +625,7 @@ class TestCheckDanglingLinks:
             lexibrary_dir,
             [
                 ("src/main.py", "source"),
-                (".lexibrary/src/main.py.md", "design"),
+                (".lexibrary/designs/src/main.py.md", "design"),
             ],
         )
 
@@ -759,7 +759,7 @@ class TestCheckDanglingLinks:
             lexibrary_dir,
             [
                 ("src/module.py", "source"),
-                (".lexibrary/src/module.py.md", "design"),
+                (".lexibrary/designs/src/module.py.md", "design"),
                 (".lexibrary/concepts/auth.md", "concept"),
                 (".lexibrary/stack/ST-Q-001.md", "stack"),
             ],
@@ -792,7 +792,7 @@ class TestCheckOrphanArtifacts:
         src_dir.mkdir()
         (src_dir / "main.py").write_text("pass", encoding="utf-8")
 
-        design_dir = lexibrary_dir / "src"
+        design_dir = lexibrary_dir / "designs" / "src"
         design_dir.mkdir(parents=True)
         (design_dir / "main.py.md").write_text("# design", encoding="utf-8")
 
@@ -801,7 +801,7 @@ class TestCheckOrphanArtifacts:
             lexibrary_dir,
             [
                 ("src/main.py", "source"),
-                (".lexibrary/src/main.py.md", "design"),
+                (".lexibrary/designs/src/main.py.md", "design"),
             ],
         )
 
@@ -838,7 +838,7 @@ class TestCheckOrphanArtifacts:
         # Do NOT create the design file on disk -- it is "deleted"
         _create_index_with_artifacts(
             lexibrary_dir,
-            [(".lexibrary/src/old_module.py.md", "design")],
+            [(".lexibrary/designs/src/old_module.py.md", "design")],
         )
 
         issues = check_orphan_artifacts(project_root, lexibrary_dir)
@@ -846,7 +846,7 @@ class TestCheckOrphanArtifacts:
         issue = issues[0]
         assert issue.severity == "info"
         assert issue.check == "orphan_artifacts"
-        assert ".lexibrary/src/old_module.py.md" in issue.message
+        assert ".lexibrary/designs/src/old_module.py.md" in issue.message
         assert "design" in issue.message
         assert "lexictl update" in issue.suggestion
 

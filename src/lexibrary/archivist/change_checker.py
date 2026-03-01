@@ -14,6 +14,7 @@ from lexibrary.artifacts.design_file_parser import (
     _FOOTER_RE,
     parse_design_file_metadata,
 )
+from lexibrary.utils.paths import mirror_path
 
 
 class ChangeLevel(Enum):
@@ -25,16 +26,6 @@ class ChangeLevel(Enum):
     CONTENT_CHANGED = "content_changed"
     INTERFACE_CHANGED = "interface_changed"
     NEW_FILE = "new_file"
-
-
-def _design_file_path(source_path: Path, project_root: Path) -> Path:
-    """Compute the mirror path for a source file's design file.
-
-    Convention: .lexibrary/<relative-source-path>.md
-    e.g. src/foo.py -> .lexibrary/src/foo.py.md
-    """
-    rel = source_path.relative_to(project_root)
-    return project_root / ".lexibrary" / f"{rel}.md"
 
 
 def _compute_design_content_hash(design_file_path: Path) -> str | None:
@@ -74,7 +65,7 @@ def check_change(
     Returns:
         A ChangeLevel indicating what kind of update (if any) is needed.
     """
-    design_path = _design_file_path(source_path, project_root)
+    design_path = mirror_path(project_root, source_path)
 
     # No design file at all -> new file
     if not design_path.exists():

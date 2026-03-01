@@ -45,9 +45,9 @@ def _setup_project(tmp_path: Path) -> Path:
 
 
 def _create_design_file(tmp_path: Path, source_rel: str, source_content: str) -> Path:
-    """Create a design file in .lexibrary mirror tree with correct metadata footer."""
+    """Create a design file in .lexibrary/designs/ mirror tree with correct metadata footer."""
     content_hash = hashlib.sha256(source_content.encode()).hexdigest()
-    design_path = tmp_path / ".lexibrary" / f"{source_rel}.md"
+    design_path = tmp_path / ".lexibrary" / "designs" / f"{source_rel}.md"
     design_path.parent.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now().isoformat()
@@ -244,7 +244,7 @@ def _create_design_file_with_tags(
 ) -> Path:
     """Create a design file with tags for search testing."""
     content_hash = hashlib.sha256(b"test").hexdigest()
-    design_path = tmp_path / ".lexibrary" / f"{source_rel}.md"
+    design_path = tmp_path / ".lexibrary" / "designs" / f"{source_rel}.md"
     design_path.parent.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now().isoformat()

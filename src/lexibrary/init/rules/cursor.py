@@ -128,7 +128,7 @@ def _build_editing_mdc_content(scope_root: str) -> str:
         "\n"
         "- Run `lexi lookup <file>` before editing any source file to understand\n"
         "  its role, dependencies, and conventions.\n"
-        "- Read the corresponding design file in `.lexibrary/` if one exists.\n"
+        "- Read the corresponding design file in `.lexibrary/designs/` if one exists.\n"
         "\n"
         "## After Editing\n"
         "\n"

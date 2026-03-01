@@ -49,7 +49,7 @@ def populated_project(project_root: Path) -> Path:
     )
     conn.execute(
         "INSERT INTO artifacts (id, path, kind, title, status) "
-        "VALUES (2, '.lexibrary/src/auth/service.py.md', 'design', 'Auth design', NULL)"
+        "VALUES (2, '.lexibrary/designs/src/auth/service.py.md', 'design', 'Auth design', NULL)"
     )
     conn.execute(
         "INSERT INTO artifacts (id, path, kind, title, status) "

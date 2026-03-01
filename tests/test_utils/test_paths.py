@@ -55,21 +55,24 @@ def test_find_project_root_nearest(tmp_path: Path) -> None:
 
 
 def test_mirror_path_simple(tmp_path: Path) -> None:
-    """mirror_path maps a source file into .lexibrary/ with .md suffix."""
+    """mirror_path maps a source file into .lexibrary/designs/ with .md suffix."""
     result = mirror_path(tmp_path, tmp_path / "src" / "auth" / "login.py")
-    assert result == tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md"
+    assert result == tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md"
 
 
 def test_mirror_path_relative(tmp_path: Path) -> None:
     """mirror_path accepts a project-relative path."""
     result = mirror_path(tmp_path, Path("src/auth/login.py"))
-    assert result == tmp_path / ".lexibrary" / "src" / "auth" / "login.py.md"
+    assert result == tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md"
 
 
 def test_mirror_path_deeply_nested(tmp_path: Path) -> None:
     """mirror_path preserves full directory depth."""
     result = mirror_path(tmp_path, Path("backend/api/v2/users/controller.py"))
-    expected = tmp_path / ".lexibrary" / "backend" / "api" / "v2" / "users" / "controller.py.md"
+    expected = (
+        tmp_path / ".lexibrary" / "designs"
+        / "backend" / "api" / "v2" / "users" / "controller.py.md"
+    )
     assert result == expected
 
 

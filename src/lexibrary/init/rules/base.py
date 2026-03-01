@@ -122,7 +122,7 @@ _CORE_RULES = """
 
 - Run `lexi lookup <file>` before editing any source file to understand
   its role, dependencies, and conventions.
-- Read the corresponding design file in `.lexibrary/` if one exists.
+- Read the corresponding design file in `.lexibrary/designs/` if one exists.
 
 ## After Editing Files
 

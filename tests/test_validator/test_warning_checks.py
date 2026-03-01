@@ -76,7 +76,7 @@ def _write_design_file(
     wikilinks: str = "(none)",
 ) -> Path:
     """Write a design file to the expected mirror path."""
-    design_path = lexibrary_dir / f"{source_path}.md"
+    design_path = lexibrary_dir / "designs" / f"{source_path}.md"
     design_path.parent.mkdir(parents=True, exist_ok=True)
     design_path.write_text(
         _DESIGN_FILE_TEMPLATE.format(
@@ -245,7 +245,7 @@ class TestCheckHashFreshness:
         assert "stale.py" in issues[0].artifact
 
     def test_no_src_dir(self, tmp_path: Path) -> None:
-        """If .lexibrary/src/ doesn't exist, no issues."""
+        """If .lexibrary/designs/ doesn't exist, no issues."""
         project_root = tmp_path
         lexibrary_dir = project_root / ".lexibrary"
         lexibrary_dir.mkdir()
