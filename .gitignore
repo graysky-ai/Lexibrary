@@ -12,6 +12,7 @@ BLUEPRINT_INSTRUCTIONS.md
 .lexibrary/**/.aindex
 !.lexibrary/config.yaml
 .lexibrary/index.db
+_experiment/
 
 # Agent workflow artifacts
 openspec/

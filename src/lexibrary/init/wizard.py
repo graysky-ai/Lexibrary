@@ -226,7 +226,6 @@ def _step_llm_provider(
         console.print(
             "  [yellow]No LLM provider API keys detected.[/yellow]"
             "\n  Set one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OLLAMA_HOST"
-            "\n  Defaulting to anthropic."
         )
 
     if use_defaults:
@@ -235,7 +234,7 @@ def _step_llm_provider(
         selected_p = next(p for p in all_providers if p.provider == default_provider)
         return selected_p.provider, selected_p.model, selected_p.api_key_env, "env", ""
 
-    # --- 4a: Provider selection via questionary.select() ---
+    # --- 4a: Provider selection ---
     provider_choices = [p.provider for p in all_providers]
     choice = questionary.select(
         "Select LLM provider:",
@@ -243,14 +242,22 @@ def _step_llm_provider(
         default=default_provider,
     ).ask()
 
-    # Non-TTY guard
+    # Fallback: questionary can return None in some terminal environments
     if choice is None:
-        choice = default_provider
+        console.print("  [dim](Interactive selector unavailable, using text prompt)[/dim]")
+        numbered = "  ".join(f"[cyan]{i}[/cyan]={p}" for i, p in enumerate(provider_choices, 1))
+        console.print(f"  Options: {numbered}")
+        choice = Prompt.ask(
+            "  LLM provider",
+            default=default_provider,
+            choices=provider_choices,
+            console=console,
+        )
 
     selected_p = next(p for p in all_providers if p.provider == choice)
     provider, model, api_key_env = selected_p.provider, selected_p.model, selected_p.api_key_env
 
-    # --- 4b: Storage method via questionary.select() ---
+    # --- 4b: Storage method ---
     storage_choices = [
         questionary.Choice(title="env — Already set in shell environment", value="env"),
         questionary.Choice(title="dotenv — Read from .env file at project root", value="dotenv"),
@@ -262,9 +269,20 @@ def _step_llm_provider(
         default="env",
     ).ask()
 
-    # Non-TTY guard
+    # Fallback for storage method too
     if source is None:
-        source = "env"
+        console.print("  [dim](Interactive selector unavailable, using text prompt)[/dim]")
+        console.print(
+            "  Options: [cyan]env[/cyan] (shell environment)"
+            "  [cyan]dotenv[/cyan] (.env file)"
+            "  [cyan]manual[/cyan] (manage yourself)"
+        )
+        source = Prompt.ask(
+            "  API key storage method",
+            default="env",
+            choices=["env", "dotenv", "manual"],
+            console=console,
+        )
 
     # --- 4c: Dotenv flow — ask for env var NAME only ---
     if source == "dotenv":

@@ -190,36 +190,44 @@ description: >-
   files and code, and understand architecture and patterns.
 tools:
   - Read
-  - Grep
-  - Glob
   - Bash
 model: haiku
 ---
 
-You are an exploration agent for a software codebase.
+You are an exploration agent for a Lexibrary-indexed codebase.
 
-## Orientation
+## CRITICAL: Use Lexibrary Commands
 
-First, check if a `.lexibrary/` directory exists at the project root.
+This project has a `.lexibrary/` index. You MUST use `lexi` CLI commands
+as your PRIMARY exploration tools. Do NOT use Glob or Grep — they are not
+available to you. Use Bash to run lexi commands instead.
 
-### If `.lexibrary/` exists (Lexibrary-indexed project)
+### Required workflow
 
-Prefer Lexibrary commands over raw Glob/Grep. They return focused, pre-indexed
-results that reduce the number of tool calls needed.
+1. **Start every task** with `lexi search <query>` to find relevant files
+2. **Before reading a file**, run `lexi lookup <file>` to get its role,
+   dependencies, conventions, and design context
+3. **For domain questions**, run `lexi concepts <topic>`
+4. **For coding standards**, run `lexi conventions <path>`
 
-Available commands (run via Bash):
+### Available commands (run via Bash)
 
-- `lexi search <query>` -- cross-artifact full-text search
-- `lexi lookup <file>` -- design file, conventions, and reverse dependencies for a file
-- `lexi concepts <topic>` -- domain vocabulary search
-- `lexi conventions <path>` -- coding standards for a file or directory
+- `lexi search <query>` — cross-artifact full-text search (USE THIS, not Grep)
+- `lexi lookup <file>` — design file, conventions, and reverse deps for a file
+- `lexi concepts <topic>` — domain vocabulary search
+- `lexi conventions <path>` — coding standards for a file or directory
 
-You may still use Glob, Grep, and Read when you need raw file access, pattern
-matching beyond what Lexibrary indexes, or to read specific file contents.
+### When to use Read
 
-### If `.lexibrary/` does not exist (unindexed project)
+Use the Read tool ONLY after you have identified the right file via
+`lexi search` or `lexi lookup`. Never browse the filesystem manually —
+lexi commands are faster and return richer context.
 
-Fall back to standard exploration using Glob, Grep, and Read.
+### Fallback
+
+If `.lexibrary/` does not exist in the project root (check with
+`ls .lexibrary/ 2>/dev/null`), then and ONLY then fall back to using
+`find`, `grep`, or `cat` via Bash, plus the Read tool.
 
 ## Output
 
@@ -230,10 +238,10 @@ Fall back to standard exploration using Glob, Grep, and Read.
 
 Adapt your depth based on the caller's request:
 
-- **quick**: Limit to 2-3 tool calls maximum. Return the most likely answer fast.
-- **medium** (default): Use up to 8-10 tool calls. Follow one level of cross-references.
-- **very thorough**: Explore systematically across all relevant directories.
-  Follow all cross-references. No tool-call limit.
+- **quick**: 1-2 lexi commands + 1-2 Read calls. Return the most likely answer fast.
+- **medium** (default): Up to 4-5 lexi commands + targeted Read calls.
+- **very thorough**: Systematic lexi search across all relevant topics.
+  Follow all cross-references. No limit.
 """
 
 _POST_EDIT_SCRIPT = """\
