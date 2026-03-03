@@ -23,6 +23,8 @@ from lexibrary.validator.checks import (
     check_stack_staleness,
     check_token_budgets,
     check_wikilink_resolution,
+    find_orphaned_aindex,
+    find_orphaned_iwh,
 )
 from lexibrary.validator.report import (
     Severity,
@@ -62,6 +64,8 @@ AVAILABLE_CHECKS: dict[str, tuple[CheckFn, Severity]] = {
     "bidirectional_deps": (check_bidirectional_deps, "info"),
     "dangling_links": (check_dangling_links, "info"),
     "orphan_artifacts": (check_orphan_artifacts, "info"),
+    "orphaned_aindex": (find_orphaned_aindex, "warning"),
+    "orphaned_iwh": (find_orphaned_iwh, "info"),
 }
 
 # Severity levels ordered from most to least severe.

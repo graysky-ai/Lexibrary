@@ -114,7 +114,7 @@ def _make_aindex(tmp_path: Path, dir_rel: str, entries: list[AIndexEntry]) -> Pa
     """Create a .aindex file for a directory."""
     from datetime import datetime
 
-    aindex_dir = tmp_path / ".lexibrary" / dir_rel
+    aindex_dir = tmp_path / ".lexibrary" / "designs" / dir_rel
     aindex_dir.mkdir(parents=True, exist_ok=True)
     aindex_file_path = aindex_dir / ".aindex"
 
@@ -541,7 +541,7 @@ class TestUpdateFileAIndexRefresh:
         # Check the .aindex was updated
         from lexibrary.artifacts.aindex_parser import parse_aindex
 
-        aindex = parse_aindex(tmp_path / ".lexibrary" / "src" / ".aindex")
+        aindex = parse_aindex(tmp_path / ".lexibrary" / "designs" / "src" / ".aindex")
         assert aindex is not None
         names = [e.name for e in aindex.entries]
         assert "foo.py" in names
@@ -832,7 +832,7 @@ class TestRefreshParentAindex:
 
         from lexibrary.artifacts.aindex_parser import parse_aindex
 
-        aindex = parse_aindex(tmp_path / ".lexibrary" / "src" / ".aindex")
+        aindex = parse_aindex(tmp_path / ".lexibrary" / "designs" / "src" / ".aindex")
         assert aindex is not None
         assert aindex.entries[0].description == "New description"
 
@@ -854,7 +854,7 @@ class TestRefreshParentAindex:
 
         from lexibrary.artifacts.aindex_parser import parse_aindex
 
-        aindex = parse_aindex(tmp_path / ".lexibrary" / "src" / ".aindex")
+        aindex = parse_aindex(tmp_path / ".lexibrary" / "designs" / "src" / ".aindex")
         assert aindex is not None
         names = [e.name for e in aindex.entries]
         assert "new_file.py" in names
@@ -1295,7 +1295,7 @@ class TestReindexDirectories:
 
         # Should have re-indexed at least the src directory
         assert count >= 1
-        aindex_file = tmp_path / ".lexibrary" / "src" / ".aindex"
+        aindex_file = tmp_path / ".lexibrary" / "designs" / "src" / ".aindex"
         assert aindex_file.exists()
 
     def test_reindex_includes_ancestors(self, tmp_path: Path) -> None:
@@ -1316,9 +1316,10 @@ class TestReindexDirectories:
 
         # Should have re-indexed handlers/, api/, and src/ (3 directories)
         assert count == 3
-        assert (tmp_path / ".lexibrary" / "src" / "api" / "handlers" / ".aindex").exists()
-        assert (tmp_path / ".lexibrary" / "src" / "api" / ".aindex").exists()
-        assert (tmp_path / ".lexibrary" / "src" / ".aindex").exists()
+        designs = tmp_path / ".lexibrary" / "designs"
+        assert (designs / "src" / "api" / "handlers" / ".aindex").exists()
+        assert (tmp_path / ".lexibrary" / "designs" / "src" / "api" / ".aindex").exists()
+        assert (tmp_path / ".lexibrary" / "designs" / "src" / ".aindex").exists()
 
     def test_reindex_empty_list_returns_zero(self, tmp_path: Path) -> None:
         """reindex_directories() with empty list returns 0."""
@@ -1543,7 +1544,7 @@ class TestIWHAwareness:
         archivist = _mock_archivist()
 
         # Write a blocked IWH signal at the mirror path for src/
-        mirror_dir = tmp_path / ".lexibrary" / "src"
+        mirror_dir = tmp_path / ".lexibrary" / "designs" / "src"
         mirror_dir.mkdir(parents=True, exist_ok=True)
         write_iwh(mirror_dir, author="agent", scope="blocked", body="do not touch")
 
@@ -1562,7 +1563,7 @@ class TestIWHAwareness:
         archivist = _mock_archivist(summary="Processed despite incomplete.")
 
         # Write an incomplete IWH signal
-        mirror_dir = tmp_path / ".lexibrary" / "src"
+        mirror_dir = tmp_path / ".lexibrary" / "designs" / "src"
         mirror_dir.mkdir(parents=True, exist_ok=True)
         write_iwh(mirror_dir, author="agent", scope="incomplete", body="wip")
 
@@ -1596,7 +1597,7 @@ class TestIWHAwareness:
         archivist = _mock_archivist(summary="Processed despite blocked signal.")
 
         # Write a blocked IWH signal
-        mirror_dir = tmp_path / ".lexibrary" / "src"
+        mirror_dir = tmp_path / ".lexibrary" / "designs" / "src"
         mirror_dir.mkdir(parents=True, exist_ok=True)
         write_iwh(mirror_dir, author="agent", scope="blocked", body="blocked")
 

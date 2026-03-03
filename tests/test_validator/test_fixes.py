@@ -283,7 +283,7 @@ class TestFixAindexCoverage:
         assert "generated" in result.message
 
         # Verify .aindex was created
-        aindex_file = tmp_path / ".lexibrary" / "src" / ".aindex"
+        aindex_file = tmp_path / ".lexibrary" / "designs" / "src" / ".aindex"
         assert aindex_file.exists()
 
     def test_directory_not_found(self, tmp_path: Path) -> None:

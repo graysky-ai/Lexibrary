@@ -132,7 +132,7 @@ class TestGenerateAIndexDirectories:
             ],
             metadata=meta,
         )
-        mirror_dir = tmp_path / ".lexibrary" / "src" / "utils"
+        mirror_dir = tmp_path / ".lexibrary" / "designs" / "src" / "utils"
         mirror_dir.mkdir(parents=True)
         (mirror_dir / ".aindex").write_text(serialize_aindex(child_model), encoding="utf-8")
 
@@ -165,7 +165,7 @@ class TestGenerateAIndexDirectories:
             ],
             metadata=meta,
         )
-        mirror_dir = tmp_path / ".lexibrary" / "src" / "utils"
+        mirror_dir = tmp_path / ".lexibrary" / "designs" / "src" / "utils"
         mirror_dir.mkdir(parents=True)
         (mirror_dir / ".aindex").write_text(serialize_aindex(child_model), encoding="utf-8")
 

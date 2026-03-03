@@ -179,6 +179,7 @@ class IWHConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     enabled: bool = True
+    ttl_hours: int = 72
 
 
 class LexibraryConfig(BaseModel):

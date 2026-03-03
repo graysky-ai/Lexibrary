@@ -566,12 +566,10 @@ class TestAgentFileGeneration:
         assert "model: haiku" in content
 
     def test_explore_frontmatter_has_tools(self, tmp_path: Path) -> None:
-        """explore.md frontmatter lists Read, Grep, Glob, Bash tools."""
+        """explore.md frontmatter lists Read, Bash tools (lexi CLI replaces Grep/Glob)."""
         _generate_agent_files(tmp_path)
         content = (tmp_path / ".claude" / "agents" / "explore.md").read_text(encoding="utf-8")
         assert "- Read" in content
-        assert "- Grep" in content
-        assert "- Glob" in content
         assert "- Bash" in content
 
     def test_explore_has_lexi_commands(self, tmp_path: Path) -> None:

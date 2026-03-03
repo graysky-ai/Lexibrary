@@ -36,6 +36,7 @@ class TestHelp:
             "sweep",
             "daemon",
             "index",
+            "bootstrap",
         ):
             assert cmd in result.output
 
@@ -520,7 +521,7 @@ class TestValidateCommand:
         """A clean library with no issues exits with code 0."""
         project = _setup_validate_project(tmp_path)
         # Make an .aindex so aindex_coverage does not fire info
-        aindex_dir = project / ".lexibrary" / "src"
+        aindex_dir = project / ".lexibrary" / "designs" / "src"
         aindex_dir.mkdir(parents=True, exist_ok=True)
         from datetime import datetime as _dt
 
@@ -545,7 +546,8 @@ Source directory
             encoding="utf-8",
         )
         # Also create root .aindex
-        root_aindex_dir = project / ".lexibrary"
+        root_aindex_dir = project / ".lexibrary" / "designs"
+        root_aindex_dir.mkdir(parents=True, exist_ok=True)
         (root_aindex_dir / ".aindex").write_text(
             f"""# ./
 
@@ -1469,7 +1471,7 @@ class TestLexictlIndexCommand:
         output = result.output  # type: ignore[union-attr]
         assert "Wrote" in output
         # Verify .aindex file was created
-        aindex_path = project / ".lexibrary" / "src" / ".aindex"
+        aindex_path = project / ".lexibrary" / "designs" / "src" / ".aindex"
         assert aindex_path.exists()
 
     def test_index_recursive(self, tmp_path: Path) -> None:
@@ -1538,6 +1540,143 @@ class TestLexictlIndexCommand:
 
 
 # ---------------------------------------------------------------------------
+# Lexictl bootstrap command tests (aindex-update TG3)
+# ---------------------------------------------------------------------------
+
+
+class TestLexictlBootstrapCommand:
+    """Tests for the `lexictl bootstrap` command."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexictl_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_bootstrap_default_scope(self, tmp_path: Path) -> None:
+        """Bootstrap with default scope indexes the entire project."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["bootstrap"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Bootstrap complete" in output
+        assert "Directories indexed" in output
+        # Verify .aindex files were created under .lexibrary/designs/
+        aindex = project / ".lexibrary" / "designs" / "src" / ".aindex"
+        assert aindex.exists()
+
+    def test_bootstrap_scope_override(self, tmp_path: Path) -> None:
+        """Bootstrap with --scope indexes only the specified subtree."""
+        project = _setup_project(tmp_path)
+        # Create another top-level directory
+        (project / "lib").mkdir()
+        (project / "lib" / "helper.py").write_text("h = 1\n")
+
+        result = self._invoke(project, ["bootstrap", "--scope", "src"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Bootstrap complete" in output
+        # src should be indexed
+        assert (project / ".lexibrary" / "designs" / "src" / ".aindex").exists()
+        # lib should NOT be indexed (outside scope)
+        assert not (project / ".lexibrary" / "designs" / "lib" / ".aindex").exists()
+
+    def test_bootstrap_empty_scope(self, tmp_path: Path) -> None:
+        """Bootstrap on an empty scope directory still succeeds."""
+        project = _setup_project(tmp_path)
+        (project / "empty_dir").mkdir()
+
+        result = self._invoke(project, ["bootstrap", "--scope", "empty_dir"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Bootstrap complete" in output
+        # Should index the directory (with 0 files)
+        assert "Directories indexed: 1" in output
+
+    def test_bootstrap_idempotent(self, tmp_path: Path) -> None:
+        """Running bootstrap twice produces the same result."""
+        project = _setup_project(tmp_path)
+
+        result1 = self._invoke(project, ["bootstrap"])
+        assert result1.exit_code == 0  # type: ignore[union-attr]
+
+        result2 = self._invoke(project, ["bootstrap"])
+        assert result2.exit_code == 0  # type: ignore[union-attr]
+        output2 = result2.output  # type: ignore[union-attr]
+        assert "Bootstrap complete" in output2
+        # .aindex file should still exist
+        assert (project / ".lexibrary" / "designs" / "src" / ".aindex").exists()
+
+    def test_bootstrap_requires_project_root(self, tmp_path: Path) -> None:
+        """Bootstrap without .lexibrary should fail."""
+        (tmp_path / "src").mkdir()
+        result = self._invoke(tmp_path, ["bootstrap"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
+
+    def test_bootstrap_nonexistent_scope(self, tmp_path: Path) -> None:
+        """Bootstrap with a nonexistent --scope should fail."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["bootstrap", "--scope", "nonexistent"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Scope directory not found" in result.output  # type: ignore[union-attr]
+
+    def test_bootstrap_full_and_quick_mutually_exclusive(self, tmp_path: Path) -> None:
+        """Passing both --full and --quick should fail."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["bootstrap", "--full", "--quick"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "mutually exclusive" in result.output  # type: ignore[union-attr]
+
+    def test_bootstrap_quick_flag(self, tmp_path: Path) -> None:
+        """--quick flag is accepted and behaves like default."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["bootstrap", "--quick"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Bootstrap complete" in result.output  # type: ignore[union-attr]
+
+    def test_bootstrap_full_flag_warns(self, tmp_path: Path) -> None:
+        """--full flag is accepted but warns about not-yet-implemented."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["bootstrap", "--full"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "not yet implemented" in output
+        assert "Bootstrap complete" in output
+
+    def test_bootstrap_reports_stats(self, tmp_path: Path) -> None:
+        """Bootstrap reports directories indexed and files found."""
+        project = _setup_project(tmp_path)
+        # Create subdirectories for more interesting stats
+        (project / "src" / "sub").mkdir()
+        (project / "src" / "sub" / "mod.py").write_text("m = 1\n")
+
+        result = self._invoke(project, ["bootstrap"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Directories indexed:" in output
+        assert "Files found:" in output
+
+    def test_bootstrap_scope_from_config(self, tmp_path: Path) -> None:
+        """Bootstrap uses scope_root from config when --scope is not provided."""
+        project = _setup_project(tmp_path)
+        # Write config with scope_root set to "src"
+        (project / ".lexibrary" / "config.yaml").write_text("scope_root: src\n")
+        # Create another directory outside scope
+        (project / "lib").mkdir()
+        (project / "lib" / "x.py").write_text("x = 1\n")
+
+        result = self._invoke(project, ["bootstrap"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        # src should be indexed
+        assert (project / ".lexibrary" / "designs" / "src" / ".aindex").exists()
+        # lib should NOT be indexed (outside scope_root from config)
+        assert not (project / ".lexibrary" / "designs" / "lib" / ".aindex").exists()
+
+
+# ---------------------------------------------------------------------------
 # IWH clean
 # ---------------------------------------------------------------------------
 
@@ -1566,7 +1705,7 @@ class TestIWHClean:
         write_iwh(project / ".lexibrary" / "src", author="agent", scope="incomplete", body="wip")
         write_iwh(project / ".lexibrary", author="agent", scope="warning", body="note")
 
-        result = self._invoke(project, ["iwh", "clean"])
+        result = self._invoke(project, ["iwh", "clean", "--all"])
         assert result.exit_code == 0
         assert "2 signal(s)" in result.output
         assert not (project / ".lexibrary" / "src" / ".iwh").exists()
@@ -1615,7 +1754,7 @@ class TestIWHClean:
         project = _setup_project(tmp_path)
         write_iwh(project / ".lexibrary", author="agent", scope="blocked", body="stuck")
 
-        result = self._invoke(project, ["iwh", "clean"])
+        result = self._invoke(project, ["iwh", "clean", "--all"])
         assert result.exit_code == 0
         assert "Cleaned" in result.output
         assert "1 signal(s)" in result.output
@@ -1851,3 +1990,297 @@ class TestValidateFix:
         result = runner.invoke(lexi_app, ["validate", "--fix"])
         # Typer should report --fix as unrecognized or show an error
         assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# Update IWH cleanup integration tests (task 3.3)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateIWHCleanup:
+    """Tests for IWH cleanup integration in ``lexictl update``."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexictl_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_full_update_runs_iwh_cleanup(self, tmp_path: Path) -> None:
+        """Full project update (no path) calls iwh_cleanup and prints summary."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=2, files_unchanged=2)
+        mock_update_project = AsyncMock(return_value=mock_stats)
+
+        # Create a fake cleanup result with expired and orphaned signals
+        from lexibrary.iwh.cleanup import CleanedSignal, CleanupResult
+
+        mock_cleanup_result = CleanupResult(
+            expired=[
+                CleanedSignal(source_dir=Path("src/old"), scope="incomplete", reason="expired"),
+            ],
+            orphaned=[
+                CleanedSignal(source_dir=Path("src/gone"), scope="blocked", reason="orphaned"),
+            ],
+            kept=1,
+        )
+        mock_iwh_cleanup = MagicMock(return_value=mock_cleanup_result)
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.update_project",
+                mock_update_project,
+            ),
+            patch(
+                "lexibrary.iwh.cleanup.iwh_cleanup",
+                mock_iwh_cleanup,
+            ),
+        ):
+            result = self._invoke(project, ["update"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "IWH cleanup" in output
+        assert "Expired" in output
+        assert "1 signal(s) removed" in output
+        assert "Orphaned" in output
+        assert "Kept" in output
+        mock_iwh_cleanup.assert_called_once()
+
+    def test_full_update_no_cleanup_needed(self, tmp_path: Path) -> None:
+        """Full project update with no expired/orphaned signals shows nothing."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=2, files_unchanged=2)
+        mock_update_project = AsyncMock(return_value=mock_stats)
+
+        from lexibrary.iwh.cleanup import CleanupResult
+
+        mock_cleanup_result = CleanupResult(kept=3)
+        mock_iwh_cleanup = MagicMock(return_value=mock_cleanup_result)
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.update_project",
+                mock_update_project,
+            ),
+            patch(
+                "lexibrary.iwh.cleanup.iwh_cleanup",
+                mock_iwh_cleanup,
+            ),
+        ):
+            result = self._invoke(project, ["update"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        # No cleanup section printed when nothing was cleaned
+        assert "IWH cleanup" not in output
+        mock_iwh_cleanup.assert_called_once()
+
+    def test_single_file_update_skips_iwh_cleanup(self, tmp_path: Path) -> None:
+        """Single-file update does NOT run IWH cleanup."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_result = FileResult(change=ChangeLevel.NEW_FILE)
+        mock_update_file = AsyncMock(return_value=mock_result)
+        mock_iwh_cleanup = MagicMock()
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.update_file",
+                mock_update_file,
+            ),
+            patch(
+                "lexibrary.iwh.cleanup.iwh_cleanup",
+                mock_iwh_cleanup,
+            ),
+        ):
+            result = self._invoke(project, ["update", "src/main.py"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        mock_iwh_cleanup.assert_not_called()
+
+    def test_directory_update_skips_iwh_cleanup(self, tmp_path: Path) -> None:
+        """Directory-scoped update does NOT run IWH cleanup."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=2, files_unchanged=2)
+        mock_update_project = AsyncMock(return_value=mock_stats)
+        mock_iwh_cleanup = MagicMock()
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.update_project",
+                mock_update_project,
+            ),
+            patch(
+                "lexibrary.iwh.cleanup.iwh_cleanup",
+                mock_iwh_cleanup,
+            ),
+        ):
+            result = self._invoke(project, ["update", "src"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        mock_iwh_cleanup.assert_not_called()
+
+    def test_changed_only_update_skips_iwh_cleanup(self, tmp_path: Path) -> None:
+        """--changed-only update does NOT run IWH cleanup."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=1, files_unchanged=1)
+        mock_update_files = AsyncMock(return_value=mock_stats)
+        mock_iwh_cleanup = MagicMock()
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.update_files",
+                mock_update_files,
+            ),
+            patch(
+                "lexibrary.iwh.cleanup.iwh_cleanup",
+                mock_iwh_cleanup,
+            ),
+        ):
+            result = self._invoke(
+                project, ["update", "--changed-only", "src/main.py"]
+            )
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        mock_iwh_cleanup.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# IWH clean config-aware TTL and --all tests (task 3.4)
+# ---------------------------------------------------------------------------
+
+
+class TestIWHCleanConfigAware:
+    """Tests for config-aware TTL default and ``--all`` flag on ``lexictl iwh clean``."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexictl_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_clean_uses_config_ttl_by_default(self, tmp_path: Path) -> None:
+        """Without --older-than or --all, clean uses config.iwh.ttl_hours."""
+        from datetime import UTC, datetime, timedelta
+
+        from lexibrary.iwh import IWHFile, serialize_iwh, write_iwh
+
+        project = _setup_project(tmp_path)
+
+        # Set config with a short TTL (1 hour)
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "iwh:\n  ttl_hours: 1\n", encoding="utf-8"
+        )
+
+        # Write an old signal (2 hours ago) — should be removed
+        (project / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
+        old_iwh = IWHFile(
+            author="agent",
+            created=datetime.now(tz=UTC) - timedelta(hours=2),
+            scope="incomplete",
+            body="old signal",
+        )
+        (project / ".lexibrary" / "src" / ".iwh").write_text(
+            serialize_iwh(old_iwh), encoding="utf-8"
+        )
+
+        # Write a recent signal (just now) — should be kept
+        write_iwh(project / ".lexibrary", author="agent", scope="warning", body="new")
+
+        result = self._invoke(project, ["iwh", "clean"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "1 signal(s)" in output
+        # Old signal removed, new one preserved
+        assert not (project / ".lexibrary" / "src" / ".iwh").exists()
+        assert (project / ".lexibrary" / ".iwh").exists()
+
+    def test_clean_default_ttl_keeps_young_signals(self, tmp_path: Path) -> None:
+        """With default config TTL (72h), recently created signals are kept."""
+        from lexibrary.iwh import write_iwh
+
+        project = _setup_project(tmp_path)
+        # Default config.yaml (empty) => ttl_hours defaults to 72
+        (project / ".lexibrary" / "config.yaml").write_text("", encoding="utf-8")
+
+        # Write a fresh signal
+        write_iwh(project / ".lexibrary", author="agent", scope="warning", body="fresh")
+
+        result = self._invoke(project, ["iwh", "clean"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "0 signal(s)" in output
+        # Signal should still exist
+        assert (project / ".lexibrary" / ".iwh").exists()
+
+    def test_clean_all_bypasses_ttl(self, tmp_path: Path) -> None:
+        """--all removes all signals regardless of age."""
+        from lexibrary.iwh import write_iwh
+
+        project = _setup_project(tmp_path)
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "iwh:\n  ttl_hours: 9999\n", encoding="utf-8"
+        )
+
+        # Write a fresh signal (well within TTL)
+        (project / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
+        write_iwh(project / ".lexibrary" / "src", author="agent", scope="incomplete", body="wip")
+        write_iwh(project / ".lexibrary", author="agent", scope="warning", body="note")
+
+        result = self._invoke(project, ["iwh", "clean", "--all"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "2 signal(s)" in output
+        assert not (project / ".lexibrary" / "src" / ".iwh").exists()
+        assert not (project / ".lexibrary" / ".iwh").exists()
+
+    def test_clean_older_than_overrides_config_ttl(self, tmp_path: Path) -> None:
+        """--older-than takes precedence over config TTL."""
+        from datetime import UTC, datetime, timedelta
+
+        from lexibrary.iwh import IWHFile, serialize_iwh, write_iwh
+
+        project = _setup_project(tmp_path)
+        # Config TTL is very high — signals would normally be kept
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "iwh:\n  ttl_hours: 9999\n", encoding="utf-8"
+        )
+
+        # Write a 5-hour-old signal
+        (project / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
+        old_iwh = IWHFile(
+            author="agent",
+            created=datetime.now(tz=UTC) - timedelta(hours=5),
+            scope="incomplete",
+            body="old signal",
+        )
+        (project / ".lexibrary" / "src" / ".iwh").write_text(
+            serialize_iwh(old_iwh), encoding="utf-8"
+        )
+
+        # Write a fresh signal
+        write_iwh(project / ".lexibrary", author="agent", scope="warning", body="new")
+
+        # --older-than 1 should override the 9999h config TTL
+        result = self._invoke(project, ["iwh", "clean", "--older-than", "1"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "1 signal(s)" in output
+        assert not (project / ".lexibrary" / "src" / ".iwh").exists()
+        assert (project / ".lexibrary" / ".iwh").exists()
+
+    def test_clean_all_on_empty_project(self, tmp_path: Path) -> None:
+        """--all on a project with no signals shows 'no signals'."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["iwh", "clean", "--all"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "No IWH signals to clean" in result.output  # type: ignore[union-attr]

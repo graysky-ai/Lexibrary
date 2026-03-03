@@ -31,7 +31,7 @@ class TestIndexDirectory:
         (src / "main.py").write_text("print('hello')\n", encoding="utf-8")
 
         result = index_directory(src, project_root, LexibraryConfig())
-        expected = project_root / ".lexibrary" / "src" / ".aindex"
+        expected = project_root / ".lexibrary" / "designs" / "src" / ".aindex"
         assert result == expected
         assert expected.exists()
 
@@ -42,7 +42,9 @@ class TestIndexDirectory:
         (deep / "oauth.py").write_text("x\n", encoding="utf-8")
 
         result = index_directory(deep, project_root, LexibraryConfig())
-        expected = project_root / ".lexibrary" / "src" / "auth" / "providers" / ".aindex"
+        expected = (
+            project_root / ".lexibrary" / "designs" / "src" / "auth" / "providers" / ".aindex"
+        )
         assert result == expected
         assert expected.exists()
 
@@ -93,8 +95,8 @@ class TestIndexRecursive:
         assert stats.directories_indexed == 3
 
         # Check that .aindex files exist for all three
-        assert (project_root / ".lexibrary" / "src" / "utils" / ".aindex").exists()
-        assert (project_root / ".lexibrary" / "src" / ".aindex").exists()
+        assert (project_root / ".lexibrary" / "designs" / "src" / "utils" / ".aindex").exists()
+        assert (project_root / ".lexibrary" / "designs" / "src" / ".aindex").exists()
 
     def test_processes_child_before_parent(self, tmp_path: Path) -> None:
         """Verify bottom-up ordering: src/utils/ is indexed before src/."""
@@ -136,7 +138,8 @@ class TestIndexRecursive:
         index_recursive(project_root, project_root, LexibraryConfig())
 
         # Read the parent src/.aindex — utils/ entry should reference child count
-        src_aindex = (project_root / ".lexibrary" / "src" / ".aindex").read_text(encoding="utf-8")
+        src_aindex_path = project_root / ".lexibrary" / "designs" / "src" / ".aindex"
+        src_aindex = src_aindex_path.read_text(encoding="utf-8")
         assert "Contains 3 files" in src_aindex
 
     def test_lexibrary_excluded_from_indexing(self, tmp_path: Path) -> None:
@@ -147,7 +150,7 @@ class TestIndexRecursive:
 
         index_recursive(project_root, project_root, LexibraryConfig())
         # .lexibrary/ should NOT have its own .aindex inside the mirror
-        lexibrary_aindex = project_root / ".lexibrary" / ".lexibrary" / ".aindex"
+        lexibrary_aindex = project_root / ".lexibrary" / "designs" / ".lexibrary" / ".aindex"
         assert not lexibrary_aindex.exists()
 
     def test_progress_callback_invoked_per_directory(self, tmp_path: Path) -> None:
@@ -226,7 +229,7 @@ class TestIndexRecursive:
         index_recursive(project_root, project_root, LexibraryConfig())
 
         # __pycache__ is in the default ignore patterns, so it should be skipped
-        pycache_aindex = project_root / ".lexibrary" / "src" / "__pycache__" / ".aindex"
+        pycache_aindex = project_root / ".lexibrary" / "designs" / "src" / "__pycache__" / ".aindex"
         assert not pycache_aindex.exists()
 
     def test_deeply_nested_bottom_up_order(self, tmp_path: Path) -> None:

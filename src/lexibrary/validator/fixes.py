@@ -1,8 +1,8 @@
 """Auto-fix functions for validation issues.
 
 Provides a registry of fixers keyed by check name. Only auto-fixable
-checks have entries: ``hash_freshness``, ``orphan_artifacts``, and
-``aindex_coverage``.
+checks have entries: ``hash_freshness``, ``orphan_artifacts``,
+``aindex_coverage``, ``orphaned_aindex``, and ``orphaned_iwh``.
 """
 
 from __future__ import annotations
@@ -171,10 +171,144 @@ def fix_aindex_coverage(
         )
 
 
+def fix_orphaned_aindex(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Delete an orphaned ``.aindex`` file and clean up empty parent directories.
+
+    Removes the orphaned ``.aindex`` file identified by the validation issue,
+    then walks upward through empty parent directories under
+    ``.lexibrary/designs/``, removing them until a non-empty directory or the
+    designs root is reached.
+
+    Args:
+        issue: The validation issue describing the orphaned ``.aindex`` file.
+        project_root: Root directory of the project.
+        config: Project configuration (unused but required by fixer signature).
+
+    Returns:
+        A FixResult indicating whether the fix succeeded.
+    """
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    lexibrary_dir = project_root / LEXIBRARY_DIR
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+
+    # issue.artifact is relative to lexibrary_dir, e.g. "designs/src/old/.aindex"
+    aindex_path = lexibrary_dir / issue.artifact
+    if not aindex_path.exists():
+        return FixResult(
+            check=issue.check,
+            path=aindex_path,
+            fixed=False,
+            message=f".aindex file already removed: {issue.artifact}",
+        )
+
+    # Delete the orphaned .aindex file
+    try:
+        aindex_path.unlink()
+    except OSError as exc:
+        return FixResult(
+            check=issue.check,
+            path=aindex_path,
+            fixed=False,
+            message=f"failed to delete .aindex file: {exc}",
+        )
+
+    # Clean up empty parent directories up to (but not including) designs root
+    parent = aindex_path.parent
+    while parent != designs_dir and parent.is_dir():
+        try:
+            # Only remove if truly empty
+            if any(parent.iterdir()):
+                break
+            parent.rmdir()
+            parent = parent.parent
+        except OSError:
+            break
+
+    return FixResult(
+        check=issue.check,
+        path=aindex_path,
+        fixed=True,
+        message=f"deleted orphaned .aindex file: {issue.artifact}",
+    )
+
+
+def fix_orphaned_iwh(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Delete an orphaned ``.iwh`` file whose source directory no longer exists.
+
+    Removes the orphaned ``.iwh`` file identified by the validation issue,
+    then walks upward through empty parent directories under
+    ``.lexibrary/designs/``, removing them until a non-empty directory or the
+    designs root is reached.
+
+    Args:
+        issue: The validation issue describing the orphaned ``.iwh`` file.
+        project_root: Root directory of the project.
+        config: Project configuration (unused but required by fixer signature).
+
+    Returns:
+        A FixResult indicating whether the fix succeeded.
+    """
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    lexibrary_dir = project_root / LEXIBRARY_DIR
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+
+    # issue.artifact is relative to lexibrary_dir, e.g. "designs/src/deleted/.iwh"
+    iwh_path = lexibrary_dir / issue.artifact
+    if not iwh_path.exists():
+        return FixResult(
+            check=issue.check,
+            path=iwh_path,
+            fixed=False,
+            message=f".iwh file already removed: {issue.artifact}",
+        )
+
+    # Delete the orphaned .iwh file
+    try:
+        iwh_path.unlink()
+    except OSError as exc:
+        return FixResult(
+            check=issue.check,
+            path=iwh_path,
+            fixed=False,
+            message=f"failed to delete .iwh file: {exc}",
+        )
+
+    # Clean up empty parent directories up to (but not including) designs root
+    parent = iwh_path.parent
+    while parent != designs_dir and parent.is_dir():
+        try:
+            # Only remove if truly empty
+            if any(parent.iterdir()):
+                break
+            parent.rmdir()
+            parent = parent.parent
+        except OSError:
+            break
+
+    return FixResult(
+        check=issue.check,
+        path=iwh_path,
+        fixed=True,
+        message=f"deleted orphaned .iwh file: {issue.artifact}",
+    )
+
+
 # Registry of auto-fixable checks.
 # Maps check name -> fixer function.
 FIXERS: dict[str, Callable[[ValidationIssue, Path, LexibraryConfig], FixResult]] = {
     "hash_freshness": fix_hash_freshness,
     "orphan_artifacts": fix_orphan_artifacts,
     "aindex_coverage": fix_aindex_coverage,
+    "orphaned_aindex": fix_orphaned_aindex,
+    "orphaned_iwh": fix_orphaned_iwh,
 }

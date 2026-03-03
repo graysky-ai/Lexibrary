@@ -14,10 +14,9 @@ from lexibrary.config.schema import LexibraryConfig
 from lexibrary.errors import ErrorSummary
 from lexibrary.ignore import create_ignore_matcher
 from lexibrary.indexer.generator import generate_aindex
+from lexibrary.utils.paths import LEXIBRARY_DIR, aindex_path
 
 logger = logging.getLogger(__name__)
-
-_LEXIBRARY_DIR = ".lexibrary"
 
 
 @dataclass
@@ -55,8 +54,7 @@ def index_directory(
     aindex_model = generate_aindex(directory, project_root, ignore_matcher, binary_extensions)
     markdown = serialize_aindex(aindex_model)
 
-    relative_dir = directory.relative_to(project_root)
-    output_path = project_root / _LEXIBRARY_DIR / relative_dir / ".aindex"
+    output_path = aindex_path(project_root, directory)
 
     write_artifact(output_path, markdown)
     return output_path
@@ -73,7 +71,7 @@ def _discover_directories_bottom_up(
     says should not be descended into.
     """
     ignore_matcher = create_ignore_matcher(config, project_root)
-    lexibrary_path = (project_root / _LEXIBRARY_DIR).resolve()
+    lexibrary_path = (project_root / LEXIBRARY_DIR).resolve()
 
     directories: list[Path] = []
     stack: list[Path] = [root]

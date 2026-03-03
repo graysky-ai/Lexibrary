@@ -12,7 +12,7 @@ from lexibrary.artifacts.design_file_parser import parse_design_file_frontmatter
 from lexibrary.ignore.matcher import IgnoreMatcher
 from lexibrary.utils.hashing import hash_string
 from lexibrary.utils.languages import EXTENSION_MAP
-from lexibrary.utils.paths import mirror_path
+from lexibrary.utils.paths import aindex_path, mirror_path
 
 _GENERATOR_ID = "lexibrary-v2"
 
@@ -57,7 +57,7 @@ def _get_dir_description(subdir: Path, project_root: Path) -> str:
     Uses entry counts from its child .aindex in the .lexibrary mirror tree
     if available; otherwise falls back to a direct filesystem count.
     """
-    mirror_aindex = project_root / ".lexibrary" / subdir.relative_to(project_root) / ".aindex"
+    mirror_aindex = aindex_path(project_root, subdir)
     child_aindex = parse_aindex(mirror_aindex)
     if child_aindex is not None:
         file_count = sum(1 for e in child_aindex.entries if e.entry_type == "file")

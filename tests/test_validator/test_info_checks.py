@@ -156,7 +156,7 @@ def _write_aindex(
     billboard: str = "Test directory.",
 ) -> Path:
     """Write a .aindex file to the expected mirror path."""
-    aindex = lexibrary_dir / directory_path / ".aindex"
+    aindex = lexibrary_dir / "designs" / directory_path / ".aindex"
     aindex.parent.mkdir(parents=True, exist_ok=True)
     meta = _AINDEX_META.format(dir=directory_path)
     aindex.write_text(

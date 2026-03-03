@@ -218,6 +218,32 @@ def test_iwh_config_defaults() -> None:
     assert config.enabled is True
 
 
+def test_iwh_config_ttl_hours_default() -> None:
+    """IWHConfig.ttl_hours defaults to 72."""
+    config = IWHConfig()
+    assert config.ttl_hours == 72
+
+
+def test_iwh_config_ttl_hours_custom() -> None:
+    """IWHConfig.ttl_hours can be overridden via model_validate."""
+    config = IWHConfig.model_validate({"ttl_hours": 24})
+    assert config.ttl_hours == 24
+
+
+def test_iwh_config_ttl_hours_zero() -> None:
+    """IWHConfig.ttl_hours accepts zero (disable TTL expiry)."""
+    config = IWHConfig.model_validate({"ttl_hours": 0})
+    assert config.ttl_hours == 0
+
+
+def test_iwh_config_ttl_hours_from_top_level_config() -> None:
+    """iwh.ttl_hours can be set via LexibraryConfig model_validate."""
+    config = LexibraryConfig.model_validate({"iwh": {"ttl_hours": 48}})
+    assert config.iwh.ttl_hours == 48
+    # Other defaults preserved
+    assert config.iwh.enabled is True
+
+
 def test_iwh_config_extra_ignored() -> None:
     """IWHConfig tolerates unknown extra fields without raising."""
     config = IWHConfig.model_validate({"enabled": True, "unknown_field": "value"})

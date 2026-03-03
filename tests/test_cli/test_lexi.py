@@ -122,7 +122,7 @@ generator: lexibrary-v2
 
 def _create_aindex(tmp_path: Path, directory_rel: str, billboard: str) -> Path:
     """Create a .aindex file in the .lexibrary mirror tree."""
-    aindex_path = tmp_path / ".lexibrary" / directory_rel / ".aindex"
+    aindex_path = tmp_path / ".lexibrary" / "designs" / directory_rel / ".aindex"
     aindex_path.parent.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now().isoformat()
@@ -273,7 +273,7 @@ def _create_aindex_with_conventions(
     conventions: list[str] | None = None,
 ) -> Path:
     """Create a .aindex file with optional local conventions."""
-    aindex_file = tmp_path / ".lexibrary" / directory_rel / ".aindex"
+    aindex_file = tmp_path / ".lexibrary" / "designs" / directory_rel / ".aindex"
     aindex_file.parent.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now().isoformat()
@@ -775,7 +775,8 @@ class TestDescribeCommand:
         assert "Updated" in result.output
 
         # Verify the .aindex was actually updated
-        aindex_content = (project / ".lexibrary" / "src" / ".aindex").read_text(encoding="utf-8")
+        aindex_path = project / ".lexibrary" / "designs" / "src" / ".aindex"
+        aindex_content = aindex_path.read_text(encoding="utf-8")
         assert "Authentication and authorization services" in aindex_content
 
     def test_describe_missing_aindex(self, tmp_path: Path) -> None:
@@ -2567,8 +2568,9 @@ class TestLexiValidateCommand:
             f'<!-- lexibrary:meta source="src" source_hash="abc"'
             f' generated="{now}" -->\n'
         )
-        (project / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
-        (project / ".lexibrary" / "src" / ".aindex").write_text(src_aindex, encoding="utf-8")
+        designs_src = project / ".lexibrary" / "designs" / "src"
+        designs_src.mkdir(parents=True, exist_ok=True)
+        (designs_src / ".aindex").write_text(src_aindex, encoding="utf-8")
         root_aindex = (
             f"# ./\n\nRoot\n\n## Child Map\n\n"
             f"| Name | Type | Description |\n| --- | --- | --- |\n"
@@ -2576,7 +2578,7 @@ class TestLexiValidateCommand:
             f'<!-- lexibrary:meta source="." source_hash="abc"'
             f' generated="{now}" -->\n'
         )
-        (project / ".lexibrary" / ".aindex").write_text(root_aindex, encoding="utf-8")
+        (project / ".lexibrary" / "designs" / ".aindex").write_text(root_aindex, encoding="utf-8")
         result = self._invoke(project, ["validate"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "No validation issues found" in result.output  # type: ignore[union-attr]
@@ -2860,8 +2862,8 @@ class TestIWH:
         )
         assert result.exit_code == 0
         assert "Created" in result.output
-        # Verify the file exists in the mirror tree
-        iwh_file = tmp_path / ".lexibrary" / "src" / ".iwh"
+        # Verify the file exists in the mirror tree (designs/ prefix)
+        iwh_file = tmp_path / ".lexibrary" / "designs" / "src" / ".iwh"
         assert iwh_file.exists()
         content = iwh_file.read_text(encoding="utf-8")
         assert "test signal" in content
@@ -2907,8 +2909,8 @@ class TestIWH:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(lexi_app, ["iwh", "write", "--body", "root signal"])
         assert result.exit_code == 0
-        # Project root IWH → .lexibrary/.iwh
-        iwh_file = tmp_path / ".lexibrary" / ".iwh"
+        # Project root IWH → .lexibrary/designs/.iwh
+        iwh_file = tmp_path / ".lexibrary" / "designs" / ".iwh"
         assert iwh_file.exists()
 
     def test_iwh_read_consumes_signal(
@@ -2918,15 +2920,16 @@ class TestIWH:
 
         _setup_iwh_project(tmp_path)
         monkeypatch.chdir(tmp_path)
-        # Write a signal at the mirror path for src/
-        (tmp_path / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
-        write_iwh(tmp_path / ".lexibrary" / "src", author="agent", scope="incomplete", body="wip")
+        # Write a signal at the mirror path for src/ (designs/ prefix)
+        (tmp_path / ".lexibrary" / "designs" / "src").mkdir(parents=True, exist_ok=True)
+        iwh_dir = tmp_path / ".lexibrary" / "designs" / "src"
+        write_iwh(iwh_dir, author="agent", scope="incomplete", body="wip")
         result = runner.invoke(lexi_app, ["iwh", "read", "src"])
         assert result.exit_code == 0
         assert "INCOMPLETE" in result.output
         assert "consumed" in result.output.lower()
         # File should be deleted
-        assert not (tmp_path / ".lexibrary" / "src" / ".iwh").exists()
+        assert not (tmp_path / ".lexibrary" / "designs" / "src" / ".iwh").exists()
 
     def test_iwh_read_peek_preserves_signal(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -2935,14 +2938,15 @@ class TestIWH:
 
         _setup_iwh_project(tmp_path)
         monkeypatch.chdir(tmp_path)
-        (tmp_path / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
-        write_iwh(tmp_path / ".lexibrary" / "src", author="agent", scope="warning", body="note")
+        (tmp_path / ".lexibrary" / "designs" / "src").mkdir(parents=True, exist_ok=True)
+        iwh_dir = tmp_path / ".lexibrary" / "designs" / "src"
+        write_iwh(iwh_dir, author="agent", scope="warning", body="note")
         result = runner.invoke(lexi_app, ["iwh", "read", "src", "--peek"])
         assert result.exit_code == 0
         assert "WARNING" in result.output
         assert "consumed" not in result.output.lower()
         # File should still exist
-        assert (tmp_path / ".lexibrary" / "src" / ".iwh").exists()
+        assert (tmp_path / ".lexibrary" / "designs" / "src" / ".iwh").exists()
 
     def test_iwh_read_missing_shows_message(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

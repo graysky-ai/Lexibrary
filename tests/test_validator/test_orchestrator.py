@@ -461,6 +461,8 @@ class TestCheckFilter:
             "bidirectional_deps",
             "dangling_links",
             "orphan_artifacts",
+            "orphaned_aindex",
+            "orphaned_iwh",
         }
         assert set(AVAILABLE_CHECKS.keys()) == expected
 
@@ -490,20 +492,20 @@ class TestCheckFilter:
 
 
 # ---------------------------------------------------------------------------
-# All 13 checks registered (including link-graph checks)
+# All 15 checks registered (including link-graph checks)
 # ---------------------------------------------------------------------------
 
 
 class TestAllChecksRegistered:
-    """Verify that validate_library() includes all 13 checks and that
+    """Verify that validate_library() includes all 15 checks and that
     link-graph checks degrade gracefully when index.db is absent."""
 
-    def test_available_checks_count_is_13(self) -> None:
-        """AVAILABLE_CHECKS should contain exactly 13 entries."""
-        assert len(AVAILABLE_CHECKS) == 13
+    def test_available_checks_count_is_15(self) -> None:
+        """AVAILABLE_CHECKS should contain exactly 15 entries."""
+        assert len(AVAILABLE_CHECKS) == 15
 
     def test_validate_library_runs_all_13_checks_without_filters(self, tmp_path: Path) -> None:
-        """With no severity or check filters, all 13 checks should be invoked.
+        """With no severity or check filters, all 15 checks should be invoked.
 
         We verify this indirectly: an unfiltered run on a minimal project
         should not crash and should exercise every registered check.

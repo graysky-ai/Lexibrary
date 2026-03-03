@@ -77,15 +77,15 @@ def test_mirror_path_deeply_nested(tmp_path: Path) -> None:
 
 
 def test_aindex_path_simple(tmp_path: Path) -> None:
-    """aindex_path maps a directory to .lexibrary/<dir>/.aindex."""
+    """aindex_path maps a directory to .lexibrary/designs/<dir>/.aindex."""
     result = aindex_path(tmp_path, tmp_path / "src" / "auth")
-    assert result == tmp_path / ".lexibrary" / "src" / "auth" / ".aindex"
+    assert result == tmp_path / ".lexibrary" / "designs" / "src" / "auth" / ".aindex"
 
 
 def test_aindex_path_relative(tmp_path: Path) -> None:
     """aindex_path accepts a project-relative path."""
     result = aindex_path(tmp_path, Path("src/auth"))
-    assert result == tmp_path / ".lexibrary" / "src" / "auth" / ".aindex"
+    assert result == tmp_path / ".lexibrary" / "designs" / "src" / "auth" / ".aindex"
 
 
 # ---------------------------------------------------------------------------
@@ -94,24 +94,24 @@ def test_aindex_path_relative(tmp_path: Path) -> None:
 
 
 def test_iwh_path_subdirectory(tmp_path: Path) -> None:
-    """iwh_path maps a subdirectory to .lexibrary/<dir>/.iwh."""
+    """iwh_path maps a subdirectory to .lexibrary/designs/<dir>/.iwh."""
     result = iwh_path(tmp_path, tmp_path / "src" / "auth")
-    assert result == tmp_path / ".lexibrary" / "src" / "auth" / ".iwh"
+    assert result == tmp_path / ".lexibrary" / "designs" / "src" / "auth" / ".iwh"
 
 
 def test_iwh_path_project_root(tmp_path: Path) -> None:
-    """iwh_path maps the project root itself to .lexibrary/.iwh."""
+    """iwh_path maps the project root itself to .lexibrary/designs/.iwh."""
     result = iwh_path(tmp_path, tmp_path)
-    assert result == tmp_path / ".lexibrary" / ".iwh"
+    assert result == tmp_path / ".lexibrary" / "designs" / ".iwh"
 
 
 def test_iwh_path_nested_directory(tmp_path: Path) -> None:
     """iwh_path preserves full directory depth for nested paths."""
     result = iwh_path(tmp_path, tmp_path / "src" / "auth" / "middleware")
-    assert result == tmp_path / ".lexibrary" / "src" / "auth" / "middleware" / ".iwh"
+    assert result == tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "middleware" / ".iwh"
 
 
 def test_iwh_path_relative(tmp_path: Path) -> None:
     """iwh_path accepts a project-relative path."""
     result = iwh_path(tmp_path, Path("src/auth"))
-    assert result == tmp_path / ".lexibrary" / "src" / "auth" / ".iwh"
+    assert result == tmp_path / ".lexibrary" / "designs" / "src" / "auth" / ".iwh"

@@ -1,0 +1,9 @@
+# .lexignore — Lexibrary-specific ignore patterns
+# Files matching these patterns will NOT receive design files, even if tracked by git.
+# Uses .gitignore format and rules.
+# Example: **/migrations/
+.env
+.env.*
+*.env
+**/migrations/
+**/__generated__/

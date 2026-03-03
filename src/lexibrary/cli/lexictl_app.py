@@ -374,8 +374,136 @@ def update(
 
         format_error_summary(stats.error_summary, console)
 
+    # Run IWH cleanup on full project update (no path / no --changed-only)
+    if path is None and changed_only is None:
+        from lexibrary.iwh.cleanup import iwh_cleanup  # noqa: PLC0415
+
+        cleanup = iwh_cleanup(project_root, config.iwh.ttl_hours)
+        total_cleaned = len(cleanup.expired) + len(cleanup.orphaned)
+        if total_cleaned > 0:
+            console.print()
+            console.print("[bold]IWH cleanup:[/bold]")
+            if cleanup.expired:
+                console.print(f"  Expired:  {len(cleanup.expired)} signal(s) removed")
+            if cleanup.orphaned:
+                console.print(f"  Orphaned: {len(cleanup.orphaned)} signal(s) removed")
+            if cleanup.kept > 0:
+                console.print(f"  Kept:     {cleanup.kept} signal(s)")
+
     if stats.files_failed:
         raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# bootstrap
+# ---------------------------------------------------------------------------
+
+
+@lexictl_app.command()
+def bootstrap(
+    *,
+    scope: Annotated[
+        str | None,
+        typer.Option(
+            "--scope",
+            help="Override the scope root from config (directory relative to project root).",
+        ),
+    ] = None,
+    full: Annotated[
+        bool,
+        typer.Option(
+            "--full",
+            help="Full bootstrap including design file generation (not yet implemented).",
+        ),
+    ] = False,
+    quick: Annotated[
+        bool,
+        typer.Option(
+            "--quick",
+            help="Quick bootstrap — aindex generation only (default behaviour).",
+        ),
+    ] = False,
+) -> None:
+    """Batch-initialize the library: generate .aindex files for the project.
+
+    Resolves the scope root from config (or --scope override), then
+    recursively generates .aindex files bottom-up. Safe to re-run at any
+    time (idempotent).
+    """
+    from rich.progress import Progress, SpinnerColumn, TextColumn  # noqa: PLC0415
+
+    from lexibrary.config.loader import load_config  # noqa: PLC0415
+    from lexibrary.indexer.orchestrator import index_recursive  # noqa: PLC0415
+
+    # Mutual exclusivity
+    if full and quick:
+        console.print(
+            "[red]Error:[/red] [cyan]--full[/cyan] and [cyan]--quick[/cyan]"
+            " are mutually exclusive."
+        )
+        raise typer.Exit(1)
+
+    project_root = require_project_root()
+    config = load_config(project_root)
+
+    # Resolve scope root
+    scope_root_str = scope if scope is not None else config.scope_root
+    scope_dir = (project_root / scope_root_str).resolve()
+
+    # Validate scope directory
+    if not scope_dir.exists():
+        console.print(f"[red]Scope directory not found:[/red] {scope_root_str}")
+        raise typer.Exit(1)
+
+    if not scope_dir.is_dir():
+        console.print(f"[red]Scope root is not a directory:[/red] {scope_root_str}")
+        raise typer.Exit(1)
+
+    # Warn about --full (not yet implemented)
+    if full:
+        console.print(
+            "[yellow]Note:[/yellow] [cyan]--full[/cyan] mode (design file generation)"
+            " is not yet implemented. Running aindex generation only."
+        )
+
+    # Run recursive indexing with progress
+    rel_scope = scope_dir.relative_to(project_root) if scope_dir != project_root else Path(".")
+    console.print(
+        f"Bootstrapping [cyan]{rel_scope}[/cyan] in [cyan]{project_root.name}[/cyan]..."
+    )
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Indexing...", total=None)
+
+        def _progress_callback(current: int, total: int, name: str) -> None:
+            progress.update(task, description=f"Indexing [{current}/{total}] {name}")
+
+        stats = index_recursive(
+            scope_dir, project_root, config, progress_callback=_progress_callback
+        )
+
+    # Report summary
+    console.print()
+    console.print("[bold]Bootstrap summary:[/bold]")
+    console.print(f"  Directories indexed: {stats.directories_indexed}")
+    console.print(f"  Files found:         {stats.files_found}")
+    if stats.errors:
+        console.print(f"  [red]Errors:              {stats.errors}[/red]")
+
+    if stats.error_summary.has_errors():
+        from lexibrary.errors import format_error_summary  # noqa: PLC0415
+
+        format_error_summary(stats.error_summary, console)
+
+    if stats.errors:
+        raise typer.Exit(1)
+
+    console.print()
+    console.print("[green]Bootstrap complete.[/green]")
 
 
 # ---------------------------------------------------------------------------
@@ -765,12 +893,25 @@ def iwh_clean(
     *,
     older_than: Annotated[
         int | None,
-        typer.Option("--older-than", help="Only remove signals older than N hours."),
+        typer.Option(
+            "--older-than",
+            help="Only remove signals older than N hours (default: config TTL).",
+        ),
     ] = None,
+    all_signals: Annotated[
+        bool,
+        typer.Option("--all", help="Remove all signals regardless of age (bypass TTL)."),
+    ] = False,
 ) -> None:
-    """Remove all IWH signal files from the project."""
+    """Remove IWH signal files from the project.
+
+    By default, removes signals older than the configured TTL
+    (config.iwh.ttl_hours). Use --older-than to override the TTL
+    threshold, or --all to remove every signal regardless of age.
+    """
     from datetime import UTC, datetime  # noqa: PLC0415
 
+    from lexibrary.config.loader import load_config  # noqa: PLC0415
     from lexibrary.iwh.reader import IWH_FILENAME, find_all_iwh  # noqa: PLC0415
     from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
 
@@ -781,15 +922,25 @@ def iwh_clean(
         console.print("[dim]No IWH signals to clean.[/dim]")
         return
 
+    # Determine the TTL threshold to apply
+    if all_signals:
+        ttl_threshold: int | None = None  # bypass TTL — remove everything
+    elif older_than is not None:
+        ttl_threshold = older_than
+    else:
+        # Default: use config TTL
+        config = load_config(project_root)
+        ttl_threshold = config.iwh.ttl_hours
+
     now = datetime.now(tz=UTC)
     removed = 0
     for source_dir, iwh in results:
-        if older_than is not None:
+        if ttl_threshold is not None:
             created = iwh.created
             if created.tzinfo is None:
                 created = created.replace(tzinfo=UTC)
             age_hours = (now - created).total_seconds() / 3600
-            if age_hours < older_than:
+            if age_hours < ttl_threshold:
                 continue
 
         iwh_file = project_root / LEXIBRARY_DIR / source_dir / IWH_FILENAME

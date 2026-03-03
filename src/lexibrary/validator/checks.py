@@ -7,7 +7,7 @@ Checks are grouped by severity:
 - Error-severity: wikilink_resolution, file_existence, concept_frontmatter
 - Warning-severity: hash_freshness, token_budgets, orphan_concepts, deprecated_concept_usage
 - Info-severity: forward_dependencies, stack_staleness, aindex_coverage,
-    bidirectional_deps, dangling_links, orphan_artifacts
+    bidirectional_deps, dangling_links, orphan_artifacts, orphaned_iwh
 """
 
 from __future__ import annotations
@@ -978,6 +978,119 @@ def check_dangling_links(
                     ),
                     artifact=artifact_path,
                     suggestion="Rebuild the index with `lexictl update` to remove stale entries.",
+                )
+            )
+
+    return issues
+
+
+def find_orphaned_aindex(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Find ``.aindex`` files under ``.lexibrary/designs/`` with no corresponding source directory.
+
+    Walks the designs directory tree for ``.aindex`` files and checks whether
+    the source directory they represent still exists on disk.  An ``.aindex``
+    file at ``.lexibrary/designs/src/auth/.aindex`` is orphaned when
+    ``<project_root>/src/auth/`` does not exist.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of warning-severity ValidationIssues for orphaned ``.aindex`` files.
+    """
+    issues: list[ValidationIssue] = []
+
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+    if not designs_dir.is_dir():
+        return issues
+
+    for aindex_file in sorted(designs_dir.rglob(".aindex")):
+        # The source directory is the aindex parent path relative to designs_dir,
+        # mapped back to project_root.
+        aindex_parent = aindex_file.parent
+        try:
+            relative_dir = aindex_parent.relative_to(designs_dir)
+        except ValueError:
+            continue
+
+        source_dir = project_root / relative_dir
+        if not source_dir.is_dir():
+            rel_aindex = str(aindex_file.relative_to(lexibrary_dir))
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    check="orphaned_aindex",
+                    message=(
+                        f"Orphaned .aindex file: source directory "
+                        f"{relative_dir} no longer exists"
+                    ),
+                    artifact=rel_aindex,
+                    suggestion=(
+                        "Run `lexictl validate --fix` to remove orphaned .aindex files, "
+                        "or delete manually."
+                    ),
+                )
+            )
+
+    return issues
+
+
+def find_orphaned_iwh(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Find ``.iwh`` files under ``.lexibrary/designs/`` with no corresponding source directory.
+
+    Walks the designs directory tree for ``.iwh`` files and checks whether
+    the source directory they represent still exists on disk.  An ``.iwh``
+    file at ``.lexibrary/designs/src/auth/.iwh`` is orphaned when
+    ``<project_root>/src/auth/`` does not exist.
+
+    Detection is path-based, not content-based: even unparseable ``.iwh``
+    files are flagged if their source directory is missing.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for orphaned ``.iwh`` files.
+    """
+    issues: list[ValidationIssue] = []
+
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+    if not designs_dir.is_dir():
+        return issues
+
+    for iwh_file in sorted(designs_dir.rglob(".iwh")):
+        # The source directory is the iwh parent path relative to designs_dir,
+        # mapped back to project_root.
+        iwh_parent = iwh_file.parent
+        try:
+            relative_dir = iwh_parent.relative_to(designs_dir)
+        except ValueError:
+            continue
+
+        source_dir = project_root / relative_dir
+        if not source_dir.is_dir():
+            rel_iwh = str(iwh_file.relative_to(lexibrary_dir))
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="orphaned_iwh",
+                    message=(
+                        f"Orphaned .iwh file: source directory "
+                        f"{relative_dir} no longer exists"
+                    ),
+                    artifact=rel_iwh,
+                    suggestion=(
+                        "Run `lexictl update` or `lexictl iwh clean` to remove "
+                        "orphaned .iwh files."
+                    ),
                 )
             )
 
