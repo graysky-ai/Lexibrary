@@ -10,19 +10,22 @@ import yaml
 
 from lexibrary.exceptions import ConfigError
 from lexibrary.stack.models import (
-    StackAnswer,
+    StackFinding,
     StackPost,
     StackPostFrontmatter,
 )
 
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)
-_ANSWER_HEADER_RE = re.compile(r"^###\s+A(\d+)\s*$")
+_FINDING_HEADER_RE = re.compile(r"^###\s+F(\d+)\s*$")
 _METADATA_RE = re.compile(
     r"\*\*Date:\*\*\s*(\S+)\s*\|\s*"
     r"\*\*Author:\*\*\s*(\S+)\s*\|\s*"
     r"\*\*Votes:\*\*\s*(-?\d+)"
     r"(?:\s*\|\s*\*\*Accepted:\*\*\s*(true))?"
 )
+
+
+_HTML_COMMENT_RE = re.compile(r"^\s*<!--.*-->\s*$")
 
 
 def parse_stack_post(path: Path) -> StackPost | None:
@@ -49,85 +52,115 @@ def parse_stack_post(path: Path) -> StackPost | None:
             return None
         frontmatter = StackPostFrontmatter(**data)
     except (yaml.YAMLError, TypeError, ValueError) as exc:
-        raise ConfigError(
-            f"Failed to parse Stack post frontmatter in {path}: {exc}"
-        ) from exc
+        raise ConfigError(f"Failed to parse Stack post frontmatter in {path}: {exc}") from exc
 
     raw_body = text[fm_match.end() :]
-    problem, evidence = _extract_problem_and_evidence(raw_body)
-    answers = _extract_answers(raw_body)
+    problem, context, evidence, attempts = _extract_body_sections(raw_body)
+    findings = _extract_findings(raw_body)
 
     return StackPost(
         frontmatter=frontmatter,
         problem=problem,
+        context=context,
         evidence=evidence,
-        answers=answers,
+        attempts=attempts,
+        findings=findings,
         raw_body=raw_body,
     )
 
 
-def _extract_problem_and_evidence(body: str) -> tuple[str, list[str]]:
-    """Extract ## Problem content and ### Evidence bullet items."""
+def _extract_body_sections(body: str) -> tuple[str, str, list[str], list[str]]:
+    """Extract body sections: Problem, Context, Evidence, and Attempts.
+
+    Uses order-independent section extraction via a ``current_section``
+    state variable.  Sections are identified by their header and collected
+    regardless of position.  A ``## Findings`` or ``### F{n}`` header
+    terminates all body section extraction.
+
+    HTML comment lines (``<!-- ... -->``) are stripped from extracted content.
+
+    Returns:
+        (problem, context, evidence, attempts) tuple.
+    """
     lines = body.splitlines()
     problem_lines: list[str] = []
+    context_lines: list[str] = []
     evidence_items: list[str] = []
-    in_problem = False
-    in_evidence = False
+    attempts_items: list[str] = []
+    current_section: str | None = None
 
     for line in lines:
+        # ## Findings or ### F{n} terminates body section extraction
+        if line.startswith("## Findings") or _FINDING_HEADER_RE.match(line):
+            break
+
         # Check for section headers
         if line.startswith("## Problem"):
-            in_problem = True
-            in_evidence = False
+            current_section = "problem"
+            continue
+        if line.startswith("### Context"):
+            current_section = "context"
             continue
         if line.startswith("### Evidence"):
-            in_problem = False
-            in_evidence = True
+            current_section = "evidence"
             continue
-        # Any other ## or ### A{n} header ends current section
-        if line.startswith("## ") or _ANSWER_HEADER_RE.match(line):
-            in_problem = False
-            in_evidence = False
+        if line.startswith("### Attempts"):
+            current_section = "attempts"
+            continue
+        # Any other ## or ### header ends current section
+        if line.startswith("## ") or line.startswith("### "):
+            current_section = None
             continue
 
-        if in_problem:
+        # Skip HTML comment lines
+        if _HTML_COMMENT_RE.match(line):
+            continue
+
+        if current_section == "problem":
             problem_lines.append(line)
-        elif in_evidence:
+        elif current_section == "context":
+            context_lines.append(line)
+        elif current_section == "evidence":
             stripped = line.strip()
             if stripped.startswith("- ") or stripped.startswith("* "):
                 evidence_items.append(stripped[2:])
+        elif current_section == "attempts":
+            stripped = line.strip()
+            if stripped.startswith("- ") or stripped.startswith("* "):
+                attempts_items.append(stripped[2:])
 
     problem = "\n".join(problem_lines).strip()
-    return problem, evidence_items
+    context = "\n".join(context_lines).strip()
+    return problem, context, evidence_items, attempts_items
 
 
-def _extract_answers(body: str) -> list[StackAnswer]:
-    """Extract ### A{n} answer blocks from the body."""
+def _extract_findings(body: str) -> list[StackFinding]:
+    """Extract ### F{n} finding blocks from the body."""
     lines = body.splitlines()
-    answers: list[StackAnswer] = []
+    findings: list[StackFinding] = []
 
-    # Find all answer block start indices
-    answer_starts: list[tuple[int, int]] = []  # (line_index, answer_number)
+    # Find all finding block start indices
+    finding_starts: list[tuple[int, int]] = []  # (line_index, finding_number)
     for i, line in enumerate(lines):
-        m = _ANSWER_HEADER_RE.match(line)
+        m = _FINDING_HEADER_RE.match(line)
         if m:
-            answer_starts.append((i, int(m.group(1))))
+            finding_starts.append((i, int(m.group(1))))
 
-    for idx, (start_line, answer_num) in enumerate(answer_starts):
-        # Determine end of this answer block
-        end_line = answer_starts[idx + 1][0] if idx + 1 < len(answer_starts) else len(lines)
+    for idx, (start_line, finding_num) in enumerate(finding_starts):
+        # Determine end of this finding block
+        end_line = finding_starts[idx + 1][0] if idx + 1 < len(finding_starts) else len(lines)
 
-        answer_lines = lines[start_line + 1 : end_line]
-        answer = _parse_single_answer(answer_num, answer_lines)
-        if answer is not None:
-            answers.append(answer)
+        finding_lines = lines[start_line + 1 : end_line]
+        finding = _parse_single_finding(finding_num, finding_lines)
+        if finding is not None:
+            findings.append(finding)
 
-    return answers
+    return findings
 
 
-def _parse_single_answer(number: int, lines: list[str]) -> StackAnswer | None:
-    """Parse a single answer block from its content lines."""
-    answer_date = date.today()
+def _parse_single_finding(number: int, lines: list[str]) -> StackFinding | None:
+    """Parse a single finding block from its content lines."""
+    finding_date = date.today()
     author = "unknown"
     votes = 0
     accepted = False
@@ -147,9 +180,9 @@ def _parse_single_answer(number: int, lines: list[str]) -> StackAnswer | None:
             m = _METADATA_RE.search(line)
             if m:
                 try:
-                    answer_date = date.fromisoformat(m.group(1))
+                    finding_date = date.fromisoformat(m.group(1))
                 except ValueError:
-                    answer_date = date.today()
+                    finding_date = date.today()
                 author = m.group(2)
                 votes = int(m.group(3))
                 accepted = m.group(4) == "true"
@@ -165,9 +198,9 @@ def _parse_single_answer(number: int, lines: list[str]) -> StackAnswer | None:
 
     body = "\n".join(body_lines).strip()
 
-    return StackAnswer(
+    return StackFinding(
         number=number,
-        date=answer_date,
+        date=finding_date,
         author=author,
         votes=votes,
         accepted=accepted,

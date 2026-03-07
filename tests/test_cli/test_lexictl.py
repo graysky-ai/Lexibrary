@@ -245,7 +245,7 @@ class TestInit:
         assert result.exit_code == 0
         assert "Created" in result.output
         assert (tmp_path / ".lexibrary" / "config.yaml").exists()
-        assert (tmp_path / ".lexibrary" / "START_HERE.md").exists()
+        assert not (tmp_path / ".lexibrary" / "START_HERE.md").exists()
         # Wizard path does NOT create HANDOFF.md
         assert not (tmp_path / ".lexibrary" / "HANDOFF.md").exists()
         assert (tmp_path / ".lexibrary" / "concepts" / ".gitkeep").exists()
@@ -1637,14 +1637,29 @@ class TestLexictlBootstrapCommand:
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Bootstrap complete" in result.output  # type: ignore[union-attr]
 
-    def test_bootstrap_full_flag_warns(self, tmp_path: Path) -> None:
-        """--full flag is accepted but warns about not-yet-implemented."""
+    def test_bootstrap_full_flag_runs_llm_enrichment(self, tmp_path: Path) -> None:
+        """--full flag triggers LLM-enriched design file generation."""
+        from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+
         project = _setup_project(tmp_path)
-        result = self._invoke(project, ["bootstrap", "--full"])
+
+        with patch(
+            "lexibrary.lifecycle.bootstrap.bootstrap_full",
+            new_callable=AsyncMock,
+        ) as mock_full:
+            from lexibrary.lifecycle.bootstrap import BootstrapStats  # noqa: PLC0415
+
+            mock_full.return_value = BootstrapStats(
+                files_scanned=2,
+                files_created=2,
+            )
+            result = self._invoke(project, ["bootstrap", "--full"])
+
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
-        assert "not yet implemented" in output
+        assert "full" in output
         assert "Bootstrap complete" in output
+        mock_full.assert_called_once()
 
     def test_bootstrap_reports_stats(self, tmp_path: Path) -> None:
         """Bootstrap reports directories indexed and files found."""
@@ -1859,12 +1874,12 @@ class TestUpdateDryRun:
 
 
 # ---------------------------------------------------------------------------
-# Update --start-here tests (task 2.11)
+# Update --topology tests (task 2.11)
 # ---------------------------------------------------------------------------
 
 
-class TestUpdateStartHere:
-    """Tests for the ``--start-here`` flag on ``lexictl update``."""
+class TestUpdateTopology:
+    """Tests for the ``--topology`` flag on ``lexictl update``."""
 
     def _invoke(self, tmp_path: Path, args: list[str]) -> object:
         old_cwd = os.getcwd()
@@ -1874,8 +1889,8 @@ class TestUpdateStartHere:
         finally:
             os.chdir(old_cwd)
 
-    def test_start_here_regenerates(self, tmp_path: Path) -> None:
-        """--start-here calls generate_topology and shows success."""
+    def test_topology_regenerates(self, tmp_path: Path) -> None:
+        """--topology calls generate_topology and shows success."""
         project = _setup_archivist_project(tmp_path)
 
         mock_generate = MagicMock(return_value=project / ".lexibrary" / "TOPOLOGY.md")
@@ -1884,30 +1899,170 @@ class TestUpdateStartHere:
             "lexibrary.archivist.topology.generate_topology",
             mock_generate,
         ):
-            result = self._invoke(project, ["update", "--start-here"])
+            result = self._invoke(project, ["update", "--topology"])
 
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "TOPOLOGY.md generated" in output
         mock_generate.assert_called_once()
 
-    def test_start_here_mutual_exclusivity_with_changed_only(self, tmp_path: Path) -> None:
-        """--start-here and --changed-only cannot be used together."""
+    def test_topology_mutual_exclusivity_with_changed_only(self, tmp_path: Path) -> None:
+        """--topology and --changed-only cannot be used together."""
         project = _setup_archivist_project(tmp_path)
         result = self._invoke(
-            project, ["update", "--start-here", "--changed-only", "src/main.py"]
+            project, ["update", "--topology", "--changed-only", "src/main.py"]
         )
         assert result.exit_code == 1  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "cannot be combined" in output
 
-    def test_start_here_mutual_exclusivity_with_path(self, tmp_path: Path) -> None:
-        """--start-here and path cannot be used together."""
+    def test_topology_mutual_exclusivity_with_path(self, tmp_path: Path) -> None:
+        """--topology and path cannot be used together."""
         project = _setup_archivist_project(tmp_path)
-        result = self._invoke(project, ["update", "--start-here", "src/main.py"])
+        result = self._invoke(project, ["update", "--topology", "src/main.py"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "cannot be combined" in output
+
+
+# ---------------------------------------------------------------------------
+# Update --skeleton tests (task 7.1-7.3)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateSkeleton:
+    """Tests for the ``--skeleton`` flag on ``lexictl update``."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexictl_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_skeleton_requires_path(self, tmp_path: Path) -> None:
+        """--skeleton without a file path exits with error."""
+        project = _setup_archivist_project(tmp_path)
+        result = self._invoke(project, ["update", "--skeleton"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "requires a file path" in output
+
+    def test_skeleton_generates_design_file(self, tmp_path: Path) -> None:
+        """--skeleton generates a skeleton design file and queues for enrichment."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_result = FileResult(change=ChangeLevel.NEW_FILE)
+        mock_generate = MagicMock(return_value=mock_result)
+        mock_queue = MagicMock()
+
+        with (
+            patch(
+                "lexibrary.lifecycle.bootstrap._generate_quick_design",
+                mock_generate,
+            ),
+            patch(
+                "lexibrary.lifecycle.queue.queue_for_enrichment",
+                mock_queue,
+            ),
+        ):
+            result = self._invoke(project, ["update", "--skeleton", "src/main.py"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Skeleton generated" in output
+        mock_generate.assert_called_once()
+        mock_queue.assert_called_once()
+
+    def test_skeleton_queues_for_enrichment(self, tmp_path: Path) -> None:
+        """--skeleton queues the source file for LLM enrichment."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_result = FileResult(change=ChangeLevel.NEW_FILE)
+        mock_generate = MagicMock(return_value=mock_result)
+        mock_queue = MagicMock()
+
+        with (
+            patch(
+                "lexibrary.lifecycle.bootstrap._generate_quick_design",
+                mock_generate,
+            ),
+            patch(
+                "lexibrary.lifecycle.queue.queue_for_enrichment",
+                mock_queue,
+            ),
+        ):
+            result = self._invoke(project, ["update", "--skeleton", "src/main.py"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        # Verify queue_for_enrichment was called with the project root and source path
+        call_args = mock_queue.call_args
+        assert call_args is not None
+        assert call_args[0][0] == project  # project_root
+        assert call_args[0][1].name == "main.py"  # source file
+
+    def test_skeleton_mutual_exclusivity_with_changed_only(self, tmp_path: Path) -> None:
+        """--skeleton and --changed-only cannot be used together."""
+        project = _setup_archivist_project(tmp_path)
+        result = self._invoke(
+            project, ["update", "--skeleton", "--changed-only", "src/main.py", "src/main.py"]
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "cannot be combined" in output
+
+    def test_skeleton_mutual_exclusivity_with_dry_run(self, tmp_path: Path) -> None:
+        """--skeleton and --dry-run cannot be used together."""
+        project = _setup_archivist_project(tmp_path)
+        result = self._invoke(
+            project, ["update", "--skeleton", "--dry-run", "src/main.py"]
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "cannot be combined" in output
+
+    def test_skeleton_mutual_exclusivity_with_topology(self, tmp_path: Path) -> None:
+        """--skeleton and --topology cannot be used together."""
+        project = _setup_archivist_project(tmp_path)
+        result = self._invoke(
+            project, ["update", "--skeleton", "--topology", "src/main.py"]
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "cannot be combined" in output
+
+    def test_skeleton_nonexistent_file_error(self, tmp_path: Path) -> None:
+        """--skeleton with nonexistent file exits with error."""
+        project = _setup_archivist_project(tmp_path)
+        result = self._invoke(project, ["update", "--skeleton", "src/nonexistent.py"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "not found" in output.lower()
+
+    def test_skeleton_directory_error(self, tmp_path: Path) -> None:
+        """--skeleton with a directory (not a file) exits with error."""
+        project = _setup_archivist_project(tmp_path)
+        result = self._invoke(project, ["update", "--skeleton", "src"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Not a file" in output
+
+    def test_skeleton_generation_failure(self, tmp_path: Path) -> None:
+        """--skeleton reports error when generation fails."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_generate = MagicMock(side_effect=RuntimeError("parse error"))
+
+        with patch(
+            "lexibrary.lifecycle.bootstrap._generate_quick_design",
+            mock_generate,
+        ):
+            result = self._invoke(project, ["update", "--skeleton", "src/main.py"])
+
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Failed to generate skeleton" in output
 
 
 # ---------------------------------------------------------------------------

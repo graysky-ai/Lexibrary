@@ -1737,3 +1737,523 @@ class TestDryRunFiles:
         assert len(results) == 1
         _path, change = results[0]
         assert change == ChangeLevel.NEW_FILE
+
+
+# ---------------------------------------------------------------------------
+# UpdateStats — new lifecycle fields
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateStatsLifecycleFields:
+    """Verify new deprecation, rename, and queue fields on UpdateStats."""
+
+    def test_deprecation_fields_default_to_zero(self) -> None:
+        stats = UpdateStats()
+        assert stats.designs_deprecated == 0
+        assert stats.designs_unlinked == 0
+        assert stats.designs_deleted_ttl == 0
+
+    def test_rename_fields_default_to_zero(self) -> None:
+        stats = UpdateStats()
+        assert stats.renames_detected == 0
+        assert stats.renames_migrated == 0
+
+    def test_queue_fields_default_to_zero(self) -> None:
+        stats = UpdateStats()
+        assert stats.queue_processed == 0
+        assert stats.queue_failed == 0
+        assert stats.queue_remaining == 0
+
+    def test_lifecycle_fields_are_mutable(self) -> None:
+        stats = UpdateStats()
+        stats.designs_deprecated = 3
+        stats.designs_unlinked = 1
+        stats.designs_deleted_ttl = 2
+        stats.renames_detected = 4
+        stats.renames_migrated = 4
+        stats.queue_processed = 5
+        stats.queue_failed = 1
+        stats.queue_remaining = 2
+        assert stats.designs_deprecated == 3
+        assert stats.designs_unlinked == 1
+        assert stats.designs_deleted_ttl == 2
+        assert stats.renames_detected == 4
+        assert stats.renames_migrated == 4
+        assert stats.queue_processed == 5
+        assert stats.queue_failed == 1
+        assert stats.queue_remaining == 2
+
+
+# ---------------------------------------------------------------------------
+# _run_deprecation_pass — deprecation post-pass integration
+# ---------------------------------------------------------------------------
+
+
+class TestRunDeprecationPass:
+    """Integration tests for the deprecation lifecycle post-pass."""
+
+    def test_deprecates_orphaned_committed(self, tmp_path: Path) -> None:
+        """Orphaned designs with committed deletions are deprecated."""
+        from lexibrary.archivist.pipeline import _run_deprecation_pass
+
+        # Create a design file for a source that does not exist
+        _make_design_file(tmp_path, "src/deleted.py")
+        config = _make_config()
+        stats = UpdateStats()
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.detect_renames",
+                return_value=[],
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.hard_delete_expired",
+                return_value=[],
+            ),
+            # Simulate committed deletion (file not tracked by git)
+            patch(
+                "lexibrary.lifecycle.deprecation._is_committed_deletion",
+                return_value=True,
+            ),
+        ):
+            _run_deprecation_pass(tmp_path, config, stats)
+
+        assert stats.designs_deprecated == 1
+        assert stats.designs_unlinked == 0
+
+    def test_marks_unlinked_uncommitted(self, tmp_path: Path) -> None:
+        """Orphaned designs with uncommitted deletions are marked unlinked."""
+        from lexibrary.archivist.pipeline import _run_deprecation_pass
+
+        _make_design_file(tmp_path, "src/removed.py")
+        config = _make_config()
+        stats = UpdateStats()
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.detect_renames",
+                return_value=[],
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.hard_delete_expired",
+                return_value=[],
+            ),
+            patch(
+                "lexibrary.lifecycle.deprecation._is_committed_deletion",
+                return_value=False,
+            ),
+        ):
+            _run_deprecation_pass(tmp_path, config, stats)
+
+        assert stats.designs_unlinked == 1
+        assert stats.designs_deprecated == 0
+
+    def test_ttl_expiry_stats(self, tmp_path: Path) -> None:
+        """TTL-expired deletions are counted in stats."""
+        from lexibrary.archivist.pipeline import _run_deprecation_pass
+
+        config = _make_config()
+        stats = UpdateStats()
+
+        fake_deleted = [
+            tmp_path / ".lexibrary" / "designs" / "old1.py.md",
+            tmp_path / ".lexibrary" / "designs" / "old2.py.md",
+        ]
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.detect_renames",
+                return_value=[],
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.detect_orphaned_designs",
+                return_value=[],
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.hard_delete_expired",
+                return_value=fake_deleted,
+            ),
+        ):
+            _run_deprecation_pass(tmp_path, config, stats)
+
+        assert stats.designs_deleted_ttl == 2
+
+    def test_rename_detection_and_migration(self, tmp_path: Path) -> None:
+        """Detected renames are counted and migration is attempted."""
+        from lexibrary.archivist.pipeline import _run_deprecation_pass
+        from lexibrary.lifecycle.deprecation import RenameMapping
+
+        config = _make_config()
+        stats = UpdateStats()
+
+        # Create a design file at the old location
+        _make_design_file(tmp_path, "src/old_name.py")
+        # Create the new source file
+        _make_source_file(tmp_path, "src/new_name.py", "def foo(): pass")
+
+        fake_renames = [
+            RenameMapping(old_path=Path("src/old_name.py"), new_path=Path("src/new_name.py")),
+        ]
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.detect_renames",
+                return_value=fake_renames,
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.detect_orphaned_designs",
+                return_value=[],
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.hard_delete_expired",
+                return_value=[],
+            ),
+        ):
+            _run_deprecation_pass(tmp_path, config, stats)
+
+        assert stats.renames_detected == 1
+        assert stats.renames_migrated == 1
+
+        # Old design file should be gone
+        old_design = tmp_path / ".lexibrary" / "designs" / "src" / "old_name.py.md"
+        assert not old_design.exists()
+
+        # New design file should exist
+        new_design = tmp_path / ".lexibrary" / "designs" / "src" / "new_name.py.md"
+        assert new_design.exists()
+
+    def test_rename_no_design_file(self, tmp_path: Path) -> None:
+        """Rename with no existing design file does not fail, just skips migration."""
+        from lexibrary.archivist.pipeline import _run_deprecation_pass
+        from lexibrary.lifecycle.deprecation import RenameMapping
+
+        config = _make_config()
+        stats = UpdateStats()
+
+        fake_renames = [
+            RenameMapping(old_path=Path("src/gone.py"), new_path=Path("src/new.py")),
+        ]
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.detect_renames",
+                return_value=fake_renames,
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.detect_orphaned_designs",
+                return_value=[],
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.hard_delete_expired",
+                return_value=[],
+            ),
+        ):
+            _run_deprecation_pass(tmp_path, config, stats)
+
+        assert stats.renames_detected == 1
+        assert stats.renames_migrated == 0
+
+    def test_errors_in_deprecation_do_not_propagate(self, tmp_path: Path) -> None:
+        """Errors in deprecation detection are caught and reported, not propagated."""
+        from lexibrary.archivist.pipeline import _run_deprecation_pass
+
+        config = _make_config()
+        stats = UpdateStats()
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.detect_renames",
+                side_effect=RuntimeError("git error"),
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.detect_orphaned_designs",
+                side_effect=RuntimeError("scan error"),
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.hard_delete_expired",
+                side_effect=RuntimeError("ttl error"),
+            ),
+        ):
+            # Should not raise
+            _run_deprecation_pass(tmp_path, config, stats)
+
+        assert stats.error_summary.has_errors()
+
+
+# ---------------------------------------------------------------------------
+# _process_enrichment_queue — queue processing integration
+# ---------------------------------------------------------------------------
+
+
+class TestProcessEnrichmentQueue:
+    """Integration tests for enrichment queue processing in the pipeline."""
+
+    @pytest.mark.asyncio()
+    async def test_processes_queued_files(self, tmp_path: Path) -> None:
+        """Queued files are processed through the pipeline and cleared."""
+        from lexibrary.archivist.pipeline import _process_enrichment_queue
+        from lexibrary.lifecycle.queue import queue_for_enrichment
+
+        source = _make_source_file(tmp_path, "src/queued.py", "def queued(): pass")
+        queue_for_enrichment(tmp_path, source)
+
+        config = _make_config()
+        archivist = _mock_archivist(summary="Enriched queued file.")
+        stats = UpdateStats()
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_file",
+            return_value=FileResult(change=ChangeLevel.CONTENT_CHANGED),
+        ):
+            await _process_enrichment_queue(tmp_path, config, archivist, stats)
+
+        assert stats.queue_processed == 1
+        assert stats.queue_failed == 0
+        assert stats.queue_remaining == 0
+
+    @pytest.mark.asyncio()
+    async def test_empty_queue_is_noop(self, tmp_path: Path) -> None:
+        """Empty queue results in no processing."""
+        from lexibrary.archivist.pipeline import _process_enrichment_queue
+
+        config = _make_config()
+        archivist = _mock_archivist()
+        stats = UpdateStats()
+
+        await _process_enrichment_queue(tmp_path, config, archivist, stats)
+
+        assert stats.queue_processed == 0
+        assert stats.queue_failed == 0
+        assert stats.queue_remaining == 0
+
+    @pytest.mark.asyncio()
+    async def test_failed_enrichment_counted(self, tmp_path: Path) -> None:
+        """Failed enrichment is counted separately from successful."""
+        from lexibrary.archivist.pipeline import _process_enrichment_queue
+        from lexibrary.lifecycle.queue import queue_for_enrichment
+
+        source = _make_source_file(tmp_path, "src/fail.py", "def fail(): pass")
+        queue_for_enrichment(tmp_path, source)
+
+        config = _make_config()
+        archivist = _mock_archivist()
+        stats = UpdateStats()
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_file",
+            return_value=FileResult(change=ChangeLevel.CONTENT_CHANGED, failed=True),
+        ):
+            await _process_enrichment_queue(tmp_path, config, archivist, stats)
+
+        assert stats.queue_failed == 1
+        assert stats.queue_processed == 0
+
+    @pytest.mark.asyncio()
+    async def test_missing_source_cleared_from_queue(self, tmp_path: Path) -> None:
+        """Queue entries for deleted source files are cleared without error."""
+        from lexibrary.archivist.pipeline import _process_enrichment_queue
+        from lexibrary.lifecycle.queue import queue_for_enrichment, read_queue
+
+        # Queue a file that does not exist on disk
+        missing = tmp_path / "src" / "gone.py"
+        queue_for_enrichment(tmp_path, missing)
+
+        config = _make_config()
+        archivist = _mock_archivist()
+        stats = UpdateStats()
+
+        await _process_enrichment_queue(tmp_path, config, archivist, stats)
+
+        # Should be cleared from the queue since the source is missing
+        remaining = read_queue(tmp_path)
+        assert len(remaining) == 0
+        assert stats.queue_remaining == 0
+
+    @pytest.mark.asyncio()
+    async def test_exception_in_update_file_counted_as_failed(self, tmp_path: Path) -> None:
+        """Exceptions during enrichment are caught and counted as failures."""
+        from lexibrary.archivist.pipeline import _process_enrichment_queue
+        from lexibrary.lifecycle.queue import queue_for_enrichment
+
+        source = _make_source_file(tmp_path, "src/boom.py", "raise Exception")
+        queue_for_enrichment(tmp_path, source)
+
+        config = _make_config()
+        archivist = _mock_archivist()
+        stats = UpdateStats()
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_file",
+            side_effect=RuntimeError("LLM timeout"),
+        ):
+            await _process_enrichment_queue(tmp_path, config, archivist, stats)
+
+        assert stats.queue_failed == 1
+        assert stats.queue_processed == 0
+        assert stats.error_summary.has_errors()
+
+
+# ---------------------------------------------------------------------------
+# update_project — full pipeline integration with deprecation and queue
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateProjectDeprecationIntegration:
+    """Verify update_project() calls deprecation post-pass and queue processing."""
+
+    @pytest.mark.asyncio()
+    async def test_deprecation_pass_called(self, tmp_path: Path) -> None:
+        """update_project() invokes the deprecation post-pass."""
+        _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.UNCHANGED)
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.update_file",
+                side_effect=fake_update_file,
+            ),
+            patch(
+                "lexibrary.archivist.pipeline._run_deprecation_pass",
+            ) as mock_deprecation,
+            patch(
+                "lexibrary.archivist.pipeline._process_enrichment_queue",
+            ),
+            patch("lexibrary.archivist.pipeline.build_index"),
+        ):
+            stats = await update_project(tmp_path, config, archivist)
+
+        # Deprecation pass should have been called with project_root, config, stats
+        mock_deprecation.assert_called_once()
+        call_args = mock_deprecation.call_args
+        assert call_args[0][0] == tmp_path  # project_root
+        assert call_args[0][1] is config   # config
+        assert call_args[0][2] is stats    # stats
+
+    @pytest.mark.asyncio()
+    async def test_queue_processing_called(self, tmp_path: Path) -> None:
+        """update_project() invokes enrichment queue processing."""
+        _make_source_file(tmp_path, "src/foo.py", "def foo(): pass")
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.UNCHANGED)
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.update_file",
+                side_effect=fake_update_file,
+            ),
+            patch(
+                "lexibrary.archivist.pipeline._run_deprecation_pass",
+            ),
+            patch(
+                "lexibrary.archivist.pipeline._process_enrichment_queue",
+            ) as mock_queue,
+            patch("lexibrary.archivist.pipeline.build_index"),
+        ):
+            stats = await update_project(tmp_path, config, archivist)
+
+        # Queue processing should have been called
+        mock_queue.assert_called_once()
+        call_args = mock_queue.call_args
+        assert call_args[0][0] == tmp_path    # project_root
+        assert call_args[0][1] is config      # config
+        assert call_args[0][2] is archivist   # archivist
+        assert call_args[0][3] is stats       # stats
+
+    @pytest.mark.asyncio()
+    async def test_deprecation_before_linkgraph(self, tmp_path: Path) -> None:
+        """Deprecation pass runs before link graph build."""
+        _make_source_file(tmp_path, "src/foo.py", "x = 1")
+
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        call_order: list[str] = []
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.UNCHANGED)
+
+        def track_deprecation(*args: object, **kwargs: object) -> None:
+            call_order.append("deprecation")
+
+        async def track_queue(*args: object, **kwargs: object) -> None:
+            call_order.append("queue")
+
+        def track_linkgraph(*args: object, **kwargs: object) -> None:
+            call_order.append("linkgraph")
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.update_file",
+                side_effect=fake_update_file,
+            ),
+            patch(
+                "lexibrary.archivist.pipeline._run_deprecation_pass",
+                side_effect=track_deprecation,
+            ),
+            patch(
+                "lexibrary.archivist.pipeline._process_enrichment_queue",
+                side_effect=track_queue,
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.build_index",
+                side_effect=track_linkgraph,
+            ),
+        ):
+            await update_project(tmp_path, config, archivist)
+
+        # Verify ordering: deprecation -> queue -> linkgraph
+        assert call_order == ["deprecation", "queue", "linkgraph"]
+
+    def test_deprecation_pass_handles_internal_errors(self, tmp_path: Path) -> None:
+        """_run_deprecation_pass catches errors internally and records them in stats."""
+        from lexibrary.archivist.pipeline import _run_deprecation_pass
+
+        config = _make_config(scope_root="src")
+        stats = UpdateStats()
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.detect_renames",
+                side_effect=RuntimeError("git error"),
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.detect_orphaned_designs",
+                side_effect=RuntimeError("scan error"),
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.hard_delete_expired",
+                side_effect=RuntimeError("ttl error"),
+            ),
+        ):
+            # Should not raise -- errors are caught internally
+            _run_deprecation_pass(tmp_path, config, stats)
+
+        # Errors were caught and recorded in the error summary
+        assert stats.error_summary.has_errors()

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
+
+from lexibrary.artifacts.slugs import slugify
 
 
 class ConventionFileFrontmatter(BaseModel):
@@ -18,6 +19,8 @@ class ConventionFileFrontmatter(BaseModel):
     status: Literal["draft", "active", "deprecated"] = "draft"
     source: Literal["user", "agent", "config"] = "user"
     priority: int = 0
+    aliases: list[str] = []
+    deprecated_at: str | None = None
 
 
 class ConventionFile(BaseModel):
@@ -41,35 +44,13 @@ class ConventionFile(BaseModel):
 
 # -- Slug / path helpers ----------------------------------------------------
 
-_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
-_MULTI_HYPHEN_RE = re.compile(r"-{2,}")
-
 
 def convention_slug(title: str) -> str:
     """Derive a filesystem-safe slug from a convention title.
 
-    Steps:
-    1. Lowercase the title
-    2. Replace spaces and non-alphanumeric characters with hyphens
-    3. Collapse consecutive hyphens
-    4. Strip leading/trailing hyphens
-    5. Truncate to 60 characters at a word boundary
+    Delegates to :func:`lexibrary.artifacts.slugs.slugify`.
     """
-    slug = title.lower()
-    slug = _NON_ALNUM_RE.sub("-", slug)
-    slug = _MULTI_HYPHEN_RE.sub("-", slug)
-    slug = slug.strip("-")
-
-    if len(slug) <= 60:
-        return slug
-
-    # Truncate at a word boundary (hyphen boundary in slug)
-    truncated = slug[:60]
-    # Find last hyphen within the truncated portion
-    last_hyphen = truncated.rfind("-")
-    if last_hyphen > 0:
-        truncated = truncated[:last_hyphen]
-    return truncated.strip("-")
+    return slugify(title)
 
 
 def convention_file_path(title: str, conventions_dir: Path) -> Path:

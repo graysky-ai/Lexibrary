@@ -1,4 +1,4 @@
-"""Pydantic 2 models for Stack posts — the Q&A knowledge base."""
+"""Pydantic 2 models for Stack posts — the issue knowledge base."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-StackStatus = Literal["open", "resolved", "outdated", "duplicate"]
+StackStatus = Literal["open", "resolved", "outdated", "duplicate", "stale"]
+ResolutionType = Literal["fix", "workaround", "wontfix", "cannot_reproduce", "by_design"]
 
 
 class StackPostRefs(BaseModel):
@@ -31,10 +32,12 @@ class StackPostFrontmatter(BaseModel):
     votes: int = 0
     duplicate_of: str | None = None
     refs: StackPostRefs = Field(default_factory=StackPostRefs)
+    resolution_type: ResolutionType | None = None
+    stale_at: str | None = None
 
 
-class StackAnswer(BaseModel):
-    """A single answer within a Stack post."""
+class StackFinding(BaseModel):
+    """A single finding within a Stack post."""
 
     number: int
     date: date
@@ -46,10 +49,12 @@ class StackAnswer(BaseModel):
 
 
 class StackPost(BaseModel):
-    """Represents a full Stack post with frontmatter, problem, evidence, and answers."""
+    """Represents a full Stack post with frontmatter, body sections, and findings."""
 
     frontmatter: StackPostFrontmatter
     problem: str
+    context: str = ""
     evidence: list[str] = []
-    answers: list[StackAnswer] = []
+    attempts: list[str] = []
+    findings: list[StackFinding] = []
     raw_body: str = ""

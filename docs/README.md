@@ -53,7 +53,7 @@ Documentation for operators and team members who install, configure, and maintai
 | [Validation](user/validation.md) | How `lexictl validate` works -- 13 checks, severity levels, JSON output, exit codes |
 | [CI Integration](user/ci-integration.md) | CI/CD recipes -- git hooks, periodic sweeps, daemon mode, validation as CI gate |
 | [Concepts Wiki](user/concepts-wiki.md) | Project-specific vocabulary and architectural patterns -- creating, linking, and managing concepts |
-| [Stack Q&A](user/stack-qa.md) | Structured problem/solution knowledge base -- posts, answers, voting, searching |
+| [Stack Q&A](user/stack-qa.md) | Structured problem/solution knowledge base -- posts, findings, voting, searching |
 | [Link Graph](user/link-graph.md) | The SQLite index -- what it indexes, what queries it accelerates, how to rebuild |
 | [Ignore Patterns](user/ignore-patterns.md) | The ignore system -- `.lexignore`, `.gitignore` integration, pattern precedence |
 
@@ -90,7 +90,7 @@ Documentation for AI agents working within Lexibrary-managed codebases.
 | [Lookup Workflow](agent/lookup-workflow.md) | Before-edit workflow -- run `lexi lookup`, understand design files, check conventions and dependents |
 | [Update Workflow](agent/update-workflow.md) | After-edit workflow -- update design files, set `updated_by: agent`, when to let `lexictl update` handle it |
 | [Concepts](agent/concepts.md) | Using the concepts wiki -- searching, creating, and linking concepts |
-| [Stack Q&A](agent/stack.md) | Using Stack Q&A -- searching before debugging, posting after solving, voting and answering |
+| [Stack Q&A](agent/stack.md) | Using Stack Q&A -- searching before debugging, posting after solving, voting and adding findings |
 | [Search](agent/search.md) | Unified cross-artifact search -- `lexi search`, filters, when to use search vs lookup |
 | [I Was Here (IWH)](agent/iwh.md) | IWH signals -- preventing lost context, creating and consuming signal files |
 

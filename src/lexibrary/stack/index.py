@@ -41,9 +41,10 @@ class StackIndex:
     # ------------------------------------------------------------------
 
     def search(self, query: str) -> list[StackPost]:
-        """Case-insensitive substring search across titles, problems, answers, and tags.
+        """Case-insensitive substring search across post fields.
 
-        Results are sorted by vote count descending.
+        Searches titles, problems, context, attempts, findings,
+        and tags.  Results are sorted by vote count descending.
         """
         needle = query.strip().lower()
         if not needle:
@@ -82,6 +83,12 @@ class StackIndex:
             p for p in self._posts if any(c.lower() == needle for c in p.frontmatter.refs.concepts)
         ]
 
+    def by_resolution_type(self, resolution_type: str) -> list[StackPost]:
+        """Filter posts by resolution type value."""
+        return [
+            p for p in self._posts if p.frontmatter.resolution_type == resolution_type
+        ]
+
     # ------------------------------------------------------------------
     # Dunder helpers
     # ------------------------------------------------------------------
@@ -100,7 +107,11 @@ def _matches_post(post: StackPost, needle: str) -> bool:
         return True
     if needle in post.problem.lower():
         return True
+    if post.context and needle in post.context.lower():
+        return True
+    if any(needle in attempt.lower() for attempt in post.attempts):
+        return True
     for tag in fm.tags:
         if needle in tag.lower():
             return True
-    return any(needle in answer.body.lower() for answer in post.answers)
+    return any(needle in finding.body.lower() for finding in post.findings)

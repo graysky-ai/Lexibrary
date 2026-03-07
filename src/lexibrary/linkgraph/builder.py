@@ -30,6 +30,7 @@ from lexibrary.artifacts.concept import ConceptFile  # noqa: F401
 from lexibrary.artifacts.convention import ConventionFile  # noqa: F401
 from lexibrary.artifacts.design_file import DesignFile  # noqa: F401
 from lexibrary.artifacts.design_file_parser import parse_design_file
+from lexibrary.conventions.index import ConventionIndex
 from lexibrary.conventions.parser import parse_convention_file
 from lexibrary.errors import ErrorSummary
 from lexibrary.linkgraph.schema import (
@@ -135,6 +136,7 @@ class IndexBuilder:
         set_pragmas(conn)
         self.conn = conn
         self.project_root = project_root
+        self._convention_index: ConventionIndex | None = None
 
     # -- housekeeping -------------------------------------------------------
 
@@ -447,13 +449,11 @@ class IndexBuilder:
         for alias in concept_file.frontmatter.aliases:
             self._insert_alias(concept_id, alias, concept_relpath)
 
-        # 3. Wikilinks from concept body -> other concepts
+        # 3. Wikilinks from concept body -> other concepts/conventions
         wikilink_names = _extract_wikilinks(concept_file.body)
         for wikilink_name in wikilink_names:
-            target_concept_path = f".lexibrary/concepts/{wikilink_name}.md"
-            target_id = self._get_or_create_artifact(
-                target_concept_path, "concept", title=wikilink_name
-            )
+            target_path, target_kind = self._resolve_wikilink_target(wikilink_name)
+            target_id = self._get_or_create_artifact(target_path, target_kind, title=wikilink_name)
             self._insert_link(concept_id, target_id, "wikilink")
 
         # 4. concept_file_ref links from concept to referenced source files
@@ -481,6 +481,67 @@ class IndexBuilder:
             "artifact_kind, action, duration_ms) VALUES (?, 'full', ?, 'concept', 'created', ?)",
             (build_started, concept_relpath, duration_ms),
         )
+
+    # -- convention-aware wikilink resolution (task group 6) -----------------
+
+    def _resolve_wikilink_target(self, wikilink_name: str) -> tuple[str, str]:
+        """Resolve a wikilink name to an artifact path and kind.
+
+        Checks convention titles and aliases (via ``_convention_index``)
+        before falling back to concept stub creation.  This prevents
+        spurious concept stubs when a wikilink actually targets a
+        convention.
+
+        Parameters
+        ----------
+        wikilink_name:
+            The raw wikilink text (e.g. ``"Authentication"`` or ``"type-hints"``).
+
+        Returns
+        -------
+        tuple[str, str]
+            ``(artifact_path, artifact_kind)`` -- either a convention
+            path under ``.lexibrary/conventions/`` or a concept path
+            under ``.lexibrary/concepts/``.
+        """
+        if self._convention_index is not None:
+            needle = wikilink_name.strip().lower()
+            # Check convention title (exact, case-insensitive)
+            for conv in self._convention_index.conventions:
+                if conv.frontmatter.title.strip().lower() == needle:
+                    # Use the convention's file_path if available, otherwise
+                    # derive from slug
+                    if conv.file_path is not None:
+                        try:
+                            conv_relpath = str(conv.file_path.relative_to(self.project_root))
+                        except ValueError:
+                            conv_relpath = str(conv.file_path)
+                    else:
+                        from lexibrary.artifacts.convention import convention_slug
+
+                        slug = convention_slug(conv.frontmatter.title)
+                        conv_relpath = f".lexibrary/conventions/{slug}.md"
+                    return conv_relpath, "convention"
+
+            # Check convention alias (exact, case-insensitive)
+            for conv in self._convention_index.conventions:
+                for alias in conv.frontmatter.aliases:
+                    if alias.strip().lower() == needle:
+                        if conv.file_path is not None:
+                            try:
+                                conv_relpath = str(conv.file_path.relative_to(self.project_root))
+                            except ValueError:
+                                conv_relpath = str(conv.file_path)
+                        else:
+                            from lexibrary.artifacts.convention import convention_slug
+
+                            slug = convention_slug(conv.frontmatter.title)
+                            conv_relpath = f".lexibrary/conventions/{slug}.md"
+                        return conv_relpath, "convention"
+
+        # Fallback: treat as concept
+        concept_path = f".lexibrary/concepts/{wikilink_name}.md"
+        return concept_path, "concept"
 
     # -- design file processing (task group 3) ------------------------------
 
@@ -586,9 +647,10 @@ class IndexBuilder:
     ) -> None:
         """Insert ``wikilink`` links for each wikilink in the design file.
 
-        For each wikilink name, resolves to a concept path under
-        ``.lexibrary/concepts/<Name>.md``, gets or creates the concept
-        artifact, and inserts a ``wikilink`` link from the design artifact.
+        For each wikilink name, resolves via ``_resolve_wikilink_target()``
+        which checks convention titles/aliases before falling back to
+        concept stub creation, then inserts a ``wikilink`` link from the
+        design artifact to the resolved target.
 
         Parameters
         ----------
@@ -598,9 +660,9 @@ class IndexBuilder:
             The ``artifacts.id`` of the design artifact (link source).
         """
         for wikilink_name in design_file.wikilinks:
-            concept_path = f".lexibrary/concepts/{wikilink_name}.md"
-            concept_id = self._get_or_create_artifact(concept_path, "concept", title=wikilink_name)
-            self._insert_link(design_artifact_id, concept_id, "wikilink")
+            target_path, target_kind = self._resolve_wikilink_target(wikilink_name)
+            target_id = self._get_or_create_artifact(target_path, target_kind, title=wikilink_name)
+            self._insert_link(design_artifact_id, target_id, "wikilink")
 
     def _process_design_stack_refs(
         self,
@@ -762,7 +824,7 @@ class IndexBuilder:
         2. ``stack_file_ref`` links from the Stack post to referenced source files
         3. ``stack_concept_ref`` links from the Stack post to referenced concepts
         4. Tags associated with the Stack artifact
-        5. FTS row for the Stack artifact (body = problem + all answer bodies)
+        5. FTS row for the Stack artifact (body = problem + all finding bodies)
 
         Parameters
         ----------
@@ -822,13 +884,17 @@ class IndexBuilder:
         for tag in stack_post.frontmatter.tags:
             self._insert_tag(stack_id, tag)
 
-        # 5. FTS row -- body = problem + "\n" + " ".join(answer.body for answer in answers)
+        # 5. FTS row -- body = problem + context + attempts + findings
         fts_body_parts: list[str] = []
         if stack_post.problem:
             fts_body_parts.append(stack_post.problem)
-        answer_bodies = " ".join(answer.body for answer in stack_post.answers if answer.body)
-        if answer_bodies:
-            fts_body_parts.append(answer_bodies)
+        if stack_post.context:
+            fts_body_parts.append(stack_post.context)
+        if stack_post.attempts:
+            fts_body_parts.append(" ".join(stack_post.attempts))
+        finding_bodies = " ".join(finding.body for finding in stack_post.findings if finding.body)
+        if finding_bodies:
+            fts_body_parts.append(finding_bodies)
         fts_body = "\n".join(fts_body_parts)
         self._insert_fts(stack_id, stack_post.frontmatter.title, fts_body)
 
@@ -912,14 +978,17 @@ class IndexBuilder:
         ).fetchone()
         ordinal = row[0] + 1
 
-        # 1. Convention artifact
-        conv_id = self._insert_artifact(
-            path=conv_relpath,
-            kind="convention",
-            title=conv_file.frontmatter.title,
-            status=conv_file.frontmatter.status,
-            last_hash=None,
-            created_at=None,
+        # 1. Convention artifact -- use _get_or_create_artifact so that stub
+        #    artifacts (created by design file wikilinks that resolved to
+        #    conventions) are reused rather than duplicated.
+        conv_id = self._get_or_create_artifact(
+            conv_relpath, "convention", title=conv_file.frontmatter.title
+        )
+        # Update the artifact with full details (title, status) in case
+        # it was originally inserted as a stub.
+        self.conn.execute(
+            "UPDATE artifacts SET title = ?, status = ? WHERE id = ?",
+            (conv_file.frontmatter.title, conv_file.frontmatter.status, conv_id),
         )
 
         # 2. Conventions table row with extended metadata
@@ -957,6 +1026,10 @@ class IndexBuilder:
         # 5. Tags
         for tag in conv_file.frontmatter.tags:
             self._insert_tag(conv_id, tag)
+
+        # 6. Aliases
+        for alias in conv_file.frontmatter.aliases:
+            self._insert_alias(conv_id, alias, conv_relpath)
 
         # Log success
         duration_ms = (time.monotonic_ns() - start_ns) // 1_000_000
@@ -1008,6 +1081,16 @@ class IndexBuilder:
 
         # Step 2: Clean stale build log entries (outside main transaction)
         self._clean_stale_build_log()
+
+        # Step 2b: Load ConventionIndex for convention-aware wikilink resolution.
+        # Loaded once per build so that _resolve_wikilink_target() can check
+        # convention titles/aliases before falling back to concept stub creation.
+        conventions_dir = self.project_root / LEXIBRARY_DIR / "conventions"
+        if conventions_dir.is_dir():
+            self._convention_index = ConventionIndex(conventions_dir)
+            self._convention_index.load()
+        else:
+            self._convention_index = None
 
         # Step 3-5: Main build wrapped in a transaction.
         # After ensure_schema commits, the first DML statement
@@ -1368,10 +1451,8 @@ class IndexBuilder:
         # Re-insert wikilinks from concept body
         wikilink_names = _extract_wikilinks(concept_file.body)
         for wikilink_name in wikilink_names:
-            target_concept_path = f".lexibrary/concepts/{wikilink_name}.md"
-            target_id = self._get_or_create_artifact(
-                target_concept_path, "concept", title=wikilink_name
-            )
+            target_path, target_kind = self._resolve_wikilink_target(wikilink_name)
+            target_id = self._get_or_create_artifact(target_path, target_kind, title=wikilink_name)
             self._insert_link(concept_id, target_id, "wikilink")
 
         # Re-insert concept_file_ref links
@@ -1469,9 +1550,13 @@ class IndexBuilder:
         fts_body_parts: list[str] = []
         if stack_post.problem:
             fts_body_parts.append(stack_post.problem)
-        answer_bodies = " ".join(answer.body for answer in stack_post.answers if answer.body)
-        if answer_bodies:
-            fts_body_parts.append(answer_bodies)
+        if stack_post.context:
+            fts_body_parts.append(stack_post.context)
+        if stack_post.attempts:
+            fts_body_parts.append(" ".join(stack_post.attempts))
+        finding_bodies = " ".join(finding.body for finding in stack_post.findings if finding.body)
+        if finding_bodies:
+            fts_body_parts.append(finding_bodies)
         fts_body = "\n".join(fts_body_parts)
         self._insert_fts(stack_id, stack_post.frontmatter.title, fts_body)
 
@@ -1692,6 +1777,10 @@ class IndexBuilder:
         for tag in conv_file.frontmatter.tags:
             self._insert_tag(conv_id, tag)
 
+        # Re-insert aliases
+        for alias in conv_file.frontmatter.aliases:
+            self._insert_alias(conv_id, alias, conv_relpath)
+
         duration_ms = (time.monotonic_ns() - start_ns) // 1_000_000
         self.conn.execute(
             "INSERT INTO build_log (build_started, build_type, artifact_path, "
@@ -1737,6 +1826,14 @@ class IndexBuilder:
 
         # Clean stale build log entries
         self._clean_stale_build_log()
+
+        # Load ConventionIndex for convention-aware wikilink resolution
+        conventions_dir = self.project_root / LEXIBRARY_DIR / "conventions"
+        if conventions_dir.is_dir():
+            self._convention_index = ConventionIndex(conventions_dir)
+            self._convention_index.load()
+        else:
+            self._convention_index = None
 
         for file_path in changed_paths:
             # Normalise to absolute path for file existence checks

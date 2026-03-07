@@ -179,11 +179,21 @@ def update(
             help="Preview which files would change without making any modifications.",
         ),
     ] = False,
-    start_here: Annotated[
+    topology: Annotated[
         bool,
         typer.Option(
-            "--start-here",
+            "--topology",
             help="Regenerate TOPOLOGY.md only, without running the full update.",
+        ),
+    ] = False,
+    skeleton: Annotated[
+        bool,
+        typer.Option(
+            "--skeleton",
+            help=(
+                "Generate a skeleton design file without LLM enrichment. "
+                "Requires a single file path argument. Used by PostToolUse hooks."
+            ),
         ),
     ] = False,
 ) -> None:
@@ -204,7 +214,21 @@ def update(
     from lexibrary.config.loader import load_config  # noqa: PLC0415
     from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
 
-    # Mutual exclusivity checks
+    # Mutual exclusivity checks — skeleton first (it subsumes the path argument)
+    if skeleton and (changed_only is not None or topology or dry_run):
+        console.print(
+            "[red]Error:[/red] [cyan]--skeleton[/cyan] cannot be combined with"
+            " [cyan]--changed-only[/cyan], [cyan]--topology[/cyan],"
+            " or [cyan]--dry-run[/cyan]."
+        )
+        raise typer.Exit(1)
+
+    if skeleton and path is None:
+        console.print(
+            "[red]Error:[/red] [cyan]--skeleton[/cyan] requires a file path argument."
+        )
+        raise typer.Exit(1)
+
     if path is not None and changed_only is not None:
         console.print(
             "[red]Error:[/red] [cyan]path[/cyan] and [cyan]--changed-only[/cyan]"
@@ -212,9 +236,9 @@ def update(
         )
         raise typer.Exit(1)
 
-    if start_here and (changed_only is not None or path is not None):
+    if topology and (changed_only is not None or path is not None):
         console.print(
-            "[red]Error:[/red] [cyan]--start-here[/cyan] cannot be combined with"
+            "[red]Error:[/red] [cyan]--topology[/cyan] cannot be combined with"
             " [cyan]path[/cyan] or [cyan]--changed-only[/cyan]."
         )
         raise typer.Exit(1)
@@ -222,8 +246,37 @@ def update(
     project_root = require_project_root()
     config = load_config(project_root)
 
-    # --start-here: regenerate TOPOLOGY.md only
-    if start_here:
+    # --skeleton: quick skeleton design file without LLM enrichment
+    if skeleton:
+        from lexibrary.lifecycle.bootstrap import _generate_quick_design  # noqa: PLC0415
+        from lexibrary.lifecycle.queue import queue_for_enrichment  # noqa: PLC0415
+
+        target = Path(path).resolve()  # type: ignore[arg-type]
+
+        if not target.exists():
+            console.print(f"[red]File not found:[/red] {path}")
+            raise typer.Exit(1)
+
+        if not target.is_file():
+            console.print(f"[red]Not a file:[/red] {path}")
+            raise typer.Exit(1)
+
+        try:
+            result = _generate_quick_design(target, project_root)
+        except Exception as exc:
+            console.print(f"[red]Failed to generate skeleton:[/red] {exc}")
+            raise typer.Exit(1) from None
+
+        # Queue for later LLM enrichment
+        queue_for_enrichment(project_root, target)
+
+        console.print(
+            f"[green]Skeleton generated.[/green] Change level: {result.change.value}"
+        )
+        return
+
+    # --topology: regenerate TOPOLOGY.md only
+    if topology:
         from lexibrary.archivist.topology import generate_topology  # noqa: PLC0415
 
         try:
@@ -369,6 +422,57 @@ def update(
     if stats.token_budget_warnings:
         console.print(f"  [yellow]Token budget warnings: {stats.token_budget_warnings}[/yellow]")
 
+    # Deprecation lifecycle stats
+    has_lifecycle = (
+        stats.designs_deprecated
+        + stats.designs_unlinked
+        + stats.designs_deleted_ttl
+        + stats.concepts_deleted_ttl
+        + stats.concepts_skipped_referenced
+        + stats.conventions_deleted_ttl
+        + stats.renames_detected
+        + stats.renames_migrated
+    ) > 0
+    if has_lifecycle:
+        console.print()
+        console.print("[bold]Lifecycle:[/bold]")
+        if stats.renames_detected:
+            console.print(f"  Renames detected:    {stats.renames_detected}")
+        if stats.renames_migrated:
+            console.print(f"  Renames migrated:    {stats.renames_migrated}")
+        if stats.designs_deprecated:
+            console.print(f"  Designs deprecated:  {stats.designs_deprecated}")
+        if stats.designs_unlinked:
+            console.print(f"  Designs unlinked:    {stats.designs_unlinked}")
+        if stats.designs_deleted_ttl:
+            console.print(
+                f"  [yellow]Designs TTL-deleted: {stats.designs_deleted_ttl}[/yellow]"
+            )
+        if stats.concepts_deleted_ttl:
+            console.print(
+                f"  [yellow]Concepts TTL-deleted: {stats.concepts_deleted_ttl}[/yellow]"
+            )
+        if stats.concepts_skipped_referenced:
+            console.print(
+                f"  Concepts skipped (referenced): {stats.concepts_skipped_referenced}"
+            )
+        if stats.conventions_deleted_ttl:
+            console.print(
+                f"  [yellow]Conventions TTL-deleted: {stats.conventions_deleted_ttl}[/yellow]"
+            )
+
+    # Enrichment queue stats
+    has_queue = (stats.queue_processed + stats.queue_failed + stats.queue_remaining) > 0
+    if has_queue:
+        console.print()
+        console.print("[bold]Enrichment queue:[/bold]")
+        if stats.queue_processed:
+            console.print(f"  Enriched:            {stats.queue_processed}")
+        if stats.queue_failed:
+            console.print(f"  [red]Failed:             {stats.queue_failed}[/red]")
+        if stats.queue_remaining:
+            console.print(f"  Remaining:           {stats.queue_remaining}")
+
     if stats.error_summary.has_errors():
         from lexibrary.errors import format_error_summary  # noqa: PLC0415
 
@@ -413,27 +517,40 @@ def bootstrap(
         bool,
         typer.Option(
             "--full",
-            help="Full bootstrap including design file generation (not yet implemented).",
+            help="Full bootstrap with LLM-enriched design file generation.",
         ),
     ] = False,
     quick: Annotated[
         bool,
         typer.Option(
             "--quick",
-            help="Quick bootstrap — aindex generation only (default behaviour).",
+            help="Quick bootstrap — aindex + skeleton design files (default behaviour).",
         ),
     ] = False,
 ) -> None:
-    """Batch-initialize the library: generate .aindex files for the project.
+    """Batch-initialize the library: generate .aindex and design files.
 
     Resolves the scope root from config (or --scope override), then
-    recursively generates .aindex files bottom-up. Safe to re-run at any
-    time (idempotent).
+    recursively generates .aindex files bottom-up and skeleton design files
+    for all source files. Safe to re-run at any time (idempotent).
+
+    Quick mode (default) uses tree-sitter extraction and heuristic
+    descriptions. Full mode (--full) additionally enriches design files
+    via LLM.
     """
-    from rich.progress import Progress, SpinnerColumn, TextColumn  # noqa: PLC0415
+    import asyncio  # noqa: PLC0415
+
+    from rich.progress import (  # noqa: PLC0415
+        BarColumn,
+        MofNCompleteColumn,
+        Progress,
+        SpinnerColumn,
+        TextColumn,
+    )
 
     from lexibrary.config.loader import load_config  # noqa: PLC0415
     from lexibrary.indexer.orchestrator import index_recursive  # noqa: PLC0415
+    from lexibrary.lifecycle.bootstrap import bootstrap_full, bootstrap_quick  # noqa: PLC0415
 
     # Mutual exclusivity
     if full and quick:
@@ -459,18 +576,19 @@ def bootstrap(
         console.print(f"[red]Scope root is not a directory:[/red] {scope_root_str}")
         raise typer.Exit(1)
 
-    # Warn about --full (not yet implemented)
-    if full:
-        console.print(
-            "[yellow]Note:[/yellow] [cyan]--full[/cyan] mode (design file generation)"
-            " is not yet implemented. Running aindex generation only."
-        )
+    # Determine mode label
+    mode_label = "full" if full else "quick"
 
     # Run recursive indexing with progress
     rel_scope = scope_dir.relative_to(project_root) if scope_dir != project_root else Path(".")
     console.print(
-        f"Bootstrapping [cyan]{rel_scope}[/cyan] in [cyan]{project_root.name}[/cyan]..."
+        f"Bootstrapping [cyan]{rel_scope}[/cyan] in [cyan]{project_root.name}[/cyan]"
+        f" ([cyan]{mode_label}[/cyan] mode)..."
     )
+
+    # Phase 1: .aindex generation
+    console.print()
+    console.print("[bold]Phase 1:[/bold] Generating .aindex files...")
 
     with Progress(
         SpinnerColumn(),
@@ -479,27 +597,84 @@ def bootstrap(
     ) as progress:
         task = progress.add_task("Indexing...", total=None)
 
-        def _progress_callback(current: int, total: int, name: str) -> None:
+        def _index_progress(current: int, total: int, name: str) -> None:
             progress.update(task, description=f"Indexing [{current}/{total}] {name}")
 
-        stats = index_recursive(
-            scope_dir, project_root, config, progress_callback=_progress_callback
+        index_stats = index_recursive(
+            scope_dir, project_root, config, progress_callback=_index_progress
         )
+
+    console.print(
+        f"  Directories indexed: {index_stats.directories_indexed}, "
+        f"Files found: {index_stats.files_found}"
+    )
+    if index_stats.errors:
+        console.print(f"  [red]Errors: {index_stats.errors}[/red]")
+
+    if index_stats.error_summary.has_errors():
+        from lexibrary.errors import format_error_summary  # noqa: PLC0415
+
+        format_error_summary(index_stats.error_summary, console)
+
+    # Phase 2: Design file generation
+    console.print()
+    console.print(
+        f"[bold]Phase 2:[/bold] Generating design files ([cyan]{mode_label}[/cyan] mode)..."
+    )
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Generating design files...", total=None)
+        file_count = 0
+
+        def _design_progress(file_path: Path, status: str) -> None:
+            nonlocal file_count
+            file_count += 1
+            progress.update(
+                task,
+                advance=1,
+                description=f"[{status}] {file_path.name}",
+            )
+
+        if full:
+            design_stats = asyncio.run(
+                bootstrap_full(
+                    project_root,
+                    config,
+                    scope_override=scope,
+                    progress_callback=_design_progress,
+                )
+            )
+        else:
+            design_stats = bootstrap_quick(
+                project_root,
+                config,
+                scope_override=scope,
+                progress_callback=_design_progress,
+            )
 
     # Report summary
     console.print()
     console.print("[bold]Bootstrap summary:[/bold]")
-    console.print(f"  Directories indexed: {stats.directories_indexed}")
-    console.print(f"  Files found:         {stats.files_found}")
-    if stats.errors:
-        console.print(f"  [red]Errors:              {stats.errors}[/red]")
+    console.print(f"  Files scanned:  {design_stats.files_scanned}")
+    console.print(f"  Files created:  {design_stats.files_created}")
+    console.print(f"  Files updated:  {design_stats.files_updated}")
+    console.print(f"  Files skipped:  {design_stats.files_skipped}")
+    if design_stats.files_failed:
+        console.print(f"  [red]Files failed:  {design_stats.files_failed}[/red]")
 
-    if stats.error_summary.has_errors():
-        from lexibrary.errors import format_error_summary  # noqa: PLC0415
+    if design_stats.errors:
+        console.print()
+        console.print("[bold red]Errors:[/bold red]")
+        for err in design_stats.errors:
+            console.print(f"  [red]{err}[/red]")
 
-        format_error_summary(stats.error_summary, console)
-
-    if stats.errors:
+    has_errors = index_stats.errors > 0 or design_stats.files_failed > 0
+    if has_errors:
         raise typer.Exit(1)
 
     console.print()

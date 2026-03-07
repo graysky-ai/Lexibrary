@@ -101,7 +101,7 @@ class ConventionIndex:
     # -- Search and filter ----------------------------------------------------
 
     def search(self, query: str) -> list[ConventionFile]:
-        """Search conventions by case-insensitive substring against title, body, and tags.
+        """Search conventions by case-insensitive substring against title, aliases, body, and tags.
 
         Returns matching conventions ordered by title.
         """
@@ -209,6 +209,9 @@ def _matches_convention(conv: ConventionFile, needle: str) -> bool:
     """Check if *needle* is a case-insensitive substring of any searchable field."""
     if needle in conv.frontmatter.title.lower():
         return True
+    for alias in conv.frontmatter.aliases:
+        if needle in alias.lower():
+            return True
     for tag in conv.frontmatter.tags:
         if needle in tag.lower():
             return True

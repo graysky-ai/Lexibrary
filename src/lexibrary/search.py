@@ -1,4 +1,4 @@
-"""Unified cross-artifact search for concepts, design files, and Stack posts."""
+"""Unified cross-artifact search for concepts, conventions, design files, and Stack posts."""
 
 from __future__ import annotations
 
@@ -18,12 +18,13 @@ class SearchResults:
     """Container for grouped search results across artifact types."""
 
     concepts: list[_ConceptResult] = field(default_factory=list)
+    conventions: list[_ConventionResult] = field(default_factory=list)
     design_files: list[_DesignFileResult] = field(default_factory=list)
     stack_posts: list[_StackResult] = field(default_factory=list)
 
     def has_results(self) -> bool:
         """Return True if any group has results."""
-        return bool(self.concepts or self.design_files or self.stack_posts)
+        return bool(self.concepts or self.conventions or self.design_files or self.stack_posts)
 
     def render(self, console: Console) -> None:
         """Render grouped results with Rich formatting."""
@@ -45,6 +46,29 @@ class SearchResults:
                     f"[{status_style}]{c.status}[/{status_style}]",
                     ", ".join(c.tags),
                     c.summary[:50] if c.summary else "",
+                )
+            console.print(table)
+
+        if self.conventions:
+            console.print()
+            table = Table(title="Conventions")
+            table.add_column("Title", style="cyan")
+            table.add_column("Scope")
+            table.add_column("Status")
+            table.add_column("Rule", max_width=50)
+            table.add_column("Tags")
+            for cv in self.conventions:
+                status_style = {
+                    "active": "green",
+                    "draft": "yellow",
+                    "deprecated": "red",
+                }.get(cv.status, "dim")
+                table.add_row(
+                    cv.title,
+                    cv.scope,
+                    f"[{status_style}]{cv.status}[/{status_style}]",
+                    cv.rule[:50] if cv.rule else "",
+                    ", ".join(cv.tags),
                 )
             console.print(table)
 
@@ -100,6 +124,15 @@ class _DesignFileResult:
     source_path: str
     description: str
     tags: list[str]
+
+
+@dataclass
+class _ConventionResult:
+    title: str
+    scope: str
+    status: str
+    tags: list[str]
+    rule: str
 
 
 @dataclass
@@ -160,6 +193,9 @@ def unified_search(
     # --- Stack Posts ---
     results.stack_posts = _search_stack_posts(project_root, query=query, tag=tag, scope=scope)
 
+    # --- Conventions ---
+    results.conventions = _search_conventions(project_root, query=query, tag=tag, scope=scope)
+
     return results
 
 
@@ -169,6 +205,7 @@ def unified_search(
 
 # Mapping from LinkGraph artifact ``kind`` to SearchResults group name.
 _KIND_CONCEPT = "concept"
+_KIND_CONVENTION = "convention"
 _KIND_DESIGN = "design"
 _KIND_STACK = "stack"
 
@@ -211,6 +248,16 @@ def _tag_search_from_index(
                     status=hit.status or "active",
                     tags=[tag],
                     summary="",
+                )
+            )
+        elif hit.kind == _KIND_CONVENTION:
+            results.conventions.append(
+                _ConventionResult(
+                    title=hit.title or hit.path,
+                    scope="",
+                    status=hit.status or "active",
+                    tags=[tag],
+                    rule="",
                 )
             )
         elif hit.kind == _KIND_DESIGN:
@@ -278,6 +325,16 @@ def _fts_search(
                     status=hit.status or "active",
                     tags=[],
                     summary="",
+                )
+            )
+        elif hit.kind == _KIND_CONVENTION:
+            results.conventions.append(
+                _ConventionResult(
+                    title=hit.title or hit.path,
+                    scope="",
+                    status=hit.status or "active",
+                    tags=[],
+                    rule="",
                 )
             )
         elif hit.kind == _KIND_DESIGN:
@@ -433,4 +490,61 @@ def _search_stack_posts(
             tags=list(p.frontmatter.tags),
         )
         for p in matches
+    ]
+
+
+def _search_conventions(
+    project_root: Path,
+    *,
+    query: str | None,
+    tag: str | None,
+    scope: str | None,
+) -> list[_ConventionResult]:
+    """Search conventions via ConventionIndex (file-scanning fallback).
+
+    When *tag* is provided, uses :meth:`ConventionIndex.by_tag`.
+    When *query* is provided, uses :meth:`ConventionIndex.search`.
+    When *scope* is provided, results are filtered to conventions whose
+    scope matches (convention scope is a prefix of the query scope, or
+    convention scope is ``"project"``).
+    """
+    from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
+
+    conventions_dir = project_root / ".lexibrary" / "conventions"
+    if not conventions_dir.is_dir():
+        return []
+
+    index = ConventionIndex(conventions_dir)
+    index.load()
+
+    if len(index) == 0:
+        return []
+
+    if tag is not None:
+        matches = index.by_tag(tag)
+    elif query is not None:
+        matches = index.search(query)
+    else:
+        return []
+
+    # Apply scope filter: keep conventions whose scope is "project" or
+    # whose scope is a prefix of the query scope.
+    if scope is not None:
+        norm_scope = scope.strip("/")
+        matches = [
+            c
+            for c in matches
+            if c.frontmatter.scope == "project"
+            or norm_scope.startswith(c.frontmatter.scope.strip("/"))
+        ]
+
+    return [
+        _ConventionResult(
+            title=c.frontmatter.title,
+            scope=c.frontmatter.scope,
+            status=c.frontmatter.status,
+            tags=list(c.frontmatter.tags),
+            rule=c.rule,
+        )
+        for c in matches
     ]

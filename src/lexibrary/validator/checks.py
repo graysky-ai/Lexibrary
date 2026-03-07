@@ -5,9 +5,15 @@ Each check function follows the signature:
 
 Checks are grouped by severity:
 - Error-severity: wikilink_resolution, file_existence, concept_frontmatter
-- Warning-severity: hash_freshness, token_budgets, orphan_concepts, deprecated_concept_usage
-- Info-severity: forward_dependencies, stack_staleness, aindex_coverage,
-    bidirectional_deps, dangling_links, orphan_artifacts, orphaned_iwh
+- Warning-severity: hash_freshness, token_budgets, orphan_concepts,
+    deprecated_concept_usage, orphaned_designs, convention_orphaned_scope
+- Info-severity: forward_dependencies, stack_staleness,
+    resolved_post_staleness, aindex_coverage,
+    bidirectional_deps, dangling_links, orphan_artifacts, orphaned_iwh,
+    comment_accumulation, deprecated_ttl, stale_concept,
+    supersession_candidate, convention_stale, convention_gap,
+    convention_consistent_violation, lookup_token_budget_exceeded,
+    orphaned_iwh_signals
 """
 
 from __future__ import annotations
@@ -16,15 +22,23 @@ import contextlib
 import logging
 import re
 import sqlite3
+from datetime import UTC
 from pathlib import Path
 
 import yaml
 
 from lexibrary.artifacts.design_file_parser import (
     parse_design_file,
+    parse_design_file_frontmatter,
     parse_design_file_metadata,
 )
 from lexibrary.config.loader import load_config
+from lexibrary.conventions.index import ConventionIndex
+from lexibrary.conventions.parser import parse_convention_file
+from lexibrary.lifecycle.comments import comment_count
+from lexibrary.lifecycle.convention_comments import convention_comment_count
+from lexibrary.lifecycle.deprecation import _count_commits_since, check_ttl_expiry
+from lexibrary.lifecycle.design_comments import design_comment_path
 from lexibrary.linkgraph.schema import SCHEMA_VERSION, check_schema_version, set_pragmas
 from lexibrary.stack.parser import parse_stack_post
 from lexibrary.tokenizer.approximate import ApproximateCounter
@@ -32,6 +46,7 @@ from lexibrary.utils.hashing import hash_file
 from lexibrary.utils.paths import DESIGNS_DIR, aindex_path
 from lexibrary.validator.report import ValidationIssue
 from lexibrary.wiki.index import ConceptIndex
+from lexibrary.wiki.parser import parse_concept_file
 from lexibrary.wiki.resolver import UnresolvedLink, WikilinkResolver
 
 logger = logging.getLogger(__name__)
@@ -74,7 +89,10 @@ def check_wikilink_resolution(
     concepts_dir = lexibrary_dir / "concepts"
     index = ConceptIndex.load(concepts_dir)
     stack_dir = lexibrary_dir / "stack"
-    resolver = WikilinkResolver(index, stack_dir=stack_dir)
+    convention_dir = lexibrary_dir / "conventions"
+    resolver = WikilinkResolver(
+        index, stack_dir=stack_dir, convention_dir=convention_dir
+    )
 
     # Collect wikilinks from design files
     for design_path in _iter_design_files(lexibrary_dir):
@@ -736,6 +754,142 @@ def check_stack_staleness(
     return issues
 
 
+# Resolution types that use the shorter TTL
+_SHORT_TTL_RESOLUTION_TYPES = frozenset({"wontfix", "by_design", "cannot_reproduce"})
+
+
+def check_resolved_post_staleness(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Check resolved Stack posts for staleness signals.
+
+    Examines all Stack posts with ``status="resolved"`` and produces
+    info-severity issues when staleness signals are detected:
+
+    - **Age threshold**: Post age exceeds ``stack.staleness_ttl_commits``
+      (or ``staleness_ttl_short_commits`` for ``wontfix``/``by_design``/
+      ``cannot_reproduce`` resolution types).
+    - **Referenced files deleted**: Files listed in ``refs.files`` no
+      longer exist in the source tree.
+
+    Only resolved posts are checked.  Open, stale, outdated, and duplicate
+    posts are skipped.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for potentially stale
+        resolved posts.
+    """
+    issues: list[ValidationIssue] = []
+
+    stack_dir = lexibrary_dir / "stack"
+    if not stack_dir.is_dir():
+        return issues
+
+    # Load config for TTL values
+    try:
+        config = load_config(project_root)
+    except Exception:
+        config = None
+
+    staleness_ttl = 200  # default
+    staleness_ttl_short = 100  # default
+    if config is not None:
+        staleness_ttl = config.stack.staleness_ttl_commits
+        staleness_ttl_short = config.stack.staleness_ttl_short_commits
+
+    # Check whether git is available for commit-based TTL checks
+    git_available = _git_is_available(project_root)
+
+    for post_path in sorted(stack_dir.glob("*.md")):
+        post = parse_stack_post(post_path)
+        if post is None:
+            continue
+
+        # Only check resolved posts
+        if post.frontmatter.status != "resolved":
+            continue
+
+        post_rel = str(post_path.relative_to(project_root))
+
+        # --- Age threshold check (commit-based) ---
+        if git_available:
+            created_iso = post.frontmatter.created.isoformat()
+            commits_since = _count_commits_since(project_root, created_iso)
+
+            # Pick the appropriate TTL based on resolution type
+            if post.frontmatter.resolution_type in _SHORT_TTL_RESOLUTION_TYPES:
+                ttl = staleness_ttl_short
+            else:
+                ttl = staleness_ttl
+
+            if commits_since > ttl:
+                issues.append(
+                    ValidationIssue(
+                        severity="info",
+                        check="resolved_post_staleness",
+                        message=(
+                            f"Resolved post '{post.frontmatter.title}' may be stale: "
+                            f"{commits_since} commits since creation (TTL: {ttl})"
+                        ),
+                        artifact=post_rel,
+                        suggestion=(
+                            "Review the post and either mark it stale with "
+                            "`lexi stack stale <slug>` or confirm it is still relevant"
+                        ),
+                    )
+                )
+
+        # --- Referenced files deleted check ---
+        refs_files = post.frontmatter.refs.files
+        if refs_files:
+            deleted_refs: list[str] = []
+            for ref_file in refs_files:
+                source_path = project_root / ref_file
+                if not source_path.exists():
+                    deleted_refs.append(ref_file)
+
+            if deleted_refs:
+                issues.append(
+                    ValidationIssue(
+                        severity="info",
+                        check="resolved_post_staleness",
+                        message=(
+                            f"Resolved post '{post.frontmatter.title}' references "
+                            f"deleted files: {', '.join(deleted_refs)}"
+                        ),
+                        artifact=post_rel,
+                        suggestion=(
+                            "Review the post and either mark it stale with "
+                            "`lexi stack stale <slug>` or update file references"
+                        ),
+                    )
+                )
+
+    return issues
+
+
+def _git_is_available(project_root: Path) -> bool:
+    """Return True if git is available and the project is a git repo."""
+    import subprocess  # noqa: PLC0415
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_root),
+            check=False,
+        )
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
+
 def check_aindex_coverage(
     project_root: Path,
     lexibrary_dir: Path,
@@ -1173,6 +1327,616 @@ def check_orphan_artifacts(
 
 
 # ---------------------------------------------------------------------------
+# Lifecycle checks (design-update change)
+# ---------------------------------------------------------------------------
+
+
+def check_orphaned_designs(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect design files whose source files no longer exist on disk.
+
+    Scans all design files in ``.lexibrary/designs/`` and verifies that each
+    has a corresponding source file.  Design files with ``status: deprecated``
+    are excluded (they are already known to be orphaned).
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of warning-severity ValidationIssues for orphaned design files.
+    """
+    issues: list[ValidationIssue] = []
+
+    for design_path in _iter_design_files(lexibrary_dir):
+        parsed = parse_design_file(design_path)
+        if parsed is None:
+            continue
+
+        # Skip already-deprecated files -- they are handled by deprecated_ttl
+        if parsed.frontmatter.status == "deprecated":
+            continue
+
+        source_rel = parsed.source_path
+        source_abs = project_root / source_rel
+
+        if not source_abs.exists():
+            rel_design = str(design_path.relative_to(lexibrary_dir))
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    check="orphaned_designs",
+                    message=(
+                        f"Design file references missing source: {source_rel}"
+                    ),
+                    artifact=rel_design,
+                    suggestion=(
+                        "Run `lexictl update` to trigger deprecation workflow, "
+                        "or `lexictl validate --fix` to apply deprecation."
+                    ),
+                )
+            )
+
+    return issues
+
+
+def check_comment_accumulation(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Warn when design files accumulate too many comments.
+
+    Counts comments in each design file's sibling ``.comments.yaml`` and
+    produces info-severity issues when the count exceeds the configured
+    ``deprecation.comment_warning_threshold`` (default 10).
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for excessive comments.
+    """
+    issues: list[ValidationIssue] = []
+
+    # Load config to get the threshold
+    try:
+        config = load_config(project_root)
+    except Exception:
+        config = None
+
+    threshold = 10  # default
+    if config is not None:
+        threshold = config.deprecation.comment_warning_threshold
+
+    for design_path in _iter_design_files(lexibrary_dir):
+        comment_file = design_comment_path(design_path)
+        count = comment_count(comment_file)
+        if count > threshold:
+            rel_design = str(design_path.relative_to(lexibrary_dir))
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="comment_accumulation",
+                    message=(
+                        f"Design file has {count} comments "
+                        f"(threshold: {threshold})"
+                    ),
+                    artifact=rel_design,
+                    suggestion=(
+                        "Run the maintainer-agent to incorporate or prune "
+                        "accumulated comments, or manually review."
+                    ),
+                )
+            )
+
+    return issues
+
+
+def check_deprecated_ttl(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect deprecated design files whose TTL has expired.
+
+    Checks all design files with ``status: deprecated`` and reports those
+    whose commit-based TTL has been exceeded based on
+    ``deprecation.ttl_commits`` config.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for expired deprecated files.
+    """
+    issues: list[ValidationIssue] = []
+
+    # Load config to get TTL
+    try:
+        config = load_config(project_root)
+    except Exception:
+        config = None
+
+    ttl_commits = 50  # default
+    if config is not None:
+        ttl_commits = config.deprecation.ttl_commits
+
+    for design_path in _iter_design_files(lexibrary_dir):
+        frontmatter = parse_design_file_frontmatter(design_path)
+        if frontmatter is None:
+            continue
+        if frontmatter.status != "deprecated":
+            continue
+
+        if check_ttl_expiry(design_path, project_root, ttl_commits):
+            rel_design = str(design_path.relative_to(lexibrary_dir))
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="deprecated_ttl",
+                    message=(
+                        f"Deprecated design file has exceeded TTL "
+                        f"({ttl_commits} commits)"
+                    ),
+                    artifact=rel_design,
+                    suggestion=(
+                        "Run `lexictl update` to hard-delete expired files, "
+                        "or `lexictl validate --fix` to remove."
+                    ),
+                )
+            )
+
+    return issues
+
+
+def check_stale_concepts(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect active concepts whose linked files no longer exist on disk.
+
+    Parses all concept files and checks their ``linked_files`` entries
+    (backtick-delimited paths extracted from the concept body). Active
+    concepts with at least one missing linked file produce an info-severity
+    issue. Deprecated concepts and concepts with no linked files are skipped.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for stale concepts.
+    """
+    issues: list[ValidationIssue] = []
+
+    concepts_dir = lexibrary_dir / "concepts"
+    if not concepts_dir.is_dir():
+        return issues
+
+    concept_index = ConceptIndex.load(concepts_dir)
+    for name in concept_index.names():
+        concept = concept_index.find(name)
+        if concept is None:
+            continue
+
+        # Only check active concepts (skip deprecated, draft, etc.)
+        if concept.frontmatter.status != "active":
+            continue
+
+        # Skip concepts with no linked files
+        if not concept.linked_files:
+            continue
+
+        # Check each linked file for existence
+        missing_files: list[str] = []
+        for file_ref in concept.linked_files:
+            resolved = project_root / file_ref
+            if not resolved.exists():
+                missing_files.append(file_ref)
+
+        if missing_files:
+            missing_str = ", ".join(missing_files)
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="stale_concept",
+                    message=(
+                        f"Active concept references missing file(s): {missing_str}"
+                    ),
+                    artifact=f"concepts/{concept.frontmatter.title}",
+                    suggestion=(
+                        "Review the concept and update linked file references, "
+                        "or deprecate the concept if it is no longer relevant."
+                    ),
+                )
+            )
+
+    return issues
+
+
+def check_supersession_candidates(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect active concepts that may be candidates for supersession.
+
+    Compares titles and aliases across all active concepts to find overlaps
+    that suggest two concepts describe the same thing.  Three kinds of
+    overlap are detected:
+
+    * **title overlap** -- two active concepts share the same title
+      (case-insensitive).
+    * **alias overlap** -- two active concepts share the same alias.
+    * **title-alias cross-match** -- one concept's title matches another
+      concept's alias (or vice versa).
+
+    Deprecated concepts are excluded from the comparison.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for supersession candidates.
+    """
+    issues: list[ValidationIssue] = []
+
+    concepts_dir = lexibrary_dir / "concepts"
+    if not concepts_dir.is_dir():
+        return issues
+
+    # Parse concept files directly to get every concept exactly once,
+    # avoiding ConceptIndex.find() whose alias-based lookup can return
+    # the wrong concept when titles and aliases cross-reference each other.
+    active_concepts: list[tuple[str, list[str]]] = []
+    for md_path in sorted(concepts_dir.glob("*.md")):
+        concept = parse_concept_file(md_path)
+        if concept is None:
+            continue
+        if concept.frontmatter.status != "active":
+            continue
+        active_concepts.append(
+            (concept.frontmatter.title, list(concept.frontmatter.aliases))
+        )
+
+    # Build maps: normalized name -> list of concept titles that claim it
+    name_owners: dict[str, list[str]] = {}
+
+    for title, aliases in active_concepts:
+        norm_title = title.strip().lower()
+        name_owners.setdefault(norm_title, []).append(title)
+        for alias in aliases:
+            norm_alias = alias.strip().lower()
+            name_owners.setdefault(norm_alias, []).append(title)
+
+    # Any normalised name owned by more than one concept is an overlap
+    seen_pairs: set[tuple[str, str]] = set()
+    for norm_name, owners in name_owners.items():
+        if len(owners) < 2:
+            continue
+        # Deduplicate owners (a concept can't overlap with itself)
+        unique_owners = sorted(set(owners))
+        if len(unique_owners) < 2:
+            continue
+        for i, owner_a in enumerate(unique_owners):
+            for owner_b in unique_owners[i + 1 :]:
+                pair = (owner_a, owner_b)
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+                issues.append(
+                    ValidationIssue(
+                        severity="info",
+                        check="supersession_candidate",
+                        message=(
+                            f"Possible supersession: '{owner_a}' and "
+                            f"'{owner_b}' share the name '{norm_name}'"
+                        ),
+                        artifact=f"concepts/{owner_a}",
+                        suggestion=(
+                            "Review whether one concept should supersede "
+                            "the other.  Use `lexi concept deprecate` to "
+                            "mark the redundant concept."
+                        ),
+                    )
+                )
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Convention-specific checks
+# ---------------------------------------------------------------------------
+
+
+def check_convention_orphaned_scope(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect conventions whose scope directory no longer exists.
+
+    Scans all convention files and checks that each convention's ``scope``
+    directory exists under the project root. Conventions with
+    ``scope == "project"`` are always valid and are skipped. Deprecated
+    conventions are also skipped.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of warning-severity ValidationIssues for orphaned scopes.
+    """
+    issues: list[ValidationIssue] = []
+
+    conventions_dir = lexibrary_dir / "conventions"
+    if not conventions_dir.is_dir():
+        return issues
+
+    for md_path in sorted(conventions_dir.glob("*.md")):
+        convention = parse_convention_file(md_path)
+        if convention is None:
+            continue
+
+        # Skip deprecated conventions
+        if convention.frontmatter.status == "deprecated":
+            continue
+
+        scope = convention.frontmatter.scope
+
+        # "project" scope always valid
+        if scope == "project":
+            continue
+
+        # Check if the scope directory exists under project root
+        scope_path = project_root / scope
+        if not scope_path.is_dir():
+            rel_convention = str(md_path.relative_to(lexibrary_dir))
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    check="convention_orphaned_scope",
+                    message=(
+                        f"Convention scope directory '{scope}' does not exist"
+                    ),
+                    artifact=rel_convention,
+                    suggestion=(
+                        "Update the convention's scope to a valid directory, "
+                        "or deprecate the convention if the scope was removed."
+                    ),
+                )
+            )
+
+    return issues
+
+
+def check_convention_stale(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect active conventions whose scope directory is empty.
+
+    An active convention whose scope directory exists but contains no source
+    files (non-directory entries) may be stale. Conventions with
+    ``scope == "project"`` are skipped (project-wide conventions are always
+    relevant). Deprecated and draft conventions are also skipped.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for stale conventions.
+    """
+    issues: list[ValidationIssue] = []
+
+    conventions_dir = lexibrary_dir / "conventions"
+    if not conventions_dir.is_dir():
+        return issues
+
+    for md_path in sorted(conventions_dir.glob("*.md")):
+        convention = parse_convention_file(md_path)
+        if convention is None:
+            continue
+
+        # Only check active conventions
+        if convention.frontmatter.status != "active":
+            continue
+
+        scope = convention.frontmatter.scope
+
+        # "project" scope is always relevant
+        if scope == "project":
+            continue
+
+        scope_path = project_root / scope
+        if not scope_path.is_dir():
+            # If the directory doesn't exist, orphaned_scope covers it
+            continue
+
+        # Check if scope directory has any source files (non-directory entries)
+        has_files = False
+        try:
+            for child in scope_path.iterdir():
+                if child.is_file():
+                    has_files = True
+                    break
+        except PermissionError:
+            continue
+
+        if not has_files:
+            rel_convention = str(md_path.relative_to(lexibrary_dir))
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="convention_stale",
+                    message=(
+                        f"Active convention scoped to '{scope}' "
+                        f"but directory contains no source files"
+                    ),
+                    artifact=rel_convention,
+                    suggestion=(
+                        "Review whether this convention is still relevant, "
+                        "or deprecate it if the scope directory is no longer "
+                        "in active use."
+                    ),
+                )
+            )
+
+    return issues
+
+
+def check_convention_gap(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect directories with many source files but no applicable conventions.
+
+    Walks the project source tree and flags directories that contain 5 or
+    more source files but have zero conventions applicable to them (via scope
+    matching). This is a nudge to consider adding conventions for
+    high-traffic directories.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for convention gaps.
+    """
+    issues: list[ValidationIssue] = []
+
+    conventions_dir = lexibrary_dir / "conventions"
+
+    # Load convention index
+    conv_index = ConventionIndex(conventions_dir)
+    conv_index.load()
+
+    # Load config for scope_root
+    try:
+        config = load_config(project_root)
+    except Exception:
+        config = None
+
+    scope_root_str = "."
+    if config is not None:
+        scope_root_str = config.scope_root
+
+    scope_root = project_root / scope_root_str
+    if not scope_root.is_dir():
+        return issues
+
+    file_threshold = 5
+
+    # Walk directories in scope
+    for directory in _iter_directories(scope_root, project_root, lexibrary_dir):
+        # Count source files (non-directory, non-hidden entries)
+        try:
+            source_files = [
+                child
+                for child in directory.iterdir()
+                if child.is_file() and not child.name.startswith(".")
+            ]
+        except PermissionError:
+            continue
+
+        if len(source_files) < file_threshold:
+            continue
+
+        # Check if any active (non-deprecated) conventions apply to this directory
+        rel_dir = str(directory.relative_to(project_root))
+        # Use a representative file path for scope matching
+        representative = f"{rel_dir}/example.py" if rel_dir != "." else "example.py"
+        applicable = conv_index.find_by_scope(representative, scope_root_str)
+
+        # Filter to only active conventions
+        active_applicable = [
+            c for c in applicable if c.frontmatter.status == "active"
+        ]
+
+        if not active_applicable:
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="convention_gap",
+                    message=(
+                        f"Directory '{rel_dir}' has {len(source_files)} source "
+                        f"files but no applicable conventions"
+                    ),
+                    artifact=rel_dir,
+                    suggestion=(
+                        "Consider adding a convention for this directory to "
+                        "document coding standards and patterns."
+                    ),
+                )
+            )
+
+    return issues
+
+
+def check_convention_consistent_violation(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect conventions with accumulated unresolved comments.
+
+    Conventions with 3 or more comments in their ``.comments.yaml`` file
+    may indicate a pattern of consistent violation that should be
+    reviewed. The convention may need to be revised, better communicated,
+    or deprecated.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for conventions with many comments.
+    """
+    issues: list[ValidationIssue] = []
+
+    conventions_dir = lexibrary_dir / "conventions"
+    if not conventions_dir.is_dir():
+        return issues
+
+    comment_threshold = 3
+
+    for md_path in sorted(conventions_dir.glob("*.md")):
+        convention = parse_convention_file(md_path)
+        if convention is None:
+            continue
+
+        # Skip deprecated conventions
+        if convention.frontmatter.status == "deprecated":
+            continue
+
+        count = convention_comment_count(md_path)
+        if count >= comment_threshold:
+            rel_convention = str(md_path.relative_to(lexibrary_dir))
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="convention_consistent_violation",
+                    message=(
+                        f"Convention has {count} comments "
+                        f"(threshold: {comment_threshold}) -- possible "
+                        f"consistent violation"
+                    ),
+                    artifact=rel_convention,
+                    suggestion=(
+                        "Review the convention comments to determine if the "
+                        "rule needs revision, better communication, or "
+                        "deprecation."
+                    ),
+                )
+            )
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -1232,3 +1996,150 @@ def _iter_directories(
 
     _walk(scope_root)
     return results
+
+
+# ---------------------------------------------------------------------------
+# Info-severity: lookup token budget exceeded
+# ---------------------------------------------------------------------------
+
+
+def check_lookup_token_budget_exceeded(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Find design files that individually exceed the lookup token budget.
+
+    When a single design file consumes the entire ``lookup_total_tokens``
+    budget, supplementary lookup sections (known issues, IWH signals,
+    links) will always be truncated.  This check flags those files at
+    info severity so the user knows truncation is happening.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for oversized design files.
+    """
+    issues: list[ValidationIssue] = []
+
+    try:
+        config = load_config(project_root)
+    except Exception:
+        return issues
+
+    budget = config.token_budgets.lookup_total_tokens
+    counter = ApproximateCounter()
+
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+    if not designs_dir.is_dir():
+        return issues
+
+    for file_path in sorted(designs_dir.rglob("*.md")):
+        if not file_path.is_file():
+            continue
+        tokens = counter.count(file_path.read_text(encoding="utf-8", errors="replace"))
+        if tokens > budget:
+            rel_path = str(file_path.relative_to(lexibrary_dir))
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="lookup_token_budget_exceeded",
+                    message=(
+                        f"Design file uses {tokens} tokens, exceeding "
+                        f"lookup budget of {budget}; supplementary "
+                        f"sections will be truncated"
+                    ),
+                    artifact=rel_path,
+                    suggestion=(
+                        "Trim the design file or increase "
+                        "token_budgets.lookup_total_tokens in config.yaml."
+                    ),
+                )
+            )
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Info-severity: orphaned (expired) IWH signals
+# ---------------------------------------------------------------------------
+
+
+def check_orphaned_iwh_signals(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Find IWH signals that have exceeded their configured TTL.
+
+    Walks all ``.iwh`` files under ``.lexibrary/``, parses their
+    ``created`` timestamp, and flags any whose age exceeds the
+    ``iwh.ttl_hours`` setting.  Expired signals are stale context that
+    should be consumed or cleaned up.
+
+    This check complements ``find_orphaned_iwh`` (which detects signals
+    whose source directory no longer exists) by catching signals that are
+    still structurally valid but temporally stale.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for expired IWH signals.
+    """
+    from datetime import datetime  # noqa: PLC0415
+
+    from lexibrary.iwh.parser import parse_iwh  # noqa: PLC0415
+
+    issues: list[ValidationIssue] = []
+
+    try:
+        config = load_config(project_root)
+    except Exception:
+        return issues
+
+    ttl_hours = config.iwh.ttl_hours
+    if ttl_hours <= 0:
+        # TTL of 0 means expiry is disabled
+        return issues
+
+    now = datetime.now(tz=UTC)
+
+    for iwh_file in sorted(lexibrary_dir.rglob(".iwh")):
+        if not iwh_file.is_file():
+            continue
+
+        parsed = parse_iwh(iwh_file)
+        if parsed is None:
+            # Unparseable files are handled by find_orphaned_iwh
+            continue
+
+        created = parsed.created
+        # Ensure timezone-aware comparison
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+
+        age_hours = (now - created).total_seconds() / 3600
+        if age_hours > ttl_hours:
+            try:
+                rel_path = str(iwh_file.relative_to(lexibrary_dir))
+            except ValueError:
+                continue
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="orphaned_iwh_signals",
+                    message=(
+                        f"IWH signal expired: {int(age_hours)}h old "
+                        f"(TTL is {ttl_hours}h)"
+                    ),
+                    artifact=rel_path,
+                    suggestion=(
+                        "Consume the signal with `lexi iwh read` or "
+                        "clean up with `lexictl iwh clean`."
+                    ),
+                )
+            )
+
+    return issues

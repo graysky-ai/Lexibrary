@@ -44,6 +44,15 @@ class TestRenderPostTemplateMinimal:
         )
         assert "## Problem" in result
 
+    def test_body_contains_context_section(self) -> None:
+        result = render_post_template(
+            post_id="ST-001",
+            title="Test bug",
+            tags=["bug"],
+            author="agent-123",
+        )
+        assert "### Context" in result
+
     def test_body_contains_evidence_section(self) -> None:
         result = render_post_template(
             post_id="ST-001",
@@ -52,6 +61,15 @@ class TestRenderPostTemplateMinimal:
             author="agent-123",
         )
         assert "### Evidence" in result
+
+    def test_body_contains_attempts_section(self) -> None:
+        result = render_post_template(
+            post_id="ST-001",
+            title="Test bug",
+            tags=["bug"],
+            author="agent-123",
+        )
+        assert "### Attempts" in result
 
     def test_no_bead_in_minimal(self) -> None:
         result = render_post_template(
@@ -153,3 +171,141 @@ class TestRenderPostTemplateCreatedDate:
             )
         fm = _parse_frontmatter(result)
         assert fm["created"] == mock_date
+
+
+class TestScaffoldMode:
+    """Scenario: Scaffold mode (no content params) produces all 4 sections."""
+
+    def test_scaffold_has_all_four_section_headers(self) -> None:
+        result = render_post_template(
+            post_id="ST-100",
+            title="Scaffold test",
+            tags=["test"],
+            author="agent-scaffold",
+        )
+        assert "## Problem" in result
+        assert "### Context" in result
+        assert "### Evidence" in result
+        assert "### Attempts" in result
+
+    def test_scaffold_has_placeholder_comments(self) -> None:
+        result = render_post_template(
+            post_id="ST-100",
+            title="Scaffold test",
+            tags=["test"],
+            author="agent-scaffold",
+        )
+        assert "<!-- Describe the problem or issue here -->" in result
+        assert "<!-- Explain what you were doing when the issue occurred -->" in result
+        assert "<!-- Add supporting evidence, error logs, or reproduction steps -->" in result
+        assert "<!-- Describe what you have already tried -->" in result
+
+
+class TestPopulatedModeAllSections:
+    """Scenario: Populated mode with all sections renders all content."""
+
+    def test_all_sections_rendered(self) -> None:
+        result = render_post_template(
+            post_id="ST-200",
+            title="Populated test",
+            tags=["test"],
+            author="agent-pop",
+            problem="Config fails on startup",
+            context="During refactor of settings module",
+            evidence=["TypeError in log", "Stack trace attached"],
+            attempts=["Tried reverting config", "Tried clearing cache"],
+        )
+        assert "## Problem" in result
+        assert "Config fails on startup" in result
+        assert "### Context" in result
+        assert "During refactor of settings module" in result
+        assert "### Evidence" in result
+        assert "- TypeError in log" in result
+        assert "- Stack trace attached" in result
+        assert "### Attempts" in result
+        assert "- Tried reverting config" in result
+        assert "- Tried clearing cache" in result
+
+    def test_no_placeholder_comments(self) -> None:
+        result = render_post_template(
+            post_id="ST-200",
+            title="Populated test",
+            tags=["test"],
+            author="agent-pop",
+            problem="Config fails",
+            context="During refactor",
+            evidence=["log entry"],
+            attempts=["Tried X"],
+        )
+        assert "<!--" not in result
+
+
+class TestPopulatedModeOnlyProblem:
+    """Scenario: Populated mode with only problem emits only ## Problem."""
+
+    def test_only_problem_section_present(self) -> None:
+        result = render_post_template(
+            post_id="ST-300",
+            title="Problem only",
+            tags=["test"],
+            author="agent-prob",
+            problem="Config fails",
+        )
+        assert "## Problem" in result
+        assert "Config fails" in result
+        assert "### Context" not in result
+        assert "### Evidence" not in result
+        assert "### Attempts" not in result
+
+
+class TestPopulatedModeProblemAlwaysEmitted:
+    """Scenario: ## Problem always emitted in populated mode even if problem is None."""
+
+    def test_problem_section_when_only_evidence(self) -> None:
+        result = render_post_template(
+            post_id="ST-350",
+            title="No problem text",
+            tags=["test"],
+            author="agent-nop",
+            evidence=["log1"],
+        )
+        assert "## Problem" in result
+        assert "### Evidence" in result
+
+    def test_problem_section_when_only_attempts(self) -> None:
+        result = render_post_template(
+            post_id="ST-351",
+            title="No problem text",
+            tags=["test"],
+            author="agent-nop",
+            attempts=["Tried X"],
+        )
+        assert "## Problem" in result
+        assert "### Attempts" in result
+
+
+class TestPopulatedModeListRendering:
+    """Scenario: Evidence and attempts lists render as bullet items."""
+
+    def test_evidence_bullet_items(self) -> None:
+        result = render_post_template(
+            post_id="ST-400",
+            title="List test",
+            tags=["test"],
+            author="agent-list",
+            evidence=["log1", "log2", "log3"],
+        )
+        assert "- log1" in result
+        assert "- log2" in result
+        assert "- log3" in result
+
+    def test_attempts_bullet_items(self) -> None:
+        result = render_post_template(
+            post_id="ST-401",
+            title="List test",
+            tags=["test"],
+            author="agent-list",
+            attempts=["Tried X", "Tried Y"],
+        )
+        assert "- Tried X" in result
+        assert "- Tried Y" in result

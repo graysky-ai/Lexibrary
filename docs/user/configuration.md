@@ -22,7 +22,7 @@ scope_root: "src/"
 
 - **Type:** string
 - **Default:** `""` (empty -- set during `lexictl init`)
-- **Description:** The name of the project. Detected from `pyproject.toml`, `package.json`, or the directory name during initialization. Used in generated artifacts like `START_HERE.md`.
+- **Description:** The name of the project. Detected from `pyproject.toml`, `package.json`, or the directory name during initialization. Used in generated artifacts like `TOPOLOGY.md`.
 
 ```yaml
 project_name: "my-project"
@@ -102,12 +102,6 @@ llm:
 
 Per-artifact token budget targets. These are validation targets for generated content -- the validator warns when generated artifacts exceed these sizes. They do not hard-limit generation; they guide the LLM prompts and flag oversized output.
 
-### `token_budgets.start_here_tokens`
-
-- **Type:** integer
-- **Default:** `800`
-- **Description:** Target token budget for the `START_HERE.md` file.
-
 ### `token_budgets.design_file_tokens`
 
 - **Type:** integer
@@ -134,7 +128,6 @@ Per-artifact token budget targets. These are validation targets for generated co
 
 ```yaml
 token_budgets:
-  start_here_tokens: 800
   design_file_tokens: 400
   design_file_abridged_tokens: 100
   aindex_tokens: 200
@@ -178,7 +171,7 @@ Default patterns:
 ignore:
   use_gitignore: true
   additional_patterns:
-    - .lexibrary/START_HERE.md
+    - .lexibrary/TOPOLOGY.md
     - ".lexibrary/**/*.md"
     - ".lexibrary/**/.aindex"
     - node_modules/
@@ -321,7 +314,6 @@ llm:
   timeout: 60
 
 token_budgets:
-  start_here_tokens: 800
   design_file_tokens: 400
   design_file_abridged_tokens: 100
   aindex_tokens: 200
@@ -333,7 +325,7 @@ mapping:
 ignore:
   use_gitignore: true
   additional_patterns:
-    - .lexibrary/START_HERE.md
+    - .lexibrary/TOPOLOGY.md
     - ".lexibrary/**/*.md"
     - ".lexibrary/**/.aindex"
     - node_modules/

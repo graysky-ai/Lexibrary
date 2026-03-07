@@ -30,6 +30,36 @@ title: Use UTC everywhere
 All timestamps must use UTC.
 """
 
+CONVENTION_WITH_ALIASES = """\
+---
+title: Auth decorator required
+scope: src/auth
+tags:
+  - security
+aliases:
+  - auth-decorator
+  - auth-conv
+status: active
+source: user
+priority: 5
+---
+All endpoints must use the auth decorator.
+"""
+
+DEPRECATED_CONVENTION = """\
+---
+title: Old logging rule
+scope: project
+tags:
+  - logging
+status: deprecated
+source: user
+priority: 0
+deprecated_at: '2026-03-04T10:00:00'
+---
+Use print for logging.
+"""
+
 
 class TestParseConventionFileValid:
     def test_returns_convention_file(self, tmp_path: Path) -> None:
@@ -103,6 +133,8 @@ class TestParseConventionFileMinimal:
         assert result.frontmatter.status == "draft"
         assert result.frontmatter.source == "user"
         assert result.frontmatter.priority == 0
+        assert result.frontmatter.aliases == []
+        assert result.frontmatter.deprecated_at is None
 
     def test_minimal_rule(self, tmp_path: Path) -> None:
         path = tmp_path / "use-utc.md"
@@ -188,3 +220,36 @@ class TestParseConventionFileEdgeCases:
         assert result is not None
         assert result.frontmatter.scope == "src/auth"
         assert result.scope == "src/auth"
+
+
+class TestParseConventionFileAliases:
+    def test_aliases_parsed(self, tmp_path: Path) -> None:
+        path = tmp_path / "auth-decorator.md"
+        path.write_text(CONVENTION_WITH_ALIASES)
+        result = parse_convention_file(path)
+        assert result is not None
+        assert result.frontmatter.aliases == ["auth-decorator", "auth-conv"]
+
+    def test_aliases_default_when_absent(self, tmp_path: Path) -> None:
+        path = tmp_path / "no-aliases.md"
+        path.write_text(VALID_CONVENTION)
+        result = parse_convention_file(path)
+        assert result is not None
+        assert result.frontmatter.aliases == []
+
+
+class TestParseConventionFileDeprecatedAt:
+    def test_deprecated_at_parsed(self, tmp_path: Path) -> None:
+        path = tmp_path / "old-logging.md"
+        path.write_text(DEPRECATED_CONVENTION)
+        result = parse_convention_file(path)
+        assert result is not None
+        assert result.frontmatter.deprecated_at == "2026-03-04T10:00:00"
+        assert result.frontmatter.status == "deprecated"
+
+    def test_deprecated_at_none_when_absent(self, tmp_path: Path) -> None:
+        path = tmp_path / "active.md"
+        path.write_text(VALID_CONVENTION)
+        result = parse_convention_file(path)
+        assert result is not None
+        assert result.frontmatter.deprecated_at is None

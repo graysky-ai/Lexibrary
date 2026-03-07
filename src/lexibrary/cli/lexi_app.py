@@ -1,4 +1,4 @@
-"""Agent-facing CLI for Lexibrary — lookups, search, concepts, and Stack Q&A."""
+"""Agent-facing CLI for Lexibrary — lookups, search, concepts, and Stack issue tracking."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ lexi_app = typer.Typer(
     name="lexi",
     help=(
         "Agent-facing CLI for Lexibrary. "
-        "Provides lookups, search, concepts, and Stack Q&A for LLM context navigation."
+        "Provides lookups, search, concepts, and Stack issue tracking for LLM context navigation."
     ),
     no_args_is_help=True,
     callback=load_dotenv_if_configured,
@@ -35,7 +35,7 @@ lexi_app = typer.Typer(
 # ---------------------------------------------------------------------------
 # Sub-groups
 # ---------------------------------------------------------------------------
-stack_app = typer.Typer(help="Stack Q&A management commands.")
+stack_app = typer.Typer(help="Stack issue management commands.")
 lexi_app.add_typer(stack_app, name="stack")
 
 concept_app = typer.Typer(help="Concept management commands.")
@@ -148,14 +148,246 @@ def _render_conventions(
         )
 
 
+def _render_known_issues(
+    link_graph: object,
+    rel_path: str,
+    project_root: Path,
+    display_limit: int,
+) -> str:
+    """Render a Known Issues section from stack_file_ref links.
+
+    Queries the link graph for ``stack_file_ref`` links pointing to *rel_path*,
+    parses each matching Stack post, and renders a summary with status, title,
+    attempts count, and votes.
+
+    Posts with ``stale`` status are excluded.  Open posts are shown first,
+    then resolved posts, up to *display_limit*.
+
+    Returns the rendered text (empty string if no issues found).
+    """
+    from lexibrary.linkgraph.query import LinkGraph  # noqa: PLC0415
+    from lexibrary.stack.parser import parse_stack_post  # noqa: PLC0415
+
+    if not isinstance(link_graph, LinkGraph):
+        return ""
+
+    stack_links = link_graph.reverse_deps(rel_path, link_type="stack_file_ref")
+    if not stack_links:
+        return ""
+
+    # Parse each referenced stack post
+    posts = []
+    for link in stack_links:
+        post_path = project_root / link.source_path
+        post = parse_stack_post(post_path)
+        if post is None:
+            continue
+        # Exclude stale posts
+        if post.frontmatter.status == "stale":
+            continue
+        posts.append(post)
+
+    if not posts:
+        return ""
+
+    # Sort: open first, then resolved; within each group sort by votes descending
+    status_order = {"open": 0, "resolved": 1, "outdated": 2, "duplicate": 3}
+    posts.sort(key=lambda p: (status_order.get(p.frontmatter.status, 9), -p.frontmatter.votes))
+
+    # Apply display limit
+    shown = posts[:display_limit]
+    omitted = len(posts) - len(shown)
+
+    lines: list[str] = ["\n## Known Issues\n"]
+    for post in shown:
+        status_label = post.frontmatter.status
+        attempts_count = len(post.attempts)
+        attempts_str = f", {attempts_count} attempts" if attempts_count > 0 else ""
+        votes_str = f", {post.frontmatter.votes} votes" if post.frontmatter.votes > 0 else ""
+        lines.append(
+            f"- [{status_label}] {post.frontmatter.title}"
+            f"{attempts_str}{votes_str}"
+        )
+    if omitted > 0:
+        lines.append(f"\n... and {omitted} more issues")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def _render_iwh_peek(
+    project_root: Path,
+    target: Path,
+) -> str:
+    """Render an IWH signal peek section without consuming the signal.
+
+    Checks for an IWH file in the mirror directory corresponding to *target*
+    (which may be a file or directory).  Returns rendered text or empty string.
+    """
+    from lexibrary.iwh.reader import read_iwh  # noqa: PLC0415
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    # For a file, the IWH lives in the parent's mirror directory
+    # For a directory, it lives in the directory's own mirror
+    if target.is_file():
+        rel = target.parent.relative_to(project_root)
+    else:
+        rel = target.relative_to(project_root)
+
+    # Check the designs mirror tree for IWH signals
+    iwh_dir = project_root / LEXIBRARY_DIR / "designs" / rel
+    iwh = None
+    if iwh_dir.is_dir():
+        iwh = read_iwh(iwh_dir)
+
+    if iwh is None:
+        # Also check legacy mirror path (without designs/)
+        iwh_dir = project_root / LEXIBRARY_DIR / rel
+        if iwh_dir.is_dir():
+            iwh = read_iwh(iwh_dir)
+
+    if iwh is None:
+        return ""
+
+    lines: list[str] = ["\n## IWH Signal\n"]
+    lines.append(f"- Scope: {iwh.scope}")
+    lines.append(f"- Author: {iwh.author}")
+    lines.append(f"- Created: {iwh.created.isoformat()}")
+    if iwh.body:
+        # Truncate body preview to first 200 chars
+        body_preview = iwh.body[:200]
+        if len(iwh.body) > 200:
+            body_preview += "..."
+        lines.append(f"- Body: {body_preview}")
+    lines.append("")
+    lines.append("Run `lexi iwh read <directory>` to consume this signal.")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimate token count using a character-based heuristic.
+
+    Approximates ~4 characters per token, avoiding the overhead of
+    importing a tokenizer for CLI output.
+    """
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+
+def _truncate_lookup_sections(
+    sections: list[tuple[str, str, int]],
+    total_budget: int,
+) -> list[tuple[str, str]]:
+    """Truncate lookup sections to fit within a token budget.
+
+    Sections are provided as ``(name, content, priority)`` tuples where
+    lower priority values mean higher importance.  Sections are included
+    in priority order until the budget is exhausted.
+
+    Priority order: design (0) > conventions (1) > issues (2) > IWH (3) > links (4)
+
+    Returns a list of ``(name, content)`` tuples for sections that fit.
+    """
+    # Sort by priority (lower = more important)
+    sorted_sections = sorted(sections, key=lambda s: s[2])
+
+    result: list[tuple[str, str]] = []
+    used_tokens = 0
+
+    for name, content, _priority in sorted_sections:
+        if not content:
+            continue
+        section_tokens = _estimate_tokens(content)
+        if used_tokens + section_tokens <= total_budget:
+            result.append((name, content))
+            used_tokens += section_tokens
+        else:
+            # Try to include a truncated version if there's budget left
+            remaining = total_budget - used_tokens
+            if remaining > 50:
+                max_chars = remaining * 4
+                truncated = content[:max_chars] + "\n... truncated due to token budget\n"
+                result.append((name, truncated))
+                used_tokens = total_budget
+            break
+
+    return result
+
+
+def _lookup_directory(
+    target: Path,
+    project_root: Path,
+    config: object,
+) -> None:
+    """Handle lookup for a directory argument.
+
+    Displays the aindex content, applicable conventions, and IWH signals
+    for the given directory.
+    """
+    from lexibrary.artifacts.aindex_parser import parse_aindex  # noqa: PLC0415
+    from lexibrary.config.schema import LexibraryConfig  # noqa: PLC0415
+    from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    if not isinstance(config, LexibraryConfig):
+        return
+
+    rel_target = str(target.relative_to(project_root))
+
+    # Try to find and display the aindex file
+    aindex_path = project_root / LEXIBRARY_DIR / "designs" / rel_target / ".aindex"
+    aindex = parse_aindex(aindex_path)
+
+    if aindex is not None:
+        console.print(f"# {aindex.directory_path}\n")
+        console.print(f"{aindex.billboard}\n")
+
+        if aindex.entries:
+            console.print("## Child Map\n")
+            console.print("| Name | Type | Description |")
+            console.print("| --- | --- | --- |")
+            for entry in aindex.entries:
+                suffix = "/" if entry.entry_type == "dir" else ""
+                console.print(
+                    f"| `{entry.name}{suffix}` | {entry.entry_type} | {entry.description} |"
+                )
+            console.print()
+    else:
+        console.print(f"# {rel_target}\n")
+        console.print("[dim]No .aindex file found for this directory.[/dim]\n")
+
+    # Convention delivery
+    conventions_dir = project_root / ".lexibrary" / "conventions"
+    convention_index = ConventionIndex(conventions_dir)
+    convention_index.load()
+
+    if len(convention_index) > 0:
+        display_limit = config.conventions.lookup_display_limit
+        conventions, total_count = convention_index.find_by_scope_limited(
+            rel_target,
+            scope_root=config.scope_root,
+            limit=display_limit,
+        )
+        if conventions:
+            _render_conventions(conventions, total_count, display_limit, rel_target)
+
+    # IWH signal peek
+    iwh_text = _render_iwh_peek(project_root, target)
+    if iwh_text:
+        console.print(iwh_text)
+
+
 @lexi_app.command()
 def lookup(
     file: Annotated[
         Path,
-        typer.Argument(help="Source file to look up."),
+        typer.Argument(help="Source file or directory to look up."),
     ],
 ) -> None:
-    """Return the design file for a source file."""
+    """Return the design file for a source file, or directory overview for a directory."""
     import hashlib  # noqa: PLC0415
 
     from lexibrary.artifacts.design_file_parser import parse_design_file_metadata  # noqa: PLC0415
@@ -164,9 +396,10 @@ def lookup(
 
     target = Path(file).resolve()
 
-    # Find project root starting from the file's directory (walks upward)
+    # Find project root starting from the target (walks upward)
+    start_dir = target if target.is_dir() else target.parent
     try:
-        project_root = find_project_root(start=target.parent)
+        project_root = find_project_root(start=start_dir)
     except LexibraryNotFoundError:
         console.print(
             "[red]No .lexibrary/ directory found.[/red]"
@@ -176,7 +409,7 @@ def lookup(
 
     config = load_config(project_root)
 
-    # Check scope: file must be under scope_root
+    # Check scope: target must be under scope_root
     scope_abs = (project_root / config.scope_root).resolve()
     try:
         target.relative_to(scope_abs)
@@ -186,6 +419,13 @@ def lookup(
             f"([dim]{config.scope_root}[/dim])."
         )
         raise typer.Exit(1) from None
+
+    # Directory lookup mode
+    if target.is_dir():
+        _lookup_directory(target, project_root, config)
+        return
+
+    # --- File lookup mode ---
 
     # Compute mirror path
     design_path = mirror_path(project_root, target)
@@ -211,13 +451,14 @@ def lookup(
         except OSError:
             pass
 
-    # Display design file content
-    content = design_path.read_text(encoding="utf-8")
-    console.print(content)
+    # Display design file content (always shown, highest priority)
+    design_content = design_path.read_text(encoding="utf-8")
+    console.print(design_content)
 
-    # Convention delivery via ConventionIndex
+    # Convention delivery via ConventionIndex (always shown, second priority)
     from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
 
+    conventions_token_estimate = 0
     conventions_dir = project_root / ".lexibrary" / "conventions"
     convention_index = ConventionIndex(conventions_dir)
     convention_index.load()
@@ -233,21 +474,32 @@ def lookup(
 
         if conventions:
             _render_conventions(conventions, total_count, display_limit, rel_target)
+            # Estimate token cost of rendered conventions for budget tracking
+            conventions_token_estimate = len(conventions) * 10  # rough estimate
 
-    # Reverse links from the link graph index (graceful degradation)
+    # Gather supplementary sections for token-budget-aware rendering
+    # Priority: issues (2) > IWH (3) > links (4)
     from lexibrary.linkgraph import open_index  # noqa: PLC0415
 
     link_graph = open_index(project_root)
+    issues_text = ""
+    links_text_parts: list[str] = []
     if link_graph is not None:
         rel_path = str(target.relative_to(project_root))
+
+        # Known Issues from Stack posts (task 6.1)
+        stack_display_limit = config.stack.lookup_display_limit
+        issues_text = _render_known_issues(
+            link_graph, rel_path, project_root, stack_display_limit
+        )
 
         # Dependents: inbound ast_import links
         import_links = link_graph.reverse_deps(rel_path, link_type="ast_import")
         if import_links:
-            console.print("\n## Dependents (imports this file)\n")
+            links_text_parts.append("\n## Dependents (imports this file)\n")
             for link in import_links:
-                console.print(f"- {link.source_path}")
-            console.print()
+                links_text_parts.append(f"- {link.source_path}")
+            links_text_parts.append("")
 
         # Also Referenced By: all other inbound link types
         link_type_labels: dict[str, str] = {
@@ -262,16 +514,38 @@ def lookup(
         all_links = link_graph.reverse_deps(rel_path)
         other_links = [lnk for lnk in all_links if lnk.link_type != "ast_import"]
         if other_links:
-            console.print("\n## Also Referenced By\n")
+            links_text_parts.append("\n## Also Referenced By\n")
             for link in other_links:
                 label = link_type_labels.get(link.link_type, link.link_type)
-                # Use link_context as the display name when available,
-                # otherwise fall back to the source_path
                 display_name = link.link_context or link.source_path
-                console.print(f"- [[{display_name}]] ({label})")
-            console.print()
+                links_text_parts.append(f"- [[{display_name}]] ({label})")
+            links_text_parts.append("")
 
         link_graph.close()
+
+    links_text = "\n".join(links_text_parts)
+
+    # IWH signal peek (task 6.3)
+    iwh_text = _render_iwh_peek(project_root, target)
+
+    # Apply token budget truncation to supplementary sections
+    # Design and conventions are always shown; remaining budget goes to
+    # issues > IWH > links in priority order
+    total_budget = config.token_budgets.lookup_total_tokens
+    design_tokens = _estimate_tokens(design_content)
+    used_tokens = design_tokens + conventions_token_estimate
+
+    supplementary: list[tuple[str, str, int]] = [
+        ("issues", issues_text, 2),
+        ("iwh", iwh_text, 3),
+        ("links", links_text, 4),
+    ]
+    remaining_budget = max(0, total_budget - used_tokens)
+    truncated = _truncate_lookup_sections(supplementary, remaining_budget)
+
+    for _name, section_content in truncated:
+        if section_content:
+            console.print(section_content)
 
 
 # ---------------------------------------------------------------------------
@@ -494,15 +768,130 @@ def concept_link(
 
 
 # ---------------------------------------------------------------------------
+# concept comment
+# ---------------------------------------------------------------------------
+
+
+@concept_app.command("comment")
+def concept_comment(
+    slug: Annotated[
+        str,
+        typer.Argument(help="Concept slug (filename stem, e.g. 'scope-root')."),
+    ],
+    *,
+    body: Annotated[
+        str,
+        typer.Option("--body", "-b", help="Comment text to append."),
+    ],
+) -> None:
+    """Append a comment to a concept's comment file."""
+    from lexibrary.lifecycle.concept_comments import append_concept_comment  # noqa: PLC0415
+
+    project_root = require_project_root()
+
+    # Validate concept file exists
+    concept_path = project_root / ".lexibrary" / "concepts" / f"{slug}.md"
+    if not concept_path.exists():
+        console.print(
+            f"[red]Error:[/red] Concept file not found: "
+            f"[cyan]{concept_path.relative_to(project_root)}[/cyan]"
+        )
+        raise typer.Exit(1)
+
+    # Append the comment
+    append_concept_comment(project_root, slug, body)
+
+    comment_file = concept_path.with_suffix(".comments.yaml")
+    console.print(
+        f"[green]Comment added[/green] for concept [cyan]{slug}[/cyan] "
+        f"({comment_file.relative_to(project_root)})"
+    )
+
+
+# ---------------------------------------------------------------------------
+# concept deprecate
+# ---------------------------------------------------------------------------
+
+
+@concept_app.command("deprecate")
+def concept_deprecate(
+    slug: Annotated[
+        str,
+        typer.Argument(help="Concept slug (filename stem, e.g. 'scope-root')."),
+    ],
+    *,
+    superseded_by: Annotated[
+        str | None,
+        typer.Option("--superseded-by", help="Title of the concept that replaces this one."),
+    ] = None,
+) -> None:
+    """Deprecate a concept, optionally specifying a replacement."""
+    from lexibrary.wiki.parser import parse_concept_file  # noqa: PLC0415
+    from lexibrary.wiki.serializer import serialize_concept_file  # noqa: PLC0415
+
+    project_root = require_project_root()
+
+    # Validate concept file exists
+    concept_path = project_root / ".lexibrary" / "concepts" / f"{slug}.md"
+    if not concept_path.exists():
+        console.print(
+            f"[red]Error:[/red] Concept file not found: "
+            f"[cyan]{concept_path.relative_to(project_root)}[/cyan]"
+        )
+        raise typer.Exit(1)
+
+    # Parse the concept file
+    concept = parse_concept_file(concept_path)
+    if concept is None:
+        console.print(
+            f"[red]Error:[/red] Failed to parse concept file: "
+            f"[cyan]{concept_path.relative_to(project_root)}[/cyan]"
+        )
+        raise typer.Exit(1)
+
+    # Already deprecated — exit 0 with informational message
+    if concept.frontmatter.status == "deprecated":
+        msg = f"[yellow]Already deprecated:[/yellow] [cyan]{concept.frontmatter.title}[/cyan]"
+        if concept.frontmatter.superseded_by:
+            msg += f" (superseded by [cyan]{concept.frontmatter.superseded_by}[/cyan])"
+        console.print(msg)
+        return
+
+    # Update status, deprecated_at timestamp, and optional superseded_by
+    from datetime import UTC  # noqa: PLC0415
+    from datetime import datetime as _datetime
+
+    concept.frontmatter.status = "deprecated"
+    concept.frontmatter.deprecated_at = _datetime.now(UTC).replace(microsecond=0)
+    if superseded_by is not None:
+        concept.frontmatter.superseded_by = superseded_by
+
+    # Re-serialize and write
+    serialized = serialize_concept_file(concept)
+    concept_path.write_text(serialized, encoding="utf-8")
+
+    # Print confirmation
+    msg = f"[green]Deprecated[/green] concept [cyan]{concept.frontmatter.title}[/cyan]"
+    if superseded_by:
+        msg += f" (superseded by [cyan]{superseded_by}[/cyan])"
+    console.print(msg)
+
+
+# ---------------------------------------------------------------------------
 # conventions (top-level list command)
 # ---------------------------------------------------------------------------
 
 
 @lexi_app.command()
 def conventions(
-    path: Annotated[
+    query: Annotated[
         str | None,
-        typer.Argument(help="File or directory path to filter conventions by scope."),
+        typer.Argument(
+            help=(
+                "Free-text search query, or a file/directory path for scope-based retrieval. "
+                "Omit to list all conventions."
+            ),
+        ),
     ] = None,
     *,
     tag: Annotated[
@@ -525,7 +914,7 @@ def conventions(
         typer.Option("--all", help="Include deprecated conventions in results."),
     ] = False,
 ) -> None:
-    """List or filter convention files."""
+    """List, search, or filter convention files."""
     from rich.table import Table  # noqa: PLC0415
 
     from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
@@ -559,13 +948,19 @@ def conventions(
         )
         return
 
-    # If a path argument is given, use scope-based retrieval
-    if path is not None:
+    # Determine whether the positional argument is a path (scope retrieval)
+    # or a free-text search query
+    if query is not None and ("/" in query or "." in query):
+        # Looks like a file/directory path — use scope-based retrieval
         from lexibrary.config.loader import load_config  # noqa: PLC0415
 
         config = load_config(project_root)
-        results = idx.find_by_scope(path, scope_root=config.scope_root)
-        title = f"Conventions for '{path}'"
+        results = idx.find_by_scope(query, scope_root=config.scope_root)
+        title = f"Conventions for '{query}'"
+    elif query is not None:
+        # Free-text search
+        results = idx.search(query)
+        title = f"Conventions matching '{query}'"
     else:
         results = list(idx.conventions)
         title = "All conventions"
@@ -651,6 +1046,10 @@ def convention_new(
         str,
         typer.Option("--source", help="Convention source: 'user' or 'agent'."),
     ] = "user",
+    alias: Annotated[
+        list[str] | None,
+        typer.Option("--alias", help="Short alias for the convention (repeatable)."),
+    ] = None,
 ) -> None:
     """Create a new convention file."""
     from lexibrary.artifacts.convention import (  # noqa: PLC0415
@@ -694,6 +1093,7 @@ def convention_new(
         status=conv_status,
         source=source,  # type: ignore[arg-type]
         priority=conv_priority,
+        aliases=alias or [],
     )
     convention = ConventionFile(frontmatter=frontmatter, body=body)
     content = serialize_convention_file(convention)
@@ -770,6 +1170,8 @@ def convention_deprecate(
     ],
 ) -> None:
     """Set a convention's status to deprecated."""
+    from datetime import UTC, datetime  # noqa: PLC0415
+
     from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
     from lexibrary.conventions.serializer import serialize_convention_file  # noqa: PLC0415
 
@@ -791,14 +1193,76 @@ def convention_deprecate(
         )
         raise typer.Exit(1)
 
-    # Update status and re-serialize
+    # Already deprecated — do nothing
+    if conv.frontmatter.status == "deprecated":
+        console.print(f"[yellow]Already deprecated:[/yellow] '{conv.frontmatter.title}'")
+        return
+
+    # Update status, set deprecated_at timestamp, and re-serialize
+    timestamp = datetime.now(tz=UTC).isoformat()
     conv.frontmatter.status = "deprecated"
+    conv.frontmatter.deprecated_at = timestamp
     content = serialize_convention_file(conv)
     if conv.file_path is not None:
         conv.file_path.write_text(content, encoding="utf-8")
 
     console.print(
-        f"[green]Deprecated[/green] '{conv.frontmatter.title}' — status set to deprecated"
+        f"[green]Deprecated[/green] '{conv.frontmatter.title}' — "
+        f"status set to deprecated at {timestamp}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# convention comment
+# ---------------------------------------------------------------------------
+
+
+@convention_app.command("comment")
+def convention_comment(
+    name: Annotated[
+        str,
+        typer.Argument(help="Convention title or file slug to comment on."),
+    ],
+    *,
+    body: Annotated[
+        str,
+        typer.Option("--body", help="Comment text to append."),
+    ],
+) -> None:
+    """Append a comment to a convention's sibling .comments.yaml file."""
+    from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
+    from lexibrary.lifecycle.convention_comments import (  # noqa: PLC0415
+        append_convention_comment,
+        convention_comment_path,
+    )
+
+    project_root = require_project_root()
+    conventions_dir = project_root / ".lexibrary" / "conventions"
+
+    idx = ConventionIndex(conventions_dir)
+    idx.load()
+
+    conv = _find_convention_by_name_or_slug(idx, name)
+    if conv is None:
+        console.print(
+            f"[red]Convention not found:[/red] '{name}'\n"
+            + (
+                "Available conventions: " + ", ".join(idx.names())
+                if idx.names()
+                else "No conventions exist yet. Run [cyan]lexi convention new[/cyan] first."
+            )
+        )
+        raise typer.Exit(1)
+
+    if conv.file_path is None:
+        console.print("[red]Convention file path is unknown.[/red]")
+        raise typer.Exit(1)
+
+    append_convention_comment(conv.file_path, body)
+    comment_file = convention_comment_path(conv.file_path)
+    console.print(
+        f"[green]Comment added[/green] to '{conv.frontmatter.title}' — "
+        f"{comment_file.relative_to(project_root)}"
     )
 
 
@@ -892,6 +1356,52 @@ def design_update(
         console.print(scaffold)
 
 
+@design_app.command("comment")
+def design_comment(
+    source_file: Annotated[
+        Path,
+        typer.Argument(help="Source file to add a design comment for."),
+    ],
+    *,
+    body: Annotated[
+        str,
+        typer.Option("--body", "-b", help="Comment text to append."),
+    ],
+) -> None:
+    """Append a comment to a source file's design comment file."""
+    from lexibrary.lifecycle.design_comments import append_design_comment  # noqa: PLC0415
+    from lexibrary.utils.paths import mirror_path  # noqa: PLC0415
+
+    target = Path(source_file).resolve()
+
+    # Find project root starting from the file's directory (walks upward)
+    try:
+        project_root = find_project_root(start=target.parent)
+    except LexibraryNotFoundError:
+        console.print(
+            "[red]No .lexibrary/ directory found.[/red]"
+            " Run [cyan]lexictl init[/cyan] to create one."
+        )
+        raise typer.Exit(1) from None
+
+    # Check that the design file exists for this source file
+    design_path = mirror_path(project_root, target)
+    if not design_path.exists():
+        rel_source = target.relative_to(project_root)
+        console.print(
+            f"[red]Error:[/red] No design file exists for [cyan]{rel_source}[/cyan].\n"
+            "Run [cyan]lexi design update "
+            f"{rel_source}[/cyan] to create one first."
+        )
+        raise typer.Exit(1) from None
+
+    # Append the comment
+    append_design_comment(project_root, target, body)
+
+    rel_source = target.relative_to(project_root)
+    console.print(f"[green]Comment added[/green] for [cyan]{rel_source}[/cyan].")
+
+
 # ---------------------------------------------------------------------------
 # Stack commands
 # ---------------------------------------------------------------------------
@@ -902,7 +1412,7 @@ def stack_post(
     *,
     title: Annotated[
         str,
-        typer.Option("--title", help="Title for the new stack post."),
+        typer.Option("--title", help="Title for the new issue post."),
     ],
     tag: Annotated[
         list[str],
@@ -920,8 +1430,39 @@ def stack_post(
         list[str] | None,
         typer.Option("--concept", help="Concept reference (repeatable)."),
     ] = None,
+    problem: Annotated[
+        str | None,
+        typer.Option("--problem", help="Problem description for the issue."),
+    ] = None,
+    context: Annotated[
+        str | None,
+        typer.Option("--context", help="Context for the issue."),
+    ] = None,
+    evidence: Annotated[
+        list[str] | None,
+        typer.Option("--evidence", help="Evidence item (repeatable)."),
+    ] = None,
+    attempts: Annotated[
+        list[str] | None,
+        typer.Option("--attempts", help="Attempt description (repeatable)."),
+    ] = None,
+    finding: Annotated[
+        str | None,
+        typer.Option("--finding", help="Inline finding body text."),
+    ] = None,
+    resolve: Annotated[
+        bool,
+        typer.Option("--resolve", help="Auto-accept inline finding and set status to resolved."),
+    ] = False,
+    resolution_type: Annotated[
+        str | None,
+        typer.Option(
+            "--resolution-type",
+            help="Resolution type (e.g. fix, workaround). Requires --resolve.",
+        ),
+    ] = None,
 ) -> None:
-    """Create a new Stack post with auto-assigned ID."""
+    """Create a new Stack issue post with auto-assigned ID."""
     from lexibrary.stack.template import render_post_template  # noqa: PLC0415
 
     project_root = require_project_root()
@@ -929,6 +1470,14 @@ def stack_post(
 
     if not tag:
         console.print("[red]At least one --tag is required.[/red]")
+        raise typer.Exit(1)
+
+    # CLI validation: --resolve requires --finding, --resolution-type requires --resolve
+    if resolve and finding is None:
+        console.print("[red]--resolve requires --finding.[/red]")
+        raise typer.Exit(1)
+    if resolution_type is not None and not resolve:
+        console.print("[red]--resolution-type requires --resolve.[/red]")
         raise typer.Exit(1)
 
     next_num = _next_stack_id(sd)
@@ -945,13 +1494,25 @@ def stack_post(
         bead=bead,
         refs_files=file,
         refs_concepts=concept,
+        problem=problem,
+        context=context,
+        evidence=evidence,
+        attempts=attempts,
     )
     post_path.write_text(content, encoding="utf-8")
+
+    # Two-step one-shot flow: if --finding is provided, append finding via mutation
+    if finding is not None:
+        from lexibrary.stack.mutations import accept_finding, add_finding  # noqa: PLC0415
+
+        add_finding(post_path, author="user", body=finding)
+        if resolve:
+            accept_finding(post_path, finding_num=1, resolution_type=resolution_type)
 
     rel = post_path.relative_to(project_root)
     console.print(f"[green]Created[/green] {rel}")
     console.print(
-        "[dim]Fill in the ## Problem and ### Evidence sections, "
+        "[dim]Fill in the ## Problem, ### Context, ### Evidence, and ### Attempts sections, "
         "then share the post ID with your team.[/dim]"
     )
 
@@ -973,14 +1534,25 @@ def stack_search(
     ] = None,
     status: Annotated[
         str | None,
-        typer.Option("--status", help="Filter by status (open/resolved/outdated/duplicate)."),
+        typer.Option("--status", help="Filter by status (open/resolved/outdated/duplicate/stale)."),
     ] = None,
     concept: Annotated[
         str | None,
         typer.Option("--concept", help="Filter by concept name."),
     ] = None,
+    resolution_type: Annotated[
+        str | None,
+        typer.Option("--resolution-type", help="Filter by resolution type (e.g. fix, workaround)."),
+    ] = None,
+    include_stale: Annotated[
+        bool,
+        typer.Option(
+            "--include-stale",
+            help="Include stale posts in results (excluded by default).",
+        ),
+    ] = False,
 ) -> None:
-    """Search Stack posts by query and/or filters."""
+    """Search Stack issue posts by query and/or filters."""
     from rich.table import Table  # noqa: PLC0415
 
     from lexibrary.stack.index import StackIndex  # noqa: PLC0415
@@ -1003,9 +1575,22 @@ def stack_search(
     if concept:
         concept_set = {p.frontmatter.id for p in idx.by_concept(concept)}
         results = [p for p in results if p.frontmatter.id in concept_set]
+    if resolution_type:
+        rt_set = {p.frontmatter.id for p in idx.by_resolution_type(resolution_type)}
+        results = [p for p in results if p.frontmatter.id in rt_set]
+
+    # Filter out stale posts by default (unless --include-stale or explicit --status stale)
+    if not include_stale and status != "stale":
+        results = [p for p in results if p.frontmatter.status != "stale"]
 
     if not results:
-        console.print("[yellow]No posts found.[/yellow]")
+        console.print("[yellow]No matching posts found.[/yellow]")
+        console.print()
+        console.print(
+            "Tip: If you encounter an issue here, document it with:\n"
+            "  lexi stack post --title \"...\" --problem \"...\" --attempts \"...\"\n"
+            "Even unsolved issues help future agents avoid repeating your work."
+        )
         return
 
     table = Table(title="Stack Posts")
@@ -1022,6 +1607,7 @@ def stack_search(
             "resolved": "blue",
             "outdated": "yellow",
             "duplicate": "red",
+            "stale": "dim",
         }.get(fm.status, "dim")
         table.add_row(
             fm.id,
@@ -1034,8 +1620,8 @@ def stack_search(
     console.print(table)
 
 
-@stack_app.command("answer")
-def stack_answer(
+@stack_app.command("finding")
+def stack_finding(
     post_id: Annotated[
         str,
         typer.Argument(help="Post ID (e.g. ST-001)."),
@@ -1043,15 +1629,15 @@ def stack_answer(
     *,
     body: Annotated[
         str,
-        typer.Option("--body", help="Answer body text."),
+        typer.Option("--body", help="Finding body text."),
     ],
     author: Annotated[
         str,
-        typer.Option("--author", help="Author of the answer."),
+        typer.Option("--author", help="Author of the finding."),
     ] = "user",
 ) -> None:
-    """Append a new answer to a Stack post."""
-    from lexibrary.stack.mutations import add_answer  # noqa: PLC0415
+    """Append a new finding to a Stack issue post."""
+    from lexibrary.stack.mutations import add_finding  # noqa: PLC0415
 
     project_root = require_project_root()
     post_path = _find_post_path(project_root, post_id)
@@ -1060,9 +1646,9 @@ def stack_answer(
         console.print(f"[red]Post not found:[/red] {post_id}")
         raise typer.Exit(1)
 
-    updated = add_answer(post_path, author=author, body=body)
-    last_answer = updated.answers[-1]
-    console.print(f"[green]Added answer A{last_answer.number}[/green] to {post_id}")
+    updated = add_finding(post_path, author=author, body=body)
+    last_finding = updated.findings[-1]
+    console.print(f"[green]Added finding F{last_finding.number}[/green] to {post_id}")
 
 
 @stack_app.command("vote")
@@ -1076,9 +1662,9 @@ def stack_vote(
         typer.Argument(help="Vote direction: 'up' or 'down'."),
     ],
     *,
-    answer: Annotated[
+    finding: Annotated[
         int | None,
-        typer.Option("--answer", help="Answer number to vote on (omit to vote on post)."),
+        typer.Option("--finding", help="Finding number to vote on (omit to vote on post)."),
     ] = None,
     comment: Annotated[
         str | None,
@@ -1089,7 +1675,7 @@ def stack_vote(
         typer.Option("--author", help="Author of the vote."),
     ] = "user",
 ) -> None:
-    """Record an upvote or downvote on a post or answer."""
+    """Record an upvote or downvote on an issue post or finding."""
     from lexibrary.stack.mutations import record_vote  # noqa: PLC0415
 
     project_root = require_project_root()
@@ -1107,7 +1693,7 @@ def stack_vote(
         console.print(f"[red]Post not found:[/red] {post_id}")
         raise typer.Exit(1)
 
-    target = f"A{answer}" if answer is not None else "post"
+    target = f"F{finding}" if finding is not None else "post"
 
     try:
         updated = record_vote(
@@ -1121,11 +1707,11 @@ def stack_vote(
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1) from None
 
-    if answer is not None:
-        for a in updated.answers:
-            if a.number == answer:
+    if finding is not None:
+        for a in updated.findings:
+            if a.number == finding:
                 console.print(
-                    f"[green]Recorded {direction}vote[/green] on A{answer} (votes: {a.votes})"
+                    f"[green]Recorded {direction}vote[/green] on F{finding} (votes: {a.votes})"
                 )
                 return
     else:
@@ -1142,13 +1728,17 @@ def stack_accept(
         typer.Argument(help="Post ID (e.g. ST-001)."),
     ],
     *,
-    answer_num: Annotated[
+    finding_num: Annotated[
         int,
-        typer.Option("--answer", help="Answer number to accept."),
+        typer.Option("--finding", help="Finding number to accept."),
     ],
+    resolution_type: Annotated[
+        str | None,
+        typer.Option("--resolution-type", help="Resolution type (e.g. fix, workaround)."),
+    ] = None,
 ) -> None:
-    """Mark an answer as accepted and set the post to resolved."""
-    from lexibrary.stack.mutations import accept_answer  # noqa: PLC0415
+    """Mark a finding as accepted and set the post to resolved."""
+    from lexibrary.stack.mutations import accept_finding  # noqa: PLC0415
 
     project_root = require_project_root()
     post_path = _find_post_path(project_root, post_id)
@@ -1158,12 +1748,12 @@ def stack_accept(
         raise typer.Exit(1)
 
     try:
-        accept_answer(post_path, answer_num)
+        accept_finding(post_path, finding_num, resolution_type=resolution_type)
     except ValueError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1) from None
 
-    console.print(f"[green]Accepted A{answer_num}[/green] on {post_id} — status set to resolved")
+    console.print(f"[green]Accepted F{finding_num}[/green] on {post_id} — status set to resolved")
 
 
 @stack_app.command("view")
@@ -1173,7 +1763,7 @@ def stack_view(
         typer.Argument(help="Post ID (e.g. ST-001)."),
     ],
 ) -> None:
-    """Display the full content of a Stack post."""
+    """Display the full content of a Stack issue post."""
     from rich.markdown import Markdown  # noqa: PLC0415
     from rich.panel import Panel  # noqa: PLC0415
 
@@ -1215,6 +1805,8 @@ def stack_view(
         header += f"\nConcepts: {', '.join(fm.refs.concepts)}"
     if fm.duplicate_of:
         header += f"\nDuplicate of: {fm.duplicate_of}"
+    if fm.resolution_type:
+        header += f"\nResolution: {fm.resolution_type}"
 
     console.print(Panel(header, title=fm.id, border_style="cyan"))
 
@@ -1222,19 +1814,30 @@ def stack_view(
     console.print("\n[bold]## Problem[/bold]\n")
     console.print(Markdown(post.problem))
 
+    # Context
+    if post.context:
+        console.print("\n[bold]### Context[/bold]\n")
+        console.print(Markdown(post.context))
+
     # Evidence
     if post.evidence:
         console.print("\n[bold]### Evidence[/bold]\n")
         for item in post.evidence:
             console.print(f"  - {item}")
 
-    # Answers
-    if post.answers:
-        console.print(f"\n[bold]## Answers ({len(post.answers)})[/bold]\n")
-        for a in post.answers:
+    # Attempts
+    if post.attempts:
+        console.print("\n[bold]### Attempts[/bold]\n")
+        for item in post.attempts:
+            console.print(f"  - {item}")
+
+    # Findings
+    if post.findings:
+        console.print(f"\n[bold]## Findings ({len(post.findings)})[/bold]\n")
+        for a in post.findings:
             accepted_badge = " [green](accepted)[/green]" if a.accepted else ""
             console.print(
-                f"[bold]### A{a.number}[/bold]{accepted_badge}  "
+                f"[bold]### F{a.number}[/bold]{accepted_badge}  "
                 f"Votes: {a.votes} | {a.date.isoformat()} | {a.author}"
             )
             console.print(Markdown(a.body))
@@ -1244,7 +1847,7 @@ def stack_view(
                     console.print(f"    {c}")
             console.print()
     else:
-        console.print("\n[dim]No answers yet.[/dim]")
+        console.print("\n[dim]No findings yet.[/dim]")
 
 
 @stack_app.command("list")
@@ -1258,8 +1861,15 @@ def stack_list(
         str | None,
         typer.Option("--tag", help="Filter by tag."),
     ] = None,
+    include_stale: Annotated[
+        bool,
+        typer.Option(
+            "--include-stale",
+            help="Include stale posts in listing (excluded by default).",
+        ),
+    ] = False,
 ) -> None:
-    """List Stack posts with optional filters."""
+    """List Stack issue posts with optional filters."""
     from rich.table import Table  # noqa: PLC0415
 
     from lexibrary.stack.index import StackIndex  # noqa: PLC0415
@@ -1274,6 +1884,10 @@ def stack_list(
     if tag:
         tag_set = {p.frontmatter.id for p in idx.by_tag(tag)}
         results = [p for p in results if p.frontmatter.id in tag_set]
+
+    # Filter out stale posts by default (unless --include-stale or explicit --status stale)
+    if not include_stale and status != "stale":
+        results = [p for p in results if p.frontmatter.status != "stale"]
 
     if not results:
         console.print("[yellow]No posts found.[/yellow]")
@@ -1293,6 +1907,7 @@ def stack_list(
             "resolved": "blue",
             "outdated": "yellow",
             "duplicate": "red",
+            "stale": "dim",
         }.get(fm.status, "dim")
         table.add_row(
             fm.id,
@@ -1312,7 +1927,7 @@ def stack_mark_outdated(
         typer.Argument(help="Post ID (e.g. ST-001)."),
     ],
 ) -> None:
-    """Mark a Stack post as outdated."""
+    """Mark a Stack issue post as outdated."""
     from lexibrary.stack.mutations import mark_outdated  # noqa: PLC0415
 
     project_root = require_project_root()
@@ -1338,7 +1953,7 @@ def stack_duplicate(
         typer.Option("--of", help="Original post ID this is a duplicate of."),
     ],
 ) -> None:
-    """Mark a Stack post as a duplicate of another post."""
+    """Mark a Stack issue post as a duplicate of another post."""
     from lexibrary.stack.mutations import mark_duplicate  # noqa: PLC0415
 
     project_root = require_project_root()
@@ -1350,6 +1965,94 @@ def stack_duplicate(
 
     mark_duplicate(post_path, duplicate_of=of)
     console.print(f"[green]Marked {post_id} as duplicate of {of}[/green]")
+
+
+@stack_app.command("comment")
+def stack_comment(
+    post_id: Annotated[
+        str,
+        typer.Argument(help="Post ID (e.g. ST-001)."),
+    ],
+    *,
+    body: Annotated[
+        str,
+        typer.Option("--body", "-b", help="Comment text to append."),
+    ],
+) -> None:
+    """Append a comment to a Stack post's comment file."""
+    from lexibrary.lifecycle.stack_comments import (  # noqa: PLC0415
+        append_stack_comment,
+        stack_comment_count,
+    )
+
+    project_root = require_project_root()
+    post_path = _find_post_path(project_root, post_id)
+
+    if post_path is None:
+        console.print(f"[red]Post not found:[/red] {post_id}")
+        raise typer.Exit(1)
+
+    append_stack_comment(project_root, post_id, body)
+    count = stack_comment_count(project_root, post_id)
+    console.print(
+        f"[green]Comment added[/green] for post [cyan]{post_id}[/cyan] "
+        f"({count} comment{'s' if count != 1 else ''} total)"
+    )
+
+
+@stack_app.command("stale")
+def stack_stale(
+    post_id: Annotated[
+        str,
+        typer.Argument(help="Post ID (e.g. ST-001)."),
+    ],
+) -> None:
+    """Mark a resolved Stack post as stale."""
+    from lexibrary.stack.mutations import mark_stale  # noqa: PLC0415
+
+    project_root = require_project_root()
+    post_path = _find_post_path(project_root, post_id)
+
+    if post_path is None:
+        console.print(f"[red]Post not found:[/red] {post_id}")
+        raise typer.Exit(1)
+
+    try:
+        updated = mark_stale(post_path)
+    except ValueError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(1) from None
+
+    console.print(
+        f"[green]Marked {post_id} as stale[/green] "
+        f"(stale_at: {updated.frontmatter.stale_at})"
+    )
+
+
+@stack_app.command("unstale")
+def stack_unstale(
+    post_id: Annotated[
+        str,
+        typer.Argument(help="Post ID (e.g. ST-001)."),
+    ],
+) -> None:
+    """Reverse staleness on a stale Stack post (set back to resolved)."""
+    from lexibrary.stack.mutations import mark_unstale  # noqa: PLC0415
+
+    project_root = require_project_root()
+    post_path = _find_post_path(project_root, post_id)
+
+    if post_path is None:
+        console.print(f"[red]Post not found:[/red] {post_id}")
+        raise typer.Exit(1)
+
+    try:
+        mark_unstale(post_path)
+    except ValueError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(1) from None
+
+    console.print(f"[green]Marked {post_id} as resolved (un-staled)[/green]")
 
 
 # ---------------------------------------------------------------------------
@@ -1665,30 +2368,32 @@ def agent_help() -> None:
     commands_text.append("  Create a new concept file (--tag)\n")
     commands_text.append("  lexi concept link <name> <file>", style="cyan")
     commands_text.append("  Add a wikilink to a design file\n")
-    commands_text.append("  lexi conventions [path]", style="cyan")
-    commands_text.append("  List conventions (--tag, --status, --scope, --all)\n")
+    commands_text.append("  lexi conventions [query]", style="cyan")
+    commands_text.append("  List/search conventions (--tag, --status, --scope, --all)\n")
     commands_text.append("  lexi convention new", style="cyan")
-    commands_text.append("      Create a convention (--scope, --body, --tag, --title)\n")
+    commands_text.append("      Create a convention (--scope, --body, --tag, --title, --alias)\n")
     commands_text.append("  lexi convention approve <name>", style="cyan")
     commands_text.append("  Promote draft to active\n")
     commands_text.append("  lexi convention deprecate <name>", style="cyan")
     commands_text.append("  Set status to deprecated\n")
+    commands_text.append("  lexi convention comment <name>", style="cyan")
+    commands_text.append("  Add a comment to a convention (--body)\n")
     commands_text.append("\n")
-    commands_text.append("Stack Q&A\n", style="bold underline")
+    commands_text.append("Stack Issues\n", style="bold underline")
     commands_text.append("  lexi stack post", style="cyan")
-    commands_text.append("            Create a question (--title, --tag, --file, --concept)\n")
+    commands_text.append("            Post a new issue (--title, --tag, --problem, --finding)\n")
     commands_text.append("  lexi stack search [query]", style="cyan")
-    commands_text.append("   Search posts (--tag, --scope, --status, --concept)\n")
+    commands_text.append("   Search issues (--tag, --scope, --status, --resolution-type)\n")
     commands_text.append("  lexi stack view <id>", style="cyan")
-    commands_text.append("        Read a full post with answers\n")
-    commands_text.append("  lexi stack answer <id>", style="cyan")
-    commands_text.append("      Add an answer (--body, --author)\n")
+    commands_text.append("        Read a full issue with findings\n")
+    commands_text.append("  lexi stack finding <id>", style="cyan")
+    commands_text.append("      Add a finding (--body, --author)\n")
     commands_text.append("  lexi stack vote <id> up|down", style="cyan")
-    commands_text.append("  Vote on a post or answer (--answer, --comment)\n")
+    commands_text.append("  Vote on an issue or finding (--finding, --comment)\n")
     commands_text.append("  lexi stack accept <id>", style="cyan")
-    commands_text.append("      Accept an answer (--answer)\n")
+    commands_text.append("      Accept a finding (--finding, --resolution-type)\n")
     commands_text.append("  lexi stack list", style="cyan")
-    commands_text.append("            List posts (--status, --tag)\n")
+    commands_text.append("            List issues (--status, --tag)\n")
     commands_text.append("\n")
     commands_text.append("IWH Signals\n", style="bold underline")
     commands_text.append("  lexi iwh write [dir]", style="cyan")
@@ -1697,6 +2402,12 @@ def agent_help() -> None:
     commands_text.append("       Read & consume signal (--peek to preserve)\n")
     commands_text.append("  lexi iwh list", style="cyan")
     commands_text.append("             List all IWH signals in the project\n")
+    commands_text.append("\n")
+    commands_text.append("Design Files\n", style="bold underline")
+    commands_text.append("  lexi design update <file>", style="cyan")
+    commands_text.append("   Display or scaffold a design file for a source file\n")
+    commands_text.append("  lexi design comment <file>", style="cyan")
+    commands_text.append("  Add a comment to a design file (--body)\n")
     commands_text.append("\n")
     commands_text.append("Inspection & Annotation\n", style="bold underline")
     commands_text.append("  lexi status [path]", style="cyan")
@@ -1721,15 +2432,24 @@ def agent_help() -> None:
     workflows_text.append("   Start with concept search to find relevant knowledge articles,\n")
     workflows_text.append("   then use cross-artifact search to find related design files and\n")
     workflows_text.append("   Stack posts.\n\n")
-    workflows_text.append("3. Ask a question and capture knowledge\n", style="bold")
+    workflows_text.append("3. Document an issue and capture knowledge\n", style="bold")
+    workflows_text.append(
+        '   lexi stack post --title "Config fails on startup" --tag config'
+        ' --problem "..." --finding "Set extra=forbid" --resolve\n',
+        style="cyan",
+    )
+    workflows_text.append("   Or use the multi-step flow:\n")
     workflows_text.append(
         '   lexi stack post --title "Why does X use Y?" --tag arch\n',
         style="cyan",
     )
-    workflows_text.append('   lexi stack answer ST-001 --body "Because ..."\n', style="cyan")
-    workflows_text.append("   lexi stack accept ST-001 --answer 1\n", style="cyan")
-    workflows_text.append("   Create a Stack post for decisions or questions, answer it,\n")
-    workflows_text.append("   and accept the best answer to build project knowledge.\n\n")
+    workflows_text.append('   lexi stack finding ST-001 --body "Because ..."\n', style="cyan")
+    workflows_text.append(
+        "   lexi stack accept ST-001 --finding 1 --resolution-type fix\n",
+        style="cyan",
+    )
+    workflows_text.append("   Create a Stack issue, add a finding, and accept to build\n")
+    workflows_text.append("   project knowledge.\n\n")
     workflows_text.append("4. Create and manage conventions\n", style="bold")
     workflows_text.append(
         '   lexi convention new --scope project --body "Use rich console"\n',
@@ -1822,14 +2542,14 @@ def search(
 
 
 # ---------------------------------------------------------------------------
-# context-dump (hidden, for hook injection — not agent-facing)
+# orient (project orientation for agent sessions)
 # ---------------------------------------------------------------------------
 
-# Approximate token budget for context-dump output.
+# Approximate token budget for orient output.
 # 1 token ~= 4 characters for English text.
-_CONTEXT_DUMP_TOKEN_BUDGET = 2000
+_ORIENT_TOKEN_BUDGET = 2000
 _CHARS_PER_TOKEN = 4
-_CONTEXT_DUMP_CHAR_BUDGET = _CONTEXT_DUMP_TOKEN_BUDGET * _CHARS_PER_TOKEN
+_ORIENT_CHAR_BUDGET = _ORIENT_TOKEN_BUDGET * _CHARS_PER_TOKEN
 
 
 def _collect_file_descriptions(project_root: Path) -> list[tuple[str, str]]:
@@ -1862,11 +2582,13 @@ def _collect_file_descriptions(project_root: Path) -> list[tuple[str, str]]:
     return sorted(descriptions, key=lambda t: t[0])
 
 
-def _build_context_dump(project_root: Path) -> str:
-    """Build plain-text orientation context for hook injection.
+def _build_orient_content(project_root: Path) -> str:
+    """Build plain-text orientation context for agent sessions.
 
-    Includes TOPOLOGY.md content and file-level descriptions from .aindex
-    files, trimmed to approximately ``_CONTEXT_DUMP_TOKEN_BUDGET`` tokens.
+    Includes TOPOLOGY.md content, file-level descriptions from .aindex
+    files (trimmed to approximately ``_ORIENT_TOKEN_BUDGET`` tokens),
+    library stats (concept count, convention count, open stack posts),
+    and IWH signal summaries (peek only, no consumption).
 
     Returns an empty string if no .lexibrary/ directory exists.
     """
@@ -1893,7 +2615,7 @@ def _build_context_dump(project_root: Path) -> str:
         parts.append("## File Descriptions\n")
         # Check budget before adding all descriptions
         header_chars = sum(len(p) for p in parts) + len("## File Descriptions\n")
-        remaining_budget = _CONTEXT_DUMP_CHAR_BUDGET - header_chars
+        remaining_budget = _ORIENT_CHAR_BUDGET - header_chars
 
         if remaining_budget <= 0:
             # Topology alone fills the budget; skip descriptions
@@ -1902,12 +2624,7 @@ def _build_context_dump(project_root: Path) -> str:
             # Sort deepest paths first for trimming (more path segments = deeper)
             # We want to *trim* deepest first, so we add shallowest first
             # and stop when budget exhausted.
-            # desc_lines is already sorted alphabetically (shallowest tend to come
-            # first due to shorter paths). For trimming, we need to remove deepest.
-            # Strategy: add lines shallowest-first, stop when budget hit.
-            sorted_by_depth = sorted(
-                desc_lines, key=lambda line: line.count("/")
-            )
+            sorted_by_depth = sorted(desc_lines, key=lambda line: line.count("/"))
 
             included: list[str] = []
             chars_used = 0
@@ -1929,7 +2646,249 @@ def _build_context_dump(project_root: Path) -> str:
             if omitted > 0:
                 parts.append(f"\n({omitted} file descriptions omitted for brevity)")
 
+    # 3. Library stats (concept count, convention count, open stack posts)
+    stats = _collect_library_stats(project_root)
+    if stats:
+        parts.append(stats)
+
+    # 4. IWH signals peek (no consumption)
+    iwh_section = _collect_iwh_peek(project_root)
+    if iwh_section:
+        parts.append(iwh_section)
+
     return "\n\n".join(parts).strip() if parts else ""
+
+
+def _collect_library_stats(project_root: Path) -> str:
+    """Collect library statistics: concept count, convention count, open stack posts.
+
+    Returns a formatted section string, or empty string if no stats available.
+    """
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    lexibrary_root = project_root / LEXIBRARY_DIR
+
+    # Count concepts
+    concepts_dir = lexibrary_root / "concepts"
+    concept_count = 0
+    if concepts_dir.is_dir():
+        concept_count = len(list(concepts_dir.glob("*.md")))
+
+    # Count conventions
+    conventions_dir = lexibrary_root / "conventions"
+    convention_count = 0
+    if conventions_dir.is_dir():
+        convention_count = len(list(conventions_dir.glob("*.md")))
+
+    # Count open stack posts
+    stack_dir = lexibrary_root / "stack"
+    open_stack_count = 0
+    if stack_dir.is_dir():
+        from lexibrary.stack.parser import parse_stack_post  # noqa: PLC0415
+
+        for md_path in stack_dir.glob("ST-*-*.md"):
+            post = parse_stack_post(md_path)
+            if post is not None and post.frontmatter.status == "open":
+                open_stack_count += 1
+
+    if concept_count or convention_count or open_stack_count:
+        lines: list[str] = ["## Library Stats\n"]
+        lines.append(f"Concepts: {concept_count}")
+        lines.append(f"Conventions: {convention_count}")
+        lines.append(f"Open stack posts: {open_stack_count}")
+        return "\n".join(lines)
+
+    return ""
+
+
+def _collect_iwh_peek(project_root: Path) -> str:
+    """Peek at IWH signals without consuming them.
+
+    Returns a formatted section string, or empty string if no signals found.
+    """
+    from lexibrary.iwh.reader import find_all_iwh  # noqa: PLC0415
+
+    results = find_all_iwh(project_root)
+    if not results:
+        return ""
+
+    lines: list[str] = ["## IWH Signals\n"]
+    for source_dir, iwh in results:
+        display_dir = f"{source_dir}/" if str(source_dir) != "." else "./"
+        body_preview = iwh.body.replace("\n", " ").strip()
+        if len(body_preview) > 80:
+            body_preview = body_preview[:77] + "..."
+        lines.append(f"- [{iwh.scope}] {display_dir} -- {body_preview}")
+
+    # Consumption guidance footer
+    lines.append("")
+    lines.append(
+        "Run `lexi iwh read <directory>` for each signal above to get full details "
+        "and consume the signal."
+    )
+
+    return "\n".join(lines)
+
+
+@lexi_app.command("orient")
+def orient() -> None:
+    """Show project orientation: topology, file map, library stats, and IWH signals."""
+    try:
+        project_root = find_project_root()
+    except LexibraryNotFoundError:
+        # Silently exit with 0 — no .lexibrary is a graceful no-op
+        return
+
+    output = _build_orient_content(project_root)
+    if output:
+        # Plain text to stdout — no Rich formatting
+        print(output)  # noqa: T201
+
+
+@lexi_app.command("context-dump", hidden=True)
+def context_dump() -> None:
+    """Emit orientation context (hidden, deprecated alias for orient)."""
+    orient()
+
+
+@lexi_app.command()
+def impact(
+    file: Annotated[
+        Path,
+        typer.Argument(help="Source file to analyse for reverse dependents."),
+    ],
+    *,
+    depth: Annotated[
+        int,
+        typer.Option("--depth", help="Maximum traversal depth (1-3, default 1)."),
+    ] = 1,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", help="Output paths only, one per line."),
+    ] = False,
+) -> None:
+    """Show reverse dependents of a source file (who imports it).
+
+    Traverses the link graph's ``ast_import`` edges in reverse to find
+    files that depend on the given file.  Use ``--depth N`` to follow
+    the dependency chain further (clamped to 3).
+
+    With ``--quiet``, prints one path per line with no decoration --
+    suitable for piping to other tools.
+    """
+    from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
+        parse_design_file_frontmatter,
+    )
+    from lexibrary.config.loader import load_config  # noqa: PLC0415
+    from lexibrary.linkgraph import open_index  # noqa: PLC0415
+    from lexibrary.utils.paths import mirror_path  # noqa: PLC0415
+
+    target = Path(file).resolve()
+
+    # Find project root starting from the file's directory
+    try:
+        project_root = find_project_root(start=target.parent)
+    except LexibraryNotFoundError:
+        console.print(
+            "[red]No .lexibrary/ directory found.[/red]"
+            " Run [cyan]lexictl init[/cyan] to create one."
+        )
+        raise typer.Exit(1) from None
+
+    config = load_config(project_root)
+
+    # Check scope: file must be under scope_root
+    scope_abs = (project_root / config.scope_root).resolve()
+    try:
+        target.relative_to(scope_abs)
+    except ValueError:
+        console.print(
+            f"[yellow]{file}[/yellow] is outside the configured scope_root "
+            f"([dim]{config.scope_root}[/dim])."
+        )
+        raise typer.Exit(1) from None
+
+    rel_path = str(target.relative_to(project_root))
+
+    # Clamp depth to 1-3
+    effective_depth = max(1, min(depth, 3))
+
+    # Open the link graph
+    link_graph = open_index(project_root)
+    if link_graph is None:
+        if quiet:
+            return
+        console.print(
+            "[yellow]No link graph index found.[/yellow] "
+            "Run [cyan]lexictl index[/cyan] to build one."
+        )
+        raise typer.Exit(1) from None
+
+    try:
+        nodes = link_graph.traverse(
+            rel_path,
+            max_depth=effective_depth,
+            link_types=["ast_import"],
+            direction="inbound",
+        )
+    finally:
+        link_graph.close()
+
+    if not nodes:
+        if quiet:
+            return
+        console.print(f"No dependents found for [cyan]{rel_path}[/cyan].")
+        return
+
+    # Quiet mode: paths only
+    if quiet:
+        seen: set[str] = set()
+        for node in nodes:
+            if node.path not in seen:
+                seen.add(node.path)
+                console.print(node.path)
+        return
+
+    # Tree output with design file descriptions and open stack post warnings
+    # Re-open link graph for stack post checks
+    link_graph_for_stack = open_index(project_root)
+
+    console.print(f"\n## Dependents of [cyan]{rel_path}[/cyan]\n")
+
+    for node in nodes:
+        indent = "  " * (node.depth - 1)
+        prefix = "|-" if node.depth == 1 else "|--"
+
+        # Try to get the design file description
+        design_desc = ""
+        design_path = mirror_path(project_root, project_root / node.path)
+        fm = parse_design_file_frontmatter(design_path)
+        if fm is not None and fm.description:
+            design_desc = f"  -- {fm.description}"
+
+        console.print(f"{indent}{prefix} {node.path}{design_desc}")
+
+        # Check for open stack posts referencing this dependent
+        if link_graph_for_stack is not None:
+            stack_links = link_graph_for_stack.reverse_deps(
+                node.path, link_type="stack_file_ref"
+            )
+            for slink in stack_links:
+                stack_artifact = link_graph_for_stack.get_artifact(slink.source_path)
+                if (
+                    stack_artifact is not None
+                    and stack_artifact.status == "open"
+                ):
+                    console.print(
+                        f"{indent}   [yellow]warning:[/yellow] open stack post "
+                        f"[dim]{stack_artifact.path}[/dim] "
+                        f"({stack_artifact.title or 'untitled'})"
+                    )
+
+    if link_graph_for_stack is not None:
+        link_graph_for_stack.close()
+
+    console.print()
 
 
 @lexi_app.command("context-dump", hidden=True)

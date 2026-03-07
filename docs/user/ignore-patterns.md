@@ -15,7 +15,7 @@ The `ignore.additional_patterns` config setting provides the base set of ignore 
 ```yaml
 ignore:
   additional_patterns:
-    - ".lexibrary/START_HERE.md"
+    - ".lexibrary/TOPOLOGY.md"
     - ".lexibrary/**/*.md"
     - ".lexibrary/**/.aindex"
     - "node_modules/"
@@ -34,7 +34,7 @@ You can add to this list in `.lexibrary/config.yaml`:
 ignore:
   additional_patterns:
     # Keep the defaults (they are replaced, not appended):
-    - ".lexibrary/START_HERE.md"
+    - ".lexibrary/TOPOLOGY.md"
     - ".lexibrary/**/*.md"
     - ".lexibrary/**/.aindex"
     - "node_modules/"

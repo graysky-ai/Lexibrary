@@ -55,7 +55,7 @@ class TestMDCRulesFile:
         generate_cursor_rules(tmp_path)
         mdc = tmp_path / ".cursor" / "rules" / "lexibrary.mdc"
         content = mdc.read_text(encoding="utf-8")
-        assert "START_HERE.md" in content
+        assert "lexi orient" in content
         assert "lexi lookup" in content
 
     def test_mdc_overwritten_on_update(self, tmp_path: Path) -> None:
@@ -95,8 +95,8 @@ class TestSkillsFile:
         generate_cursor_rules(tmp_path)
         skills = tmp_path / ".cursor" / "skills" / "lexi.md"
         content = skills.read_text(encoding="utf-8")
-        assert "START_HERE.md" in content
-        assert "lexi status" in content
+        assert "lexi orient" in content
+        assert "topology" in content.lower()
 
     def test_skills_has_search_content(self, tmp_path: Path) -> None:
         """Skills file contains search skill content."""

@@ -12,7 +12,9 @@ def serialize_convention_file(convention: ConventionFile) -> str:
 
     Produces:
     - ``---`` delimited YAML frontmatter (title, scope, tags, status,
-      source, priority)
+      source, priority, and optionally aliases and deprecated_at)
+    - ``aliases`` is included only when non-empty
+    - ``deprecated_at`` is included only when not None
     - A blank line after the closing ``---``
     - The full body text
     - Trailing newline
@@ -25,6 +27,12 @@ def serialize_convention_file(convention: ConventionFile) -> str:
         "source": convention.frontmatter.source,
         "priority": convention.frontmatter.priority,
     }
+
+    if convention.frontmatter.aliases:
+        fm_data["aliases"] = convention.frontmatter.aliases
+
+    if convention.frontmatter.deprecated_at is not None:
+        fm_data["deprecated_at"] = convention.frontmatter.deprecated_at
 
     fm_str = yaml.dump(fm_data, default_flow_style=False, sort_keys=False).rstrip("\n")
 

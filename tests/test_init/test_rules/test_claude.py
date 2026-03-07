@@ -38,20 +38,22 @@ class TestCreateFromScratch:
         """Created CLAUDE.md contains core Lexibrary rules."""
         generate_claude_rules(tmp_path)
         content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
-        assert "START_HERE.md" in content
+        assert "lexi orient" in content
         assert "lexi lookup" in content
 
     def test_returns_all_created_paths(self, tmp_path: Path) -> None:
         """Return value includes all generated files."""
         result = generate_claude_rules(tmp_path)
-        assert len(result) == 11
+        assert len(result) == 13
         filenames = [p.name for p in result]
         assert "CLAUDE.md" in filenames
         assert "settings.json" in filenames
         assert "lexi-pre-edit.sh" in filenames
         assert "lexi-post-edit.sh" in filenames
-        assert "lexi-explore-context.sh" in filenames
         assert "explore.md" in filenames
+        assert "plan.md" in filenames
+        assert "code.md" in filenames
+        assert "lexi-research.md" in filenames
         assert "lexi-orient.md" in filenames
         assert "lexi-search.md" in filenames
         assert "lexi-lookup.md" in filenames
@@ -123,7 +125,7 @@ class TestUpdateExistingSection:
 
         content = claude_md.read_text(encoding="utf-8")
         assert "old lexibrary rules" not in content
-        assert "START_HERE.md" in content
+        assert "lexi orient" in content
 
     def test_preserves_surrounding_content(self, tmp_path: Path) -> None:
         """Content before and after the marker block is preserved."""
@@ -166,19 +168,20 @@ class TestCommandFiles:
         orient = tmp_path / ".claude" / "commands" / "lexi-orient.md"
         assert orient.exists()
 
-    def test_orient_contains_start_here(self, tmp_path: Path) -> None:
-        """Orient command references START_HERE.md."""
+    def test_orient_contains_lexi_orient(self, tmp_path: Path) -> None:
+        """Orient command references lexi orient."""
         generate_claude_rules(tmp_path)
         orient = tmp_path / ".claude" / "commands" / "lexi-orient.md"
         content = orient.read_text(encoding="utf-8")
-        assert "START_HERE.md" in content
+        assert "lexi orient" in content
 
-    def test_orient_contains_lexi_status(self, tmp_path: Path) -> None:
-        """Orient command includes lexi status."""
+    def test_orient_contains_library_stats(self, tmp_path: Path) -> None:
+        """Orient command mentions library stats."""
         generate_claude_rules(tmp_path)
         orient = tmp_path / ".claude" / "commands" / "lexi-orient.md"
         content = orient.read_text(encoding="utf-8")
-        assert "lexi status" in content
+        lower = content.lower()
+        assert "stats" in lower or "count" in lower or "topology" in lower
 
     def test_creates_search_command(self, tmp_path: Path) -> None:
         """lexi-search.md is created in .claude/commands/."""
@@ -203,7 +206,7 @@ class TestCommandFiles:
 
         content = orient.read_text(encoding="utf-8")
         assert "old orient content" not in content
-        assert "START_HERE.md" in content
+        assert "lexi orient" in content
 
     def test_creates_commands_directory(self, tmp_path: Path) -> None:
         """The .claude/commands/ directory is created if it does not exist."""
@@ -250,14 +253,17 @@ class TestSettingsJsonGeneration:
         assert settings_file.exists()
 
     def test_settings_has_permissions_allow(self, tmp_path: Path) -> None:
-        """settings.json contains permissions.allow list."""
+        """settings.json contains permissions.allow list with explicit entries."""
         _generate_settings_json(tmp_path)
         settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
         assert "permissions" in settings
         assert "allow" in settings["permissions"]
         allow = settings["permissions"]["allow"]
-        assert "Bash(lexi *)" in allow
+        assert "Bash(lexi orient)" in allow
         assert "Bash(lexi lookup *)" in allow
+        assert "Bash(lexi impact *)" in allow
+        assert "Bash(lexi concept new *)" in allow
+        assert "Bash(lexi convention new *)" in allow
 
     def test_settings_has_permissions_deny(self, tmp_path: Path) -> None:
         """settings.json contains permissions.deny list."""
@@ -290,7 +296,7 @@ class TestSettingsJsonGeneration:
         post_hooks = settings["hooks"]["PostToolUse"]
         assert len(post_hooks) >= 1
         assert post_hooks[0]["matcher"] == "Edit|Write"
-        assert post_hooks[0]["hooks"][0]["timeout"] == 5000
+        assert post_hooks[0]["hooks"][0]["timeout"] == 15000
 
     def test_creates_claude_directory(self, tmp_path: Path) -> None:
         """.claude/ directory is created if it does not exist."""
@@ -318,7 +324,7 @@ class TestSettingsJsonMerge:
         settings = json.loads((claude_dir / "settings.json").read_text(encoding="utf-8"))
         allow = settings["permissions"]["allow"]
         assert "Bash(my-custom-command *)" in allow
-        assert "Bash(lexi *)" in allow
+        assert "Bash(lexi orient)" in allow
 
     def test_merges_with_existing_deny_entries(self, tmp_path: Path) -> None:
         """Existing deny entries are preserved when merging."""
@@ -470,6 +476,15 @@ class TestHookScriptGeneration:
         content = (tmp_path / ".claude" / "hooks" / "lexi-pre-edit.sh").read_text(encoding="utf-8")
         assert "file_path" in content
 
+    def test_pre_edit_uses_hook_specific_output(self, tmp_path: Path) -> None:
+        """Pre-edit script uses hookSpecificOutput wrapper with jq for JSON escaping."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-pre-edit.sh").read_text(encoding="utf-8")
+        assert "hookSpecificOutput" in content
+        assert "hookEventName" in content
+        assert "PreToolUse" in content
+        assert "jq" in content
+
     def test_post_edit_emits_system_message(self, tmp_path: Path) -> None:
         """Post-edit script emits a systemMessage reminder."""
         _generate_hook_scripts(tmp_path)
@@ -510,19 +525,110 @@ class TestHookScriptGeneration:
         assert "old hook content" not in content
         assert "lexi lookup" in content
 
-    def test_returns_three_paths(self, tmp_path: Path) -> None:
-        """_generate_hook_scripts() returns paths to all three scripts."""
+    def test_returns_two_paths(self, tmp_path: Path) -> None:
+        """_generate_hook_scripts() returns paths to both scripts."""
         result = _generate_hook_scripts(tmp_path)
-        assert len(result) == 3
+        assert len(result) == 2
         filenames = [p.name for p in result]
         assert "lexi-pre-edit.sh" in filenames
         assert "lexi-post-edit.sh" in filenames
-        assert "lexi-explore-context.sh" in filenames
 
     def test_creates_hooks_directory(self, tmp_path: Path) -> None:
         """.claude/hooks/ directory is created if it does not exist."""
         _generate_hook_scripts(tmp_path)
         assert (tmp_path / ".claude" / "hooks").is_dir()
+
+
+class TestPostEditHookSkeletonIntegration:
+    """PostToolUse hook script integrates skeleton generation and enrichment queue."""
+
+    def test_post_edit_calls_lexictl_skeleton(self, tmp_path: Path) -> None:
+        """Post-edit hook script calls lexictl update --skeleton for missing design files."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        assert "lexictl update --skeleton" in content
+
+    def test_post_edit_checks_design_file_existence(self, tmp_path: Path) -> None:
+        """Post-edit hook resolves and checks design file path."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        assert ".lexibrary/designs/" in content
+        assert "DESIGN_FILE=" in content
+
+    def test_post_edit_resolves_project_root(self, tmp_path: Path) -> None:
+        """Post-edit hook resolves the project root from CLAUDE_PROJECT_DIR."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        assert "CLAUDE_PROJECT_DIR" in content
+        assert "PROJECT_DIR" in content
+
+    def test_post_edit_skips_git_paths(self, tmp_path: Path) -> None:
+        """Post-edit hook skips .git/ paths in addition to other non-source paths."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        assert ".git/*" in content
+
+    def test_post_edit_emits_skeleton_generated_message(self, tmp_path: Path) -> None:
+        """Post-edit hook emits message about skeleton generation."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        assert "Auto-generated skeleton design file" in content
+        assert "queued it for LLM enrichment" in content
+
+    def test_post_edit_falls_back_to_reminder_on_failure(self, tmp_path: Path) -> None:
+        """Post-edit hook falls back to reminder if skeleton generation fails."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        assert "No design file found" in content
+
+    def test_post_edit_emits_reminder_when_design_exists(self, tmp_path: Path) -> None:
+        """Post-edit hook emits update reminder when design file already exists."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        assert "Remember to update the corresponding design file" in content
+
+    def test_post_edit_falls_back_without_lexibrary(self, tmp_path: Path) -> None:
+        """Post-edit hook falls back gracefully when no .lexibrary directory exists."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        # Should check for .lexibrary existence
+        assert ".lexibrary" in content
+
+
+class TestPostEditDependentsWarning:
+    """Post-edit hook calls lexi impact to warn about downstream dependents."""
+
+    def test_post_edit_calls_lexi_impact(self, tmp_path: Path) -> None:
+        """Post-edit hook runs lexi impact --depth 1 --quiet on edited file."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        assert "lexi impact" in content
+        assert "--depth 1" in content
+        assert "--quiet" in content
+
+    def test_post_edit_appends_dependents_to_system_message(self, tmp_path: Path) -> None:
+        """Post-edit hook appends dependents list to systemMessage when present."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        assert "Dependents that may need updating" in content
+        assert "DEPENDENTS" in content
+
+    def test_post_edit_skips_dependents_when_empty(self, tmp_path: Path) -> None:
+        """Post-edit hook does not append dependents warning when none found."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        # Should check if DEPENDENTS is non-empty before appending
+        assert 'if [ -n "$DEPENDENTS" ]' in content
+
+    def test_post_edit_impact_graceful_degradation(self, tmp_path: Path) -> None:
+        """Post-edit hook continues without warning if lexi impact fails or times out."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        # Should suppress stderr and use || true for graceful degradation
+        assert "2>/dev/null" in content
+        assert "|| true" in content
+        # Should check if lexi command exists before calling
+        assert "command -v lexi" in content
 
 
 # ---------------------------------------------------------------------------
@@ -610,11 +716,15 @@ class TestAgentFileGeneration:
         assert "old agent content" not in content
         assert "name: Explore" in content
 
-    def test_returns_one_path(self, tmp_path: Path) -> None:
-        """_generate_agent_files() returns path to the explore agent file."""
+    def test_returns_four_paths(self, tmp_path: Path) -> None:
+        """_generate_agent_files() returns paths to all four agent files."""
         result = _generate_agent_files(tmp_path)
-        assert len(result) == 1
-        assert result[0].name == "explore.md"
+        assert len(result) == 4
+        filenames = [p.name for p in result]
+        assert "explore.md" in filenames
+        assert "plan.md" in filenames
+        assert "code.md" in filenames
+        assert "lexi-research.md" in filenames
 
     def test_generate_claude_rules_creates_explore_agent(self, tmp_path: Path) -> None:
         """generate_claude_rules() creates .claude/agents/explore.md."""
@@ -623,6 +733,166 @@ class TestAgentFileGeneration:
         assert explore.exists()
         content = explore.read_text(encoding="utf-8")
         assert "name: Explore" in content
+
+    # --- Explore agent: mandatory orient, stack search, IWH prohibition ---
+
+    def test_explore_has_mandatory_orient(self, tmp_path: Path) -> None:
+        """explore.md contains mandatory lexi orient first step."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "explore.md").read_text(encoding="utf-8")
+        assert "MANDATORY FIRST STEP" in content
+        assert "lexi orient" in content
+
+    def test_explore_has_stack_search(self, tmp_path: Path) -> None:
+        """explore.md includes lexi stack search in workflow."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "explore.md").read_text(encoding="utf-8")
+        assert "lexi stack search" in content
+
+    def test_explore_has_iwh_prohibition(self, tmp_path: Path) -> None:
+        """explore.md prohibits IWH consumption."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "explore.md").read_text(encoding="utf-8")
+        assert "Do NOT run `lexi iwh read`" in content
+
+    # --- Plan agent content tests ---
+
+    def test_creates_plan_agent(self, tmp_path: Path) -> None:
+        """plan.md is created in .claude/agents/."""
+        _generate_agent_files(tmp_path)
+        assert (tmp_path / ".claude" / "agents" / "plan.md").exists()
+
+    def test_plan_has_yaml_frontmatter(self, tmp_path: Path) -> None:
+        """plan.md starts with YAML frontmatter."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "plan.md").read_text(encoding="utf-8")
+        assert content.startswith("---\n")
+        assert "name: Plan" in content
+
+    def test_plan_has_mandatory_orient(self, tmp_path: Path) -> None:
+        """plan.md contains mandatory lexi orient first step."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "plan.md").read_text(encoding="utf-8")
+        assert "MANDATORY FIRST STEP" in content
+        assert "lexi orient" in content
+
+    def test_plan_has_iwh_prohibition(self, tmp_path: Path) -> None:
+        """plan.md prohibits IWH consumption."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "plan.md").read_text(encoding="utf-8")
+        assert "Do NOT run `lexi iwh read`" in content
+
+    def test_plan_has_tools(self, tmp_path: Path) -> None:
+        """plan.md frontmatter lists Glob, Grep, WebSearch tools."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "plan.md").read_text(encoding="utf-8")
+        assert "- Read" in content
+        assert "- Bash" in content
+        assert "- Glob" in content
+        assert "- Grep" in content
+        assert "- WebSearch" in content
+
+    # --- Code agent content tests ---
+
+    def test_creates_code_agent(self, tmp_path: Path) -> None:
+        """code.md is created in .claude/agents/."""
+        _generate_agent_files(tmp_path)
+        assert (tmp_path / ".claude" / "agents" / "code.md").exists()
+
+    def test_code_has_yaml_frontmatter(self, tmp_path: Path) -> None:
+        """code.md starts with YAML frontmatter."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "code.md").read_text(encoding="utf-8")
+        assert content.startswith("---\n")
+        assert "name: Code" in content
+
+    def test_code_has_mandatory_orient(self, tmp_path: Path) -> None:
+        """code.md contains mandatory lexi orient first step."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "code.md").read_text(encoding="utf-8")
+        assert "MANDATORY FIRST STEP" in content
+        assert "lexi orient" in content
+
+    def test_code_has_model_sonnet(self, tmp_path: Path) -> None:
+        """code.md specifies model: sonnet."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "code.md").read_text(encoding="utf-8")
+        assert "model: sonnet" in content
+
+    def test_code_has_tools(self, tmp_path: Path) -> None:
+        """code.md frontmatter lists Write, Edit, TodoWrite, WebSearch tools."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "code.md").read_text(encoding="utf-8")
+        assert "- Write" in content
+        assert "- Edit" in content
+        assert "- TodoWrite" in content
+        assert "- WebSearch" in content
+
+    def test_code_has_knowledge_capture(self, tmp_path: Path) -> None:
+        """code.md includes knowledge capture section with stack post, convention, concept."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "code.md").read_text(encoding="utf-8")
+        assert "Knowledge Capture" in content
+        assert "lexi stack post" in content
+        assert "lexi convention new" in content
+        assert "lexi concept new" in content
+
+    def test_code_has_iwh_write_protocol(self, tmp_path: Path) -> None:
+        """code.md includes IWH write protocol for leaving work incomplete."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "code.md").read_text(encoding="utf-8")
+        assert "lexi iwh write" in content
+        assert "--scope incomplete" in content
+        assert "--scope blocked" in content
+
+    # --- Research agent content tests ---
+
+    def test_creates_research_agent(self, tmp_path: Path) -> None:
+        """lexi-research.md is created in .claude/agents/."""
+        _generate_agent_files(tmp_path)
+        assert (tmp_path / ".claude" / "agents" / "lexi-research.md").exists()
+
+    def test_research_has_yaml_frontmatter(self, tmp_path: Path) -> None:
+        """lexi-research.md starts with YAML frontmatter."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "lexi-research.md").read_text(encoding="utf-8")
+        assert content.startswith("---\n")
+        assert "name: Lexi Research" in content
+
+    def test_research_has_tools(self, tmp_path: Path) -> None:
+        """lexi-research.md frontmatter lists Read and Bash tools."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "lexi-research.md").read_text(encoding="utf-8")
+        assert "- Read" in content
+        assert "- Bash" in content
+
+    def test_research_has_workflow_steps(self, tmp_path: Path) -> None:
+        """lexi-research.md contains the 5-step research workflow."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "lexi-research.md").read_text(encoding="utf-8")
+        assert "Step 1" in content
+        assert "Step 2" in content
+        assert "Step 3" in content
+        assert "Step 4" in content
+        assert "Step 5" in content
+
+    def test_research_prohibits_code_writes(self, tmp_path: Path) -> None:
+        """lexi-research.md prohibits writing or editing code."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "lexi-research.md").read_text(encoding="utf-8")
+        assert "Do NOT write or edit code" in content
+
+    def test_research_prohibits_iwh_consumption(self, tmp_path: Path) -> None:
+        """lexi-research.md prohibits IWH signal consumption."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "lexi-research.md").read_text(encoding="utf-8")
+        assert "Do NOT consume IWH signals" in content
+
+    def test_research_prohibits_stack_posting(self, tmp_path: Path) -> None:
+        """lexi-research.md prohibits posting to the stack."""
+        _generate_agent_files(tmp_path)
+        content = (tmp_path / ".claude" / "agents" / "lexi-research.md").read_text(encoding="utf-8")
+        assert "Do NOT post to the stack" in content
 
 
 # ---------------------------------------------------------------------------
@@ -634,8 +904,8 @@ class TestIntegrationFullGeneration:
     """Integration: generate_claude_rules() produces all expected files.
 
     Verifies that a single call to generate_claude_rules() on a clean
-    directory produces every expected output file including the new
-    explore-context hook script and explore agent definition file.
+    directory produces every expected output file including the explore
+    agent definition file.
     """
 
     def test_all_expected_files_exist(self, tmp_path: Path) -> None:
@@ -647,8 +917,10 @@ class TestIntegrationFullGeneration:
             tmp_path / ".claude" / "settings.json",
             tmp_path / ".claude" / "hooks" / "lexi-pre-edit.sh",
             tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh",
-            tmp_path / ".claude" / "hooks" / "lexi-explore-context.sh",
             tmp_path / ".claude" / "agents" / "explore.md",
+            tmp_path / ".claude" / "agents" / "plan.md",
+            tmp_path / ".claude" / "agents" / "code.md",
+            tmp_path / ".claude" / "agents" / "lexi-research.md",
             tmp_path / ".claude" / "commands" / "lexi-orient.md",
             tmp_path / ".claude" / "commands" / "lexi-search.md",
             tmp_path / ".claude" / "commands" / "lexi-lookup.md",
@@ -660,9 +932,9 @@ class TestIntegrationFullGeneration:
             assert expected.exists(), f"Missing expected file: {expected}"
 
     def test_returned_paths_match_expected_count(self, tmp_path: Path) -> None:
-        """generate_claude_rules() returns exactly 11 paths."""
+        """generate_claude_rules() returns exactly 13 paths."""
         result = generate_claude_rules(tmp_path)
-        assert len(result) == 11
+        assert len(result) == 13
 
     def test_returned_paths_all_exist_on_disk(self, tmp_path: Path) -> None:
         """Every path in the returned list points to an existing file."""
@@ -676,38 +948,29 @@ class TestIntegrationFullGeneration:
         for path in result:
             assert path.is_absolute(), f"Returned path is not absolute: {path}"
 
-    def test_explore_context_hook_in_settings(self, tmp_path: Path) -> None:
-        """settings.json includes the SubagentStart hook for explore-context."""
+    def test_subagent_start_not_in_settings(self, tmp_path: Path) -> None:
+        """settings.json does not include a SubagentStart hook (removed)."""
         generate_claude_rules(tmp_path)
         settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
-        assert "SubagentStart" in settings["hooks"]
-        subagent_hooks = settings["hooks"]["SubagentStart"]
-        assert len(subagent_hooks) >= 1
-        assert subagent_hooks[0]["matcher"] == "Explore|Plan"
-        assert subagent_hooks[0]["hooks"][0]["timeout"] == 5000
-        assert "lexi-explore-context.sh" in subagent_hooks[0]["hooks"][0]["command"]
+        assert "SubagentStart" not in settings["hooks"]
 
-    def test_explore_context_script_is_executable(self, tmp_path: Path) -> None:
-        """The explore-context hook script is executable after full generation."""
+    def test_explore_context_script_not_generated(self, tmp_path: Path) -> None:
+        """The explore-context hook script is not generated."""
         generate_claude_rules(tmp_path)
         explore_script = tmp_path / ".claude" / "hooks" / "lexi-explore-context.sh"
-        mode = explore_script.stat().st_mode
-        assert mode & stat.S_IXUSR
-        assert mode & stat.S_IXGRP
-        assert mode & stat.S_IXOTH
+        assert not explore_script.exists()
 
-    def test_explore_context_script_content(self, tmp_path: Path) -> None:
-        """The explore-context hook script has expected content markers."""
+    def test_stale_explore_context_script_deleted(self, tmp_path: Path) -> None:
+        """A pre-existing lexi-explore-context.sh is removed during generation."""
+        hooks_dir = tmp_path / ".claude" / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        stale_script = hooks_dir / "lexi-explore-context.sh"
+        stale_script.write_text("#!/bin/bash\n# old script", encoding="utf-8")
+        assert stale_script.exists()
+
         generate_claude_rules(tmp_path)
-        content = (tmp_path / ".claude" / "hooks" / "lexi-explore-context.sh").read_text(
-            encoding="utf-8"
-        )
-        assert content.startswith("#!/")
-        assert "lexi context-dump" in content
-        assert "hookSpecificOutput" in content
-        assert "SubagentStart" in content
-        assert ".lexibrary" in content
-        assert "jq" in content
+
+        assert not stale_script.exists()
 
     def test_explore_agent_content(self, tmp_path: Path) -> None:
         """The explore agent file has expected content after full generation."""
@@ -718,21 +981,34 @@ class TestIntegrationFullGeneration:
         assert "model: haiku" in content
         assert "lexi search" in content
 
-    def test_context_dump_in_permissions(self, tmp_path: Path) -> None:
-        """settings.json allow list includes Bash(lexi context-dump)."""
+    def test_wildcard_absent_from_permissions(self, tmp_path: Path) -> None:
+        """settings.json allow list does not contain Bash(lexi *) wildcard."""
         generate_claude_rules(tmp_path)
         settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
         allow = settings["permissions"]["allow"]
-        assert "Bash(lexi context-dump)" in allow
+        assert "Bash(lexi *)" not in allow
+
+    def test_context_dump_absent_from_permissions(self, tmp_path: Path) -> None:
+        """settings.json allow list does not include Bash(lexi context-dump)."""
+        generate_claude_rules(tmp_path)
+        settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
+        allow = settings["permissions"]["allow"]
+        assert "Bash(lexi context-dump)" not in allow
+
+    def test_orient_in_permissions(self, tmp_path: Path) -> None:
+        """settings.json allow list includes Bash(lexi orient)."""
+        generate_claude_rules(tmp_path)
+        settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
+        allow = settings["permissions"]["allow"]
+        assert "Bash(lexi orient)" in allow
 
     def test_all_hook_types_in_settings(self, tmp_path: Path) -> None:
-        """settings.json contains PreToolUse, PostToolUse, and SubagentStart hooks."""
+        """settings.json contains PreToolUse and PostToolUse hooks."""
         generate_claude_rules(tmp_path)
         settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
         hooks = settings["hooks"]
         assert "PreToolUse" in hooks
         assert "PostToolUse" in hooks
-        assert "SubagentStart" in hooks
 
     def test_all_files_non_empty(self, tmp_path: Path) -> None:
         """Every generated file has non-zero size."""
@@ -862,11 +1138,11 @@ class TestIntegrationIdempotentGeneration:
 
 
 class TestIntegrationHookMerge:
-    """Integration: existing user hooks are preserved when SubagentStart hook is added.
+    """Integration: existing user hooks are preserved when Lexibrary hooks are added.
 
     Verifies that when a project already has user-defined hooks in
     settings.json, running generate_claude_rules() adds the Lexibrary
-    hooks (including SubagentStart) without removing user entries.
+    hooks without removing user entries.
     """
 
     def test_preserves_user_pre_tool_use_hooks(self, tmp_path: Path) -> None:
@@ -897,7 +1173,7 @@ class TestIntegrationHookMerge:
         assert any("lexi-pre-edit.sh" in cmd for cmd in commands)
 
     def test_preserves_user_subagent_start_hooks(self, tmp_path: Path) -> None:
-        """User SubagentStart hooks survive full generation."""
+        """User SubagentStart hooks survive full generation even though Lexibrary no longer adds any."""
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir(parents=True, exist_ok=True)
         existing = {
@@ -917,17 +1193,11 @@ class TestIntegrationHookMerge:
         settings = json.loads((claude_dir / "settings.json").read_text(encoding="utf-8"))
         subagent_hooks = settings["hooks"]["SubagentStart"]
         commands = []
-        matchers = []
         for entry in subagent_hooks:
-            matchers.append(entry.get("matcher", ""))
             for hook in entry.get("hooks", []):
                 commands.append(hook.get("command", ""))
         # User hook is preserved
         assert "user-subagent-hook.sh" in commands
-        assert "CodeReview" in matchers
-        # Lexibrary hook is added
-        assert any("lexi-explore-context.sh" in cmd for cmd in commands)
-        assert "Explore|Plan" in matchers
 
     def test_preserves_user_permissions_with_new_hooks(self, tmp_path: Path) -> None:
         """User permissions are preserved even when new hook types are added."""
@@ -951,12 +1221,11 @@ class TestIntegrationHookMerge:
         assert "Bash(my-tool *)" in allow
         assert "Bash(other-tool *)" in allow
         assert "Bash(rm -rf *)" in deny
-        # Lexibrary permissions added
-        assert "Bash(lexi *)" in allow
-        assert "Bash(lexi context-dump)" in allow
+        # Lexibrary permissions added (explicit, no wildcard)
+        assert "Bash(lexi orient)" in allow
+        assert "Bash(lexi *)" not in allow
+        assert "Bash(lexi context-dump)" not in allow
         assert "Bash(lexictl *)" in deny
-        # SubagentStart hook added despite empty hooks object
-        assert "SubagentStart" in settings["hooks"]
 
     def test_preserves_non_hook_settings(self, tmp_path: Path) -> None:
         """Non-hook, non-permission keys in settings.json are preserved."""
@@ -987,9 +1256,9 @@ class TestIntegrationHookMerge:
         # First run creates everything
         generate_claude_rules(tmp_path)
 
-        # Now add a user hook to SubagentStart
+        # Now add a user hook to PreToolUse
         settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
-        settings["hooks"]["SubagentStart"].append(
+        settings["hooks"]["PreToolUse"].append(
             {
                 "matcher": "Debug",
                 "hooks": [{"type": "command", "command": "user-debug-hook.sh"}],
@@ -1003,15 +1272,15 @@ class TestIntegrationHookMerge:
         generate_claude_rules(tmp_path)
 
         settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
-        subagent_hooks = settings["hooks"]["SubagentStart"]
-        explore_commands = [
+        pre_hooks = settings["hooks"]["PreToolUse"]
+        lexi_pre_commands = [
             hook.get("command", "")
-            for entry in subagent_hooks
+            for entry in pre_hooks
             for hook in entry.get("hooks", [])
-            if "lexi-explore-context.sh" in hook.get("command", "")
+            if "lexi-pre-edit.sh" in hook.get("command", "")
         ]
-        assert len(explore_commands) == 1, (
-            f"Expected exactly 1 explore-context hook, got {len(explore_commands)}"
+        assert len(lexi_pre_commands) == 1, (
+            f"Expected exactly 1 lexi-pre-edit hook, got {len(lexi_pre_commands)}"
         )
 
     def test_mixed_hook_types_all_preserved(self, tmp_path: Path) -> None:
@@ -1047,12 +1316,15 @@ class TestIntegrationHookMerge:
         settings = json.loads((claude_dir / "settings.json").read_text(encoding="utf-8"))
         hooks = settings["hooks"]
 
-        # All three hook types present
+        # Lexibrary hook types present
         assert "PreToolUse" in hooks
         assert "PostToolUse" in hooks
+        # User SubagentStart hooks are preserved
         assert "SubagentStart" in hooks
 
-        # Each type has user hook + lexibrary hook
-        for event_type in ["PreToolUse", "PostToolUse", "SubagentStart"]:
+        # PreToolUse and PostToolUse each have user hook + lexibrary hook
+        for event_type in ["PreToolUse", "PostToolUse"]:
             entries = hooks[event_type]
             assert len(entries) == 2, f"Expected 2 entries for {event_type}, got {len(entries)}"
+        # SubagentStart only has user hook (Lexibrary no longer adds one)
+        assert len(hooks["SubagentStart"]) == 1

@@ -106,7 +106,7 @@ This command:
 3. Classifies the type of change (unchanged, content-only, interface-changed, new file).
 4. Sends changed files to the configured LLM for design file generation.
 5. Writes design files into the `.lexibrary/` mirror tree.
-6. Regenerates `START_HERE.md` with the updated project topology.
+6. Regenerates `TOPOLOGY.md` with the updated project topology.
 7. Builds the link graph index.
 
 A progress bar shows the update status. When complete, you see a summary:
@@ -119,7 +119,7 @@ Update summary:
   Files updated:       0
   Files agent-updated: 0
   .aindex refreshed:   8
-START_HERE.md regenerated.
+TOPOLOGY.md regenerated.
 ```
 
 ### Updating a single file

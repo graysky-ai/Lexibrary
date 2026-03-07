@@ -75,7 +75,7 @@ class TestFullFlowPerEnvironment:
 
         assert "claude" in results
         paths = results["claude"]
-        assert len(paths) == 11
+        assert len(paths) == 13
 
         # CLAUDE.md
         claude_md = tmp_path / "CLAUDE.md"
@@ -83,13 +83,13 @@ class TestFullFlowPerEnvironment:
         content = claude_md.read_text(encoding="utf-8")
         assert MARKER_START in content
         assert MARKER_END in content
-        assert "START_HERE.md" in content
+        assert "lexi orient" in content
         assert "lexi lookup" in content
 
         # Command files
         orient = tmp_path / ".claude" / "commands" / "lexi-orient.md"
         assert orient.exists()
-        assert "lexi status" in orient.read_text(encoding="utf-8")
+        assert "lexi orient" in orient.read_text(encoding="utf-8")
 
         search = tmp_path / ".claude" / "commands" / "lexi-search.md"
         assert search.exists()
@@ -109,13 +109,13 @@ class TestFullFlowPerEnvironment:
         mdc_content = mdc.read_text(encoding="utf-8")
         assert mdc_content.startswith("---\n")
         assert "alwaysApply: true" in mdc_content
-        assert "START_HERE.md" in mdc_content
+        assert "lexi orient" in mdc_content
 
         # Skills file
         skills = tmp_path / ".cursor" / "skills" / "lexi.md"
         assert skills.exists()
         skills_content = skills.read_text(encoding="utf-8")
-        assert "lexi status" in skills_content
+        assert "lexi orient" in skills_content
         assert "lexi search" in skills_content
 
     def test_codex_full_flow(self, tmp_path: Path) -> None:
@@ -131,10 +131,10 @@ class TestFullFlowPerEnvironment:
         content = agents_md.read_text(encoding="utf-8")
         assert MARKER_START in content
         assert MARKER_END in content
-        assert "START_HERE.md" in content
+        assert "lexi orient" in content
         assert "lexi lookup" in content
         # Codex embeds orient and search skills inline
-        assert "lexi status" in content
+        assert "lexi orient" in content
         assert "lexi search" in content
 
 
@@ -178,11 +178,11 @@ class TestMultiEnvironment:
         assert MARKER_START in agents_content
 
         # Both have core rules
-        assert "START_HERE.md" in claude_content
-        assert "START_HERE.md" in agents_content
+        assert "lexi orient" in claude_content
+        assert "lexi orient" in agents_content
 
         # AGENTS.md has embedded skills; CLAUDE.md does not (uses separate command files)
-        assert "lexi status" in agents_content
+        assert "lexi orient" in agents_content
         assert "lexi search" in agents_content
 
     def test_multi_env_does_not_interfere(self, tmp_path: Path) -> None:
@@ -334,7 +334,7 @@ class TestUserContentPreservation:
         assert "Custom instructions." in content
         assert "# More Instructions" in content
         assert "old lexibrary rules" not in content
-        assert "START_HERE.md" in content
+        assert "lexi orient" in content
 
     def test_user_content_preserved_across_multiple_updates(self, tmp_path: Path) -> None:
         """User content survives repeated regeneration cycles."""
@@ -528,8 +528,8 @@ class TestEndToEndFlow:
         for content in (claude_content, agents_content, mdc_content):
             assert "Never run `lexictl`" in content or "never" in content.lower()
 
-    def test_all_environments_reference_start_here(self, tmp_path: Path) -> None:
-        """Every environment's rules reference START_HERE.md."""
+    def test_all_environments_reference_orient(self, tmp_path: Path) -> None:
+        """Every environment's rules reference lexi orient."""
         generate_rules(tmp_path, ["claude", "codex", "cursor"])
 
         claude_content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
@@ -537,10 +537,10 @@ class TestEndToEndFlow:
         mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").read_text(encoding="utf-8")
 
         for content in (claude_content, agents_content, mdc_content):
-            assert "START_HERE.md" in content
+            assert "lexi orient" in content
 
     def test_all_environments_mention_iwh(self, tmp_path: Path) -> None:
-        """Every environment's rules mention IWH signal files."""
+        """Every environment's rules mention IWH signals."""
         generate_rules(tmp_path, ["claude", "codex", "cursor"])
 
         claude_content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
@@ -548,4 +548,4 @@ class TestEndToEndFlow:
         mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").read_text(encoding="utf-8")
 
         for content in (claude_content, agents_content, mdc_content):
-            assert ".iwh" in content
+            assert "IWH" in content

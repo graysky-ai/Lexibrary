@@ -11,7 +11,7 @@ class TestRenderConceptTemplate:
     def test_name_only(self) -> None:
         result = render_concept_template("JWT Auth")
         assert "title: JWT Auth" in result
-        assert "status: draft" in result
+        assert "status: active" in result
         assert "tags: []" in result
         assert "aliases: []" in result
         assert "## Details" in result

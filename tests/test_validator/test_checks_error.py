@@ -113,6 +113,43 @@ status: {status}
     return path
 
 
+def _write_convention_file(
+    conventions_dir: Path,
+    title: str,
+    *,
+    scope: str = "project",
+    tags: list[str] | None = None,
+    aliases: list[str] | None = None,
+    status: str = "active",
+) -> Path:
+    """Write a minimal convention file into the conventions directory.
+
+    Returns the path to the convention file.
+    """
+    conventions_dir.mkdir(parents=True, exist_ok=True)
+    slug = title.lower().replace(" ", "-")
+    path = conventions_dir / f"{slug}.md"
+
+    tags = tags if tags is not None else ["general"]
+    aliases = aliases if aliases is not None else []
+
+    aliases_yaml = "[" + ", ".join(aliases) + "]" if aliases else "[]"
+    tags_yaml = "[" + ", ".join(tags) + "]"
+
+    content = f"""---
+title: {title}
+scope: {scope}
+tags: {tags_yaml}
+status: {status}
+aliases: {aliases_yaml}
+---
+
+{title} is a convention for the project.
+"""
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
 def _write_stack_post(
     stack_dir: Path,
     post_id: str,
@@ -293,6 +330,109 @@ class TestCheckWikilinkResolution:
         (tmp_path / "src").mkdir(parents=True)
         (tmp_path / "src" / "main.py").write_text("# main", encoding="utf-8")
         _write_design_file(lexibrary_dir, "src/main.py")
+
+        issues = check_wikilink_resolution(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_convention_title_wikilink_resolves(self, tmp_path: Path) -> None:
+        """Wikilink matching a convention title resolves without false positive."""
+        project_root = tmp_path
+        lexibrary_dir = tmp_path / ".lexibrary"
+        lexibrary_dir.mkdir()
+        (lexibrary_dir / "concepts").mkdir(parents=True)
+
+        # Create a convention
+        _write_convention_file(
+            lexibrary_dir / "conventions",
+            "All endpoints require auth decorator",
+            tags=["security"],
+        )
+
+        # Create a design file that references the convention by title
+        (tmp_path / "src").mkdir(parents=True)
+        (tmp_path / "src" / "api.py").write_text("# api", encoding="utf-8")
+        _write_design_file(
+            lexibrary_dir,
+            "src/api.py",
+            wikilinks=["All endpoints require auth decorator"],
+        )
+
+        issues = check_wikilink_resolution(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_convention_alias_wikilink_resolves(self, tmp_path: Path) -> None:
+        """Wikilink matching a convention alias resolves without false positive."""
+        project_root = tmp_path
+        lexibrary_dir = tmp_path / ".lexibrary"
+        lexibrary_dir.mkdir()
+        (lexibrary_dir / "concepts").mkdir(parents=True)
+
+        # Create a convention with an alias
+        _write_convention_file(
+            lexibrary_dir / "conventions",
+            "All endpoints require auth decorator",
+            aliases=["auth-decorator"],
+            tags=["security"],
+        )
+
+        # Create a design file that references the convention by alias
+        (tmp_path / "src").mkdir(parents=True)
+        (tmp_path / "src" / "views.py").write_text("# views", encoding="utf-8")
+        _write_design_file(
+            lexibrary_dir,
+            "src/views.py",
+            wikilinks=["auth-decorator"],
+        )
+
+        issues = check_wikilink_resolution(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_convention_wikilink_in_stack_post_resolves(self, tmp_path: Path) -> None:
+        """Convention wikilinks in Stack post bodies also resolve."""
+        project_root = tmp_path
+        lexibrary_dir = tmp_path / ".lexibrary"
+        lexibrary_dir.mkdir()
+        (lexibrary_dir / "concepts").mkdir(parents=True)
+
+        _write_convention_file(
+            lexibrary_dir / "conventions",
+            "Error Handling Pattern",
+            aliases=["error-handling"],
+            tags=["patterns"],
+        )
+
+        _write_stack_post(
+            lexibrary_dir / "stack",
+            "ST-001",
+            "error-fix",
+            body_wikilinks=["Error Handling Pattern"],
+        )
+
+        issues = check_wikilink_resolution(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_without_conventions_dir_still_works(self, tmp_path: Path) -> None:
+        """Validator works when no conventions directory exists."""
+        project_root = tmp_path
+        lexibrary_dir = tmp_path / ".lexibrary"
+        lexibrary_dir.mkdir()
+
+        # Create a concept
+        _write_concept_file(
+            lexibrary_dir / "concepts",
+            "Authentication",
+            title="Authentication",
+            aliases=["auth"],
+        )
+
+        # Reference a concept (should still resolve without conventions dir)
+        (tmp_path / "src").mkdir(parents=True)
+        (tmp_path / "src" / "auth.py").write_text("# auth", encoding="utf-8")
+        _write_design_file(
+            lexibrary_dir,
+            "src/auth.py",
+            wikilinks=["Authentication"],
+        )
 
         issues = check_wikilink_resolution(project_root, lexibrary_dir)
         assert issues == []

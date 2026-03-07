@@ -33,11 +33,11 @@ refs:
 
 {problem}
 
-### A1
+### F1
 
 **Date:** 2026-02-21 | **Author:** agent-123 | **Votes:** 0
 
-{answer_body}
+{finding_body}
 """
 
 
@@ -52,7 +52,7 @@ def _make_post(
     concepts: list[str] | None = None,
     files: list[str] | None = None,
     problem: str = "Default problem description.",
-    answer_body: str = "Default answer body.",
+    finding_body: str = "Default finding body.",
     filename: str | None = None,
 ) -> Path:
     """Write a Stack post file and return its path."""
@@ -73,7 +73,7 @@ def _make_post(
         concepts=concepts_yaml,
         files=files_yaml,
         problem=problem,
-        answer_body=answer_body,
+        finding_body=finding_body,
     )
 
     fname = filename or f"{post_id}-slug.md"
@@ -152,12 +152,12 @@ class TestSearch:
         results = idx.search("datetime.now")
         assert len(results) == 1
 
-    def test_search_matches_answer_body(self, tmp_path: Path, stack_dir: Path) -> None:
+    def test_search_matches_finding_body(self, tmp_path: Path, stack_dir: Path) -> None:
         _make_post(
             stack_dir,
             post_id="ST-001",
             title="File reference issue",
-            answer_body="Check utils/time.py for the fix.",
+            finding_body="Check utils/time.py for the fix.",
         )
 
         idx = StackIndex.build(tmp_path)
@@ -337,3 +337,253 @@ class TestByConcept:
 
         idx = StackIndex.build(tmp_path)
         assert idx.by_concept("NonExistent") == []
+
+
+# ---------------------------------------------------------------------------
+# Extended post template with context, attempts, and resolution_type
+# ---------------------------------------------------------------------------
+
+_EXTENDED_POST_TEMPLATE = """\
+---
+id: {id}
+title: {title}
+tags:
+{tags}
+status: {status}
+created: 2026-02-21
+author: agent-123
+votes: {votes}
+refs:
+  concepts:
+{concepts}
+  files:
+{files}
+{resolution_type_yaml}---
+
+## Problem
+
+{problem}
+
+### Context
+
+{context}
+
+### Attempts
+
+{attempts}
+
+### F1
+
+**Date:** 2026-02-21 | **Author:** agent-123 | **Votes:** 0
+
+{finding_body}
+"""
+
+
+def _make_extended_post(
+    stack_dir: Path,
+    *,
+    post_id: str = "ST-001",
+    title: str = "Default title",
+    tags: list[str] | None = None,
+    status: str = "open",
+    votes: int = 0,
+    concepts: list[str] | None = None,
+    files: list[str] | None = None,
+    problem: str = "Default problem description.",
+    context: str = "Default context.",
+    attempts: list[str] | None = None,
+    finding_body: str = "Default finding body.",
+    resolution_type: str | None = None,
+    filename: str | None = None,
+) -> Path:
+    """Write a Stack post file with context, attempts, and optional resolution_type."""
+    tags = tags or ["bug"]
+    concepts = concepts or []
+    files = files or []
+    attempts = attempts or []
+
+    tags_yaml = "\n".join(f"    - {t}" for t in tags)
+    concepts_yaml = "\n".join(f"    - {c}" for c in concepts) if concepts else "    []"
+    files_yaml = "\n".join(f"    - {f}" for f in files) if files else "    []"
+    attempts_yaml = "\n".join(f"- {a}" for a in attempts) if attempts else ""
+    resolution_type_yaml = (
+        f"resolution_type: {resolution_type}\n" if resolution_type else ""
+    )
+
+    content = _EXTENDED_POST_TEMPLATE.format(
+        id=post_id,
+        title=title,
+        tags=tags_yaml,
+        status=status,
+        votes=votes,
+        concepts=concepts_yaml,
+        files=files_yaml,
+        problem=problem,
+        context=context,
+        attempts=attempts_yaml,
+        finding_body=finding_body,
+        resolution_type_yaml=resolution_type_yaml,
+    )
+
+    fname = filename or f"{post_id}-slug.md"
+    path = stack_dir / fname
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+# ---------------------------------------------------------------------------
+# Search tests for context and attempts fields
+# ---------------------------------------------------------------------------
+
+
+class TestSearchContext:
+    """Tests for search matching content in the context field."""
+
+    def test_search_matches_context_field(self, tmp_path: Path, stack_dir: Path) -> None:
+        _make_extended_post(
+            stack_dir,
+            post_id="ST-001",
+            title="A database issue",
+            context="Running PostgreSQL 14 on Ubuntu with pgbouncer connection pooling.",
+        )
+
+        idx = StackIndex.build(tmp_path)
+        results = idx.search("pgbouncer")
+        assert len(results) == 1
+        assert results[0].frontmatter.id == "ST-001"
+
+    def test_search_context_no_false_positive(self, tmp_path: Path, stack_dir: Path) -> None:
+        _make_extended_post(
+            stack_dir,
+            post_id="ST-001",
+            title="A database issue",
+            context="Running PostgreSQL 14 on Ubuntu.",
+        )
+
+        idx = StackIndex.build(tmp_path)
+        results = idx.search("nonexistent-context-query")
+        assert results == []
+
+
+class TestSearchAttempts:
+    """Tests for search matching content in the attempts field."""
+
+    def test_search_matches_attempts_field(self, tmp_path: Path, stack_dir: Path) -> None:
+        _make_extended_post(
+            stack_dir,
+            post_id="ST-001",
+            title="A config issue",
+            attempts=["Tried restarting the celery workers", "Cleared the Redis cache"],
+        )
+
+        idx = StackIndex.build(tmp_path)
+        results = idx.search("celery workers")
+        assert len(results) == 1
+        assert results[0].frontmatter.id == "ST-001"
+
+    def test_search_attempts_second_item(self, tmp_path: Path, stack_dir: Path) -> None:
+        _make_extended_post(
+            stack_dir,
+            post_id="ST-001",
+            title="A config issue",
+            attempts=["Tried restarting the service", "Cleared the Redis cache"],
+        )
+
+        idx = StackIndex.build(tmp_path)
+        results = idx.search("redis cache")
+        assert len(results) == 1
+        assert results[0].frontmatter.id == "ST-001"
+
+    def test_search_attempts_no_false_positive(self, tmp_path: Path, stack_dir: Path) -> None:
+        _make_extended_post(
+            stack_dir,
+            post_id="ST-001",
+            title="A config issue",
+            attempts=["Tried restarting the service"],
+        )
+
+        idx = StackIndex.build(tmp_path)
+        results = idx.search("nonexistent-attempts-query")
+        assert results == []
+
+
+# ---------------------------------------------------------------------------
+# by_resolution_type tests
+# ---------------------------------------------------------------------------
+
+
+class TestByResolutionType:
+    """Tests for StackIndex.by_resolution_type()."""
+
+    def test_filter_fix_returns_matching(self, tmp_path: Path, stack_dir: Path) -> None:
+        _make_extended_post(
+            stack_dir,
+            post_id="ST-001",
+            title="Fixed config issue",
+            status="resolved",
+            resolution_type="fix",
+        )
+        _make_extended_post(
+            stack_dir,
+            post_id="ST-002",
+            title="Workaround for auth bug",
+            status="resolved",
+            resolution_type="workaround",
+        )
+        _make_extended_post(
+            stack_dir,
+            post_id="ST-003",
+            title="Open issue",
+            status="open",
+        )
+
+        idx = StackIndex.build(tmp_path)
+        results = idx.by_resolution_type("fix")
+        assert len(results) == 1
+        assert results[0].frontmatter.id == "ST-001"
+
+    def test_filter_workaround_excludes_non_matching(
+        self, tmp_path: Path, stack_dir: Path
+    ) -> None:
+        _make_extended_post(
+            stack_dir,
+            post_id="ST-001",
+            title="Fixed config issue",
+            status="resolved",
+            resolution_type="fix",
+        )
+        _make_extended_post(
+            stack_dir,
+            post_id="ST-002",
+            title="Workaround for auth bug",
+            status="resolved",
+            resolution_type="workaround",
+        )
+        _make_extended_post(
+            stack_dir,
+            post_id="ST-003",
+            title="Open issue",
+            status="open",
+        )
+
+        idx = StackIndex.build(tmp_path)
+        results = idx.by_resolution_type("workaround")
+        assert len(results) == 1
+        assert results[0].frontmatter.id == "ST-002"
+        # Ensure "fix" posts are excluded
+        assert all(r.frontmatter.resolution_type == "workaround" for r in results)
+
+    def test_filter_no_matching_resolution_type(
+        self, tmp_path: Path, stack_dir: Path
+    ) -> None:
+        _make_extended_post(
+            stack_dir,
+            post_id="ST-001",
+            title="Open issue",
+            status="open",
+        )
+
+        idx = StackIndex.build(tmp_path)
+        results = idx.by_resolution_type("fix")
+        assert results == []

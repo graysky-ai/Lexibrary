@@ -168,6 +168,125 @@ class TestDesignFileRoundtrip:
         assert parsed is not None
         assert parsed.dependents == []
 
+    def test_roundtrip_status_active(self, tmp_path: Path) -> None:
+        """Active status survives round-trip."""
+        df = _design_file()
+        content = serialize_design_file(df)
+        f = tmp_path / "design.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+        assert parsed.frontmatter.status == "active"
+        assert parsed.frontmatter.deprecated_at is None
+        assert parsed.frontmatter.deprecated_reason is None
+
+    def test_roundtrip_deprecated_all_fields(self, tmp_path: Path) -> None:
+        """Deprecated status with all deprecation fields survives round-trip."""
+        deprecated_at = datetime(2026, 3, 1, 14, 30, 0)
+        df = _design_file(
+            frontmatter=_frontmatter(
+                status="deprecated",
+                deprecated_at=deprecated_at,
+                deprecated_reason="source_deleted",
+            )
+        )
+        content = serialize_design_file(df)
+        f = tmp_path / "design.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+        assert parsed.frontmatter.status == "deprecated"
+        assert parsed.frontmatter.deprecated_at == deprecated_at
+        assert parsed.frontmatter.deprecated_reason == "source_deleted"
+
+    def test_roundtrip_deprecated_source_renamed(self, tmp_path: Path) -> None:
+        """Deprecated with source_renamed reason survives round-trip."""
+        deprecated_at = datetime(2026, 2, 15, 9, 0, 0)
+        df = _design_file(
+            frontmatter=_frontmatter(
+                status="deprecated",
+                deprecated_at=deprecated_at,
+                deprecated_reason="source_renamed",
+            )
+        )
+        content = serialize_design_file(df)
+        f = tmp_path / "design.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+        assert parsed.frontmatter.status == "deprecated"
+        assert parsed.frontmatter.deprecated_at == deprecated_at
+        assert parsed.frontmatter.deprecated_reason == "source_renamed"
+
+    def test_roundtrip_deprecated_manual(self, tmp_path: Path) -> None:
+        """Deprecated with manual reason survives round-trip."""
+        deprecated_at = datetime(2026, 1, 20, 16, 45, 0)
+        df = _design_file(
+            frontmatter=_frontmatter(
+                status="deprecated",
+                deprecated_at=deprecated_at,
+                deprecated_reason="manual",
+            )
+        )
+        content = serialize_design_file(df)
+        f = tmp_path / "design.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+        assert parsed.frontmatter.status == "deprecated"
+        assert parsed.frontmatter.deprecated_at == deprecated_at
+        assert parsed.frontmatter.deprecated_reason == "manual"
+
+    def test_roundtrip_unlinked_status(self, tmp_path: Path) -> None:
+        """Unlinked status (no deprecation fields) survives round-trip."""
+        df = _design_file(
+            frontmatter=_frontmatter(status="unlinked")
+        )
+        content = serialize_design_file(df)
+        f = tmp_path / "design.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+        assert parsed.frontmatter.status == "unlinked"
+        assert parsed.frontmatter.deprecated_at is None
+        assert parsed.frontmatter.deprecated_reason is None
+
+    def test_roundtrip_deprecated_with_all_optional_sections(self, tmp_path: Path) -> None:
+        """Deprecated file with all optional sections survives full round-trip."""
+        deprecated_at = datetime(2026, 3, 1, 14, 30, 0)
+        df = _design_file(
+            frontmatter=_frontmatter(
+                status="deprecated",
+                deprecated_at=deprecated_at,
+                deprecated_reason="source_deleted",
+                updated_by="agent",
+            ),
+            dependencies=["src/lexibrary/config/schema.py"],
+            dependents=["src/lexibrary/__main__.py"],
+            tests="See tests/test_cli.py",
+            complexity_warning="High cyclomatic complexity.",
+            wikilinks=["Config", "LLMService"],
+            tags=["cli"],
+            stack_refs=["ST-01"],
+            metadata=_meta(interface_hash="iface_hash_xyz"),
+        )
+        content = serialize_design_file(df)
+        f = tmp_path / "design.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+        assert parsed.frontmatter.status == "deprecated"
+        assert parsed.frontmatter.deprecated_at == deprecated_at
+        assert parsed.frontmatter.deprecated_reason == "source_deleted"
+        assert parsed.frontmatter.updated_by == "agent"
+        assert parsed.dependencies == ["src/lexibrary/config/schema.py"]
+        assert parsed.dependents == ["src/lexibrary/__main__.py"]
+        assert parsed.tests == "See tests/test_cli.py"
+        assert parsed.complexity_warning == "High cyclomatic complexity."
+        assert parsed.wikilinks == ["Config", "LLMService"]
+        assert parsed.tags == ["cli"]
+        assert parsed.stack_refs == ["ST-01"]
+
     def test_metadata_source_fields_preserved(self, tmp_path: Path) -> None:
         df = _design_file(
             metadata=_meta(

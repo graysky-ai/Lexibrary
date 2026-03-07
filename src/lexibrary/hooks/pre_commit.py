@@ -11,23 +11,17 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from lexibrary.templates import read_template
+
 # Marker used to detect whether the Lexibrary section is already present
 # in an existing hook script.  Must appear on its own line.
 HOOK_MARKER = "# lexibrary:pre-commit"
 
 # The hook script appended (or written) to .git/hooks/pre-commit.
 # Runs lexictl validate in CI mode and blocks the commit on failure.
-HOOK_SCRIPT_TEMPLATE = f"""\
-{HOOK_MARKER}
-# — Lexibrary pre-commit validation (installed by lexictl setup --hooks) —
-if ! lexictl validate --ci --severity error; then
-    echo ""
-    echo "Lexibrary validation failed."
-    echo "Fix the issues above, or bypass with: git commit --no-verify"
-    exit 1
-fi
-# — end Lexibrary pre-commit —
-"""
+HOOK_SCRIPT_TEMPLATE = read_template("hooks/pre-commit.sh").replace(
+    "{hook_marker}", HOOK_MARKER
+)
 
 
 @dataclass

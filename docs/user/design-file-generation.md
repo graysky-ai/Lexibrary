@@ -13,7 +13,7 @@ When you run `lexictl update`, Lexibrary:
 5. Sends files that need updating to the configured LLM for design file generation.
 6. Writes design files into the `.lexibrary/` mirror tree.
 7. Refreshes parent `.aindex` routing tables.
-8. Regenerates `START_HERE.md` with the updated project topology.
+8. Regenerates `TOPOLOGY.md` with the updated project topology.
 9. Builds or rebuilds the link graph index.
 
 ## File Discovery
@@ -118,7 +118,7 @@ Invoked by `lexictl update` with no arguments. This:
 
 1. Discovers all source files under `scope_root`.
 2. Processes each file sequentially through the change detection and LLM pipeline.
-3. Regenerates `START_HERE.md` after all files are processed.
+3. Regenerates `TOPOLOGY.md` after all files are processed.
 4. Performs a **full rebuild** of the link graph index.
 
 ### update_files (targeted file update)
@@ -127,7 +127,7 @@ Invoked by `lexictl update --changed-only <files>`. This:
 
 1. Processes only the specified file paths (no file discovery).
 2. Skips deleted, binary, ignored, and `.lexibrary/` files.
-3. Does **not** regenerate `START_HERE.md`.
+3. Does **not** regenerate `TOPOLOGY.md`.
 4. Performs an **incremental update** of the link graph index (only re-indexes the changed files).
 
 This mode is designed for git hooks and CI where you already know which files changed.
@@ -145,7 +145,7 @@ This processes only the specified files, making it much faster than a full proje
 Key differences from a full update:
 
 - No file discovery -- processes only the listed files.
-- No `START_HERE.md` regeneration.
+- No `TOPOLOGY.md` regeneration.
 - Incremental link graph update instead of full rebuild.
 - Handles deleted file paths gracefully (cleans up link graph entries via CASCADE).
 
@@ -153,17 +153,17 @@ Key differences from a full update:
 
 After generating a design file, Lexibrary estimates the token count using a whitespace-splitting heuristic. If the count exceeds the `token_budgets.design_file_tokens` limit (default: 400 tokens), a warning is logged. The design file is still written even when over budget -- the warning is informational and surfaced by `lexictl validate`.
 
-## START_HERE.md Regeneration
+## TOPOLOGY.md Regeneration
 
-After a full project update, Lexibrary regenerates `.lexibrary/START_HERE.md`. This file provides:
+After a full project update, Lexibrary regenerates `.lexibrary/TOPOLOGY.md`. This file provides:
 
 - A project topology overview (directory tree).
 - Summaries from `.aindex` routing tables.
 - Navigation guidance for agents starting a new session.
 
-The content is generated via a separate BAML prompt (`ArchivistGenerateStartHere`) that receives the project name, directory tree, and `.aindex` summaries.
+The content is generated via a separate BAML prompt (`ArchivistGenerateTopology`) that receives the project name, directory tree, and `.aindex` summaries.
 
-`START_HERE.md` is **not** regenerated during `--changed-only` updates.
+`TOPOLOGY.md` is **not** regenerated during `--changed-only` updates.
 
 ## .aindex Refresh
 

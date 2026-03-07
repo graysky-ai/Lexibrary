@@ -24,14 +24,14 @@ class TestCreateFromScratch:
         """Created LEXIBRARY_RULES.md contains core Lexibrary rules."""
         generate_generic_rules(tmp_path)
         content = (tmp_path / "LEXIBRARY_RULES.md").read_text(encoding="utf-8")
-        assert "START_HERE.md" in content
+        assert "/lexi-orient" in content
         assert "lexi lookup" in content
 
     def test_rules_md_has_orient_content(self, tmp_path: Path) -> None:
         """Created LEXIBRARY_RULES.md includes embedded orient skill content."""
         generate_generic_rules(tmp_path)
         content = (tmp_path / "LEXIBRARY_RULES.md").read_text(encoding="utf-8")
-        assert "lexi status" in content
+        assert "lexi orient" in content
 
     def test_rules_md_has_search_content(self, tmp_path: Path) -> None:
         """Created LEXIBRARY_RULES.md includes embedded search skill content."""
@@ -73,7 +73,7 @@ class TestOverwriteOnRegeneration:
 
         content = rules_md.read_text(encoding="utf-8")
         assert "old content that should be replaced" not in content
-        assert "START_HERE.md" in content
+        assert "/lexi-orient" in content
 
     def test_idempotent_content(self, tmp_path: Path) -> None:
         """Running twice produces identical content."""

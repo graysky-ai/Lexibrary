@@ -24,6 +24,8 @@ def serialize_concept_file(concept: ConceptFile) -> str:
     }
     if concept.frontmatter.superseded_by is not None:
         fm_data["superseded_by"] = concept.frontmatter.superseded_by
+    if concept.frontmatter.deprecated_at is not None:
+        fm_data["deprecated_at"] = concept.frontmatter.deprecated_at.isoformat()
 
     fm_str = yaml.dump(fm_data, default_flow_style=False, sort_keys=False).rstrip("\n")
 

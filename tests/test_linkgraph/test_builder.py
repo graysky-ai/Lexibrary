@@ -1495,9 +1495,9 @@ expiry is too long and poses a security risk.
 - Tokens currently expire after 24 hours
 - Industry standard is 15-30 minutes for access tokens
 
-## Answers
+## Findings
 
-### A1
+### F1
 
 **Date:** 2025-06-02 | **Author:** senior-dev | **Votes:** 3 | **Accepted:** true
 
@@ -1506,9 +1506,9 @@ Use short-lived access tokens (15 min) with refresh tokens (7 days).
 
 #### Comments
 
-- Good answer, thanks!
+- Good finding, thanks!
 
-### A2
+### F2
 
 **Date:** 2025-06-03 | **Author:** another-dev | **Votes:** 1
 
@@ -1721,10 +1721,10 @@ class TestProcessStackPost:
         tag_names = sorted(r[0] for r in tags)
         assert tag_names == ["auth", "jwt"]
 
-    def test_fts_row_inserted_with_problem_and_answers(
+    def test_fts_row_inserted_with_problem_and_findings(
         self, db_conn: sqlite3.Connection, tmp_path: Path
     ) -> None:
-        """FTS row contains the problem text concatenated with all answer bodies."""
+        """FTS row contains the problem text concatenated with all finding bodies."""
         stack_path = _create_stack_post(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_stack_post(stack_path, "2025-06-15T12:00:00+00:00")
@@ -1740,12 +1740,12 @@ class TestProcessStackPost:
         assert fts_row[0] == "How to configure JWT token expiry"
         # Body should contain the problem text
         assert "configure JWT token expiry" in fts_row[1]
-        # Body should contain answer content
+        # Body should contain finding content
         assert "TOKEN_EXPIRY" in fts_row[1]
         assert "environment variables" in fts_row[1]
 
     def test_fts_body_problem_only(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
-        """FTS body contains only problem text when there are no answers."""
+        """FTS body contains only problem text when there are no findings."""
         stack_path = _create_stack_post(tmp_path, "ST-002.md", _SAMPLE_STACK_POST_MINIMAL)
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_stack_post(stack_path, "2025-06-15T12:00:00+00:00")
@@ -1760,6 +1760,69 @@ class TestProcessStackPost:
         assert fts_row is not None
         assert fts_row[0] == "Why does the linter fail on type hints"
         assert "PEP 604" in fts_row[1]
+
+    def test_fts_row_includes_context_and_attempts(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """FTS row body includes context and attempts text alongside problem and findings."""
+        post_with_context_attempts = """\
+---
+id: ST-010
+title: Connection pool exhaustion under load
+tags:
+  - database
+  - performance
+status: open
+created: 2025-07-01
+author: dev-user
+---
+
+## Problem
+
+Database connections are exhausted during peak traffic.
+
+### Context
+
+Running PostgreSQL 14 with pgbouncer in transaction mode on 4 worker nodes.
+
+### Attempts
+
+- Increased max_connections to 200 but issue persists
+- Tried switching pgbouncer to session mode without improvement
+
+## Findings
+
+### F1
+
+**Date:** 2025-07-02 | **Author:** dba-user | **Votes:** 2
+
+Reduce idle connection timeout and enable connection recycling.
+"""
+        stack_path = _create_stack_post(
+            tmp_path, "ST-010.md", post_with_context_attempts
+        )
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_stack_post(stack_path, "2025-07-01T12:00:00+00:00")
+
+        stack_id = db_conn.execute(
+            "SELECT id FROM artifacts WHERE path = '.lexibrary/stack/ST-010.md'"
+        ).fetchone()[0]
+        fts_row = db_conn.execute(
+            "SELECT title, body FROM artifacts_fts WHERE rowid = ?",
+            (stack_id,),
+        ).fetchone()
+        assert fts_row is not None
+        assert fts_row[0] == "Connection pool exhaustion under load"
+        # Body should contain problem text
+        assert "connections are exhausted" in fts_row[1]
+        # Body should contain context text
+        assert "pgbouncer" in fts_row[1]
+        assert "transaction mode" in fts_row[1]
+        # Body should contain attempts text
+        assert "max_connections" in fts_row[1]
+        assert "session mode" in fts_row[1]
+        # Body should contain finding text
+        assert "connection recycling" in fts_row[1]
 
     def test_build_log_entry_created(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """A build_log entry is created for a successfully processed Stack post."""
@@ -2055,9 +2118,7 @@ class TestProcessConventionFile:
     method, and verifies the database contents.
     """
 
-    def test_creates_convention_artifact(
-        self, db_conn: sqlite3.Connection, tmp_path: Path
-    ) -> None:
+    def test_creates_convention_artifact(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """Processing a convention file creates a convention artifact."""
         conv_dir = tmp_path / ".lexibrary" / "conventions"
         conv_dir.mkdir(parents=True)
@@ -2109,47 +2170,37 @@ class TestProcessConventionFile:
         assert row[4] == "draft"
         assert row[5] == -1
 
-    def test_project_scope_maps_to_dot(
-        self, db_conn: sqlite3.Connection, tmp_path: Path
-    ) -> None:
+    def test_project_scope_maps_to_dot(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """Convention with scope 'project' gets directory_path '.'."""
         conv_dir = tmp_path / ".lexibrary" / "conventions"
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "global-convention.md"
         conv_path.write_text(
-            "---\ntitle: Global Convention\nscope: project\n---\n"
-            "This applies everywhere.\n",
+            "---\ntitle: Global Convention\nscope: project\n---\nThis applies everywhere.\n",
             encoding="utf-8",
         )
 
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
 
-        row = db_conn.execute(
-            "SELECT directory_path FROM conventions"
-        ).fetchone()
+        row = db_conn.execute("SELECT directory_path FROM conventions").fetchone()
         assert row is not None
         assert row[0] == "."
 
-    def test_directory_scope(
-        self, db_conn: sqlite3.Connection, tmp_path: Path
-    ) -> None:
+    def test_directory_scope(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """Convention with directory scope gets the scope value as directory_path."""
         conv_dir = tmp_path / ".lexibrary" / "conventions"
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "auth-convention.md"
         conv_path.write_text(
-            "---\ntitle: Auth Convention\nscope: src/auth\n---\n"
-            "Auth-specific rule.\n",
+            "---\ntitle: Auth Convention\nscope: src/auth\n---\nAuth-specific rule.\n",
             encoding="utf-8",
         )
 
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
 
-        row = db_conn.execute(
-            "SELECT directory_path FROM conventions"
-        ).fetchone()
+        row = db_conn.execute("SELECT directory_path FROM conventions").fetchone()
         assert row is not None
         assert row[0] == "src/auth"
 
@@ -2192,9 +2243,7 @@ class TestProcessConventionFile:
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
 
-        tags = db_conn.execute(
-            "SELECT tag FROM tags ORDER BY tag"
-        ).fetchall()
+        tags = db_conn.execute("SELECT tag FROM tags ORDER BY tag").fetchall()
         assert [t[0] for t in tags] == ["imports", "python"]
 
     def test_fts_row_created(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
@@ -2212,9 +2261,7 @@ class TestProcessConventionFile:
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
 
-        fts_rows = db_conn.execute(
-            "SELECT title, body FROM artifacts_fts"
-        ).fetchall()
+        fts_rows = db_conn.execute("SELECT title, body FROM artifacts_fts").fetchall()
         assert len(fts_rows) == 1
         assert fts_rows[0][0] == "FTS Convention"
         assert "type annotations" in fts_rows[0][1]
@@ -2282,9 +2329,7 @@ class TestProcessConventionFile:
         ).fetchall()
         assert [o[0] for o in ordinals] == [0, 1]
 
-    def test_default_column_values(
-        self, db_conn: sqlite3.Connection, tmp_path: Path
-    ) -> None:
+    def test_default_column_values(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """Convention with no explicit source/status/priority uses defaults from frontmatter."""
         conv_dir = tmp_path / ".lexibrary" / "conventions"
         conv_dir.mkdir(parents=True)
@@ -2297,14 +2342,126 @@ class TestProcessConventionFile:
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
 
-        row = db_conn.execute(
-            "SELECT source, status, priority FROM conventions"
-        ).fetchone()
+        row = db_conn.execute("SELECT source, status, priority FROM conventions").fetchone()
         assert row is not None
         # ConventionFileFrontmatter defaults: source='user', status='draft', priority=0
         assert row[0] == "user"
         assert row[1] == "draft"
         assert row[2] == 0
+
+    def test_convention_aliases_inserted(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+        """Aliases from convention frontmatter are inserted into the aliases table."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "use-type-hints.md"
+        conv_path.write_text(
+            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "source: user\npriority: 0\ntags:\n  - python\n"
+            "aliases:\n  - type-hints\n  - typing-required\n---\n"
+            "Always use type hints in function signatures.\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
+
+        aliases = db_conn.execute(
+            "SELECT al.alias FROM aliases al "
+            "JOIN artifacts a ON al.artifact_id = a.id "
+            "WHERE a.path = '.lexibrary/conventions/use-type-hints.md'"
+        ).fetchall()
+        alias_names = sorted(r[0] for r in aliases)
+        assert alias_names == ["type-hints", "typing-required"]
+
+    def test_convention_alias_resolve_returns_convention_artifact(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """resolve_alias() returns the convention artifact for a convention alias."""
+        from lexibrary.linkgraph.query import LinkGraph
+
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "use-type-hints.md"
+        conv_path.write_text(
+            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "source: user\npriority: 0\n"
+            "aliases:\n  - type-hints\n---\n"
+            "Always use type hints.\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
+
+        graph = LinkGraph(db_conn)
+        result = graph.resolve_alias("type-hints")
+        assert result is not None
+        assert result.kind == "convention"
+        assert result.title == "Use Type Hints"
+
+    def test_concept_wins_alias_collision_over_convention(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """When a concept and convention share an alias, the first-writer (concept) wins.
+
+        Concepts are processed before conventions in full_build(), so concepts
+        claim the alias. The convention alias insertion is silently skipped.
+        """
+        # Create concept with alias "auth"
+        concept_dir = tmp_path / ".lexibrary" / "concepts"
+        concept_dir.mkdir(parents=True)
+        concept_path = concept_dir / "Authentication.md"
+        concept_path.write_text(
+            "---\ntitle: Authentication\naliases:\n  - auth\ntags: []\nstatus: active\n---\n"
+            "Auth concept body.\n",
+            encoding="utf-8",
+        )
+
+        # Create convention with alias "auth"
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "auth-convention.md"
+        conv_path.write_text(
+            "---\ntitle: Auth Convention\nscope: project\nstatus: active\n"
+            "source: user\npriority: 0\n"
+            "aliases:\n  - auth\n---\n"
+            "Auth convention body.\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        build_ts = "2025-06-15T12:00:00+00:00"
+        # Process concept first (same order as full_build)
+        builder._process_concept_file(concept_path, build_ts)
+        # Then process convention
+        builder._process_convention_file(conv_path, build_ts)
+
+        # The alias "auth" should belong to the concept, not the convention
+        from lexibrary.linkgraph.query import LinkGraph
+
+        graph = LinkGraph(db_conn)
+        result = graph.resolve_alias("auth")
+        assert result is not None
+        assert result.kind == "concept"
+        assert result.title == "Authentication"
+
+    def test_convention_no_aliases(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+        """Convention with no aliases produces no alias rows."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "no-alias.md"
+        conv_path.write_text(
+            "---\ntitle: No Alias Convention\nscope: project\nstatus: active\n"
+            "source: user\npriority: 0\n---\n"
+            "No aliases here.\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
+
+        alias_count = db_conn.execute("SELECT COUNT(*) FROM aliases").fetchone()[0]
+        assert alias_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -3037,9 +3194,7 @@ See also [[Authorization]] for related concepts.
         builder.full_build()
 
         # Conventions are populated from .lexibrary/conventions/ files
-        conv_count_before = db_conn.execute(
-            "SELECT COUNT(*) FROM conventions"
-        ).fetchone()[0]
+        conv_count_before = db_conn.execute("SELECT COUNT(*) FROM conventions").fetchone()[0]
         assert conv_count_before == 2
 
         # Modify the .aindex file
@@ -3048,9 +3203,7 @@ See also [[Authorization]] for related concepts.
         assert result.errors == []
 
         # Convention count should remain unchanged
-        conv_count_after = db_conn.execute(
-            "SELECT COUNT(*) FROM conventions"
-        ).fetchone()[0]
+        conv_count_after = db_conn.execute("SELECT COUNT(*) FROM conventions").fetchone()[0]
         assert conv_count_after == conv_count_before
 
     def test_incremental_update_returns_build_result(
@@ -3623,14 +3776,10 @@ class TestFullBuildConventions:
         builder = IndexBuilder(db_conn, tmp_path)
 
         builder.full_build()
-        count1 = db_conn.execute(
-            "SELECT COUNT(*) FROM conventions"
-        ).fetchone()[0]
+        count1 = db_conn.execute("SELECT COUNT(*) FROM conventions").fetchone()[0]
 
         builder.full_build()
-        count2 = db_conn.execute(
-            "SELECT COUNT(*) FROM conventions"
-        ).fetchone()[0]
+        count2 = db_conn.execute("SELECT COUNT(*) FROM conventions").fetchone()[0]
 
         assert count1 == count2 == 2
 
@@ -3643,9 +3792,7 @@ class TestFullBuildConventions:
 class TestIncrementalConventions:
     """Integration tests for convention file handling during incremental_update()."""
 
-    def test_new_convention_file_added(
-        self, db_conn: sqlite3.Connection, tmp_path: Path
-    ) -> None:
+    def test_new_convention_file_added(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """incremental_update() indexes a new convention file."""
         _create_full_project_tree(tmp_path)
         builder = IndexBuilder(db_conn, tmp_path)
@@ -3760,6 +3907,62 @@ class TestIncrementalConventions:
         ).fetchone()[0]
         assert post_count == 1
 
+    def test_incremental_convention_alias_reinserted(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """incremental_update() correctly re-inserts aliases when a convention is modified.
+
+        Verifies that old aliases are removed and new aliases are inserted
+        when a convention file is updated, mirroring the concept alias update pattern.
+        """
+        _create_full_project_tree(tmp_path)
+
+        # Add aliases to the initial convention file
+        conv_path = tmp_path / ".lexibrary" / "conventions" / "use-type-hints.md"
+        conv_path.write_text(
+            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "source: user\npriority: 0\ntags:\n  - python\n  - typing\n"
+            "aliases:\n  - type-hints\n  - typing-required\n---\n"
+            "All functions must have type annotations.\n\n"
+            "This ensures code readability and IDE support.\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder.full_build()
+
+        # Verify initial aliases exist
+        conv_id = db_conn.execute(
+            "SELECT id FROM artifacts WHERE path = '.lexibrary/conventions/use-type-hints.md'"
+        ).fetchone()[0]
+        old_aliases = db_conn.execute(
+            "SELECT alias FROM aliases WHERE artifact_id = ?", (conv_id,)
+        ).fetchall()
+        old_alias_set = {r[0] for r in old_aliases}
+        assert "type-hints" in old_alias_set
+        assert "typing-required" in old_alias_set
+
+        # Modify the convention to change aliases
+        conv_path.write_text(
+            "---\ntitle: Use Type Hints (Updated)\nscope: project\nstatus: active\n"
+            "source: user\npriority: 10\ntags:\n  - python\n  - updated\n"
+            "aliases:\n  - type-hints\n  - annotations-required\n---\n"
+            "Updated rule: all functions MUST have type annotations.\n",
+            encoding="utf-8",
+        )
+
+        result = builder.incremental_update([conv_path])
+        assert result.errors == []
+
+        # Verify aliases were updated: "typing-required" removed, "annotations-required" added
+        new_aliases = db_conn.execute(
+            "SELECT alias FROM aliases WHERE artifact_id = ?", (conv_id,)
+        ).fetchall()
+        new_alias_set = {r[0] for r in new_aliases}
+        assert "type-hints" in new_alias_set
+        assert "annotations-required" in new_alias_set
+        assert "typing-required" not in new_alias_set
+
     def test_malformed_convention_raises_and_logs(
         self, db_conn: sqlite3.Connection, tmp_path: Path
     ) -> None:
@@ -3795,3 +3998,341 @@ class TestIncrementalConventions:
             assert version > 0
         finally:
             conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Convention-aware wikilink processing tests (task group 6)
+# ---------------------------------------------------------------------------
+
+
+class TestConventionAwareWikilinkProcessing:
+    """Tests for convention-aware wikilink target resolution in the link graph builder.
+
+    Verifies that _resolve_wikilink_target() checks convention titles and
+    aliases before falling back to concept stub creation, and that
+    _process_design_wikilinks() and concept wikilink processing use it.
+    """
+
+    def test_design_wikilink_convention_alias_creates_convention_link(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Design file [[convention-alias]] creates wikilink to convention artifact."""
+        # Create a convention with an alias
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "use-type-hints.md"
+        conv_path.write_text(
+            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "source: user\npriority: 0\n"
+            "aliases:\n  - type-hints\n---\n"
+            "Always use type hints.\n",
+            encoding="utf-8",
+        )
+
+        # Create a design file that references the convention alias
+        source_dir = tmp_path / "src"
+        source_dir.mkdir(parents=True, exist_ok=True)
+        (source_dir / "main.py").write_text(
+            "from __future__ import annotations\n\ndef main() -> None:\n    pass\n",
+            encoding="utf-8",
+        )
+
+        design_dir = tmp_path / ".lexibrary" / "designs" / "src"
+        design_dir.mkdir(parents=True, exist_ok=True)
+        (design_dir / "main.py.md").write_text(
+            "---\ndescription: Main entry point\nupdated_by: archivist\n---\n\n"
+            "# src/main.py\n\n"
+            "## Interface Contract\n\n"
+            "```python\ndef main() -> None: ...\n```\n\n"
+            "## Dependencies\n\n(none)\n\n"
+            "## Dependents\n\n(none)\n\n"
+            "## Wikilinks\n\n"
+            "- [[type-hints]]\n\n"
+            "## Tags\n\n(none)\n\n"
+            "<!-- lexibrary:meta\nsource: src/main.py\nsource_hash: abc123\n"
+            "design_hash: def456\ngenerated: 2025-06-15T12:00:00\n"
+            "generator: lexibrary-test\n-->\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        result = builder.full_build()
+        assert result.errors == []
+
+        # The wikilink target should be the convention, not a concept stub
+        links = db_conn.execute(
+            "SELECT target.path, target.kind FROM links l "
+            "JOIN artifacts source ON l.source_id = source.id "
+            "JOIN artifacts target ON l.target_id = target.id "
+            "WHERE source.kind = 'design' AND l.link_type = 'wikilink'"
+        ).fetchall()
+
+        assert len(links) == 1
+        target_path, target_kind = links[0]
+        assert target_kind == "convention"
+        assert target_path == ".lexibrary/conventions/use-type-hints.md"
+
+        # Verify no concept stub was created for "type-hints"
+        concept_stub = db_conn.execute(
+            "SELECT id FROM artifacts WHERE path = '.lexibrary/concepts/type-hints.md'"
+        ).fetchone()
+        assert concept_stub is None
+
+    def test_design_wikilink_concept_still_creates_concept_link(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Design file [[concept]] still creates wikilink to concept when no convention matches."""
+        # Create a concept file
+        concept_dir = tmp_path / ".lexibrary" / "concepts"
+        concept_dir.mkdir(parents=True)
+        (concept_dir / "Authentication.md").write_text(
+            "---\ntitle: Authentication\naliases: []\ntags: []\nstatus: active\n---\n"
+            "Authentication concept body.\n",
+            encoding="utf-8",
+        )
+
+        # Create a design file that references the concept
+        source_dir = tmp_path / "src"
+        source_dir.mkdir(parents=True, exist_ok=True)
+        (source_dir / "auth.py").write_text(
+            "from __future__ import annotations\n\ndef auth() -> bool:\n    return True\n",
+            encoding="utf-8",
+        )
+
+        design_dir = tmp_path / ".lexibrary" / "designs" / "src"
+        design_dir.mkdir(parents=True, exist_ok=True)
+        (design_dir / "auth.py.md").write_text(
+            "---\ndescription: Auth module\nupdated_by: archivist\n---\n\n"
+            "# src/auth.py\n\n"
+            "## Interface Contract\n\n"
+            "```python\ndef auth() -> bool: ...\n```\n\n"
+            "## Dependencies\n\n(none)\n\n"
+            "## Dependents\n\n(none)\n\n"
+            "## Wikilinks\n\n"
+            "- [[Authentication]]\n\n"
+            "## Tags\n\n(none)\n\n"
+            "<!-- lexibrary:meta\nsource: src/auth.py\nsource_hash: abc123\n"
+            "design_hash: def456\ngenerated: 2025-06-15T12:00:00\n"
+            "generator: lexibrary-test\n-->\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        result = builder.full_build()
+        assert result.errors == []
+
+        # The wikilink target should be a concept
+        links = db_conn.execute(
+            "SELECT target.path, target.kind FROM links l "
+            "JOIN artifacts source ON l.source_id = source.id "
+            "JOIN artifacts target ON l.target_id = target.id "
+            "WHERE source.kind = 'design' AND l.link_type = 'wikilink'"
+        ).fetchall()
+
+        assert len(links) == 1
+        target_path, target_kind = links[0]
+        assert target_kind == "concept"
+        assert target_path == ".lexibrary/concepts/Authentication.md"
+
+    def test_design_wikilink_convention_title_creates_correct_link(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Design file [[Convention Title]] resolves to convention artifact by exact title match."""
+        # Create a convention
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "use-type-hints.md"
+        conv_path.write_text(
+            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "source: user\npriority: 0\n---\n"
+            "Always use type hints.\n",
+            encoding="utf-8",
+        )
+
+        # Create a design file that references the convention by title
+        source_dir = tmp_path / "src"
+        source_dir.mkdir(parents=True, exist_ok=True)
+        (source_dir / "main.py").write_text(
+            "from __future__ import annotations\n\ndef main() -> None:\n    pass\n",
+            encoding="utf-8",
+        )
+
+        design_dir = tmp_path / ".lexibrary" / "designs" / "src"
+        design_dir.mkdir(parents=True, exist_ok=True)
+        (design_dir / "main.py.md").write_text(
+            "---\ndescription: Main entry point\nupdated_by: archivist\n---\n\n"
+            "# src/main.py\n\n"
+            "## Interface Contract\n\n"
+            "```python\ndef main() -> None: ...\n```\n\n"
+            "## Dependencies\n\n(none)\n\n"
+            "## Dependents\n\n(none)\n\n"
+            "## Wikilinks\n\n"
+            "- [[Use Type Hints]]\n\n"
+            "## Tags\n\n(none)\n\n"
+            "<!-- lexibrary:meta\nsource: src/main.py\nsource_hash: abc123\n"
+            "design_hash: def456\ngenerated: 2025-06-15T12:00:00\n"
+            "generator: lexibrary-test\n-->\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        result = builder.full_build()
+        assert result.errors == []
+
+        # The wikilink target should be the convention
+        links = db_conn.execute(
+            "SELECT target.path, target.kind FROM links l "
+            "JOIN artifacts source ON l.source_id = source.id "
+            "JOIN artifacts target ON l.target_id = target.id "
+            "WHERE source.kind = 'design' AND l.link_type = 'wikilink'"
+        ).fetchall()
+
+        assert len(links) == 1
+        target_path, target_kind = links[0]
+        assert target_kind == "convention"
+        assert target_path == ".lexibrary/conventions/use-type-hints.md"
+
+    def test_concept_body_wikilink_resolves_to_convention(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Wikilinks in concept body matching a convention resolve to convention."""
+        # Create a convention with alias
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "use-type-hints.md"
+        conv_path.write_text(
+            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "source: user\npriority: 0\n"
+            "aliases:\n  - type-hints\n---\n"
+            "Always use type hints.\n",
+            encoding="utf-8",
+        )
+
+        # Create a concept that references the convention by alias in its body
+        concept_dir = tmp_path / ".lexibrary" / "concepts"
+        concept_dir.mkdir(parents=True)
+        (concept_dir / "PythonBestPractices.md").write_text(
+            "---\ntitle: Python Best Practices\naliases: []\ntags: []\nstatus: active\n---\n"
+            "Follow [[type-hints]] for all functions.\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        result = builder.full_build()
+        assert result.errors == []
+
+        # The wikilink from the concept should target the convention
+        links = db_conn.execute(
+            "SELECT target.path, target.kind FROM links l "
+            "JOIN artifacts source ON l.source_id = source.id "
+            "JOIN artifacts target ON l.target_id = target.id "
+            "WHERE source.kind = 'concept' AND l.link_type = 'wikilink'"
+        ).fetchall()
+
+        assert len(links) == 1
+        target_path, target_kind = links[0]
+        assert target_kind == "convention"
+        assert target_path == ".lexibrary/conventions/use-type-hints.md"
+
+    def test_no_convention_dir_falls_back_to_concept(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Without a conventions directory, all wikilinks fall back to concept stubs."""
+        # No conventions directory -- only create design and source files
+        source_dir = tmp_path / "src"
+        source_dir.mkdir(parents=True, exist_ok=True)
+        (source_dir / "main.py").write_text(
+            "from __future__ import annotations\n\ndef main() -> None:\n    pass\n",
+            encoding="utf-8",
+        )
+
+        design_dir = tmp_path / ".lexibrary" / "designs" / "src"
+        design_dir.mkdir(parents=True, exist_ok=True)
+        (design_dir / "main.py.md").write_text(
+            "---\ndescription: Main entry point\nupdated_by: archivist\n---\n\n"
+            "# src/main.py\n\n"
+            "## Interface Contract\n\n"
+            "```python\ndef main() -> None: ...\n```\n\n"
+            "## Dependencies\n\n(none)\n\n"
+            "## Dependents\n\n(none)\n\n"
+            "## Wikilinks\n\n"
+            "- [[SomeThing]]\n\n"
+            "## Tags\n\n(none)\n\n"
+            "<!-- lexibrary:meta\nsource: src/main.py\nsource_hash: abc123\n"
+            "design_hash: def456\ngenerated: 2025-06-15T12:00:00\n"
+            "generator: lexibrary-test\n-->\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        result = builder.full_build()
+        assert result.errors == []
+
+        # Without conventions, the wikilink should create a concept stub
+        links = db_conn.execute(
+            "SELECT target.path, target.kind FROM links l "
+            "JOIN artifacts source ON l.source_id = source.id "
+            "JOIN artifacts target ON l.target_id = target.id "
+            "WHERE source.kind = 'design' AND l.link_type = 'wikilink'"
+        ).fetchall()
+
+        assert len(links) == 1
+        target_path, target_kind = links[0]
+        assert target_kind == "concept"
+        assert target_path == ".lexibrary/concepts/SomeThing.md"
+
+    def test_convention_title_case_insensitive_match(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Convention title matching is case-insensitive."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "use-type-hints.md"
+        conv_path.write_text(
+            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "source: user\npriority: 0\n---\n"
+            "Always use type hints.\n",
+            encoding="utf-8",
+        )
+
+        source_dir = tmp_path / "src"
+        source_dir.mkdir(parents=True, exist_ok=True)
+        (source_dir / "main.py").write_text(
+            "from __future__ import annotations\n\ndef main() -> None:\n    pass\n",
+            encoding="utf-8",
+        )
+
+        design_dir = tmp_path / ".lexibrary" / "designs" / "src"
+        design_dir.mkdir(parents=True, exist_ok=True)
+        # Use different case in wikilink
+        (design_dir / "main.py.md").write_text(
+            "---\ndescription: Main entry point\nupdated_by: archivist\n---\n\n"
+            "# src/main.py\n\n"
+            "## Interface Contract\n\n"
+            "```python\ndef main() -> None: ...\n```\n\n"
+            "## Dependencies\n\n(none)\n\n"
+            "## Dependents\n\n(none)\n\n"
+            "## Wikilinks\n\n"
+            "- [[use type hints]]\n\n"
+            "## Tags\n\n(none)\n\n"
+            "<!-- lexibrary:meta\nsource: src/main.py\nsource_hash: abc123\n"
+            "design_hash: def456\ngenerated: 2025-06-15T12:00:00\n"
+            "generator: lexibrary-test\n-->\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        result = builder.full_build()
+        assert result.errors == []
+
+        links = db_conn.execute(
+            "SELECT target.path, target.kind FROM links l "
+            "JOIN artifacts source ON l.source_id = source.id "
+            "JOIN artifacts target ON l.target_id = target.id "
+            "WHERE source.kind = 'design' AND l.link_type = 'wikilink'"
+        ).fetchall()
+
+        assert len(links) == 1
+        target_path, target_kind = links[0]
+        assert target_kind == "convention"
+        assert target_path == ".lexibrary/conventions/use-type-hints.md"

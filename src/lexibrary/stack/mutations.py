@@ -1,11 +1,11 @@
-"""Mutation functions for Stack posts — add answers, vote, accept, mark status."""
+"""Mutation functions for Stack posts — add findings, vote, accept, mark status."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
-from lexibrary.stack.models import StackAnswer, StackPost
+from lexibrary.stack.models import StackFinding, StackPost
 from lexibrary.stack.parser import parse_stack_post
 from lexibrary.stack.serializer import serialize_stack_post
 
@@ -25,20 +25,20 @@ def _save_post(post_path: Path, post: StackPost) -> None:
     post_path.write_text(content, encoding="utf-8")
 
 
-def add_answer(post_path: Path, author: str, body: str) -> StackPost:
-    """Append a new answer to a Stack post.
+def add_finding(post_path: Path, author: str, body: str) -> StackPost:
+    """Append a new finding to a Stack post.
 
-    The new answer receives the next sequential number (max existing + 1,
-    or 1 if there are no answers yet), today's date, and the provided
+    The new finding receives the next sequential number (max existing + 1,
+    or 1 if there are no findings yet), today's date, and the provided
     author and body text.
 
     Returns the updated StackPost after writing to disk.
     """
     post = _load_post(post_path)
 
-    next_num = max((a.number for a in post.answers), default=0) + 1
+    next_num = max((f.number for f in post.findings), default=0) + 1
 
-    new_answer = StackAnswer(
+    new_finding = StackFinding(
         number=next_num,
         date=date.today(),
         author=author,
@@ -47,7 +47,7 @@ def add_answer(post_path: Path, author: str, body: str) -> StackPost:
         body=body,
         comments=[],
     )
-    post.answers.append(new_answer)
+    post.findings.append(new_finding)
 
     _save_post(post_path, post)
     # Re-parse to ensure raw_body is consistent
@@ -61,18 +61,18 @@ def record_vote(
     author: str,
     comment: str | None = None,
 ) -> StackPost:
-    """Record an upvote or downvote on a post or answer.
+    """Record an upvote or downvote on a post or finding.
 
     Args:
         post_path: Path to the stack post file.
-        target: ``"post"`` or ``"A{n}"`` (e.g. ``"A1"``).
+        target: ``"post"`` or ``"F{n}"`` (e.g. ``"F1"``).
         direction: ``"up"`` or ``"down"``.
         author: Identifier of the voter.
         comment: Optional comment. **Required** for downvotes.
 
     Raises:
         ValueError: If direction is ``"down"`` and comment is None,
-            or if the target answer does not exist.
+            or if the target finding does not exist.
     """
     if direction == "down" and comment is None:
         msg = "Downvotes require a comment"
@@ -85,32 +85,45 @@ def record_vote(
         post.frontmatter.votes += delta
         if comment is not None:
             tag = "[upvote]" if direction == "up" else "[downvote]"
-            # For post-level votes with comments, we don't have an answer
-            # to attach to — the spec only mentions answer comments, but
+            # For post-level votes with comments, we don't have a finding
+            # to attach to — the spec only mentions finding comments, but
             # we still record the vote on the frontmatter votes field.
     else:
-        # target is "A{n}"
-        answer_num = _parse_answer_target(target)
-        answer = _find_answer(post, answer_num)
-        answer.votes += delta
+        # target is "F{n}"
+        finding_num = _parse_finding_target(target)
+        finding = _find_finding(post, finding_num)
+        finding.votes += delta
         if comment is not None:
             tag = "[upvote]" if direction == "up" else "[downvote]"
-            answer.comments.append(f"{tag} {author}: {comment}")
+            finding.comments.append(f"{tag} {author}: {comment}")
 
     _save_post(post_path, post)
     return _load_post(post_path)
 
 
-def accept_answer(post_path: Path, answer_num: int) -> StackPost:
-    """Mark an answer as accepted and set the post status to resolved.
+def accept_finding(
+    post_path: Path,
+    finding_num: int,
+    resolution_type: str | None = None,
+) -> StackPost:
+    """Mark a finding as accepted and set the post status to resolved.
+
+    Args:
+        post_path: Path to the stack post file.
+        finding_num: The finding number to accept.
+        resolution_type: Optional resolution type (e.g. ``"fix"``,
+            ``"workaround"``). When provided, sets
+            ``post.frontmatter.resolution_type``.
 
     Raises:
-        ValueError: If the specified answer number does not exist.
+        ValueError: If the specified finding number does not exist.
     """
     post = _load_post(post_path)
-    answer = _find_answer(post, answer_num)
-    answer.accepted = True
+    finding = _find_finding(post, finding_num)
+    finding.accepted = True
     post.frontmatter.status = "resolved"
+    if resolution_type is not None:
+        post.frontmatter.resolution_type = resolution_type  # type: ignore[assignment]
 
     _save_post(post_path, post)
     return _load_post(post_path)
@@ -139,27 +152,81 @@ def mark_outdated(post_path: Path) -> StackPost:
     return _load_post(post_path)
 
 
+def mark_stale(post_path: Path) -> StackPost:
+    """Mark a resolved post as stale.
+
+    Only posts with ``status="resolved"`` can be marked stale.  Sets
+    ``status`` to ``"stale"`` and ``stale_at`` to the current UTC
+    timestamp in ISO format.
+
+    Returns the updated :class:`StackPost` after writing to disk.
+
+    Raises:
+        ValueError: If the post does not have ``status="resolved"``.
+    """
+    post = _load_post(post_path)
+    if post.frontmatter.status != "resolved":
+        msg = (
+            f"Only resolved posts can be marked stale (post {post.frontmatter.id} "
+            f"has status={post.frontmatter.status!r})"
+        )
+        raise ValueError(msg)
+
+    post.frontmatter.status = "stale"
+    post.frontmatter.stale_at = datetime.now(tz=UTC).isoformat()
+
+    _save_post(post_path, post)
+    return _load_post(post_path)
+
+
+def mark_unstale(post_path: Path) -> StackPost:
+    """Reverse staleness — set a stale post back to resolved.
+
+    Only posts with ``status="stale"`` can be un-staled.  Sets
+    ``status`` back to ``"resolved"`` and clears ``stale_at`` to
+    ``None``.
+
+    Returns the updated :class:`StackPost` after writing to disk.
+
+    Raises:
+        ValueError: If the post does not have ``status="stale"``.
+    """
+    post = _load_post(post_path)
+    if post.frontmatter.status != "stale":
+        msg = (
+            f"Only stale posts can be un-staled (post {post.frontmatter.id} "
+            f"has status={post.frontmatter.status!r})"
+        )
+        raise ValueError(msg)
+
+    post.frontmatter.status = "resolved"
+    post.frontmatter.stale_at = None
+
+    _save_post(post_path, post)
+    return _load_post(post_path)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
 
-def _parse_answer_target(target: str) -> int:
-    """Parse an answer target like ``'A1'`` into an integer."""
-    if not target.startswith("A"):
-        msg = f"Invalid answer target: {target!r}. Expected 'A{{n}}' format."
+def _parse_finding_target(target: str) -> int:
+    """Parse a finding target like ``'F1'`` into an integer."""
+    if not target.startswith("F"):
+        msg = f"Invalid finding target: {target!r}. Expected 'F{{n}}' format."
         raise ValueError(msg)
     try:
         return int(target[1:])
     except ValueError:
-        msg = f"Invalid answer target: {target!r}. Expected 'A{{n}}' format."
+        msg = f"Invalid finding target: {target!r}. Expected 'F{{n}}' format."
         raise ValueError(msg) from None
 
 
-def _find_answer(post: StackPost, answer_num: int) -> StackAnswer:
-    """Find an answer by number, raising ValueError if not found."""
-    for answer in post.answers:
-        if answer.number == answer_num:
-            return answer
-    msg = f"Answer A{answer_num} not found in post {post.frontmatter.id}"
+def _find_finding(post: StackPost, finding_num: int) -> StackFinding:
+    """Find a finding by number, raising ValueError if not found."""
+    for finding in post.findings:
+        if finding.number == finding_num:
+            return finding
+    msg = f"Finding F{finding_num} not found in post {post.frontmatter.id}"
     raise ValueError(msg)

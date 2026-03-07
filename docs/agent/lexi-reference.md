@@ -6,27 +6,65 @@ Run `lexi --help` for a quick overview, or `lexi <command> --help` for any speci
 
 ---
 
-## lookup
+## orient
 
-Look up the design file for a source file, including applicable conventions from `.aindex` hierarchy and dependents from the link graph.
+Show project orientation: topology, file map, library stats, and IWH signals. This replaces the former `context-dump` command.
 
 ```
-lexi lookup <file>
+lexi orient
+```
+
+**What it outputs:**
+
+1. **Project topology** -- root billboard and top-level directory summaries from `.aindex` files
+2. **Library stats** -- concept count, convention count, open stack post count
+3. **IWH signals peek** -- lists all pending IWH signals with scope, directory, and body preview (without consuming them)
+4. **IWH consumption guidance** -- when signals are present, includes a footer explaining how to consume them with `lexi iwh read <dir>`
+
+**Token budget:** Controlled by `orientation_tokens` in `TokenBudgetConfig` (default: 300).
+
+**Examples:**
+
+```bash
+# Orient at session start
+lexi orient
+```
+
+**When to use:** Run at the start of every session as directed by CLAUDE.md rules. This is your first step to understand the project state and any pending work from previous sessions.
+
+---
+
+## lookup
+
+Look up the design file for a source file, or show a directory overview. Includes applicable conventions, Known Issues from Stack, IWH signals, and dependents from the link graph.
+
+```
+lexi lookup <file|directory>
 ```
 
 **Arguments:**
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `file` | Yes | Path to the source file to look up |
+| `file` | Yes | Path to a source file or directory to look up |
 
-**What it outputs:**
+**What it outputs (file mode):**
 
 1. **Design file content** -- the full markdown design file including YAML frontmatter (source path, source_hash, generated timestamp, updated_by, wikilinks), summary, interface skeleton, and key details
 2. **Staleness warning** -- if the source file's SHA-256 hash does not match the hash stored in the design file frontmatter, a warning is printed suggesting `lexictl update`
 3. **Applicable conventions** -- conventions from `.aindex` files walked upward from the file's directory to the scope root. Each convention is shown with its originating directory
-4. **Dependents** -- files that import this file (from the link graph, if available)
-5. **Also referenced by** -- other inbound references: concept wikilinks, Stack post file refs, design file refs, convention concept refs
+4. **Known Issues** -- stack posts that reference this file, showing status, title, attempts summary, and vote count. Open posts shown first, then resolved. Maximum controlled by `stack.lookup_display_limit` (default: 3). Stale posts excluded.
+5. **IWH signals** -- peek at IWH signals for the file's directory (read without consuming)
+6. **Dependents** -- files that import this file (from the link graph, if available)
+7. **Also referenced by** -- other inbound references: concept wikilinks, Stack post file refs, design file refs, convention concept refs
+
+**What it outputs (directory mode):**
+
+1. **AIndex content** -- the directory's `.aindex` billboard and file listing
+2. **Applicable conventions** -- conventions scoped to this directory
+3. **IWH signals** -- peek at IWH signals for this directory
+
+**Token budget:** Controlled by `lookup_total_tokens` in `TokenBudgetConfig` (default: 1200). Sections are truncated in priority order: design > conventions > issues > IWH > links.
 
 **Exit codes:**
 
@@ -43,9 +81,12 @@ lexi lookup src/lexibrary/config/schema.py
 
 # Look up a file using a relative path
 lexi lookup ./cli/lexi_app.py
+
+# Look up a directory
+lexi lookup src/lexibrary/config/
 ```
 
-**When to use:** Always run `lexi lookup` before editing a source file. It shows you the file's purpose, interface, conventions to follow, and what depends on it.
+**When to use:** Always run `lexi lookup` before editing a source file. It shows you the file's purpose, interface, conventions to follow, known issues, and what depends on it. Use directory mode to explore what a directory contains.
 
 ---
 
@@ -332,12 +373,12 @@ lexi stack search --concept change-detection --status resolved
 
 ---
 
-## stack answer
+## stack finding
 
-Append a new answer to an existing Stack post.
+Append a new finding to an existing Stack post.
 
 ```
-lexi stack answer <post_id> --body <text> [--author <name>]
+lexi stack finding <post_id> --body <text> [--author <name>]
 ```
 
 **Arguments:**
@@ -350,29 +391,29 @@ lexi stack answer <post_id> --body <text> [--author <name>]
 
 | Option | Required | Default | Description |
 |--------|----------|---------|-------------|
-| `--body <text>` | Yes | -- | Answer body text |
-| `--author <name>` | No | `user` | Author of the answer |
+| `--body <text>` | Yes | -- | Finding body text |
+| `--author <name>` | No | `user` | Author of the finding |
 
-The answer is appended to the post file with an auto-assigned answer number (A1, A2, etc.).
+The finding is appended to the post file with an auto-assigned finding number (F1, F2, etc.).
 
 **Examples:**
 
 ```bash
-# Add an answer to a post
-lexi stack answer ST-001 --body "The fix is to increase the timeout in config.yaml to 120 seconds."
+# Add a finding to a post
+lexi stack finding ST-001 --body "The fix is to increase the timeout in config.yaml to 120 seconds."
 
-# Add an answer with author attribution
-lexi stack answer ST-003 --body "This was caused by a race condition in the debouncer." --author claude
+# Add a finding with author attribution
+lexi stack finding ST-003 --body "This was caused by a race condition in the debouncer." --author claude
 ```
 
 ---
 
 ## stack vote
 
-Record an upvote or downvote on a post or a specific answer.
+Record an upvote or downvote on a post or a specific finding.
 
 ```
-lexi stack vote <post_id> <up|down> [--answer <num>] [--comment <text>] [--author <name>]
+lexi stack vote <post_id> <up|down> [--finding <num>] [--comment <text>] [--author <name>]
 ```
 
 **Arguments:**
@@ -386,7 +427,7 @@ lexi stack vote <post_id> <up|down> [--answer <num>] [--comment <text>] [--autho
 
 | Option | Required | Default | Description |
 |--------|----------|---------|-------------|
-| `--answer <num>` | No | -- | Answer number to vote on (omit to vote on the post itself) |
+| `--finding <num>` | No | -- | Finding number to vote on (omit to vote on the post itself) |
 | `--comment <text>` | For downvotes | -- | Comment explaining the downvote (required for downvotes) |
 | `--author <name>` | No | `user` | Author of the vote |
 
@@ -396,23 +437,23 @@ lexi stack vote <post_id> <up|down> [--answer <num>] [--comment <text>] [--autho
 # Upvote a post
 lexi stack vote ST-001 up
 
-# Upvote a specific answer
-lexi stack vote ST-001 up --answer 2
+# Upvote a specific finding
+lexi stack vote ST-001 up --finding 2
 
 # Downvote with required comment
 lexi stack vote ST-003 down --comment "This solution introduces a memory leak"
 ```
 
-**When to use:** Upvote answers that are correct and helpful. Downvote answers that are incorrect or misleading (always explain why in the comment).
+**When to use:** Upvote findings that are correct and helpful. Downvote findings that are incorrect or misleading (always explain why in the comment).
 
 ---
 
 ## stack accept
 
-Mark an answer as accepted and set the post status to resolved.
+Mark a finding as accepted and set the post status to resolved.
 
 ```
-lexi stack accept <post_id> --answer <num>
+lexi stack accept <post_id> --finding <num>
 ```
 
 **Arguments:**
@@ -425,20 +466,20 @@ lexi stack accept <post_id> --answer <num>
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--answer <num>` | Yes | Answer number to accept |
+| `--finding <num>` | Yes | Finding number to accept |
 
 **Examples:**
 
 ```bash
-# Accept answer A2 on post ST-001
-lexi stack accept ST-001 --answer 2
+# Accept finding F2 on post ST-001
+lexi stack accept ST-001 --finding 2
 ```
 
 ---
 
 ## stack view
 
-Display the full content of a Stack post, including all answers, votes, and metadata.
+Display the full content of a Stack post, including all findings, votes, and metadata.
 
 ```
 lexi stack view <post_id>
@@ -450,7 +491,7 @@ lexi stack view <post_id>
 |----------|----------|-------------|
 | `post_id` | Yes | Post ID (e.g., `ST-001`) |
 
-**Output:** A formatted panel showing the post header (title, status, votes, tags, created date, author, file refs, concept refs), problem description, evidence items, and all answers with their votes and comments.
+**Output:** A formatted panel showing the post header (title, status, votes, tags, created date, author, file refs, concept refs), problem description, evidence items, and all findings with their votes and comments.
 
 **Examples:**
 
@@ -540,11 +581,64 @@ lexi search --tag config --scope src/lexibrary/
 
 ---
 
+## impact
+
+Show reverse dependents of a source file -- which files import it and would be affected by changes.
+
+```
+lexi impact <file> [--depth N] [--quiet]
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `file` | Yes | Source file to analyse for reverse dependents |
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--depth` | 1 | Maximum traversal depth (1-3, clamped). Higher values follow transitive dependents. |
+| `--quiet` | -- | Output paths only, one per line. Suitable for piping to other tools. |
+
+**What it outputs:**
+
+- A tree of files that depend on the given file, with design file descriptions for each
+- Warning indicators when a dependent has an open stack post
+- With `--quiet`, outputs bare paths only (one per line, no decoration)
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | Analysis completed (even if no dependents found) |
+| 1 | File not found or outside scope |
+
+**Examples:**
+
+```bash
+# Show immediate dependents
+lexi impact src/lexibrary/config/schema.py
+
+# Show transitive dependents up to depth 2
+lexi impact src/lexibrary/config/schema.py --depth 2
+
+# Get bare paths for piping
+lexi impact src/lexibrary/config/schema.py --quiet
+```
+
+**When to use:** After editing a file, run `lexi impact` to understand what other files might be affected by your changes. The post-edit hook runs this automatically at depth 1.
+
+---
+
 ## Command Summary
 
 | Command | Purpose |
 |---------|---------|
-| `lexi lookup <file>` | Get design file, conventions, and dependents for a source file |
+| `lexi orient` | Project orientation: topology, stats, IWH signals |
+| `lexi lookup <file\|dir>` | Get design file, conventions, Known Issues, IWH, and dependents |
+| `lexi impact <file> [--depth] [--quiet]` | Show reverse dependents (who imports this file) |
 | `lexi index [dir] [-r]` | Generate `.aindex` routing table(s) for a directory |
 | `lexi describe <dir> <desc>` | Update a directory's `.aindex` billboard description |
 | `lexi concepts [topic]` | List or search concept files |
@@ -552,9 +646,31 @@ lexi search --tag config --scope src/lexibrary/
 | `lexi concept link <concept> <file>` | Add a wikilink from a concept to a design file |
 | `lexi stack post --title --tag` | Create a new Stack Q&A post |
 | `lexi stack search [query] [filters]` | Search Stack posts |
-| `lexi stack answer <id> --body` | Add an answer to a Stack post |
-| `lexi stack vote <id> <up\|down>` | Vote on a post or answer |
-| `lexi stack accept <id> --answer` | Accept an answer (sets status to resolved) |
+| `lexi stack finding <id> --body` | Add a finding to a Stack post |
+| `lexi stack vote <id> <up\|down>` | Vote on a post or finding |
+| `lexi stack accept <id> --finding` | Accept a finding (sets status to resolved) |
 | `lexi stack view <id>` | Display full post content |
 | `lexi stack list [filters]` | List Stack posts with optional filters |
 | `lexi search [query] [filters]` | Unified cross-artifact search |
+
+---
+
+## lexi-research Subagent
+
+The `lexi-research` subagent (`.claude/agents/lexi-research.md`) is a specialized deep research agent for debugging and architectural decisions.
+
+**Tools:** Read, Bash (read-only commands only)
+
+**When to use:** For complex bugs requiring synthesis across many Stack posts, design files, and source files. Spawn the subagent with your problem description instead of searching manually.
+
+**Workflow:**
+1. Runs `lexi orient` to understand project state
+2. Searches Stack posts and design files for relevant context
+3. Reads source files to understand the problem
+4. Synthesizes findings into a structured analysis
+5. Returns findings to the calling agent
+
+**Restrictions:**
+- Does not write code or modify files
+- Does not consume IWH signals
+- Does not post to the Stack -- the calling agent is responsible for posting findings

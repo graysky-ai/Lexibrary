@@ -1,9 +1,8 @@
 """Procedural topology generation from .aindex billboard summaries.
 
-Replaces the LLM-generated START_HERE.md with a deterministic
-``TOPOLOGY.md`` built directly from ``.aindex`` data.  The adaptive-depth
-algorithm shows full trees for small projects and filters large projects
-to keep the output concise.
+Builds a deterministic ``TOPOLOGY.md`` directly from ``.aindex`` data.
+The adaptive-depth algorithm shows full trees for small projects and
+filters large projects to keep the output concise.
 """
 
 from __future__ import annotations

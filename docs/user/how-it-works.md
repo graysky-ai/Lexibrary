@@ -34,7 +34,7 @@ Agents use `lexi` for lookups and queries:
 - `lexi concepts [topic]` -- List or search concept files.
 - `lexi concept new <name>` -- Create a new concept.
 - `lexi concept link <concept> <file>` -- Link a concept to a source file's design file.
-- `lexi stack post|search|answer|vote|accept|view|list` -- Stack Q&A management.
+- `lexi stack post|search|finding|vote|accept|view|list` -- Stack Q&A management.
 - `lexi search [query]` -- Search across concepts, design files, and Stack posts.
 
 Agents should never run `lexictl` commands. Those commands involve LLM calls, cost money, and require operator oversight.
@@ -97,9 +97,9 @@ wikilinks:
 ---
 ```
 
-### 6. START_HERE.md regeneration
+### 6. TOPOLOGY.md regeneration
 
-After all design files are updated, Lexibrary regenerates `.lexibrary/START_HERE.md`. This file is the entry point for agents -- it contains the project topology, package map, and navigation guidance. Agents are instructed to read this file at the start of every session.
+After all design files are updated, Lexibrary regenerates `.lexibrary/TOPOLOGY.md`. This file is a procedural topology of the project -- it contains the directory tree, package map, and navigation guidance. Agents use the `/lexi-orient` session-start skill to orient themselves at the start of every session.
 
 ### 7. .aindex routing tables
 
@@ -124,7 +124,7 @@ The operator-agent collaboration model follows a clear separation of concerns:
 
 ### Agents are responsible for:
 
-- **Reading** `START_HERE.md` at the start of every session.
+- **Orienting** via the `/lexi-orient` skill (which reads `TOPOLOGY.md`) at the start of every session.
 - **Looking up** design files before editing source code (`lexi lookup`).
 - **Updating** design files after editing source code (manual edits to `.lexibrary/` Markdown files).
 - **Creating** concepts when recurring patterns emerge (`lexi concept new`).

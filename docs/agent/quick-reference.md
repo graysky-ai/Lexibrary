@@ -6,9 +6,8 @@ A single-page reference for everything an agent needs when working in a Lexibrar
 
 ## Session Start Checklist
 
-1. Read `.lexibrary/START_HERE.md` -- get project topology, package map, navigation table, and key constraints
-2. Check for `.iwh` files -- `ls .iwh 2>/dev/null` -- read, act on, and delete any signals from previous sessions
-3. Run `lexi concepts` -- verify the library is accessible and review available project vocabulary
+1. Run `lexi orient` -- get project topology, library stats, and IWH signal overview in a single command
+2. If IWH signals are shown, run `lexi iwh read <dir>` for each directory you plan to work in to consume the signals
 
 ---
 
@@ -30,7 +29,9 @@ A single-page reference for everything an agent needs when working in a Lexibrar
 
 | Command | What It Does | When to Use |
 |---------|-------------|-------------|
-| `lexi lookup <file>` | Show design file, conventions, dependents | Before editing any source file |
+| `lexi orient` | Show project topology, stats, IWH signals | At session start (first command) |
+| `lexi lookup <file\|dir>` | Show design file, conventions, Known Issues, IWH, dependents | Before editing any source file |
+| `lexi impact <file>` | Show reverse dependents (who imports it) | After editing a file, to check impact |
 | `lexi search <query>` | Search concepts, design files, Stack posts | Exploring a topic or finding related artifacts |
 | `lexi search --tag <tag>` | Filter search by tag | Finding all artifacts with a specific tag |
 | `lexi search --scope <path>` | Filter search by directory | Narrowing results to a package |
@@ -39,9 +40,9 @@ A single-page reference for everything an agent needs when working in a Lexibrar
 | `lexi concept link <concept> <file>` | Link concept to a design file | After creating a concept |
 | `lexi stack search [query]` | Search Stack posts | Before debugging an issue |
 | `lexi stack post --title --tag` | Create a Stack post | After solving a non-trivial bug |
-| `lexi stack answer <id> --body` | Add an answer to a post | When you have a solution |
-| `lexi stack vote <id> up` | Upvote a post or answer | When an answer is helpful |
-| `lexi stack accept <id> --answer <n>` | Accept an answer | When a solution is confirmed |
+| `lexi stack finding <id> --body` | Add a finding to a post | When you have a solution |
+| `lexi stack vote <id> up` | Upvote a post or finding | When a finding is helpful |
+| `lexi stack accept <id> --finding <n>` | Accept a finding | When a solution is confirmed |
 | `lexi stack view <id>` | View full post content | Reading a post's details |
 | `lexi stack list [--status] [--tag]` | List posts with filters | Browsing open issues |
 | `lexi index [dir] [-r]` | Generate `.aindex` files | After creating new files/directories |
@@ -101,33 +102,24 @@ lexi concept link path-validation src/lexibrary/config/loader.py
 
 ### Leaving work incomplete
 
-```
-# Create a .iwh file in the relevant directory
-# (write the file manually -- there is no CLI command for this)
+```bash
+# Leave a signal for the next agent
+lexi iwh write src/lexibrary/config/ --scope incomplete --body "Refactoring config validation. Completed schema.py changes. Still need to update loader.py and defaults.py. Tests in test_schema.py pass."
 
-# File: src/lexibrary/config/.iwh
----
-author: claude
-created: '2026-02-23T14:30:00'
-scope: incomplete
----
-Refactoring config validation. Completed schema.py changes.
-Still need to update loader.py and defaults.py.
-Tests in test_schema.py pass.
+# Leave a blocked signal
+lexi iwh write src/lexibrary/daemon/ --scope blocked --body "Waiting on upstream fix for watchdog race condition."
 ```
 
 ### Picking up where someone left off
 
 ```bash
-# Check for IWH signals
-ls .iwh 2>/dev/null
+# Run orient to see all pending signals
+lexi orient
 
-# Read the signal
-cat .iwh
+# Read and consume a signal (deletes it after display)
+lexi iwh read src/lexibrary/config/
 
 # Complete the work described in the signal
-# Delete the IWH file when done
-rm .iwh
 ```
 
 ---

@@ -12,10 +12,13 @@ def serialize_stack_post(post: StackPost) -> str:
 
     Produces:
     - ``---`` delimited YAML frontmatter containing all StackPostFrontmatter fields
+      (``resolution_type`` included only when not None)
     - ``## Problem`` section with the problem description
-    - ``### Evidence`` section with evidence items as a bullet list
-    - ``## Answers`` section containing answer blocks (if any)
-    - Each answer as ``### A{n}`` with metadata line, body, and ``#### Comments``
+    - ``### Context`` section (conditional — only when non-empty)
+    - ``### Evidence`` section with evidence items as a bullet list (conditional)
+    - ``### Attempts`` section with attempt items as a bullet list (conditional)
+    - ``## Findings`` section containing finding blocks (if any)
+    - Each finding as ``### F{n}`` with metadata line, body, and ``#### Comments``
     - Trailing newline
     """
     parts: list[str] = []
@@ -28,37 +31,50 @@ def serialize_stack_post(post: StackPost) -> str:
     parts.append(post.problem.rstrip("\n"))
     parts.append("\n\n")
 
-    # --- ### Evidence ---
-    parts.append("### Evidence\n\n")
+    # --- ### Context (conditional) ---
+    if post.context:
+        parts.append("### Context\n\n")
+        parts.append(post.context.rstrip("\n"))
+        parts.append("\n\n")
+
+    # --- ### Evidence (conditional) ---
     if post.evidence:
+        parts.append("### Evidence\n\n")
         for item in post.evidence:
             parts.append(f"- {item}\n")
-    parts.append("\n")
+        parts.append("\n")
 
-    # --- ## Answers ---
-    if post.answers:
-        parts.append("## Answers\n\n")
-        for answer in post.answers:
-            parts.append(f"### A{answer.number}\n\n")
+    # --- ### Attempts (conditional) ---
+    if post.attempts:
+        parts.append("### Attempts\n\n")
+        for item in post.attempts:
+            parts.append(f"- {item}\n")
+        parts.append("\n")
+
+    # --- ## Findings ---
+    if post.findings:
+        parts.append("## Findings\n\n")
+        for finding in post.findings:
+            parts.append(f"### F{finding.number}\n\n")
 
             # Metadata line
             meta = (
-                f"**Date:** {answer.date.isoformat()}"
-                f" | **Author:** {answer.author}"
-                f" | **Votes:** {answer.votes}"
+                f"**Date:** {finding.date.isoformat()}"
+                f" | **Author:** {finding.author}"
+                f" | **Votes:** {finding.votes}"
             )
-            if answer.accepted:
+            if finding.accepted:
                 meta += " | **Accepted:** true"
             parts.append(meta + "\n\n")
 
             # Body
-            parts.append(answer.body.rstrip("\n"))
+            parts.append(finding.body.rstrip("\n"))
             parts.append("\n\n")
 
             # Comments
             parts.append("#### Comments\n\n")
-            if answer.comments:
-                for comment in answer.comments:
+            if finding.comments:
+                for comment in finding.comments:
                     parts.append(f"{comment}\n")
                 parts.append("\n")
 
@@ -88,6 +104,12 @@ def _serialize_frontmatter(post: StackPost) -> str:
             "designs": fm.refs.designs,
         },
     }
+
+    if fm.resolution_type is not None:
+        fm_data["resolution_type"] = fm.resolution_type
+
+    if fm.stale_at is not None:
+        fm_data["stale_at"] = fm.stale_at
 
     fm_str = yaml.dump(
         fm_data,

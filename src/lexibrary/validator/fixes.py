@@ -2,7 +2,8 @@
 
 Provides a registry of fixers keyed by check name. Only auto-fixable
 checks have entries: ``hash_freshness``, ``orphan_artifacts``,
-``aindex_coverage``, ``orphaned_aindex``, and ``orphaned_iwh``.
+``aindex_coverage``, ``orphaned_aindex``, ``orphaned_iwh``,
+``orphaned_designs``, and ``deprecated_ttl``.
 """
 
 from __future__ import annotations
@@ -303,6 +304,170 @@ def fix_orphaned_iwh(
     )
 
 
+def fix_orphaned_designs(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Apply the deprecation workflow to an orphaned design file.
+
+    Instead of directly deleting orphaned design files, this fixer applies
+    the proper deprecation workflow:
+
+    - For uncommitted deletions (source still tracked in git index): marks
+      the design file as ``status: unlinked``.
+    - For committed deletions (source no longer tracked): marks the design
+      file as ``status: deprecated`` with ``deprecated_at`` and
+      ``deprecated_reason: "source_deleted"``.
+
+    Args:
+        issue: The validation issue describing the orphaned design file.
+        project_root: Root directory of the project.
+        config: Project configuration (unused but required by fixer signature).
+
+    Returns:
+        A FixResult indicating whether the fix succeeded.
+    """
+    from lexibrary.lifecycle.deprecation import (  # noqa: PLC0415
+        _is_committed_deletion,
+        deprecate_design,
+        mark_unlinked,
+    )
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    lexibrary_dir = project_root / LEXIBRARY_DIR
+
+    # issue.artifact is relative to lexibrary_dir, e.g. "designs/src/foo.py.md"
+    design_path = lexibrary_dir / issue.artifact
+    if not design_path.exists():
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            message=f"design file already removed: {issue.artifact}",
+        )
+
+    # Parse the design file to get the source path
+    from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
+        parse_design_file,
+    )
+
+    parsed = parse_design_file(design_path)
+    if parsed is None:
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            message=f"cannot parse design file: {issue.artifact}",
+        )
+
+    source_rel = Path(parsed.source_path)
+
+    # Check if the deletion has been committed
+    committed = _is_committed_deletion(project_root, source_rel)
+
+    try:
+        if committed:
+            deprecate_design(design_path, reason="source_deleted")
+            return FixResult(
+                check=issue.check,
+                path=design_path,
+                fixed=True,
+                message=f"marked as deprecated (source committed deletion): {issue.artifact}",
+            )
+        else:
+            mark_unlinked(design_path)
+            return FixResult(
+                check=issue.check,
+                path=design_path,
+                fixed=True,
+                message=f"marked as unlinked (uncommitted deletion): {issue.artifact}",
+            )
+    except Exception as exc:
+        logger.exception("Failed to apply deprecation for %s", issue.artifact)
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            message=f"error applying deprecation: {exc}",
+        )
+
+
+def fix_deprecated_ttl(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Hard-delete a deprecated design file whose TTL has expired.
+
+    Checks that the design file is still deprecated and past its TTL
+    before deleting. Cleans up empty parent directories under the
+    designs root.
+
+    Args:
+        issue: The validation issue describing the expired deprecated file.
+        project_root: Root directory of the project.
+        config: Project configuration (used for TTL setting).
+
+    Returns:
+        A FixResult indicating whether the fix succeeded.
+    """
+    from lexibrary.lifecycle.deprecation import check_ttl_expiry  # noqa: PLC0415
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    lexibrary_dir = project_root / LEXIBRARY_DIR
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+
+    # issue.artifact is relative to lexibrary_dir, e.g. "designs/src/foo.py.md"
+    design_path = lexibrary_dir / issue.artifact
+    if not design_path.exists():
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            message=f"design file already removed: {issue.artifact}",
+        )
+
+    # Verify TTL is actually expired before deleting
+    ttl_commits = config.deprecation.ttl_commits
+    if not check_ttl_expiry(design_path, project_root, ttl_commits):
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            message=f"TTL not yet expired for: {issue.artifact}",
+        )
+
+    # Delete the expired design file
+    try:
+        design_path.unlink()
+    except OSError as exc:
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            message=f"failed to delete design file: {exc}",
+        )
+
+    # Clean up empty parent directories up to (but not including) designs root
+    parent = design_path.parent
+    while parent != designs_dir and parent.is_dir():
+        try:
+            if any(parent.iterdir()):
+                break
+            parent.rmdir()
+            parent = parent.parent
+        except OSError:
+            break
+
+    return FixResult(
+        check=issue.check,
+        path=design_path,
+        fixed=True,
+        message=f"hard-deleted expired deprecated design file: {issue.artifact}",
+    )
+
+
 # Registry of auto-fixable checks.
 # Maps check name -> fixer function.
 FIXERS: dict[str, Callable[[ValidationIssue, Path, LexibraryConfig], FixResult]] = {
@@ -311,4 +476,6 @@ FIXERS: dict[str, Callable[[ValidationIssue, Path, LexibraryConfig], FixResult]]
     "aindex_coverage": fix_aindex_coverage,
     "orphaned_aindex": fix_orphaned_aindex,
     "orphaned_iwh": fix_orphaned_iwh,
+    "orphaned_designs": fix_orphaned_designs,
+    "deprecated_ttl": fix_deprecated_ttl,
 }

@@ -74,9 +74,20 @@ def parse_design_file_frontmatter(path: Path) -> DesignFileFrontmatter | None:
         data = yaml.safe_load(match.group(1))
         if not isinstance(data, dict):
             return None
+        # Parse deprecated_at from ISO string if present
+        deprecated_at_raw = data.get("deprecated_at")
+        deprecated_at = None
+        if deprecated_at_raw is not None:
+            if isinstance(deprecated_at_raw, datetime):
+                deprecated_at = deprecated_at_raw
+            elif isinstance(deprecated_at_raw, str):
+                deprecated_at = datetime.fromisoformat(deprecated_at_raw)
         return DesignFileFrontmatter(
             description=data["description"],
             updated_by=data.get("updated_by", "archivist"),
+            status=data.get("status", "active"),
+            deprecated_at=deprecated_at,
+            deprecated_reason=data.get("deprecated_reason"),
         )
     except (yaml.YAMLError, KeyError, ValueError):
         return None
@@ -103,9 +114,20 @@ def parse_design_file(path: Path) -> DesignFile | None:
         fm_data = yaml.safe_load(fm_match.group(1))
         if not isinstance(fm_data, dict):
             return None
+        # Parse deprecated_at from ISO string if present
+        deprecated_at_raw = fm_data.get("deprecated_at")
+        deprecated_at = None
+        if deprecated_at_raw is not None:
+            if isinstance(deprecated_at_raw, datetime):
+                deprecated_at = deprecated_at_raw
+            elif isinstance(deprecated_at_raw, str):
+                deprecated_at = datetime.fromisoformat(deprecated_at_raw)
         frontmatter = DesignFileFrontmatter(
             description=fm_data["description"],
             updated_by=fm_data.get("updated_by", "archivist"),
+            status=fm_data.get("status", "active"),
+            deprecated_at=deprecated_at,
+            deprecated_reason=fm_data.get("deprecated_reason"),
         )
     except (yaml.YAMLError, KeyError, ValueError):
         return None

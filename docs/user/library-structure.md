@@ -144,18 +144,18 @@ A Stack post contains:
 
 - **Problem section** -- Description of the issue.
 - **Evidence section** -- Supporting evidence or context.
-- **Answers** -- Solutions contributed by agents or operators, each with:
-  - `number` -- Answer number (A1, A2, ...).
-  - `date` -- When the answer was posted.
-  - `author` -- Who wrote the answer.
-  - `body` -- The answer text.
-  - `votes` -- Vote count for this answer.
-  - `accepted` -- Whether this answer has been accepted.
-  - `comments` -- Discussion comments on the answer.
+- **Findings** -- Solutions contributed by agents or operators, each with:
+  - `number` -- Finding number (F1, F2, ...).
+  - `date` -- When the finding was posted.
+  - `author` -- Who wrote the finding.
+  - `body` -- The finding text.
+  - `votes` -- Vote count for this finding.
+  - `accepted` -- Whether this finding has been accepted.
+  - `comments` -- Discussion comments on the finding.
 
 **Produced by:** `lexi stack post --title --tag` (created from template), manual editing (updated).
 
-**Consumed by:** `lexi stack search`, `lexi stack view`, `lexi stack list` (search and read), `lexi stack answer`, `lexi stack vote`, `lexi stack accept` (contribute and curate).
+**Consumed by:** `lexi stack search`, `lexi stack view`, `lexi stack list` (search and read), `lexi stack finding`, `lexi stack vote`, `lexi stack accept` (contribute and curate).
 
 ### index.db (Link Graph)
 

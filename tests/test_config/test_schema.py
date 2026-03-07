@@ -6,15 +6,18 @@ import pytest
 from pydantic import ValidationError
 
 from lexibrary.config.schema import (
+    ConceptConfig,
     ConventionConfig,
     ConventionDeclaration,
     CrawlConfig,
     DaemonConfig,
+    DeprecationConfig,
     IgnoreConfig,
     IWHConfig,
     LexibraryConfig,
     LLMConfig,
     MappingConfig,
+    StackConfig,
     TokenBudgetConfig,
 )
 
@@ -63,6 +66,8 @@ def test_token_budget_defaults() -> None:
     assert config.aindex_tokens == 200
     assert config.concept_file_tokens == 400
     assert config.convention_file_tokens == 500
+    assert config.orientation_tokens == 300
+    assert config.lookup_total_tokens == 1200
     assert not hasattr(config, "start_here_tokens")
 
 
@@ -315,11 +320,30 @@ def test_convention_config_extra_fields_ignored() -> None:
     assert not hasattr(config, "unknown_field")
 
 
+def test_convention_config_deprecation_confirm_default() -> None:
+    """ConventionConfig() defaults to deprecation_confirm='human'."""
+    config = ConventionConfig()
+    assert config.deprecation_confirm == "human"
+
+
+def test_convention_config_deprecation_confirm_maintainer() -> None:
+    """ConventionConfig accepts deprecation_confirm='maintainer' from YAML."""
+    config = ConventionConfig.model_validate({"deprecation_confirm": "maintainer"})
+    assert config.deprecation_confirm == "maintainer"
+
+
+def test_convention_config_deprecation_confirm_invalid() -> None:
+    """ConventionConfig rejects invalid deprecation_confirm values."""
+    with pytest.raises(ValidationError):
+        ConventionConfig.model_validate({"deprecation_confirm": "auto"})
+
+
 def test_convention_config_accessible_from_lexibrary_config() -> None:
     """LexibraryConfig includes ConventionConfig sub-model with default values."""
     config = LexibraryConfig()
     assert isinstance(config.conventions, ConventionConfig)
     assert config.conventions.lookup_display_limit == 5
+    assert config.conventions.deprecation_confirm == "human"
 
 
 def test_convention_config_from_yaml() -> None:
@@ -328,6 +352,14 @@ def test_convention_config_from_yaml() -> None:
         {"conventions": {"lookup_display_limit": 10}}
     )
     assert config.conventions.lookup_display_limit == 10
+
+
+def test_convention_config_deprecation_confirm_from_yaml() -> None:
+    """conventions.deprecation_confirm can be set via top-level config."""
+    config = LexibraryConfig.model_validate(
+        {"conventions": {"deprecation_confirm": "maintainer"}}
+    )
+    assert config.conventions.deprecation_confirm == "maintainer"
 
 
 # --- ConventionDeclaration tests ---
@@ -402,6 +434,34 @@ def test_convention_file_tokens_custom() -> None:
     assert config.token_budgets.convention_file_tokens == 800
 
 
+def test_lookup_total_tokens_default() -> None:
+    """TokenBudgetConfig.lookup_total_tokens defaults to 1200."""
+    config = TokenBudgetConfig()
+    assert config.lookup_total_tokens == 1200
+
+
+def test_lookup_total_tokens_custom() -> None:
+    """lookup_total_tokens can be overridden from YAML."""
+    config = LexibraryConfig.model_validate(
+        {"token_budgets": {"lookup_total_tokens": 2000}}
+    )
+    assert config.token_budgets.lookup_total_tokens == 2000
+
+
+def test_orientation_tokens_default() -> None:
+    """TokenBudgetConfig.orientation_tokens defaults to 300."""
+    config = TokenBudgetConfig()
+    assert config.orientation_tokens == 300
+
+
+def test_orientation_tokens_custom() -> None:
+    """orientation_tokens can be overridden from YAML."""
+    config = LexibraryConfig.model_validate(
+        {"token_budgets": {"orientation_tokens": 500}}
+    )
+    assert config.token_budgets.orientation_tokens == 500
+
+
 # --- Config package re-export tests ---
 
 
@@ -417,3 +477,237 @@ def test_convention_declaration_importable_from_package() -> None:
     from lexibrary.config import ConventionDeclaration as PackageConventionDeclaration
 
     assert PackageConventionDeclaration is ConventionDeclaration
+
+
+# --- DeprecationConfig tests ---
+
+
+def test_deprecation_config_defaults() -> None:
+    """DeprecationConfig() defaults to ttl_commits=50 and comment_warning_threshold=10."""
+    config = DeprecationConfig()
+    assert config.ttl_commits == 50
+    assert config.comment_warning_threshold == 10
+
+
+def test_deprecation_config_custom_ttl() -> None:
+    """DeprecationConfig accepts a custom ttl_commits value."""
+    config = DeprecationConfig(ttl_commits=100)
+    assert config.ttl_commits == 100
+
+
+def test_deprecation_config_custom_annotation_threshold() -> None:
+    """DeprecationConfig accepts a custom comment_warning_threshold value."""
+    config = DeprecationConfig(comment_warning_threshold=20)
+    assert config.comment_warning_threshold == 20
+
+
+def test_deprecation_config_extra_fields_ignored() -> None:
+    """DeprecationConfig tolerates unknown extra fields without raising."""
+    config = DeprecationConfig.model_validate(
+        {"ttl_commits": 50, "unknown_field": "value"}
+    )
+    assert config.ttl_commits == 50
+    assert not hasattr(config, "unknown_field")
+
+
+def test_lexibrary_config_has_deprecation() -> None:
+    """LexibraryConfig includes DeprecationConfig sub-model with default values."""
+    config = LexibraryConfig()
+    assert isinstance(config.deprecation, DeprecationConfig)
+    assert config.deprecation.ttl_commits == 50
+    assert config.deprecation.comment_warning_threshold == 10
+
+
+def test_deprecation_config_from_yaml() -> None:
+    """deprecation.ttl_commits can be set via top-level config (simulating YAML load)."""
+    config = LexibraryConfig.model_validate({"deprecation": {"ttl_commits": 100}})
+    assert config.deprecation.ttl_commits == 100
+    # Default annotation threshold preserved
+    assert config.deprecation.comment_warning_threshold == 10
+
+
+def test_deprecation_config_full_override_from_yaml() -> None:
+    """Both deprecation fields can be overridden via top-level config."""
+    config = LexibraryConfig.model_validate(
+        {"deprecation": {"ttl_commits": 200, "comment_warning_threshold": 5}}
+    )
+    assert config.deprecation.ttl_commits == 200
+    assert config.deprecation.comment_warning_threshold == 5
+
+
+def test_deprecation_config_importable_from_package() -> None:
+    """DeprecationConfig is re-exported from lexibrary.config."""
+    from lexibrary.config import DeprecationConfig as PackageDeprecationConfig
+
+    assert PackageDeprecationConfig is DeprecationConfig
+
+
+# --- ConceptConfig tests ---
+
+
+def test_concept_config_defaults() -> None:
+    """ConceptConfig() defaults to deprecation_confirm='human'."""
+    config = ConceptConfig()
+    assert config.deprecation_confirm == "human"
+
+
+def test_concept_config_custom_deprecation_confirm() -> None:
+    """ConceptConfig accepts deprecation_confirm='maintainer' from YAML."""
+    config = ConceptConfig.model_validate({"deprecation_confirm": "maintainer"})
+    assert config.deprecation_confirm == "maintainer"
+
+
+def test_concept_config_invalid_deprecation_confirm() -> None:
+    """ConceptConfig rejects invalid deprecation_confirm values."""
+    with pytest.raises(ValidationError):
+        ConceptConfig.model_validate({"deprecation_confirm": "invalid"})
+
+
+def test_concept_config_extra_fields_ignored() -> None:
+    """ConceptConfig tolerates unknown extra fields without raising."""
+    config = ConceptConfig.model_validate(
+        {"deprecation_confirm": "human", "unknown_field": "value"}
+    )
+    assert config.deprecation_confirm == "human"
+    assert not hasattr(config, "unknown_field")
+
+
+def test_lexibrary_config_has_concepts() -> None:
+    """LexibraryConfig includes ConceptConfig sub-model with default values."""
+    config = LexibraryConfig()
+    assert isinstance(config.concepts, ConceptConfig)
+    assert config.concepts.deprecation_confirm == "human"
+
+
+def test_concept_config_from_yaml() -> None:
+    """concepts.deprecation_confirm can be set via top-level config (simulating YAML load)."""
+    config = LexibraryConfig.model_validate(
+        {"concepts": {"deprecation_confirm": "maintainer"}}
+    )
+    assert config.concepts.deprecation_confirm == "maintainer"
+
+
+def test_concept_config_from_yaml_preserves_other_defaults() -> None:
+    """Setting concepts config preserves other LexibraryConfig defaults."""
+    config = LexibraryConfig.model_validate(
+        {"concepts": {"deprecation_confirm": "maintainer"}}
+    )
+    assert config.concepts.deprecation_confirm == "maintainer"
+    # Other defaults preserved
+    assert config.llm.provider == "anthropic"
+    assert config.deprecation.ttl_commits == 50
+
+
+def test_concept_config_importable_from_package() -> None:
+    """ConceptConfig is re-exported from lexibrary.config."""
+    from lexibrary.config import ConceptConfig as PackageConceptConfig
+
+    assert PackageConceptConfig is ConceptConfig
+
+
+# --- StackConfig tests ---
+
+
+def test_stack_config_defaults() -> None:
+    """StackConfig() defaults match spec: human confirm, 200/100 TTLs, 3 display limit."""
+    config = StackConfig()
+    assert config.staleness_confirm == "human"
+    assert config.staleness_ttl_commits == 200
+    assert config.staleness_ttl_short_commits == 100
+    assert config.lookup_display_limit == 3
+
+
+def test_stack_config_custom_staleness_ttl() -> None:
+    """StackConfig accepts a custom staleness_ttl_commits value."""
+    config = StackConfig(staleness_ttl_commits=300)
+    assert config.staleness_ttl_commits == 300
+
+
+def test_stack_config_custom_short_ttl() -> None:
+    """StackConfig accepts a custom staleness_ttl_short_commits value."""
+    config = StackConfig(staleness_ttl_short_commits=50)
+    assert config.staleness_ttl_short_commits == 50
+
+
+def test_stack_config_maintainer_confirm() -> None:
+    """StackConfig accepts staleness_confirm='maintainer' from YAML."""
+    config = StackConfig.model_validate({"staleness_confirm": "maintainer"})
+    assert config.staleness_confirm == "maintainer"
+
+
+def test_stack_config_invalid_staleness_confirm() -> None:
+    """StackConfig rejects invalid staleness_confirm values."""
+    with pytest.raises(ValidationError):
+        StackConfig.model_validate({"staleness_confirm": "auto"})
+
+
+def test_stack_config_extra_fields_ignored() -> None:
+    """StackConfig tolerates unknown extra fields without raising."""
+    config = StackConfig.model_validate(
+        {"staleness_ttl_commits": 200, "unknown_field": "value"}
+    )
+    assert config.staleness_ttl_commits == 200
+    assert not hasattr(config, "unknown_field")
+
+
+def test_stack_config_custom_lookup_display_limit() -> None:
+    """StackConfig accepts a custom lookup_display_limit value."""
+    config = StackConfig(lookup_display_limit=5)
+    assert config.lookup_display_limit == 5
+
+
+def test_lexibrary_config_has_stack() -> None:
+    """LexibraryConfig includes StackConfig sub-model with default values."""
+    config = LexibraryConfig()
+    assert isinstance(config.stack, StackConfig)
+    assert config.stack.staleness_ttl_commits == 200
+    assert config.stack.staleness_ttl_short_commits == 100
+    assert config.stack.staleness_confirm == "human"
+    assert config.stack.lookup_display_limit == 3
+
+
+def test_stack_config_from_yaml() -> None:
+    """stack.staleness_ttl_commits can be set via top-level config (simulating YAML load)."""
+    config = LexibraryConfig.model_validate(
+        {"stack": {"staleness_ttl_commits": 300}}
+    )
+    assert config.stack.staleness_ttl_commits == 300
+    # Other defaults preserved
+    assert config.stack.staleness_ttl_short_commits == 100
+    assert config.stack.staleness_confirm == "human"
+
+
+def test_stack_config_full_override_from_yaml() -> None:
+    """All stack config fields can be overridden via top-level config."""
+    config = LexibraryConfig.model_validate(
+        {
+            "stack": {
+                "staleness_confirm": "maintainer",
+                "staleness_ttl_commits": 300,
+                "staleness_ttl_short_commits": 50,
+                "lookup_display_limit": 5,
+            }
+        }
+    )
+    assert config.stack.staleness_confirm == "maintainer"
+    assert config.stack.staleness_ttl_commits == 300
+    assert config.stack.staleness_ttl_short_commits == 50
+    assert config.stack.lookup_display_limit == 5
+
+
+def test_stack_config_from_yaml_preserves_other_defaults() -> None:
+    """Setting stack config preserves other LexibraryConfig defaults."""
+    config = LexibraryConfig.model_validate(
+        {"stack": {"staleness_ttl_commits": 300}}
+    )
+    assert config.stack.staleness_ttl_commits == 300
+    # Other defaults preserved
+    assert config.llm.provider == "anthropic"
+    assert config.deprecation.ttl_commits == 50
+
+
+def test_stack_config_importable_from_package() -> None:
+    """StackConfig is re-exported from lexibrary.config."""
+    from lexibrary.config import StackConfig as PackageStackConfig
+
+    assert PackageStackConfig is StackConfig

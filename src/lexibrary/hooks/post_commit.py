@@ -12,6 +12,8 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from lexibrary.templates import read_template
+
 # Marker used to detect whether the Lexibrary section is already present
 # in an existing hook script.  Must appear on its own line.
 HOOK_MARKER = "# lexibrary:post-commit"
@@ -19,15 +21,9 @@ HOOK_MARKER = "# lexibrary:post-commit"
 # The hook script appended (or written) to .git/hooks/post-commit.
 # Uses git diff-tree to list changed files and passes them to lexictl
 # in the background, redirecting output to .lexibrary.log.
-HOOK_SCRIPT_TEMPLATE = f"""\
-{HOOK_MARKER}
-# — Lexibrary auto-update (installed by lexictl setup --hooks) —
-CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
-if [ -n "$CHANGED_FILES" ]; then
-    lexictl update --changed-only $CHANGED_FILES >> .lexibrary/daemon.log 2>&1 &
-fi
-# — end Lexibrary —
-"""
+HOOK_SCRIPT_TEMPLATE = read_template("hooks/post-commit.sh").replace(
+    "{hook_marker}", HOOK_MARKER
+)
 
 
 @dataclass

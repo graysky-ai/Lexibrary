@@ -16,7 +16,7 @@ Search results are grouped by artifact type:
 
 - **Concepts** -- matched by title, aliases, tags, and body text
 - **Design files** -- matched by source path, description, and tags
-- **Stack posts** -- matched by title, tags, problem description, and answers
+- **Stack posts** -- matched by title, tags, problem description, and findings
 
 Each group is displayed as a separate table. Groups with no matches are omitted.
 

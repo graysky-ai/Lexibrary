@@ -43,7 +43,7 @@ bd sync               # Sync with git
 
 ## Session Start
 
-1. Read `.lexibrary/START_HERE.md` to understand the project structure and conventions.
+1. Run `/lexi-orient` to orient yourself in this project.
 2. Run `lexi iwh list` to check for IWH (I Was Here) signals left by a previous session.
    - If signals exist, run `lexi iwh read <directory>` for each to understand the context
      and consume the signal.
@@ -96,8 +96,8 @@ Orientate yourself in this Lexibrary-managed project.
 
 ## Steps
 
-1. Read `.lexibrary/START_HERE.md` to understand the project layout,
-   package map, and navigation protocol.
+1. Read `.lexibrary/TOPOLOGY.md` to understand the project layout
+   and directory structure.
 2. Run `lexi iwh list` to check for IWH signals across the project.
    - If any signals exist, run `lexi iwh read <directory>` for each to understand the context
      and consume the signal.
@@ -147,15 +147,15 @@ conventions, patterns, or design rationale documented in the project.
 
 # /lexi-stack — Stack Q&A
 
-Search, post, and answer questions in the project's Stack knowledge base.
+Search, post, and add findings in the project's Stack knowledge base.
 
 ## Usage
 
-- `lexi stack search <query>` — search for existing Q&A posts matching your query.
+- `lexi stack search <query>` — search for existing posts matching your query.
   Run this before debugging to check if a solution already exists.
 - `lexi stack post` — create a new question post after encountering a non-trivial
   bug or issue. Document the problem clearly for future reference.
-- `lexi stack answer <post-id>` — add an answer to an existing Stack post after
+- `lexi stack finding <post-id>` — add a finding to an existing Stack post after
   solving the problem. Include the solution and any relevant context.
 
 The Stack is the project's persistent knowledge base for debugging insights

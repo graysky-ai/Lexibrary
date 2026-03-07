@@ -6,6 +6,7 @@ from lexibrary.artifacts.aindex import AIndexEntry, AIndexFile
 from lexibrary.artifacts.concept import ConceptFile, ConceptFileFrontmatter
 from lexibrary.artifacts.convention import ConventionFile, ConventionFileFrontmatter
 from lexibrary.artifacts.design_file import DesignFile, DesignFileFrontmatter, StalenessMetadata
+from lexibrary.artifacts.slugs import concept_slug, slugify
 
 __all__ = [
     "AIndexEntry",
@@ -17,4 +18,6 @@ __all__ = [
     "DesignFile",
     "DesignFileFrontmatter",
     "StalenessMetadata",
+    "concept_slug",
+    "slugify",
 ]

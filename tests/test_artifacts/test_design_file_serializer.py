@@ -60,6 +60,81 @@ class TestSerializeDesignFileFrontmatter:
         assert "updated_by: agent" in result
 
 
+class TestSerializeDesignFileFrontmatterStatus:
+    """Tests for status and deprecation fields in serialized frontmatter (Task 2.1)."""
+
+    def test_frontmatter_includes_status_active(self) -> None:
+        result = serialize_design_file(_design_file())
+        assert "status: active" in result
+
+    def test_frontmatter_includes_status_deprecated(self) -> None:
+        df = _design_file(
+            frontmatter=_frontmatter(status="deprecated")
+        )
+        result = serialize_design_file(df)
+        assert "status: deprecated" in result
+
+    def test_frontmatter_includes_status_unlinked(self) -> None:
+        df = _design_file(
+            frontmatter=_frontmatter(status="unlinked")
+        )
+        result = serialize_design_file(df)
+        assert "status: unlinked" in result
+
+    def test_deprecated_at_omitted_when_none(self) -> None:
+        result = serialize_design_file(_design_file())
+        assert "deprecated_at" not in result
+
+    def test_deprecated_reason_omitted_when_none(self) -> None:
+        result = serialize_design_file(_design_file())
+        assert "deprecated_reason" not in result
+
+    def test_deprecated_at_included_when_set(self) -> None:
+        df = _design_file(
+            frontmatter=_frontmatter(
+                status="deprecated",
+                deprecated_at=datetime(2026, 3, 1, 14, 30, 0),
+                deprecated_reason="source_deleted",
+            )
+        )
+        result = serialize_design_file(df)
+        assert "deprecated_at:" in result
+        assert "2026-03-01T14:30:00" in result
+
+    def test_deprecated_reason_included_when_set(self) -> None:
+        df = _design_file(
+            frontmatter=_frontmatter(
+                status="deprecated",
+                deprecated_at=datetime(2026, 3, 1, 14, 30, 0),
+                deprecated_reason="source_deleted",
+            )
+        )
+        result = serialize_design_file(df)
+        assert "deprecated_reason: source_deleted" in result
+
+    def test_deprecated_reason_source_renamed(self) -> None:
+        df = _design_file(
+            frontmatter=_frontmatter(
+                status="deprecated",
+                deprecated_at=datetime(2026, 3, 1, 14, 30, 0),
+                deprecated_reason="source_renamed",
+            )
+        )
+        result = serialize_design_file(df)
+        assert "deprecated_reason: source_renamed" in result
+
+    def test_deprecated_reason_manual(self) -> None:
+        df = _design_file(
+            frontmatter=_frontmatter(
+                status="deprecated",
+                deprecated_at=datetime(2026, 3, 1, 14, 30, 0),
+                deprecated_reason="manual",
+            )
+        )
+        result = serialize_design_file(df)
+        assert "deprecated_reason: manual" in result
+
+
 class TestSerializeDesignFileStructure:
     def test_h1_heading_with_source_path(self) -> None:
         result = serialize_design_file(_design_file())

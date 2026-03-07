@@ -1,8 +1,3 @@
-"""Default project configuration template."""
-
-from __future__ import annotations
-
-DEFAULT_PROJECT_CONFIG_TEMPLATE = """\
 # Lexibrary project configuration
 # This file is created by `lexictl init` and lives at .lexibrary/config.yaml
 # Values here override the global config at ~/.config/lexibrary/config.yaml
@@ -109,6 +104,22 @@ crawl:
     - .sqlite
     - .db
 
+# Concept system settings
+concepts:
+  deprecation_confirm: human               # Who confirms concept deprecation: human or maintainer
+
+# Deprecation lifecycle settings
+deprecation:
+  ttl_commits: 50                        # Commits before deprecated files are deleted
+  comment_warning_threshold: 10           # Comment count that triggers a maintenance warning
+
+# Stack post staleness lifecycle
+stack:
+  staleness_confirm: human               # Who confirms staleness: human or maintainer
+  staleness_ttl_commits: 200             # Commits before resolved posts are flagged stale
+  staleness_ttl_short_commits: 100       # Shorter TTL for wontfix/by_design/cannot_reproduce
+  lookup_display_limit: 3                # Max posts shown in lexi lookup "Known Issues"
+
 # AST-based interface extraction
 ast:
   enabled: true                          # Enable interface skeleton extraction
@@ -116,4 +127,3 @@ ast:
     - python
     - typescript
     - javascript
-"""

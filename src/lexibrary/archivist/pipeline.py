@@ -38,6 +38,15 @@ from lexibrary.config.schema import LexibraryConfig
 from lexibrary.errors import ErrorSummary
 from lexibrary.ignore import create_ignore_matcher
 from lexibrary.indexer.orchestrator import index_directory
+from lexibrary.lifecycle.deprecation import (
+    deprecate_design,
+    detect_orphaned_designs,
+    detect_renames,
+    hard_delete_expired,
+    mark_unlinked,
+    migrate_design_on_rename,
+)
+from lexibrary.lifecycle.queue import clear_queue, read_queue
 from lexibrary.linkgraph.builder import build_index
 from lexibrary.utils.atomic import atomic_write
 from lexibrary.utils.conflict import has_conflict_markers
@@ -68,6 +77,24 @@ class UpdateStats:
     topology_failed: bool = False
     linkgraph_built: bool = False
     linkgraph_error: str | None = None
+    # Deprecation lifecycle stats
+    designs_deprecated: int = 0
+    designs_unlinked: int = 0
+    designs_deleted_ttl: int = 0
+    # Concept deprecation lifecycle stats
+    concepts_deleted_ttl: int = 0
+    concepts_skipped_referenced: int = 0
+    concept_comments_deleted: int = 0
+    # Convention deprecation lifecycle stats
+    conventions_deleted_ttl: int = 0
+    convention_comments_deleted: int = 0
+    # Rename migration stats
+    renames_detected: int = 0
+    renames_migrated: int = 0
+    # Enrichment queue stats
+    queue_processed: int = 0
+    queue_failed: int = 0
+    queue_remaining: int = 0
     error_summary: ErrorSummary = field(default_factory=ErrorSummary)
 
 
@@ -535,6 +562,194 @@ def _has_meaningful_changes(stats: UpdateStats) -> bool:
     return (stats.files_created + stats.files_updated + stats.files_failed) > 0
 
 
+def _run_deprecation_pass(
+    project_root: Path,
+    config: LexibraryConfig,
+    stats: UpdateStats,
+) -> None:
+    """Detect orphaned designs, apply deprecation/unlinked status, and delete TTL-expired files.
+
+    Also detects renames (via git and content-hash fallback) and migrates
+    design files to follow their renamed source files.
+
+    Mutates *stats* in-place with deprecation, TTL, and rename counts.
+    """
+    lexibrary_dir = project_root / LEXIBRARY_DIR
+
+    # 1. Detect renames and migrate design files first (before orphan detection)
+    try:
+        renames = detect_renames(project_root)
+        stats.renames_detected += len(renames)
+
+        for mapping in renames:
+            try:
+                migrate_design_on_rename(project_root, mapping.old_path, mapping.new_path)
+                stats.renames_migrated += 1
+                logger.info(
+                    "Migrated design file: %s -> %s",
+                    mapping.old_path,
+                    mapping.new_path,
+                )
+            except FileNotFoundError:
+                logger.debug(
+                    "No design file to migrate for rename: %s -> %s",
+                    mapping.old_path,
+                    mapping.new_path,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to migrate design file: %s -> %s",
+                    mapping.old_path,
+                    mapping.new_path,
+                )
+    except Exception as exc:
+        logger.exception("Failed to detect renames")
+        stats.error_summary.add("deprecation", exc)
+
+    # 2. Detect orphaned designs and apply deprecation/unlinked status
+    try:
+        orphans = detect_orphaned_designs(project_root, lexibrary_dir)
+
+        for orphan in orphans:
+            try:
+                if orphan.committed:
+                    deprecate_design(orphan.design_path, "source_deleted")
+                    stats.designs_deprecated += 1
+                    logger.info("Deprecated design: %s", orphan.design_path.name)
+                else:
+                    mark_unlinked(orphan.design_path)
+                    stats.designs_unlinked += 1
+                    logger.info("Marked unlinked: %s", orphan.design_path.name)
+            except Exception:
+                logger.exception(
+                    "Failed to update orphaned design: %s", orphan.design_path
+                )
+    except Exception as exc:
+        logger.exception("Failed to detect orphaned designs")
+        stats.error_summary.add("deprecation", exc)
+
+    # 3. Hard-delete TTL-expired deprecated design files
+    try:
+        ttl_commits = config.deprecation.ttl_commits
+        deleted = hard_delete_expired(project_root, lexibrary_dir, ttl_commits)
+        stats.designs_deleted_ttl += len(deleted)
+        for d in deleted:
+            logger.info("TTL-expired design deleted: %s", d.name)
+    except Exception as exc:
+        logger.exception("Failed to delete TTL-expired designs")
+        stats.error_summary.add("deprecation", exc)
+
+    # 4. Hard-delete TTL-expired deprecated concepts
+    try:
+        from lexibrary.lifecycle.concept_deprecation import (  # noqa: PLC0415
+            hard_delete_expired_concepts,
+        )
+
+        ttl_commits = config.deprecation.ttl_commits
+        result = hard_delete_expired_concepts(project_root, lexibrary_dir, ttl_commits)
+        stats.concepts_deleted_ttl += len(result.deleted)
+        stats.concepts_skipped_referenced += len(result.skipped_referenced)
+        stats.concept_comments_deleted += len(result.comments_deleted)
+        for d in result.deleted:
+            logger.info("TTL-expired concept deleted: %s", d.name)
+        for concept_path, refs in result.skipped_referenced:
+            logger.info(
+                "Concept '%s' still referenced by %d artefact(s), skipping deletion",
+                concept_path.name,
+                len(refs),
+            )
+    except Exception as exc:
+        logger.exception("Failed to delete TTL-expired concepts")
+        stats.error_summary.add("deprecation", exc)
+
+    # 5. Hard-delete TTL-expired deprecated conventions
+    try:
+        from lexibrary.lifecycle.convention_deprecation import (  # noqa: PLC0415
+            hard_delete_expired_conventions,
+        )
+
+        ttl_commits = config.deprecation.ttl_commits
+        result = hard_delete_expired_conventions(project_root, lexibrary_dir, ttl_commits)
+        stats.conventions_deleted_ttl += len(result.deleted)
+        stats.convention_comments_deleted += len(result.comments_deleted)
+        for d in result.deleted:
+            logger.info("TTL-expired convention deleted: %s", d.name)
+    except Exception as exc:
+        logger.exception("Failed to delete TTL-expired conventions")
+        stats.error_summary.add("deprecation", exc)
+
+
+async def _process_enrichment_queue(
+    project_root: Path,
+    config: LexibraryConfig,
+    archivist: ArchivistService,
+    stats: UpdateStats,
+) -> None:
+    """Process the enrichment queue: re-generate queued skeleton design files via LLM.
+
+    Reads the queue, processes each entry through the normal ``update_file()``
+    pipeline, and clears successfully processed entries from the queue.
+
+    Mutates *stats* in-place with queue processing counts.
+    """
+    entries = read_queue(project_root)
+    if not entries:
+        return
+
+    # Load available concept names for wikilink guidance
+    concepts_dir = project_root / LEXIBRARY_DIR / "concepts"
+    concept_index = ConceptIndex.load(concepts_dir)
+    available_concepts = concept_index.names() or None
+
+    processed_paths: list[Path] = []
+
+    for entry in entries:
+        source_path = project_root / entry.source_path
+        if not source_path.exists():
+            logger.debug("Queue entry source missing, skipping: %s", entry.source_path)
+            # Still mark as processed to clear from queue
+            processed_paths.append(entry.source_path)
+            continue
+
+        try:
+            file_result = await update_file(
+                source_path,
+                project_root,
+                config,
+                archivist,
+                available_concepts=available_concepts,
+            )
+            if file_result.failed:
+                stats.queue_failed += 1
+                logger.warning(
+                    "Queue enrichment failed for %s", entry.source_path
+                )
+            else:
+                stats.queue_processed += 1
+                processed_paths.append(entry.source_path)
+                logger.info(
+                    "Queue enrichment complete for %s (change: %s)",
+                    entry.source_path,
+                    file_result.change.value,
+                )
+        except Exception as exc:
+            stats.queue_failed += 1
+            logger.exception("Unexpected error enriching queued file: %s", entry.source_path)
+            stats.error_summary.add("queue", exc, path=str(entry.source_path))
+
+    # Clear successfully processed entries from the queue
+    if processed_paths:
+        try:
+            clear_queue(project_root, processed_paths)
+        except Exception as exc:
+            logger.exception("Failed to clear enrichment queue")
+            stats.error_summary.add("queue", exc)
+
+    # Report remaining queue size
+    remaining = read_queue(project_root)
+    stats.queue_remaining = len(remaining)
+
+
 def reindex_directories(
     directories: list[Path],
     project_root: Path,
@@ -819,7 +1034,14 @@ async def update_project(
             logger.exception("Failed to re-index directories after update_project")
             stats.error_summary.add("archivist", exc)
 
-    # Step 7: Build the link graph index (full rebuild after all artifacts are up to date)
+    # Step 7: Deprecation lifecycle post-pass — detect orphans, apply
+    # deprecation/unlinked status, handle renames, and delete TTL-expired files.
+    _run_deprecation_pass(project_root, config, stats)
+
+    # Step 8: Process enrichment queue — re-generate queued skeletons via LLM.
+    await _process_enrichment_queue(project_root, config, archivist, stats)
+
+    # Step 9: Build the link graph index (full rebuild after all artifacts are up to date)
     try:
         build_index(project_root)
         stats.linkgraph_built = True

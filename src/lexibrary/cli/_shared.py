@@ -192,7 +192,7 @@ def _run_status(
         if rel_parts[0] in ("concepts", "stack"):
             continue
         # Skip known non-design files
-        if md_path.name in ("START_HERE.md", "HANDOFF.md"):
+        if md_path.name == "HANDOFF.md":
             continue
         meta = parse_design_file_metadata(md_path)
         if meta is not None:

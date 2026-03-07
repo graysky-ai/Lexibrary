@@ -7,7 +7,8 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-from lexibrary.stack import StackAnswer, StackPost, StackPostFrontmatter, StackPostRefs
+from lexibrary.stack import StackFinding, StackPost, StackPostFrontmatter, StackPostRefs
+from lexibrary.stack.models import ResolutionType
 
 
 class TestStackPostRefs:
@@ -53,6 +54,8 @@ class TestStackPostFrontmatter:
         assert fm.bead is None
         assert fm.duplicate_of is None
         assert fm.refs == StackPostRefs()
+        assert fm.resolution_type is None
+        assert fm.stale_at is None
 
     def test_tags_empty_raises_validation_error(self) -> None:
         with pytest.raises(ValidationError):
@@ -63,7 +66,7 @@ class TestStackPostFrontmatter:
             self._make(status="invalid")
 
     def test_valid_status_values(self) -> None:
-        for status in ("open", "resolved", "outdated", "duplicate"):
+        for status in ("open", "resolved", "outdated", "duplicate", "stale"):
             fm = self._make(status=status)
             assert fm.status == status
 
@@ -87,11 +90,54 @@ class TestStackPostFrontmatter:
         fm = self._make(votes=5)
         assert fm.votes == 5
 
+    def test_resolution_type_defaults_to_none(self) -> None:
+        fm = self._make()
+        assert fm.resolution_type is None
 
-class TestStackAnswer:
-    """Tests for StackAnswer model."""
+    def test_resolution_type_accepts_all_valid_values(self) -> None:
+        valid_values: list[ResolutionType] = [
+            "fix",
+            "workaround",
+            "wontfix",
+            "cannot_reproduce",
+            "by_design",
+        ]
+        for value in valid_values:
+            fm = self._make(resolution_type=value)
+            assert fm.resolution_type == value
 
-    def _make(self, **overrides: object) -> StackAnswer:
+    def test_resolution_type_rejects_invalid_string(self) -> None:
+        with pytest.raises(ValidationError):
+            self._make(resolution_type="invalid")
+
+    def test_stale_at_defaults_to_none(self) -> None:
+        """stale_at SHALL default to None when not specified."""
+        fm = self._make()
+        assert fm.stale_at is None
+
+    def test_stale_status_accepted(self) -> None:
+        """status='stale' with stale_at timestamp SHALL validate successfully."""
+        fm = self._make(status="stale", stale_at="2026-06-15T10:00:00")
+        assert fm.status == "stale"
+        assert fm.stale_at == "2026-06-15T10:00:00"
+
+    def test_stale_at_with_non_stale_status(self) -> None:
+        """stale_at can be set independently of status (model does not enforce coupling)."""
+        fm = self._make(status="resolved", stale_at="2026-06-15T10:00:00")
+        assert fm.status == "resolved"
+        assert fm.stale_at == "2026-06-15T10:00:00"
+
+    def test_stale_status_without_stale_at(self) -> None:
+        """status='stale' without stale_at validates (stale_at defaults to None)."""
+        fm = self._make(status="stale")
+        assert fm.status == "stale"
+        assert fm.stale_at is None
+
+
+class TestStackFinding:
+    """Tests for StackFinding model."""
+
+    def _make(self, **overrides: object) -> StackFinding:
         defaults: dict[str, object] = {
             "number": 1,
             "date": date(2026, 2, 21),
@@ -99,7 +145,7 @@ class TestStackAnswer:
             "body": "Solution text",
         }
         defaults.update(overrides)
-        return StackAnswer(**defaults)  # type: ignore[arg-type]
+        return StackFinding(**defaults)  # type: ignore[arg-type]
 
     def test_defaults(self) -> None:
         ans = self._make()
@@ -135,23 +181,25 @@ class TestStackPost:
         defaults.update(overrides)
         return StackPostFrontmatter(**defaults)  # type: ignore[arg-type]
 
-    def test_no_answers(self) -> None:
+    def test_no_findings(self) -> None:
         post = StackPost(frontmatter=self._fm(), problem="Some problem")
-        assert post.answers == []
+        assert post.findings == []
         assert post.evidence == []
+        assert post.context == ""
+        assert post.attempts == []
         assert post.raw_body == ""
 
-    def test_with_answers(self) -> None:
-        a1 = StackAnswer(number=1, date=date(2026, 2, 21), author="a1", body="First")
-        a2 = StackAnswer(number=2, date=date(2026, 2, 22), author="a2", body="Second")
+    def test_with_findings(self) -> None:
+        f1 = StackFinding(number=1, date=date(2026, 2, 21), author="a1", body="First")
+        f2 = StackFinding(number=2, date=date(2026, 2, 22), author="a2", body="Second")
         post = StackPost(
             frontmatter=self._fm(),
             problem="A problem",
-            answers=[a1, a2],
+            findings=[f1, f2],
         )
-        assert len(post.answers) == 2
-        assert post.answers[0].body == "First"
-        assert post.answers[1].body == "Second"
+        assert len(post.findings) == 2
+        assert post.findings[0].body == "First"
+        assert post.findings[1].body == "Second"
 
     def test_with_evidence(self) -> None:
         post = StackPost(
@@ -161,11 +209,30 @@ class TestStackPost:
         )
         assert post.evidence == ["traceback line 1", "traceback line 2"]
 
+    def test_context_defaults_to_empty_string(self) -> None:
+        post = StackPost(frontmatter=self._fm(), problem="Issue")
+        assert post.context == ""
+
+    def test_attempts_defaults_to_empty_list(self) -> None:
+        post = StackPost(frontmatter=self._fm(), problem="Issue")
+        assert post.attempts == []
+
+    def test_with_context_and_attempts(self) -> None:
+        post = StackPost(
+            frontmatter=self._fm(),
+            problem="Issue",
+            context="During refactor of auth module",
+            attempts=["Tried restarting", "Tried clearing cache"],
+        )
+        assert post.context == "During refactor of auth module"
+        assert post.attempts == ["Tried restarting", "Tried clearing cache"]
+
     def test_import_from_stack_module(self) -> None:
         """Verify public API re-exports work."""
         from lexibrary.stack import (  # noqa: F401
-            StackAnswer,
+            StackFinding,
             StackPost,
             StackPostFrontmatter,
             StackPostRefs,
+            StackStatus,
         )

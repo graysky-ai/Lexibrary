@@ -24,6 +24,7 @@ from lexibrary.init.rules.base import (
     get_search_skill_content,
     get_stack_skill_content,
 )
+from lexibrary.templates import read_template
 
 # Default scope root used when config is not available
 _DEFAULT_SCOPE_ROOT = "src"
@@ -119,25 +120,8 @@ def _build_editing_mdc_content(scope_root: str) -> str:
         "alwaysApply: false\n"
         "---"
     )
-    body = (
-        "\n# Lexibrary — Editing Rules\n"
-        "\n"
-        "These rules activate when you edit source files.\n"
-        "\n"
-        "## Before Editing\n"
-        "\n"
-        "- Run `lexi lookup <file>` before editing any source file to understand\n"
-        "  its role, dependencies, and conventions.\n"
-        "- Read the corresponding design file in `.lexibrary/designs/` if one exists.\n"
-        "\n"
-        "## After Editing\n"
-        "\n"
-        "- Update the corresponding design file to reflect your changes.\n"
-        "  Set `updated_by: agent` in the frontmatter.\n"
-        "- Run `lexi validate` to check for broken wikilinks, stale design\n"
-        "  files, or other library health issues introduced by your changes.\n"
-    )
-    return f"{frontmatter}{body}"
+    body = read_template("cursor/editing-rules.md")
+    return f"{frontmatter}\n{body}"
 
 
 def _build_skills_content() -> str:

@@ -54,6 +54,89 @@ def _frontmatter(**overrides: object) -> DesignFileFrontmatter:
     return DesignFileFrontmatter(**base)
 
 
+# ---------------------------------------------------------------------------
+# DesignFileFrontmatter
+# ---------------------------------------------------------------------------
+
+
+class TestDesignFileFrontmatter:
+    def test_defaults(self) -> None:
+        """Create frontmatter with only description; check all defaults."""
+        fm = DesignFileFrontmatter(description="Auth service")
+        assert fm.description == "Auth service"
+        assert fm.updated_by == "archivist"
+        assert fm.status == "active"
+        assert fm.deprecated_at is None
+        assert fm.deprecated_reason is None
+
+    def test_agent_authored(self) -> None:
+        """Agent-authored frontmatter stores updated_by correctly."""
+        fm = DesignFileFrontmatter(description="Auth service", updated_by="agent")
+        assert fm.updated_by == "agent"
+        assert fm.description == "Auth service"
+
+    def test_bootstrap_quick(self) -> None:
+        """bootstrap-quick is a valid updated_by value."""
+        fm = DesignFileFrontmatter(description="Module", updated_by="bootstrap-quick")
+        assert fm.updated_by == "bootstrap-quick"
+
+    def test_maintainer_authored(self) -> None:
+        """maintainer is a valid updated_by value."""
+        fm = DesignFileFrontmatter(description="Module", updated_by="maintainer")
+        assert fm.updated_by == "maintainer"
+
+    def test_deprecated_frontmatter(self) -> None:
+        """Deprecated frontmatter stores all deprecation fields correctly."""
+        ts = datetime(2026, 3, 1, 12, 0, 0)
+        fm = DesignFileFrontmatter(
+            description="Old module",
+            status="deprecated",
+            deprecated_at=ts,
+            deprecated_reason="source_deleted",
+        )
+        assert fm.status == "deprecated"
+        assert fm.deprecated_at == ts
+        assert fm.deprecated_reason == "source_deleted"
+
+    def test_unlinked_status(self) -> None:
+        """unlinked is a valid status value."""
+        fm = DesignFileFrontmatter(description="Module", status="unlinked")
+        assert fm.status == "unlinked"
+
+    def test_deprecated_reason_source_renamed(self) -> None:
+        """source_renamed is a valid deprecated_reason."""
+        fm = DesignFileFrontmatter(
+            description="Module",
+            status="deprecated",
+            deprecated_reason="source_renamed",
+        )
+        assert fm.deprecated_reason == "source_renamed"
+
+    def test_deprecated_reason_manual(self) -> None:
+        """manual is a valid deprecated_reason."""
+        fm = DesignFileFrontmatter(
+            description="Module",
+            status="deprecated",
+            deprecated_reason="manual",
+        )
+        assert fm.deprecated_reason == "manual"
+
+    def test_invalid_updated_by_rejected(self) -> None:
+        """Invalid updated_by value is rejected by validation."""
+        with pytest.raises(ValidationError):
+            DesignFileFrontmatter(description="X", updated_by="unknown")  # type: ignore[arg-type]
+
+    def test_invalid_status_rejected(self) -> None:
+        """Invalid status value is rejected by validation."""
+        with pytest.raises(ValidationError):
+            DesignFileFrontmatter(description="X", status="archived")  # type: ignore[arg-type]
+
+    def test_invalid_deprecated_reason_rejected(self) -> None:
+        """Invalid deprecated_reason value is rejected by validation."""
+        with pytest.raises(ValidationError):
+            DesignFileFrontmatter(description="X", deprecated_reason="bad_reason")  # type: ignore[arg-type]
+
+
 class TestDesignFile:
     def test_minimal_valid(self) -> None:
         df = DesignFile(
@@ -134,7 +217,7 @@ class TestConceptFileFrontmatter:
         assert fm.title == "JWT Auth"
         assert fm.aliases == []
         assert fm.tags == []
-        assert fm.status == "draft"
+        assert fm.status == "active"
         assert fm.superseded_by is None
 
     def test_all_fields(self) -> None:

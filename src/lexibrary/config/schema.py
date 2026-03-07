@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -97,6 +97,8 @@ class TokenBudgetConfig(BaseModel):
     aindex_tokens: int = 200
     concept_file_tokens: int = 400
     convention_file_tokens: int = 500
+    orientation_tokens: int = 300
+    lookup_total_tokens: int = 1200
 
 
 class MappingConfig(BaseModel):
@@ -157,6 +159,7 @@ class ConventionConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     lookup_display_limit: int = 5
+    deprecation_confirm: Literal["human", "maintainer"] = "human"
 
 
 class ConventionDeclaration(BaseModel):
@@ -173,6 +176,14 @@ class ConventionDeclaration(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class ConceptConfig(BaseModel):
+    """Concept system configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    deprecation_confirm: Literal["human", "maintainer"] = "human"
+
+
 class IWHConfig(BaseModel):
     """I Was Here (IWH) configuration."""
 
@@ -180,6 +191,26 @@ class IWHConfig(BaseModel):
 
     enabled: bool = True
     ttl_hours: int = 72
+
+
+class DeprecationConfig(BaseModel):
+    """Deprecation lifecycle configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ttl_commits: int = 50
+    comment_warning_threshold: int = 10
+
+
+class StackConfig(BaseModel):
+    """Stack post staleness lifecycle configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    staleness_confirm: Literal["human", "maintainer"] = "human"
+    staleness_ttl_commits: int = 200
+    staleness_ttl_short_commits: int = 100
+    lookup_display_limit: int = 3
 
 
 class LexibraryConfig(BaseModel):
@@ -190,9 +221,12 @@ class LexibraryConfig(BaseModel):
     scope_root: str = "."
     project_name: str = ""
     agent_environment: list[str] = Field(default_factory=list)
+    concepts: ConceptConfig = Field(default_factory=ConceptConfig)
     conventions: ConventionConfig = Field(default_factory=ConventionConfig)
     convention_declarations: list[ConventionDeclaration] = Field(default_factory=list)
     iwh: IWHConfig = Field(default_factory=IWHConfig)
+    deprecation: DeprecationConfig = Field(default_factory=DeprecationConfig)
+    stack: StackConfig = Field(default_factory=StackConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     token_budgets: TokenBudgetConfig = Field(default_factory=TokenBudgetConfig)
     mapping: MappingConfig = Field(default_factory=MappingConfig)

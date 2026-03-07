@@ -29,7 +29,7 @@ Step 1/8: Project Name
 2. `package.json` -- Reads the `name` field.
 3. Directory name -- Falls back to the name of the current directory.
 
-**What it affects:** The `project_name` key in `config.yaml`. Used in generated artifacts like `START_HERE.md` to identify the project.
+**What it affects:** The `project_name` key in `config.yaml`. Used in generated artifacts like `TOPOLOGY.md` to identify the project.
 
 ### Step 2: Scope Root
 
@@ -140,8 +140,6 @@ Step 5/8: Ignore Patterns
 ```
 Step 6/8: Token Budgets
   Current defaults:
-    start_here_tokens: 800
-    handoff_tokens: 100
     design_file_tokens: 400
     design_file_abridged_tokens: 100
     aindex_tokens: 200
@@ -157,8 +155,6 @@ Step 6/8: Token Budgets
 
 | Budget Key | Default | Controls |
 |-----------|---------|----------|
-| `start_here_tokens` | 800 | Target size for `START_HERE.md` |
-| `handoff_tokens` | 100 | Target size for handoff summaries |
 | `design_file_tokens` | 400 | Target size for full design files |
 | `design_file_abridged_tokens` | 100 | Target size for abridged design file summaries |
 | `aindex_tokens` | 200 | Target size for `.aindex` routing tables |
@@ -220,7 +216,7 @@ After confirmation, `lexictl init` creates the following:
 project-root/
   .lexibrary/
     config.yaml          # Project configuration (from wizard answers)
-    START_HERE.md        # Placeholder (populated by lexictl update)
+    TOPOLOGY.md          # Placeholder (populated by lexictl update)
     concepts/
       .gitkeep           # Empty directory marker
     stack/

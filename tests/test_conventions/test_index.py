@@ -131,6 +131,23 @@ priority: -1
 Consider using dataclasses instead of plain dicts for data transfer.
 """
 
+CONVENTION_WITH_ALIASES = """\
+---
+title: All endpoints require auth decorator
+scope: src/api
+tags:
+  - auth
+  - security
+status: active
+source: user
+priority: 0
+aliases:
+  - auth-decorator
+  - require-auth
+---
+Every API endpoint must use the @require_auth decorator.
+"""
+
 MALFORMED_FILE = """\
 Not valid frontmatter at all.
 Just random text.
@@ -395,6 +412,39 @@ class TestConventionIndexSearch:
         index.load()
         # "python" matches both tag and body
         results = index.search("python")
+        assert len(results) == 1
+
+    def test_search_by_alias_substring(self, tmp_path: Path) -> None:
+        _write_convention(tmp_path, "auth-decorator.md", CONVENTION_WITH_ALIASES)
+        _write_convention(tmp_path, "future-annotations.md", FUTURE_ANNOTATIONS)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        results = index.search("auth-dec")
+        assert len(results) == 1
+        assert results[0].frontmatter.title == "All endpoints require auth decorator"
+
+    def test_search_by_alias_case_insensitive(self, tmp_path: Path) -> None:
+        _write_convention(tmp_path, "auth-decorator.md", CONVENTION_WITH_ALIASES)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        results = index.search("AUTH-DECORATOR")
+        assert len(results) == 1
+        assert results[0].frontmatter.title == "All endpoints require auth decorator"
+
+    def test_search_by_alias_second_alias(self, tmp_path: Path) -> None:
+        _write_convention(tmp_path, "auth-decorator.md", CONVENTION_WITH_ALIASES)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        results = index.search("require-auth")
+        assert len(results) == 1
+        assert results[0].frontmatter.title == "All endpoints require auth decorator"
+
+    def test_search_alias_no_duplicate_with_title(self, tmp_path: Path) -> None:
+        _write_convention(tmp_path, "auth-decorator.md", CONVENTION_WITH_ALIASES)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        # "auth" matches both the title and the alias; should return only one result
+        results = index.search("auth")
         assert len(results) == 1
 
 

@@ -262,6 +262,207 @@ class TestParseDesignFileFull:
         assert parse_design_file(f) is None
 
 
+class TestParseDesignFileFrontmatterStatus:
+    """Tests for parsing status and deprecation fields from frontmatter (Task 2.2)."""
+
+    _DEPRECATED_FRONTMATTER = """\
+---
+description: A deprecated file.
+updated_by: archivist
+status: deprecated
+deprecated_at: '2026-03-01T14:30:00'
+deprecated_reason: source_deleted
+---
+
+# src/old_module.py
+
+## Interface Contract
+
+```python
+pass
+```
+
+## Dependencies
+
+(none)
+
+## Dependents
+
+(none)
+
+<!-- lexibrary:meta
+source: src/old_module.py
+source_hash: abc123
+design_hash: def456
+generated: 2026-01-01T12:00:00
+generator: lexibrary-v2
+-->
+"""
+
+    _UNLINKED_FRONTMATTER = """\
+---
+description: An unlinked file.
+updated_by: archivist
+status: unlinked
+---
+
+# src/maybe_deleted.py
+
+## Interface Contract
+
+```python
+pass
+```
+
+## Dependencies
+
+(none)
+
+## Dependents
+
+(none)
+
+<!-- lexibrary:meta
+source: src/maybe_deleted.py
+source_hash: abc123
+design_hash: def456
+generated: 2026-01-01T12:00:00
+generator: lexibrary-v2
+-->
+"""
+
+    def test_parse_deprecated_status(self, tmp_path: Path) -> None:
+        f = tmp_path / "deprecated.md"
+        f.write_text(self._DEPRECATED_FRONTMATTER)
+        df = parse_design_file(f)
+        assert df is not None
+        assert df.frontmatter.status == "deprecated"
+
+    def test_parse_deprecated_at(self, tmp_path: Path) -> None:
+        f = tmp_path / "deprecated.md"
+        f.write_text(self._DEPRECATED_FRONTMATTER)
+        df = parse_design_file(f)
+        assert df is not None
+        assert df.frontmatter.deprecated_at is not None
+        assert df.frontmatter.deprecated_at.year == 2026
+        assert df.frontmatter.deprecated_at.month == 3
+        assert df.frontmatter.deprecated_at.day == 1
+
+    def test_parse_deprecated_reason(self, tmp_path: Path) -> None:
+        f = tmp_path / "deprecated.md"
+        f.write_text(self._DEPRECATED_FRONTMATTER)
+        df = parse_design_file(f)
+        assert df is not None
+        assert df.frontmatter.deprecated_reason == "source_deleted"
+
+    def test_parse_unlinked_status(self, tmp_path: Path) -> None:
+        f = tmp_path / "unlinked.md"
+        f.write_text(self._UNLINKED_FRONTMATTER)
+        df = parse_design_file(f)
+        assert df is not None
+        assert df.frontmatter.status == "unlinked"
+        assert df.frontmatter.deprecated_at is None
+        assert df.frontmatter.deprecated_reason is None
+
+    def test_frontmatter_only_deprecated(self, tmp_path: Path) -> None:
+        """parse_design_file_frontmatter also extracts deprecation fields."""
+        f = tmp_path / "deprecated.md"
+        f.write_text(self._DEPRECATED_FRONTMATTER)
+        fm = parse_design_file_frontmatter(f)
+        assert fm is not None
+        assert fm.status == "deprecated"
+        assert fm.deprecated_at is not None
+        assert fm.deprecated_reason == "source_deleted"
+
+    def test_frontmatter_only_unlinked(self, tmp_path: Path) -> None:
+        f = tmp_path / "unlinked.md"
+        f.write_text(self._UNLINKED_FRONTMATTER)
+        fm = parse_design_file_frontmatter(f)
+        assert fm is not None
+        assert fm.status == "unlinked"
+        assert fm.deprecated_at is None
+        assert fm.deprecated_reason is None
+
+
+class TestParseDesignFileLegacyBackwardCompat:
+    """Tests for backward compat: parsing legacy files without status (Task 2.4)."""
+
+    def test_legacy_file_defaults_status_to_active(self, tmp_path: Path) -> None:
+        """Legacy design files without status field default to 'active'."""
+        f = tmp_path / "design.md"
+        f.write_text(_FULL_DESIGN_FILE)
+        df = parse_design_file(f)
+        assert df is not None
+        assert df.frontmatter.status == "active"
+
+    def test_legacy_file_defaults_deprecated_at_to_none(self, tmp_path: Path) -> None:
+        f = tmp_path / "design.md"
+        f.write_text(_FULL_DESIGN_FILE)
+        df = parse_design_file(f)
+        assert df is not None
+        assert df.frontmatter.deprecated_at is None
+
+    def test_legacy_file_defaults_deprecated_reason_to_none(self, tmp_path: Path) -> None:
+        f = tmp_path / "design.md"
+        f.write_text(_FULL_DESIGN_FILE)
+        df = parse_design_file(f)
+        assert df is not None
+        assert df.frontmatter.deprecated_reason is None
+
+    def test_legacy_frontmatter_only_defaults_status(self, tmp_path: Path) -> None:
+        """parse_design_file_frontmatter also defaults status for legacy files."""
+        f = tmp_path / "design.md"
+        f.write_text(_FULL_DESIGN_FILE)
+        fm = parse_design_file_frontmatter(f)
+        assert fm is not None
+        assert fm.status == "active"
+        assert fm.deprecated_at is None
+        assert fm.deprecated_reason is None
+
+    _MINIMAL_LEGACY = """\
+---
+description: Minimal legacy.
+---
+
+# src/x.py
+
+## Interface Contract
+
+```python
+pass
+```
+
+## Dependencies
+
+(none)
+
+## Dependents
+
+(none)
+
+<!-- lexibrary:meta
+source: src/x.py
+source_hash: abc
+design_hash: def
+generated: 2026-01-01T12:00:00
+generator: lexibrary-v2
+-->
+"""
+
+    def test_legacy_file_no_updated_by_defaults_both(
+        self, tmp_path: Path
+    ) -> None:
+        """Legacy file without updated_by or status defaults both."""
+        f = tmp_path / "minimal.md"
+        f.write_text(self._MINIMAL_LEGACY)
+        df = parse_design_file(f)
+        assert df is not None
+        assert df.frontmatter.updated_by == "archivist"
+        assert df.frontmatter.status == "active"
+        assert df.frontmatter.deprecated_at is None
+        assert df.frontmatter.deprecated_reason is None
+
+
 class TestParseDesignFileWikilinkBrackets:
     """Tests for wikilink [[bracket]] stripping and backward compatibility (Task 5.4)."""
 

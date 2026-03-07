@@ -86,6 +86,47 @@ class TestSerializeConventionFile:
         result = serialize_convention_file(cf)
         assert "scope: src/auth" in result
 
+    def test_deprecated_at_included_when_set(self) -> None:
+        cf = ConventionFile(
+            frontmatter=ConventionFileFrontmatter(
+                title="Old rule",
+                status="deprecated",
+                deprecated_at="2026-03-04T10:00:00",
+            ),
+            body="Deprecated rule.\n",
+        )
+        result = serialize_convention_file(cf)
+        assert "deprecated_at: '2026-03-04T10:00:00'" in result
+
+    def test_deprecated_at_omitted_when_none(self) -> None:
+        cf = ConventionFile(
+            frontmatter=ConventionFileFrontmatter(title="Active rule", status="active"),
+            body="Active rule.\n",
+        )
+        result = serialize_convention_file(cf)
+        assert "deprecated_at" not in result
+
+    def test_aliases_included_when_non_empty(self) -> None:
+        cf = ConventionFile(
+            frontmatter=ConventionFileFrontmatter(
+                title="Auth decorator required",
+                aliases=["auth-decorator", "auth-conv"],
+            ),
+            body="Use auth decorator.\n",
+        )
+        result = serialize_convention_file(cf)
+        assert "aliases:" in result
+        assert "auth-decorator" in result
+        assert "auth-conv" in result
+
+    def test_aliases_omitted_when_empty(self) -> None:
+        cf = ConventionFile(
+            frontmatter=ConventionFileFrontmatter(title="Minimal rule"),
+            body="Minimal body.\n",
+        )
+        result = serialize_convention_file(cf)
+        assert "aliases:" not in result
+
 
 class TestRoundTrip:
     def test_round_trip_all_fields(self, tmp_path: Path) -> None:
@@ -145,3 +186,62 @@ class TestRoundTrip:
 
         assert parsed is not None
         assert parsed.rule == "First paragraph is the rule."
+
+    def test_round_trip_deprecated_at(self, tmp_path: Path) -> None:
+        original = ConventionFile(
+            frontmatter=ConventionFileFrontmatter(
+                title="Deprecated convention",
+                status="deprecated",
+                deprecated_at="2026-03-04T10:00:00",
+            ),
+            body="\nThis is deprecated.\n",
+        )
+        serialized = serialize_convention_file(original)
+        path = tmp_path / "deprecated.md"
+        path.write_text(serialized)
+        parsed = parse_convention_file(path)
+
+        assert parsed is not None
+        assert parsed.frontmatter.deprecated_at == "2026-03-04T10:00:00"
+
+    def test_round_trip_aliases(self, tmp_path: Path) -> None:
+        original = ConventionFile(
+            frontmatter=ConventionFileFrontmatter(
+                title="Auth decorator required",
+                aliases=["auth-decorator", "auth-conv"],
+            ),
+            body="\nUse auth decorator.\n",
+        )
+        serialized = serialize_convention_file(original)
+        path = tmp_path / "auth-decorator.md"
+        path.write_text(serialized)
+        parsed = parse_convention_file(path)
+
+        assert parsed is not None
+        assert parsed.frontmatter.aliases == ["auth-decorator", "auth-conv"]
+
+    def test_round_trip_no_aliases(self, tmp_path: Path) -> None:
+        original = ConventionFile(
+            frontmatter=ConventionFileFrontmatter(title="No aliases"),
+            body="\nNo aliases.\n",
+        )
+        serialized = serialize_convention_file(original)
+        path = tmp_path / "no-aliases.md"
+        path.write_text(serialized)
+        parsed = parse_convention_file(path)
+
+        assert parsed is not None
+        assert parsed.frontmatter.aliases == []
+
+    def test_round_trip_no_deprecated_at(self, tmp_path: Path) -> None:
+        original = ConventionFile(
+            frontmatter=ConventionFileFrontmatter(title="Active", status="active"),
+            body="\nActive convention.\n",
+        )
+        serialized = serialize_convention_file(original)
+        path = tmp_path / "active.md"
+        path.write_text(serialized)
+        parsed = parse_convention_file(path)
+
+        assert parsed is not None
+        assert parsed.frontmatter.deprecated_at is None

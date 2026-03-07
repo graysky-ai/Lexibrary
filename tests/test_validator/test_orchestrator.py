@@ -455,14 +455,26 @@ class TestCheckFilter:
             "token_budgets",
             "orphan_concepts",
             "deprecated_concept_usage",
+            "orphaned_designs",
             "forward_dependencies",
             "stack_staleness",
+            "resolved_post_staleness",
             "aindex_coverage",
             "bidirectional_deps",
             "dangling_links",
             "orphan_artifacts",
             "orphaned_aindex",
             "orphaned_iwh",
+            "comment_accumulation",
+            "deprecated_ttl",
+            "stale_concept",
+            "supersession_candidate",
+            "convention_orphaned_scope",
+            "convention_stale",
+            "convention_gap",
+            "convention_consistent_violation",
+            "lookup_token_budget_exceeded",
+            "orphaned_iwh_signals",
         }
         assert set(AVAILABLE_CHECKS.keys()) == expected
 
@@ -492,17 +504,17 @@ class TestCheckFilter:
 
 
 # ---------------------------------------------------------------------------
-# All 15 checks registered (including link-graph checks)
+# All 20 checks registered (including link-graph and lifecycle checks)
 # ---------------------------------------------------------------------------
 
 
 class TestAllChecksRegistered:
-    """Verify that validate_library() includes all 15 checks and that
+    """Verify that validate_library() includes all 27 checks and that
     link-graph checks degrade gracefully when index.db is absent."""
 
-    def test_available_checks_count_is_15(self) -> None:
-        """AVAILABLE_CHECKS should contain exactly 15 entries."""
-        assert len(AVAILABLE_CHECKS) == 15
+    def test_available_checks_count_is_27(self) -> None:
+        """AVAILABLE_CHECKS should contain exactly 27 entries."""
+        assert len(AVAILABLE_CHECKS) == 27
 
     def test_validate_library_runs_all_13_checks_without_filters(self, tmp_path: Path) -> None:
         """With no severity or check filters, all 15 checks should be invoked.

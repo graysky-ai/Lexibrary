@@ -18,7 +18,7 @@ def render_concept_template(name: str, tags: list[str] | None = None) -> str:
         "title": name,
         "aliases": [],
         "tags": resolved_tags,
-        "status": "draft",
+        "status": "active",
     }
     fm_str = yaml.dump(fm_data, default_flow_style=False, sort_keys=False).rstrip("\n")
 

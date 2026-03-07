@@ -63,10 +63,16 @@ def serialize_design_file(data: DesignFile) -> str:
     parts: list[str] = []
 
     # --- YAML frontmatter ---
-    frontmatter_dict = {
+    frontmatter_dict: dict[str, object] = {
         "description": data.frontmatter.description,
         "updated_by": data.frontmatter.updated_by,
+        "status": data.frontmatter.status,
     }
+    # Conditionally include deprecation fields only when non-null
+    if data.frontmatter.deprecated_at is not None:
+        frontmatter_dict["deprecated_at"] = data.frontmatter.deprecated_at.isoformat()
+    if data.frontmatter.deprecated_reason is not None:
+        frontmatter_dict["deprecated_reason"] = data.frontmatter.deprecated_reason
     parts.append("---")
     parts.append(yaml.dump(frontmatter_dict, default_flow_style=False).rstrip())
     parts.append("---")

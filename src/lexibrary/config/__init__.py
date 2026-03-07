@@ -2,33 +2,37 @@
 
 from __future__ import annotations
 
-from lexibrary.config.defaults import DEFAULT_PROJECT_CONFIG_TEMPLATE
 from lexibrary.config.loader import find_config_file, load_config
 from lexibrary.config.schema import (
+    ConceptConfig,
     ConventionConfig,
     ConventionDeclaration,
     DaemonConfig,
+    DeprecationConfig,
     IgnoreConfig,
     IWHConfig,
     LexibraryConfig,
     LLMConfig,
     MappingConfig,
+    StackConfig,
     TokenBudgetConfig,
     TokenizerConfig,
 )
 
 __all__ = [
-    "DEFAULT_PROJECT_CONFIG_TEMPLATE",
     "find_config_file",
     "load_config",
+    "ConceptConfig",
     "ConventionConfig",
     "ConventionDeclaration",
     "DaemonConfig",
+    "DeprecationConfig",
     "IgnoreConfig",
     "IWHConfig",
     "LexibraryConfig",
     "LLMConfig",
     "MappingConfig",
+    "StackConfig",
     "TokenBudgetConfig",
     "TokenizerConfig",
 ]

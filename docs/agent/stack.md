@@ -1,6 +1,6 @@
-# Using Stack Q&A
+# Using the Stack Knowledge Base
 
-The Stack is a structured knowledge base of problems and solutions stored in `.lexibrary/stack/`. Each Stack post documents a specific issue -- what went wrong, the evidence gathered, and the solution that worked. Posts persist across sessions so the same problem never has to be solved twice.
+The Stack is a structured knowledge base of issues and solutions stored in `.lexibrary/stack/`. Each Stack post documents a specific issue -- what went wrong, what was tried, and the solution that worked. Posts persist across sessions so the same issue never has to be solved twice.
 
 ## Search Before Debugging
 
@@ -10,7 +10,7 @@ Before investing time debugging an issue, always check whether it has already be
 lexi stack search "config loader"
 ```
 
-This searches post titles and content for matches. The output is a table:
+This searches post titles, problem descriptions, context, attempts, and finding bodies for matches. The output is a table:
 
 ```
                           Stack Posts
@@ -19,17 +19,20 @@ ST-001   resolved  3      Config loader silently ignores keys   config, bug
 ST-005   open      1      YAML parse error on nested lists      config, yaml
 ```
 
-You can filter by tag, status, scope, or concept:
+You can filter by tag, status, scope, concept, or resolution type:
 
 ```bash
 # Find resolved daemon issues
 lexi stack search --tag daemon --status resolved
 
-# Find open issues related to a specific file path
+# Find issues related to a specific file path
 lexi stack search --scope src/lexibrary/config/
 
 # Find issues linked to a concept
 lexi stack search --concept change-detection
+
+# Find only workarounds (not permanent fixes)
+lexi stack search --resolution-type workaround
 
 # Combine query and filters
 lexi stack search "timeout" --tag llm --status open
@@ -41,37 +44,63 @@ If you find a relevant resolved post, view the full content:
 lexi stack view ST-001
 ```
 
-This shows the problem description, evidence, all answers with votes, and which answer was accepted.
+This shows the problem description, context, evidence, attempts, all findings with votes, resolution type, and which finding was accepted. Pay special attention to the **Attempts** section -- it documents approaches that were already tried and failed, saving you from repeating them.
 
 ## Creating a Post
 
-After solving a non-trivial bug or discovering an important pattern, create a Stack post to preserve the knowledge:
+After solving a non-trivial bug or discovering an important pattern, create a Stack post to preserve the knowledge.
+
+### One-Shot Post Creation (Recommended for Agents)
+
+Use the one-shot workflow to create a fully populated post in a single command:
 
 ```bash
-lexi stack post --title "Race condition in daemon sweep" --tag daemon --tag concurrency
+lexi stack post --title "Race condition in daemon sweep" --tag daemon --tag concurrency \
+  --problem "Concurrent sweep and watch events cause duplicate index entries." \
+  --context "Running lexictl update while watchdog is active." \
+  --evidence "Duplicate ST-* entries in link graph after concurrent sweep" \
+  --evidence "Race window is ~200ms between file scan and index write" \
+  --attempts "Tried file-level locking but it deadlocked with the watchdog" \
+  --attempts "Tried debouncing sweep trigger but window was too narrow"
 ```
 
-You can also link the post to source files and concepts:
+To also record the solution in one step:
 
 ```bash
+lexi stack post --title "Race condition in daemon sweep" --tag daemon --tag concurrency \
+  --problem "Concurrent sweep and watch events cause duplicate index entries." \
+  --context "Running lexictl update while watchdog is active." \
+  --attempts "Tried file-level locking but it deadlocked with the watchdog" \
+  --finding "Added a sweep-in-progress flag that watch events check before writing." \
+  --resolve --resolution-type fix
+```
+
+This creates the post, appends finding F1, marks it accepted, sets the status to `resolved`, and records the resolution type -- all in one command.
+
+### Scaffold Mode (Interactive Editing)
+
+If you prefer to fill in sections manually, omit the content flags:
+
+```bash
+lexi stack post --title "Config loader silently ignores unknown keys" --tag config --tag bug
+```
+
+This creates a post with all four body sections scaffolded with HTML comment placeholders. Edit the file to fill in the sections.
+
+### Additional Options
+
+```bash
+# Link to relevant source files
 lexi stack post --title "Config loader silently ignores unknown keys" --tag config --tag bug \
-  --file src/lexibrary/config/loader.py \
-  --concept pydantic-validation
-```
+  --file src/lexibrary/config/loader.py
 
-The post is created at `.lexibrary/stack/ST-NNN-<slug>.md` with an auto-incremented ID and a template. After creation, fill in the `## Problem` and `### Evidence` sections in the generated file:
+# Link to a concept
+lexi stack post --title "Pattern for retry logic" --tag resilience \
+  --concept retry-pattern
 
-```markdown
-## Problem
-
-Describe the problem clearly. What was the expected behavior?
-What actually happened?
-
-### Evidence
-
-- Error message: `KeyError: 'unknown_setting'`
-- Reproduction: Add an unknown key to config.yaml and run `lexictl validate`
-- Root cause: Pydantic `extra="ignore"` silently drops unknown keys
+# Link to a bead (work item)
+lexi stack post --title "Migration script fails on empty tables" --tag migration \
+  --bead lexibrary-42.3
 ```
 
 ### When to Create a Post
@@ -91,49 +120,72 @@ Do not create a post for:
 - Issues that are immediately clear from reading the error message
 - Problems caused by your own misunderstanding that would not affect other agents
 
-## Answering Posts
+## Writing Good Attempts
 
-If you find an open Stack post and have a solution, add an answer:
+The **Attempts** section is one of the most valuable parts of a Stack post. It saves future agents from repeating approaches that do not work. When documenting attempts:
+
+- Describe what you tried and why it seemed reasonable
+- Explain why it did not work or what went wrong
+- Each attempt should be a separate bullet item passed via `--attempts`
 
 ```bash
-lexi stack answer ST-005 --body "The YAML parse error occurs because PyYAML requires explicit list indentation. Use 2-space indentation for nested lists."
+lexi stack post --title "FTS search returns stale results" --tag search --tag fts \
+  --problem "Full-text search returns results for deleted Stack posts." \
+  --attempts "Tried rebuilding FTS index on every query -- too slow (>2s per search)" \
+  --attempts "Tried DELETE trigger on stack table -- FTS5 does not support triggers" \
+  --finding "Added a post-deletion step that removes the FTS row by rowid." \
+  --resolve --resolution-type fix
+```
+
+## Adding Findings to Existing Posts
+
+If you find an open Stack post and have a solution, add a finding:
+
+```bash
+lexi stack finding ST-005 --body "The YAML parse error occurs because PyYAML requires explicit list indentation. Use 2-space indentation for nested lists."
 ```
 
 You can specify an author:
 
 ```bash
-lexi stack answer ST-005 --body "Fixed by updating the YAML loader to use safe_load." --author claude
+lexi stack finding ST-005 --body "Fixed by updating the YAML loader to use safe_load." --author claude
 ```
 
 ## Voting
 
-Upvote answers that are correct and helpful:
+Upvote findings that are correct and helpful:
 
 ```bash
 # Upvote a post
 lexi stack vote ST-001 up
 
-# Upvote a specific answer
-lexi stack vote ST-001 up --answer 2
+# Upvote a specific finding
+lexi stack vote ST-001 up --finding 2
 ```
 
-Downvote answers that are incorrect or misleading (a comment is required):
+Downvote findings that are incorrect or misleading (a comment is required):
 
 ```bash
 lexi stack vote ST-003 down --comment "This solution introduces a memory leak in the daemon loop"
 ```
 
-Voting surfaces the best answers and helps future agents identify which solutions actually work.
+Voting surfaces the best findings and helps future agents identify which solutions actually work.
 
-## Accepting Answers
+## Accepting Findings
 
-When a post has a correct answer, accept it to mark the post as resolved:
+When a post has a correct finding, accept it to mark the post as resolved:
 
 ```bash
-lexi stack accept ST-001 --answer 2
+lexi stack accept ST-001 --finding 2
 ```
 
-This sets the post status to `resolved` and marks answer A2 as accepted.
+You can also classify the resolution:
+
+```bash
+lexi stack accept ST-001 --finding 2 --resolution-type fix
+```
+
+Valid resolution types: `fix`, `workaround`, `wontfix`, `cannot_reproduce`, `by_design`.
 
 ## Listing Posts
 
@@ -156,9 +208,9 @@ Posts have four statuses:
 
 | Status | Meaning |
 |--------|---------|
-| `open` | Problem reported, no accepted answer yet |
-| `resolved` | An answer has been accepted |
-| `outdated` | The problem or solution no longer applies (e.g., code was refactored) |
+| `open` | Issue reported, no accepted finding yet |
+| `resolved` | A finding has been accepted |
+| `outdated` | The issue or solution no longer applies (e.g., code was refactored) |
 | `duplicate` | Duplicate of another post (includes `duplicate_of` reference) |
 
 ## Example Workflow
@@ -172,14 +224,21 @@ lexi stack search "timeout" --tag llm
 # 2. Find a relevant post
 lexi stack view ST-012
 
-# 3. The accepted answer says to increase llm.timeout in config.yaml
+# 3. Check the Attempts section -- what has already been tried?
+#    The accepted finding says to increase llm.timeout in config.yaml
 #    (but remember: do not modify config.yaml yourself -- that is an operator action)
 
-# 4. If the existing answer does not fully solve your variant, add your own
-lexi stack answer ST-012 --body "For Anthropic models, the timeout also needs to account for the rate limiter backoff. Setting timeout to 120 with max_retries=2 resolves the issue."
+# 4. If the existing finding does not fully solve your variant, add your own
+lexi stack finding ST-012 --body "For Anthropic models, the timeout also needs to account for the rate limiter backoff. Setting timeout to 120 with max_retries=2 resolves the issue."
 
-# 5. If you solve a new problem, create a post
+# 5. If you solve a new issue entirely, create a one-shot post
 lexi stack post --title "Rate limiter backoff causes false timeout with Anthropic" --tag llm --tag timeout \
+  --problem "Rate limiter backoff delay is not accounted for in the LLM timeout calculation." \
+  --context "Running lexictl update with Anthropic provider under rate limiting." \
+  --evidence "Timeout fires after 60s but backoff adds 30s of wait time" \
+  --attempts "Tried increasing timeout to 120s -- worked but masks real timeout issues" \
+  --finding "Added backoff duration to the timeout calculation in rate_limiter.py" \
+  --resolve --resolution-type fix \
   --file src/lexibrary/llm/rate_limiter.py
 ```
 
@@ -187,4 +246,4 @@ lexi stack post --title "Rate limiter backoff causes false timeout with Anthropi
 
 - [lexi Reference](lexi-reference.md) -- full reference for all `stack` subcommands
 - [Search](search.md) -- unified search that includes Stack posts alongside concepts and design files
-- [Stack Q&A (User Docs)](../user/stack-qa.md) -- operator guide to Stack: post anatomy, frontmatter fields, validation, and link graph integration
+- [Stack Knowledge Base (User Docs)](../user/stack-qa.md) -- operator guide to Stack: post anatomy, frontmatter fields, validation, and link graph integration

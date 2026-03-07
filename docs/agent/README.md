@@ -46,7 +46,7 @@ Use concepts to check for existing conventions before making architectural decis
 
 ### Stack Q&A
 
-The `.lexibrary/stack/` directory contains Stack posts -- structured problem/solution records. Each post has a title, tags, status (open/resolved/outdated/duplicate), a problem description, evidence, and answers with votes.
+The `.lexibrary/stack/` directory contains Stack posts -- structured problem/solution records. Each post has a title, tags, status (open/resolved/outdated/duplicate), a problem description, evidence, and findings with votes.
 
 Search the Stack before debugging to see if a problem has already been solved. Post to the Stack after solving non-trivial bugs so the knowledge is preserved.
 
@@ -65,7 +65,7 @@ You interact with Lexibrary through the `lexi` command. It provides:
 - `lexi concept link <concept> <file>` -- link a concept to a source file's design file
 - `lexi stack search [query]` -- search Stack posts
 - `lexi stack post --title --tag` -- create a new Stack post
-- `lexi stack answer <id> --body` -- add an answer to a Stack post
+- `lexi stack finding <id> --body` -- add a finding to a Stack post
 - `lexi index [dir] [-r]` -- generate `.aindex` files
 - `lexi describe <dir> <description>` -- update a directory's `.aindex` billboard
 

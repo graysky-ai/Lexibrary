@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Lexibrary.png" alt="Lexibrary" width="200">
+  <img src="Lexibrary.png" alt="Lexibrary" width="600">
 </p>
 
 # Lexibrary

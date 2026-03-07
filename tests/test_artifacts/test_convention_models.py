@@ -28,22 +28,51 @@ class TestConventionFileFrontmatter:
         assert fm.status == "draft"
         assert fm.source == "user"
         assert fm.priority == 0
+        assert fm.aliases == []
+        assert fm.deprecated_at is None
 
     def test_all_fields(self) -> None:
         fm = ConventionFileFrontmatter(
             title="Future annotations",
             scope="project",
             tags=["python"],
-            status="active",
+            aliases=["future-annotations"],
+            status="deprecated",
             source="config",
             priority=10,
+            deprecated_at="2026-03-04T10:00:00",
         )
         assert fm.title == "Future annotations"
         assert fm.scope == "project"
         assert fm.tags == ["python"]
-        assert fm.status == "active"
+        assert fm.aliases == ["future-annotations"]
+        assert fm.status == "deprecated"
         assert fm.source == "config"
         assert fm.priority == 10
+        assert fm.deprecated_at == "2026-03-04T10:00:00"
+
+    def test_aliases_default_empty(self) -> None:
+        fm = ConventionFileFrontmatter(title="Test")
+        assert fm.aliases == []
+
+    def test_aliases_multiple(self) -> None:
+        fm = ConventionFileFrontmatter(
+            title="Auth decorator required",
+            aliases=["auth-decorator", "auth-conv"],
+        )
+        assert fm.aliases == ["auth-decorator", "auth-conv"]
+
+    def test_deprecated_at_defaults_to_none(self) -> None:
+        fm = ConventionFileFrontmatter(title="Test", status="active")
+        assert fm.deprecated_at is None
+
+    def test_deprecated_at_with_timestamp(self) -> None:
+        fm = ConventionFileFrontmatter(
+            title="Old rule",
+            status="deprecated",
+            deprecated_at="2026-03-04T10:00:00",
+        )
+        assert fm.deprecated_at == "2026-03-04T10:00:00"
 
     def test_directory_scope(self) -> None:
         fm = ConventionFileFrontmatter(title="Test", scope="src/auth")

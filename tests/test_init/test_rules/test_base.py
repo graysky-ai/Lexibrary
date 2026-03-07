@@ -25,15 +25,15 @@ class TestGetCoreRules:
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_contains_start_here_reference(self) -> None:
-        """Core rules reference START_HERE.md."""
+    def test_contains_orient_reference(self) -> None:
+        """Core rules reference lexi orient."""
         result = get_core_rules()
-        assert "START_HERE.md" in result
+        assert "lexi orient" in result
 
     def test_contains_iwh_reference(self) -> None:
-        """Core rules reference .iwh signal files."""
+        """Core rules reference IWH signals."""
         result = get_core_rules()
-        assert ".iwh" in result
+        assert "IWH" in result
 
     def test_contains_lexi_lookup(self) -> None:
         """Core rules instruct agents to run lexi lookup."""
@@ -121,10 +121,20 @@ class TestGetCoreRules:
         result = get_core_rules()
         assert "lexi iwh write" in result
 
-    def test_core_rules_references_lexi_iwh_list(self) -> None:
-        """Core rules reference lexi iwh list for checking signals."""
+    def test_core_rules_references_lexi_iwh_read(self) -> None:
+        """Core rules reference lexi iwh read for consuming signals."""
         result = get_core_rules()
-        assert "lexi iwh list" in result
+        assert "lexi iwh read" in result
+
+    def test_core_rules_references_lexi_orient(self) -> None:
+        """Core rules reference lexi orient for session start."""
+        result = get_core_rules()
+        assert "lexi orient" in result
+
+    def test_core_rules_no_design_file_read_instruction(self) -> None:
+        """Core rules do not instruct reading design files in .lexibrary/designs/."""
+        result = get_core_rules()
+        assert ".lexibrary/designs/" not in result
 
     def test_no_leading_trailing_whitespace(self) -> None:
         """Returned content has no leading/trailing whitespace."""
@@ -146,20 +156,32 @@ class TestGetOrientSkillContent:
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_contains_start_here_reference(self) -> None:
-        """Orient skill instructs reading START_HERE.md."""
+    def test_references_lexi_orient_command(self) -> None:
+        """Orient skill references `lexi orient` as a single command."""
         result = get_orient_skill_content()
-        assert "START_HERE.md" in result
+        assert "lexi orient" in result
 
-    def test_contains_iwh_check(self) -> None:
-        """Orient skill instructs checking for IWH signals."""
+    def test_mentions_topology(self) -> None:
+        """Orient skill mentions project topology in its output description."""
         result = get_orient_skill_content()
-        assert "lexi iwh list" in result
+        assert "topology" in result.lower()
 
-    def test_contains_lexi_status(self) -> None:
-        """Orient skill instructs running lexi status."""
+    def test_mentions_iwh_signals(self) -> None:
+        """Orient skill mentions IWH signals."""
         result = get_orient_skill_content()
-        assert "lexi status" in result
+        assert "IWH" in result
+
+    def test_mentions_library_stats(self) -> None:
+        """Orient skill mentions library stats."""
+        result = get_orient_skill_content()
+        lower = result.lower()
+        assert "stats" in lower or "count" in lower
+
+    def test_mentions_sub_agents_prohibition(self) -> None:
+        """Orient skill notes sub-agents must not consume IWH signals."""
+        result = get_orient_skill_content()
+        lower = result.lower()
+        assert "sub-agent" in lower or "subagent" in lower
 
     def test_orient_skill_does_not_reference_ls_iwh(self) -> None:
         """Orient skill does NOT contain raw 'ls .iwh' instructions."""
@@ -210,6 +232,18 @@ class TestGetSearchSkillContent:
         lower = result.lower()
         assert "design file" in lower
 
+    def test_contains_when_to_use_section(self) -> None:
+        """Search skill has a 'when to use' section."""
+        result = get_search_skill_content()
+        lower = result.lower()
+        assert "when to use" in lower
+
+    def test_mentions_territory_mapping(self) -> None:
+        """Search skill mentions territory mapping before zoom-in."""
+        result = get_search_skill_content()
+        lower = result.lower()
+        assert "territory" in lower or "map" in lower
+
     def test_no_leading_trailing_whitespace(self) -> None:
         """Returned content has no leading/trailing whitespace."""
         result = get_search_skill_content()
@@ -222,7 +256,7 @@ class TestGetSearchSkillContent:
 
 
 class TestGetLookupSkillContent:
-    """Lookup skill wraps lexi lookup for file context."""
+    """Lookup skill wraps lexi lookup for file and directory context."""
 
     def test_returns_string(self) -> None:
         """get_lookup_skill_content() returns a non-empty string."""
@@ -245,6 +279,36 @@ class TestGetLookupSkillContent:
         result = get_lookup_skill_content()
         lower = result.lower()
         assert "design" in lower
+
+    def test_contains_when_to_use_section(self) -> None:
+        """Lookup skill has a 'when to use' section."""
+        result = get_lookup_skill_content()
+        lower = result.lower()
+        assert "when to use" in lower
+
+    def test_mentions_known_issues(self) -> None:
+        """Lookup skill documents Known Issues section."""
+        result = get_lookup_skill_content()
+        assert "Known Issues" in result
+
+    def test_mentions_iwh_peek(self) -> None:
+        """Lookup skill documents IWH signal peek mode."""
+        result = get_lookup_skill_content()
+        assert "IWH" in result
+        assert "peek" in result.lower()
+
+    def test_mentions_directory_support(self) -> None:
+        """Lookup skill documents directory lookup mode."""
+        result = get_lookup_skill_content()
+        assert "<directory>" in result or "directory" in result.lower()
+        # Should have a distinct directory section
+        assert "Directory lookup" in result
+
+    def test_mentions_conventions(self) -> None:
+        """Lookup skill documents conventions section."""
+        result = get_lookup_skill_content()
+        lower = result.lower()
+        assert "convention" in lower
 
     def test_no_leading_trailing_whitespace(self) -> None:
         """Returned content has no leading/trailing whitespace."""
@@ -286,6 +350,23 @@ class TestGetConceptsSkillContent:
         result = get_concepts_skill_content()
         assert "topic" in result.lower()
 
+    def test_contains_when_to_use_section(self) -> None:
+        """Concepts skill has a 'when to use' section."""
+        result = get_concepts_skill_content()
+        lower = result.lower()
+        assert "when to use" in lower
+
+    def test_mentions_architectural_decisions(self) -> None:
+        """Concepts skill mentions architectural decisions."""
+        result = get_concepts_skill_content()
+        lower = result.lower()
+        assert "architectural" in lower or "pattern" in lower
+
+    def test_mentions_wikilinks(self) -> None:
+        """Concepts skill mentions wikilinks."""
+        result = get_concepts_skill_content()
+        assert "wikilink" in result.lower()
+
     def test_no_leading_trailing_whitespace(self) -> None:
         """Returned content has no leading/trailing whitespace."""
         result = get_concepts_skill_content()
@@ -316,10 +397,27 @@ class TestGetStackSkillContent:
         result = get_stack_skill_content()
         assert "lexi stack post" in result
 
-    def test_contains_lexi_stack_answer(self) -> None:
-        """Stack skill references lexi stack answer."""
+    def test_contains_lexi_stack_finding(self) -> None:
+        """Stack skill references lexi stack finding."""
         result = get_stack_skill_content()
-        assert "lexi stack answer" in result
+        assert "lexi stack finding" in result
+
+    def test_contains_when_to_use_section(self) -> None:
+        """Stack skill has a 'when to use' section."""
+        result = get_stack_skill_content()
+        lower = result.lower()
+        assert "when to use" in lower
+
+    def test_mentions_debugging(self) -> None:
+        """Stack skill mentions debugging as a trigger."""
+        result = get_stack_skill_content()
+        lower = result.lower()
+        assert "debug" in lower
+
+    def test_mentions_research_subagent(self) -> None:
+        """Stack skill references lexi-research subagent."""
+        result = get_stack_skill_content()
+        assert "lexi-research" in result
 
     def test_no_leading_trailing_whitespace(self) -> None:
         """Returned content has no leading/trailing whitespace."""

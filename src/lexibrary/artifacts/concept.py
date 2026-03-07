@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
@@ -13,8 +14,9 @@ class ConceptFileFrontmatter(BaseModel):
     title: str
     aliases: list[str] = []
     tags: list[str] = []
-    status: Literal["draft", "active", "deprecated"] = "draft"
+    status: Literal["draft", "active", "deprecated"] = "active"
     superseded_by: str | None = None
+    deprecated_at: datetime | None = None
 
 
 class ConceptFile(BaseModel):

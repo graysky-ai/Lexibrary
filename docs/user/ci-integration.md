@@ -32,7 +32,7 @@ When you make a commit, the hook:
 The hook uses `--changed-only` mode, which means:
 
 - No full file discovery -- only the specified files are processed.
-- No `START_HERE.md` regeneration (run `lexictl update` periodically for that).
+- No `TOPOLOGY.md` regeneration (run `lexictl update` periodically for that).
 - Incremental link graph update instead of full rebuild.
 - Deleted file paths are handled gracefully (link graph entries cleaned up via CASCADE).
 

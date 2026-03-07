@@ -9,7 +9,6 @@ import yaml
 from lexibrary.init.scaffolder import (
     _DEFAULT_LEXIGNORE_PATTERNS,
     LEXIGNORE_HEADER,
-    START_HERE_PLACEHOLDER,
     _generate_config_yaml,
     _generate_lexignore,
     create_lexibrary_from_wizard,
@@ -59,7 +58,7 @@ def test_creates_full_skeleton(tmp_path: Path) -> None:
     assert (base / "conventions").is_dir()
     assert (base / "stack").is_dir()
     assert (base / "config.yaml").is_file()
-    assert (base / "START_HERE.md").is_file()
+    assert not (base / "START_HERE.md").exists()
     assert (tmp_path / ".lexignore").is_file()
     assert len(created) > 0
 
@@ -318,22 +317,21 @@ def test_wizard_returns_created_paths(tmp_path: Path) -> None:
     answers = _make_answers()
     created = create_lexibrary_from_wizard(tmp_path, answers)
 
-    # Should contain directories, .gitkeep files, config, START_HERE, .lexignore
+    # Should contain directories, .gitkeep files, config, .lexignore
     path_strs = [str(p) for p in created]
     assert any("config.yaml" in s for s in path_strs)
-    assert any("START_HERE.md" in s for s in path_strs)
     assert any(".lexignore" in s for s in path_strs)
     assert any("concepts" in s for s in path_strs)
     assert any("conventions" in s for s in path_strs)
     assert any("stack" in s for s in path_strs)
 
 
-def test_wizard_creates_start_here(tmp_path: Path) -> None:
-    """Wizard scaffolder creates START_HERE.md."""
+def test_wizard_does_not_create_start_here(tmp_path: Path) -> None:
+    """Wizard scaffolder no longer creates START_HERE.md (dismantled)."""
     answers = _make_answers()
     create_lexibrary_from_wizard(tmp_path, answers)
 
-    assert (tmp_path / ".lexibrary" / "START_HERE.md").is_file()
+    assert not (tmp_path / ".lexibrary" / "START_HERE.md").exists()
 
 
 def test_wizard_import_from_init_package() -> None:
@@ -348,10 +346,11 @@ def test_wizard_import_from_init_package() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_start_here_placeholder_references_iwh() -> None:
-    """START_HERE_PLACEHOLDER mentions .iwh files for inter-agent signals."""
-    assert ".iwh" in START_HERE_PLACEHOLDER
-    assert "HANDOFF" not in START_HERE_PLACEHOLDER
+def test_start_here_placeholder_removed() -> None:
+    """START_HERE_PLACEHOLDER constant has been removed from scaffolder."""
+    import lexibrary.init.scaffolder as mod
+
+    assert not hasattr(mod, "START_HERE_PLACEHOLDER")
 
 
 # ---------------------------------------------------------------------------
