@@ -29,7 +29,7 @@ Operators use `lexictl` for maintenance tasks:
 Agents use `lexi` for lookups and queries:
 
 - `lexi lookup <file>` -- Get the design file, conventions, and dependents for a source file.
-- `lexi index <dir>` -- Generate `.aindex` routing tables for a directory.
+- `lexictl index <dir>` -- Generate `.aindex` routing tables for a directory.
 - `lexi describe <dir> <description>` -- Update a directory's billboard description.
 - `lexi concepts [topic]` -- List or search concept files.
 - `lexi concept new <name>` -- Create a new concept.

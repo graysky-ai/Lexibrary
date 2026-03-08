@@ -27,26 +27,77 @@ A single-page reference for everything an agent needs when working in a Lexibrar
 
 ## Key Commands
 
+### Session Start
+
 | Command | What It Does | When to Use |
 |---------|-------------|-------------|
 | `lexi orient` | Show project topology, stats, IWH signals | At session start (first command) |
+| `lexi help` | Show structured agent guidance | First time using lexi |
+
+### Lookup & Navigation
+
+| Command | What It Does | When to Use |
+|---------|-------------|-------------|
 | `lexi lookup <file\|dir>` | Show design file, conventions, Known Issues, IWH, dependents | Before editing any source file |
-| `lexi impact <file>` | Show reverse dependents (who imports it) | After editing a file, to check impact |
+| `lexi impact <file>` | Show reverse dependents (--depth, --quiet) | After editing a file, to check impact |
 | `lexi search <query>` | Search concepts, design files, Stack posts | Exploring a topic or finding related artifacts |
 | `lexi search --tag <tag>` | Filter search by tag | Finding all artifacts with a specific tag |
 | `lexi search --scope <path>` | Filter search by directory | Narrowing results to a package |
-| `lexi concepts [topic]` | List or search concepts | Before architectural decisions |
+
+### Knowledge Management
+
+| Command | What It Does | When to Use |
+|---------|-------------|-------------|
+| `lexi concepts [topic]` | List or search concepts (--tag, --status, --all) | Before architectural decisions |
 | `lexi concept new <name> [--tag]` | Create a concept file | When a pattern/term needs documenting |
 | `lexi concept link <concept> <file>` | Link concept to a design file | After creating a concept |
-| `lexi stack search [query]` | Search Stack posts | Before debugging an issue |
-| `lexi stack post --title --tag` | Create a Stack post | After solving a non-trivial bug |
-| `lexi stack finding <id> --body` | Add a finding to a post | When you have a solution |
-| `lexi stack vote <id> up` | Upvote a post or finding | When a finding is helpful |
-| `lexi stack accept <id> --finding <n>` | Accept a finding | When a solution is confirmed |
+| `lexi concept comment <name> --body "..."` | Add a comment to a concept | Adding context or discussion |
+| `lexi concept deprecate <name>` | Deprecate a concept (--comment, --author) | When a concept is superseded |
+| `lexi conventions [query]` | List/search conventions (--tag, --status, --scope) | Checking project rules |
+| `lexi convention new --title --scope --body` | Create a convention | Codifying a new project rule |
+| `lexi convention approve <name>` | Promote draft to active | When a convention is confirmed |
+| `lexi convention deprecate <name>` | Set status to deprecated | When a convention is retired |
+| `lexi convention comment <name> --body "..."` | Add a comment to a convention | Adding context or discussion |
+
+### Stack Issues
+
+| Command | What It Does | When to Use |
+|---------|-------------|-------------|
+| `lexi stack post --title --tag` | Create a Stack post (--problem, --finding, --resolve) | After solving a non-trivial bug |
+| `lexi stack search [query]` | Search Stack posts (--tag, --scope, --status) | Before debugging an issue |
 | `lexi stack view <id>` | View full post content | Reading a post's details |
+| `lexi stack finding <id> --body "..."` | Add a finding to a post | When you have a solution |
+| `lexi stack vote <id> up\|down` | Vote on a post or finding (--finding, --comment) | When a finding is helpful |
+| `lexi stack accept <id> --finding <n>` | Accept a finding (--resolution-type) | When a solution is confirmed |
 | `lexi stack list [--status] [--tag]` | List posts with filters | Browsing open issues |
-| `lexi index [dir] [-r]` | Generate `.aindex` files | After creating new files/directories |
-| `lexi describe <dir> <desc>` | Update a directory billboard | When a directory's purpose changes |
+| `lexi stack comment <id> --body "..."` | Add a comment to a post | Adding context without a finding |
+| `lexi stack mark-outdated <id>` | Mark issue as outdated | When info is no longer relevant |
+| `lexi stack duplicate <id> --of <orig>` | Mark as duplicate of another post | When a duplicate is found |
+| `lexi stack stale <id>` | Mark resolved post as stale | When a resolution may be outdated |
+| `lexi stack unstale <id>` | Reverse staleness (back to resolved) | When a stale post is re-confirmed |
+
+### Design Files
+
+| Command | What It Does | When to Use |
+|---------|-------------|-------------|
+| `lexi design update <file>` | Display or scaffold a design file | Before/after editing a source file |
+| `lexi design comment <file> --body "..."` | Add a comment to a design file | Adding context or notes |
+
+### IWH Signals
+
+| Command | What It Does | When to Use |
+|---------|-------------|-------------|
+| `lexi iwh write [dir] --scope --body "..."` | Create I-Was-Here signal | Leaving work incomplete or blocked |
+| `lexi iwh read [dir]` | Read & consume signal (--peek to preserve) | Picking up where someone left off |
+| `lexi iwh list` | List all IWH signals in the project | Checking for pending work |
+
+### Inspection & Annotation
+
+| Command | What It Does | When to Use |
+|---------|-------------|-------------|
+| `lexi status [path]` | Show library health and staleness (-q for quiet) | Quick health check |
+| `lexi validate` | Run consistency checks (--severity, --check, --json) | After making changes |
+| `lexi describe <dir> <desc>` | Update billboard description in .aindex | When a directory's purpose changes |
 
 ---
 

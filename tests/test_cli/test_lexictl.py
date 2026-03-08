@@ -37,6 +37,7 @@ class TestHelp:
             "daemon",
             "index",
             "bootstrap",
+            "help",
         ):
             assert cmd in result.output
 
@@ -52,6 +53,49 @@ class TestHelp:
         # Note: "index" is intentionally in lexictl (moved from lexi to lexictl)
         for cmd in ("lookup", "concepts", "search", "stack", "concept", "describe"):
             assert cmd not in command_names, f"Agent command '{cmd}' should not be in lexictl"
+
+
+class TestMaintainerHelpCommand:
+    """Tests for `lexictl help` command."""
+
+    def test_help_succeeds(self) -> None:
+        result = runner.invoke(lexictl_app, ["help"])
+        assert result.exit_code == 0
+        assert len(result.output) > 0
+
+    def test_help_shows_all_panels(self) -> None:
+        result = runner.invoke(lexictl_app, ["help"])
+        assert result.exit_code == 0
+        assert "About lexictl" in result.output
+        assert "Maintenance Commands" in result.output
+        assert "Agent Guidance" in result.output
+
+    def test_help_lists_all_commands(self) -> None:
+        result = runner.invoke(lexictl_app, ["help"])
+        assert result.exit_code == 0
+        for cmd in (
+            "init",
+            "update",
+            "bootstrap",
+            "index",
+            "validate",
+            "status",
+            "setup",
+            "sweep",
+            "daemon",
+            "iwh clean",
+        ):
+            assert cmd in result.output, f"Command '{cmd}' missing from help output"
+
+    def test_help_mentions_deprecated_daemon(self) -> None:
+        result = runner.invoke(lexictl_app, ["help"])
+        assert result.exit_code == 0
+        assert "deprecated" in result.output.lower()
+
+    def test_help_directs_agents_to_lexi(self) -> None:
+        result = runner.invoke(lexictl_app, ["help"])
+        assert result.exit_code == 0
+        assert "lexi help" in result.output
 
 
 # ---------------------------------------------------------------------------

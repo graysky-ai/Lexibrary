@@ -95,7 +95,7 @@ lexi lookup src/lexibrary/config/
 Generate `.aindex` routing table files for a directory. These provide a billboard summary and file listing for the directory.
 
 ```
-lexi index [directory] [-r/--recursive]
+lexictl index [directory] [-r/--recursive]
 ```
 
 **Arguments:**
@@ -121,13 +121,13 @@ lexi index [directory] [-r/--recursive]
 
 ```bash
 # Index the current directory
-lexi index
+lexictl index
 
 # Index a specific directory
-lexi index src/lexibrary/config/
+lexictl index src/lexibrary/config/
 
 # Recursively index all directories under src/
-lexi index src/ -r
+lexictl index src/ -r
 ```
 
 **When to use:** Run after creating new files or directories to ensure `.aindex` files reflect the current project structure.
@@ -639,7 +639,7 @@ lexi impact src/lexibrary/config/schema.py --quiet
 | `lexi orient` | Project orientation: topology, stats, IWH signals |
 | `lexi lookup <file\|dir>` | Get design file, conventions, Known Issues, IWH, and dependents |
 | `lexi impact <file> [--depth] [--quiet]` | Show reverse dependents (who imports this file) |
-| `lexi index [dir] [-r]` | Generate `.aindex` routing table(s) for a directory |
+| `lexictl index [dir] [-r]` | Generate `.aindex` routing table(s) for a directory |
 | `lexi describe <dir> <desc>` | Update a directory's `.aindex` billboard description |
 | `lexi concepts [topic]` | List or search concept files |
 | `lexi concept new <name> [--tag]` | Create a new concept file |

@@ -1,6 +1,6 @@
 # Ignore Patterns
 
-This guide explains how Lexibrary's ignore system works -- the pattern sources, their precedence, and how they affect file discovery during `lexictl update` and `lexi index`.
+This guide explains how Lexibrary's ignore system works -- the pattern sources, their precedence, and how they affect file discovery during `lexictl update` and `lexictl index`.
 
 ## Overview
 
@@ -162,9 +162,9 @@ The changed-only mode processes only the specified file paths, but still applies
 
 Files that do not pass these checks are silently skipped.
 
-### During `lexi index`
+### During `lexictl index`
 
-The `lexi index` command (for indexing directories) applies the same ignore matching when discovering files.
+The `lexictl index` command (for indexing directories) applies the same ignore matching when discovering files.
 
 ### Directory Descent Optimization
 

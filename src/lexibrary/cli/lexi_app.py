@@ -204,10 +204,7 @@ def _render_known_issues(
         attempts_count = len(post.attempts)
         attempts_str = f", {attempts_count} attempts" if attempts_count > 0 else ""
         votes_str = f", {post.frontmatter.votes} votes" if post.frontmatter.votes > 0 else ""
-        lines.append(
-            f"- [{status_label}] {post.frontmatter.title}"
-            f"{attempts_str}{votes_str}"
-        )
+        lines.append(f"- [{status_label}] {post.frontmatter.title}{attempts_str}{votes_str}")
     if omitted > 0:
         lines.append(f"\n... and {omitted} more issues")
     lines.append("")
@@ -489,9 +486,7 @@ def lookup(
 
         # Known Issues from Stack posts (task 6.1)
         stack_display_limit = config.stack.lookup_display_limit
-        issues_text = _render_known_issues(
-            link_graph, rel_path, project_root, stack_display_limit
-        )
+        issues_text = _render_known_issues(link_graph, rel_path, project_root, stack_display_limit)
 
         # Dependents: inbound ast_import links
         import_links = link_graph.reverse_deps(rel_path, link_type="ast_import")
@@ -1588,7 +1583,7 @@ def stack_search(
         console.print()
         console.print(
             "Tip: If you encounter an issue here, document it with:\n"
-            "  lexi stack post --title \"...\" --problem \"...\" --attempts \"...\"\n"
+            '  lexi stack post --title "..." --problem "..." --attempts "..."\n'
             "Even unsolved issues help future agents avoid repeating your work."
         )
         return
@@ -2024,8 +2019,7 @@ def stack_stale(
         raise typer.Exit(1) from None
 
     console.print(
-        f"[green]Marked {post_id} as stale[/green] "
-        f"(stale_at: {updated.frontmatter.stale_at})"
+        f"[green]Marked {post_id} as stale[/green] (stale_at: {updated.frontmatter.stale_at})"
     )
 
 
@@ -2353,13 +2347,19 @@ def agent_help() -> None:
 
     # -- Command Groups --------------------------------------------------------
     commands_text = Text()
+    commands_text.append("Session Start\n", style="bold underline")
+    commands_text.append("  lexi orient", style="cyan")
+    commands_text.append("              Show project topology, stats, and IWH signals\n")
+    commands_text.append("  lexi help", style="cyan")
+    commands_text.append("                Show this guidance\n")
+    commands_text.append("\n")
     commands_text.append("Lookup & Navigation\n", style="bold underline")
     commands_text.append("  lexi lookup <file>", style="cyan")
     commands_text.append("      Show design file, conventions, and reverse links\n")
     commands_text.append("  lexi search [query]", style="cyan")
     commands_text.append("     Search across concepts, design files, and Stack posts\n")
-    commands_text.append("  lexi help", style="cyan")
-    commands_text.append("               Show this guidance\n")
+    commands_text.append("  lexi impact <file>", style="cyan")
+    commands_text.append("      Show reverse dependents (--depth, --quiet)\n")
     commands_text.append("\n")
     commands_text.append("Knowledge Management\n", style="bold underline")
     commands_text.append("  lexi concepts [topic]", style="cyan")
@@ -2368,6 +2368,10 @@ def agent_help() -> None:
     commands_text.append("  Create a new concept file (--tag)\n")
     commands_text.append("  lexi concept link <name> <file>", style="cyan")
     commands_text.append("  Add a wikilink to a design file\n")
+    commands_text.append("  lexi concept comment <name>", style="cyan")
+    commands_text.append("  Add a comment to a concept (--body)\n")
+    commands_text.append("  lexi concept deprecate <name>", style="cyan")
+    commands_text.append("  Deprecate a concept (--comment, --author)\n")
     commands_text.append("  lexi conventions [query]", style="cyan")
     commands_text.append("  List/search conventions (--tag, --status, --scope, --all)\n")
     commands_text.append("  lexi convention new", style="cyan")
@@ -2394,6 +2398,18 @@ def agent_help() -> None:
     commands_text.append("      Accept a finding (--finding, --resolution-type)\n")
     commands_text.append("  lexi stack list", style="cyan")
     commands_text.append("            List issues (--status, --tag)\n")
+    commands_text.append("  ")
+    commands_text.append("Lifecycle:\n", style="dim")
+    commands_text.append("  lexi stack comment <id>", style="cyan")
+    commands_text.append("     Add a comment (--body)\n")
+    commands_text.append("  lexi stack mark-outdated <id>", style="cyan")
+    commands_text.append(" Mark issue as outdated\n")
+    commands_text.append("  lexi stack duplicate <id>", style="cyan")
+    commands_text.append("    Mark as duplicate (--of <orig>)\n")
+    commands_text.append("  lexi stack stale <id>", style="cyan")
+    commands_text.append("        Mark resolved issue as stale\n")
+    commands_text.append("  lexi stack unstale <id>", style="cyan")
+    commands_text.append("      Reverse staleness (back to resolved)\n")
     commands_text.append("\n")
     commands_text.append("IWH Signals\n", style="bold underline")
     commands_text.append("  lexi iwh write [dir]", style="cyan")
@@ -2421,18 +2437,24 @@ def agent_help() -> None:
 
     # -- Common Workflows ------------------------------------------------------
     workflows_text = Text()
-    workflows_text.append("1. Understand a source file\n", style="bold")
+    workflows_text.append("1. Start a new session\n", style="bold")
+    workflows_text.append("   lexi orient\n", style="cyan")
+    workflows_text.append("   lexi iwh list\n", style="cyan")
+    workflows_text.append(
+        "   Get project context and check for signals from previous sessions.\n\n"
+    )
+    workflows_text.append("2. Understand a source file\n", style="bold")
     workflows_text.append("   lexi lookup src/mypackage/module.py\n", style="cyan")
     workflows_text.append("   Read the design file to understand purpose, interface, and\n")
     workflows_text.append("   dependencies. Check the inherited conventions and reverse links\n")
     workflows_text.append("   to see what depends on this file.\n\n")
-    workflows_text.append("2. Explore a topic across the codebase\n", style="bold")
+    workflows_text.append("3. Explore a topic across the codebase\n", style="bold")
     workflows_text.append("   lexi concepts auth --tag security\n", style="cyan")
     workflows_text.append("   lexi search auth --tag security\n", style="cyan")
     workflows_text.append("   Start with concept search to find relevant knowledge articles,\n")
     workflows_text.append("   then use cross-artifact search to find related design files and\n")
     workflows_text.append("   Stack posts.\n\n")
-    workflows_text.append("3. Document an issue and capture knowledge\n", style="bold")
+    workflows_text.append("4. Document an issue and capture knowledge\n", style="bold")
     workflows_text.append(
         '   lexi stack post --title "Config fails on startup" --tag config'
         ' --problem "..." --finding "Set extra=forbid" --resolve\n',
@@ -2450,7 +2472,7 @@ def agent_help() -> None:
     )
     workflows_text.append("   Create a Stack issue, add a finding, and accept to build\n")
     workflows_text.append("   project knowledge.\n\n")
-    workflows_text.append("4. Create and manage conventions\n", style="bold")
+    workflows_text.append("5. Create and manage conventions\n", style="bold")
     workflows_text.append(
         '   lexi convention new --scope project --body "Use rich console"\n',
         style="cyan",
@@ -2459,7 +2481,7 @@ def agent_help() -> None:
     workflows_text.append('   lexi convention approve "use-rich-console"\n', style="cyan")
     workflows_text.append("   Create conventions to codify project rules, list them, and\n")
     workflows_text.append("   approve drafts when they are ready for enforcement.\n\n")
-    workflows_text.append("5. Check library health\n", style="bold")
+    workflows_text.append("6. Check library health\n", style="bold")
     workflows_text.append("   lexi status\n", style="cyan")
     workflows_text.append("   lexi validate --severity warning\n", style="cyan")
     workflows_text.append("   Use status to see staleness and coverage at a glance, then run\n")
@@ -2474,11 +2496,13 @@ def agent_help() -> None:
     tips_text.append("  articles. Use ")
     tips_text.append("lexi concept link", style="cyan")
     tips_text.append(" to add them.\n\n")
-    tips_text.append("Link Graph: ", style="bold")
+    tips_text.append("Reverse Dependencies: ", style="bold")
+    tips_text.append("lexi impact <file>", style="cyan")
+    tips_text.append(" shows who imports a file. Use with\n")
+    tips_text.append("  ")
     tips_text.append("lexi lookup", style="cyan")
-    tips_text.append(" shows reverse dependencies (who imports this file) and\n")
-    tips_text.append("  cross-references (Stack posts, concept wikilinks). Use this to trace\n")
-    tips_text.append("  impact before making changes.\n\n")
+    tips_text.append(" (which shows the full link graph) to trace impact before\n")
+    tips_text.append("  making changes.\n\n")
     tips_text.append("Cross-Artifact Search: ", style="bold")
     tips_text.append("lexi search", style="cyan")
     tips_text.append(" queries concepts, design files, and Stack\n")
@@ -2870,15 +2894,10 @@ def impact(
 
         # Check for open stack posts referencing this dependent
         if link_graph_for_stack is not None:
-            stack_links = link_graph_for_stack.reverse_deps(
-                node.path, link_type="stack_file_ref"
-            )
+            stack_links = link_graph_for_stack.reverse_deps(node.path, link_type="stack_file_ref")
             for slink in stack_links:
                 stack_artifact = link_graph_for_stack.get_artifact(slink.source_path)
-                if (
-                    stack_artifact is not None
-                    and stack_artifact.status == "open"
-                ):
+                if stack_artifact is not None and stack_artifact.status == "open":
                     console.print(
                         f"{indent}   [yellow]warning:[/yellow] open stack post "
                         f"[dim]{stack_artifact.path}[/dim] "

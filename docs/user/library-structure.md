@@ -96,7 +96,7 @@ An `.aindex` file contains:
 
 Agents can read `.aindex` files to understand a directory at a glance without reading every individual design file. Conventions from `.aindex` files are inherited by child directories and surfaced by `lexi lookup`.
 
-**Produced by:** `lexictl update` (refreshed during project updates), `lexi index <dir>` (generated on demand).
+**Produced by:** `lexictl update` (refreshed during project updates), `lexictl index <dir>` (generated on demand).
 
 **Updated by:** `lexi describe <dir> <description>` (agents can update the billboard).
 

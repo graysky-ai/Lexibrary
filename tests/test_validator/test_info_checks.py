@@ -485,7 +485,7 @@ class TestCheckAindexCoverage:
         assert issue.severity == "info"
         assert issue.check == "aindex_coverage"
         assert "not indexed" in issue.message
-        assert "lexi index" in issue.suggestion
+        assert "lexictl index" in issue.suggestion
 
     def test_hidden_dirs_skipped(self, tmp_path: Path) -> None:
         """Hidden directories (starting with .) are not checked."""

@@ -935,7 +935,7 @@ def check_aindex_coverage(
                     check="aindex_coverage",
                     message=f"Directory not indexed: {dir_rel}",
                     artifact=dir_rel,
-                    suggestion="Run 'lexi index' to generate .aindex files",
+                    suggestion="Run 'lexictl index' to generate .aindex files",
                 )
             )
 

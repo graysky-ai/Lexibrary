@@ -66,7 +66,7 @@ You interact with Lexibrary through the `lexi` command. It provides:
 - `lexi stack search [query]` -- search Stack posts
 - `lexi stack post --title --tag` -- create a new Stack post
 - `lexi stack finding <id> --body` -- add a finding to a Stack post
-- `lexi index [dir] [-r]` -- generate `.aindex` files
+- `lexictl index [dir] [-r]` -- generate `.aindex` files
 - `lexi describe <dir> <description>` -- update a directory's `.aindex` billboard
 
 See [lexi-reference.md](lexi-reference.md) for the complete CLI reference.

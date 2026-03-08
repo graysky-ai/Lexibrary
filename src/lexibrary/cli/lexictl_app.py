@@ -1059,6 +1059,83 @@ def daemon(
 
 
 # ---------------------------------------------------------------------------
+# help
+# ---------------------------------------------------------------------------
+
+
+@lexictl_app.command("help")
+def maintainer_help() -> None:
+    """Display structured guidance about lexictl maintenance commands."""
+    from rich.panel import Panel  # noqa: PLC0415
+    from rich.text import Text  # noqa: PLC0415
+
+    # -- About -----------------------------------------------------------------
+    about_text = Text()
+    about_text.append("lexictl", style="bold cyan")
+    about_text.append(" is the maintenance CLI for Lexibrary.\n")
+    about_text.append("It is used by project maintainers (humans) for setup, indexing,\n")
+    about_text.append("design file generation, and validation.\n\n")
+    about_text.append("Agents must use ", style="bold")
+    about_text.append("lexi", style="bold cyan")
+    about_text.append(" instead.", style="bold")
+    about_text.append(" All agent-facing commands live there.\n")
+    about_text.append("Running lexictl commands in agent sessions is prohibited per project rules.")
+
+    console.print(Panel(about_text, title="About lexictl", border_style="yellow"))
+
+    # -- Maintenance Commands --------------------------------------------------
+    cmds_text = Text()
+    cmds_text.append("Setup & Initialization\n", style="bold underline")
+    cmds_text.append("  lexictl init [--defaults]", style="cyan")
+    cmds_text.append("              Initialize project (runs setup wizard)\n")
+    cmds_text.append("  lexictl setup [--update] [--env ENV] [--hooks]", style="cyan")
+    cmds_text.append("\n                                                Install/update agent rules or git hooks\n")
+    cmds_text.append("  lexictl bootstrap [--scope SCOPE] [--full | --quick]", style="cyan")
+    cmds_text.append("\n                                                Batch-initialize library (idempotent)\n")
+    cmds_text.append("\n")
+    cmds_text.append("Indexing & Updates\n", style="bold underline")
+    cmds_text.append("  lexictl index [directory] [-r/--recursive]", style="cyan")
+    cmds_text.append("\n                                                Generate .aindex file(s)\n")
+    cmds_text.append("  lexictl update [path] [--changed-only PATH] [--dry-run] [--topology] [--skeleton]", style="cyan")
+    cmds_text.append("\n                                                Re-index and regenerate design files\n")
+    cmds_text.append("\n")
+    cmds_text.append("Validation & Status\n", style="bold underline")
+    cmds_text.append("  lexictl validate [--severity LEVEL] [--check NAME] [--json] [--ci] [--fix]", style="cyan")
+    cmds_text.append("\n                                                Run consistency checks\n")
+    cmds_text.append("  lexictl status [path] [-q/--quiet]", style="cyan")
+    cmds_text.append("          Library health and staleness summary\n")
+    cmds_text.append("\n")
+    cmds_text.append("Background Processing\n", style="bold underline")
+    cmds_text.append("  lexictl sweep [--watch]", style="cyan")
+    cmds_text.append("                Run update sweep (one-shot or watch mode)\n")
+    cmds_text.append("  lexictl daemon [start|stop|status]", style="cyan")
+    cmds_text.append("      (deprecated -- use 'sweep')\n")
+    cmds_text.append("\n")
+    cmds_text.append("IWH Maintenance\n", style="bold underline")
+    cmds_text.append("  lexictl iwh clean [--older-than N] [--all]", style="cyan")
+    cmds_text.append("\n                                                Remove expired IWH signal files\n")
+
+    console.print(Panel(cmds_text, title="Maintenance Commands", border_style="cyan"))
+
+    # -- Agent Guidance --------------------------------------------------------
+    guide_text = Text()
+    guide_text.append("Run ", style="bold")
+    guide_text.append("lexi help", style="cyan")
+    guide_text.append(" to see all agent-facing commands.\n\n")
+    guide_text.append("Key agent commands:\n")
+    guide_text.append("  lexi lookup <file>", style="cyan")
+    guide_text.append("       Understand a file before editing it\n")
+    guide_text.append("  lexi concepts <topic>", style="cyan")
+    guide_text.append("    Check conventions before architectural decisions\n")
+    guide_text.append("  lexi stack search <query>", style="cyan")
+    guide_text.append("  Search for known issues before debugging\n\n")
+    guide_text.append("If you see lexictl in an error message, the project maintainer\n")
+    guide_text.append("needs to run it. Do not run it yourself.")
+
+    console.print(Panel(guide_text, title="Agent Guidance", border_style="green"))
+
+
+# ---------------------------------------------------------------------------
 # iwh clean
 # ---------------------------------------------------------------------------
 
