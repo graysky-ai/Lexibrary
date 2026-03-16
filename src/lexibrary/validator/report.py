@@ -9,10 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
-from rich.console import Console
-from rich.table import Table
-from rich.text import Text
-
 if TYPE_CHECKING:
     from lexibrary.errors import ErrorSummary
 
@@ -128,10 +124,12 @@ class ValidationReport:
             "summary": self.summary.to_dict(),
         }
 
-    def render(self, console: Console) -> None:
-        """Render the report to a Rich console, grouped by severity."""
+    def render(self) -> None:
+        """Render the report as plain text, grouped by severity."""
+        from lexibrary.cli._output import info, markdown_table  # noqa: PLC0415
+
         if not self.issues:
-            console.print(Text("No validation issues found.", style="bold green"))
+            info("No validation issues found.")
             return
 
         # Group issues by severity
@@ -145,35 +143,25 @@ class ValidationReport:
             if not group:
                 continue
 
-            symbol, color = _SEVERITY_SYMBOLS[sev]
+            symbol, _color = _SEVERITY_SYMBOLS[sev]
             label = sev.capitalize() + "s"
-            console.print()
-            console.print(Text(f"{symbol} {label} ({len(group)})", style=f"bold {color}"))
+            info("")
+            info(f"{symbol} {label} ({len(group)})")
 
-            table = Table(show_header=True, show_lines=False, pad_edge=False)
-            table.add_column("Check", style="dim")
-            table.add_column("Artifact", style="cyan")
-            table.add_column("Message")
-            table.add_column("Suggestion", style="dim italic")
-
-            for issue in group:
-                table.add_row(
-                    issue.check,
-                    issue.artifact,
-                    issue.message,
-                    issue.suggestion or "-",
-                )
-
-            console.print(table)
+            rows = [
+                [issue.check, issue.artifact, issue.message, issue.suggestion or "-"]
+                for issue in group
+            ]
+            info(markdown_table(["Check", "Artifact", "Message", "Suggestion"], rows))
 
         # Summary line
         s = self.summary
-        console.print()
+        info("")
         parts: list[str] = []
         if s.error_count:
-            parts.append(f"[red]{s.error_count} error(s)[/red]")
+            parts.append(f"{s.error_count} error(s)")
         if s.warning_count:
-            parts.append(f"[yellow]{s.warning_count} warning(s)[/yellow]")
+            parts.append(f"{s.warning_count} warning(s)")
         if s.info_count:
-            parts.append(f"[blue]{s.info_count} info[/blue]")
-        console.print("Summary: " + ", ".join(parts))
+            parts.append(f"{s.info_count} info")
+        info("Summary: " + ", ".join(parts))

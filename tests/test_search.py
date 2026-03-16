@@ -16,14 +16,13 @@ import os
 import sqlite3
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
-from rich.console import Console
 
 from lexibrary.linkgraph.query import LinkGraph
 from lexibrary.linkgraph.schema import ensure_schema
 from lexibrary.search import SearchResults, unified_search
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -95,8 +94,13 @@ def _create_populated_index(
     artifacts: list[tuple[int, str, str, str, str | None]] | None = None,
     tags: list[tuple[int, str]] | None = None,
     fts: list[tuple[int, str, str]] | None = None,
+    conventions: list[tuple[int, str, int, str, str, str, int]] | None = None,
 ) -> None:
-    """Populate a link graph database with artifacts, tags, and FTS data."""
+    """Populate a link graph database with artifacts, tags, FTS, and convention data.
+
+    ``conventions`` rows are
+    ``(artifact_id, directory_path, ordinal, body, source, status, priority)``.
+    """
     conn = sqlite3.connect(str(db_path))
     if artifacts:
         for row in artifacts:
@@ -110,6 +114,14 @@ def _create_populated_index(
     if fts:
         for row in fts:
             conn.execute("INSERT INTO artifacts_fts (rowid, title, body) VALUES (?, ?, ?)", row)
+    if conventions:
+        for row in conventions:
+            conn.execute(
+                "INSERT INTO conventions "
+                "(artifact_id, directory_path, ordinal, body, source, status, priority) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                row,
+            )
     conn.commit()
     conn.close()
 
@@ -117,8 +129,8 @@ def _create_populated_index(
 def _render_to_string(results: SearchResults) -> str:
     """Render SearchResults to a string for assertion."""
     buf = StringIO()
-    console = Console(file=buf, width=120, force_terminal=True)
-    results.render(console)
+    with patch("lexibrary.cli._output.sys.stdout", buf):
+        results.render()
     return buf.getvalue()
 
 
@@ -259,7 +271,7 @@ class TestTagSearchConventions:
     """Convention handling in _tag_search_from_index()."""
 
     def test_tag_search_returns_convention(self, tmp_path: Path) -> None:
-        """Convention artifacts in the index are returned by tag search."""
+        """Convention artifacts in the index are returned by tag search with scope and rule."""
         project = _setup_project(tmp_path)
         db_path = _create_linkgraph_db(project)
 
@@ -270,6 +282,13 @@ class TestTagSearchConventions:
             ],
             tags=[
                 (1, "security"),
+            ],
+            conventions=[
+                (
+                    1, "src/auth", 0,
+                    "All endpoints must use the auth decorator.\n\nExtra detail.",
+                    "user", "active", 0,
+                ),
             ],
         )
 
@@ -282,6 +301,8 @@ class TestTagSearchConventions:
             assert results.conventions[0].title == "Auth required"
             assert results.conventions[0].status == "active"
             assert results.conventions[0].tags == ["security"]
+            assert results.conventions[0].scope == "src/auth"
+            assert results.conventions[0].rule == "All endpoints must use the auth decorator."
         finally:
             graph.close()
 
@@ -324,7 +345,7 @@ class TestFTSSearchConventions:
     """Convention handling in _fts_search()."""
 
     def test_fts_returns_convention(self, tmp_path: Path) -> None:
-        """FTS search returns convention artifacts from the index."""
+        """FTS search returns convention artifacts with scope and rule."""
         project = _setup_project(tmp_path)
         db_path = _create_linkgraph_db(project)
 
@@ -336,6 +357,13 @@ class TestFTSSearchConventions:
             fts=[
                 (1, "Auth decorator required", "All endpoints must use the auth decorator"),
             ],
+            conventions=[
+                (
+                    1, "src/auth", 0,
+                    "All endpoints must use the auth decorator.\n\nMore info here.",
+                    "user", "active", 0,
+                ),
+            ],
         )
 
         graph = LinkGraph.open(db_path)
@@ -345,6 +373,8 @@ class TestFTSSearchConventions:
             assert results.has_results()
             assert len(results.conventions) == 1
             assert results.conventions[0].title == "Auth decorator required"
+            assert results.conventions[0].scope == "src/auth"
+            assert results.conventions[0].rule == "All endpoints must use the auth decorator."
         finally:
             graph.close()
 
@@ -380,6 +410,194 @@ class TestFTSSearchConventions:
             assert results2.has_results()
             assert len(results2.conventions) >= 1
             assert len(results2.design_files) >= 1
+        finally:
+            graph.close()
+
+
+# ---------------------------------------------------------------------------
+# Edge-case tests: scope mapping, rule extraction, graceful degradation
+# ---------------------------------------------------------------------------
+
+
+class TestConventionEnrichmentEdgeCases:
+    """Edge-case tests for convention enrichment in index-backed search paths."""
+
+    def test_directory_path_dot_yields_scope_project(self, tmp_path: Path) -> None:
+        """Convention with directory_path='.' maps to scope='project'."""
+        project = _setup_project(tmp_path)
+        db_path = _create_linkgraph_db(project)
+
+        _create_populated_index(
+            db_path,
+            artifacts=[
+                (1, ".lexibrary/conventions/proj-wide.md", "convention", "Project wide", "active"),
+            ],
+            tags=[(1, "testing")],
+            conventions=[
+                (1, ".", 0, "Project-wide rule body.", "user", "active", 0),
+            ],
+        )
+
+        graph = LinkGraph.open(db_path)
+        assert graph is not None
+        try:
+            results = unified_search(project, tag="testing", link_graph=graph)
+            assert len(results.conventions) == 1
+            assert results.conventions[0].scope == "project"
+        finally:
+            graph.close()
+
+    def test_directory_path_subdir_yields_scope_as_is(self, tmp_path: Path) -> None:
+        """Convention with directory_path='src/auth' maps to scope='src/auth'."""
+        project = _setup_project(tmp_path)
+        db_path = _create_linkgraph_db(project)
+
+        _create_populated_index(
+            db_path,
+            artifacts=[
+                (1, ".lexibrary/conventions/auth-conv.md", "convention", "Auth conv", "active"),
+            ],
+            tags=[(1, "auth")],
+            conventions=[
+                (1, "src/auth", 0, "Auth-specific rule.", "user", "active", 0),
+            ],
+        )
+
+        graph = LinkGraph.open(db_path)
+        assert graph is not None
+        try:
+            results = unified_search(project, tag="auth", link_graph=graph)
+            assert len(results.conventions) == 1
+            assert results.conventions[0].scope == "src/auth"
+        finally:
+            graph.close()
+
+    def test_rule_extracted_from_body_first_paragraph(self, tmp_path: Path) -> None:
+        """Rule is extracted as first paragraph before blank line."""
+        project = _setup_project(tmp_path)
+        db_path = _create_linkgraph_db(project)
+
+        body = "Use type hints everywhere.\n\nThis is additional context.\nMore details."
+        _create_populated_index(
+            db_path,
+            artifacts=[
+                (1, ".lexibrary/conventions/type-hints.md", "convention", "Type hints", "active"),
+            ],
+            tags=[(1, "typing")],
+            conventions=[
+                (1, "src", 0, body, "user", "active", 0),
+            ],
+        )
+
+        graph = LinkGraph.open(db_path)
+        assert graph is not None
+        try:
+            results = unified_search(project, tag="typing", link_graph=graph)
+            assert len(results.conventions) == 1
+            assert results.conventions[0].rule == "Use type hints everywhere."
+        finally:
+            graph.close()
+
+    def test_empty_body_yields_empty_rule(self, tmp_path: Path) -> None:
+        """Convention with empty body yields rule=''."""
+        project = _setup_project(tmp_path)
+        db_path = _create_linkgraph_db(project)
+
+        _create_populated_index(
+            db_path,
+            artifacts=[
+                (1, ".lexibrary/conventions/empty-body.md", "convention", "Empty body", "active"),
+            ],
+            tags=[(1, "misc")],
+            conventions=[
+                (1, ".", 0, "", "user", "active", 0),
+            ],
+        )
+
+        graph = LinkGraph.open(db_path)
+        assert graph is not None
+        try:
+            results = unified_search(project, tag="misc", link_graph=graph)
+            assert len(results.conventions) == 1
+            assert results.conventions[0].rule == ""
+        finally:
+            graph.close()
+
+    def test_orphaned_artifact_degrades_gracefully(self, tmp_path: Path) -> None:
+        """Convention artifact with no conventions table row degrades to scope='', rule=''."""
+        project = _setup_project(tmp_path)
+        db_path = _create_linkgraph_db(project)
+
+        _create_populated_index(
+            db_path,
+            artifacts=[
+                (1, ".lexibrary/conventions/orphan.md", "convention", "Orphan conv", "active"),
+            ],
+            tags=[(1, "orphan")],
+        )
+
+        graph = LinkGraph.open(db_path)
+        assert graph is not None
+        try:
+            results = unified_search(project, tag="orphan", link_graph=graph)
+            assert len(results.conventions) == 1
+            assert results.conventions[0].scope == ""
+            assert results.conventions[0].rule == ""
+        finally:
+            graph.close()
+
+    def test_fts_directory_path_dot_yields_scope_project(self, tmp_path: Path) -> None:
+        """FTS path: convention with directory_path='.' maps to scope='project'."""
+        project = _setup_project(tmp_path)
+        db_path = _create_linkgraph_db(project)
+
+        _create_populated_index(
+            db_path,
+            artifacts=[
+                (
+                    1, ".lexibrary/conventions/proj-conv.md",
+                    "convention", "Project convention", "active",
+                ),
+            ],
+            fts=[
+                (1, "Project convention", "Project-wide rule body"),
+            ],
+            conventions=[
+                (1, ".", 0, "Project-wide rule body.", "user", "active", 0),
+            ],
+        )
+
+        graph = LinkGraph.open(db_path)
+        assert graph is not None
+        try:
+            results = unified_search(project, query="project", link_graph=graph)
+            assert len(results.conventions) == 1
+            assert results.conventions[0].scope == "project"
+        finally:
+            graph.close()
+
+    def test_fts_orphaned_artifact_degrades_gracefully(self, tmp_path: Path) -> None:
+        """FTS path: orphaned convention artifact degrades to scope='', rule=''."""
+        project = _setup_project(tmp_path)
+        db_path = _create_linkgraph_db(project)
+
+        _create_populated_index(
+            db_path,
+            artifacts=[
+                (1, ".lexibrary/conventions/orphan.md", "convention", "Orphan FTS", "active"),
+            ],
+            fts=[
+                (1, "Orphan FTS", "Some searchable text"),
+            ],
+        )
+
+        graph = LinkGraph.open(db_path)
+        assert graph is not None
+        try:
+            results = unified_search(project, query="orphan", link_graph=graph)
+            assert len(results.conventions) == 1
+            assert results.conventions[0].scope == ""
+            assert results.conventions[0].rule == ""
         finally:
             graph.close()
 

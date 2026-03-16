@@ -72,6 +72,7 @@ class UpdateStats:
     files_updated: int = 0
     files_created: int = 0
     files_failed: int = 0
+    failed_files: list[tuple[str, str]] = field(default_factory=list)
     aindex_refreshed: int = 0
     token_budget_warnings: int = 0
     topology_failed: bool = False
@@ -106,6 +107,7 @@ class FileResult:
     aindex_refreshed: bool = False
     token_budget_exceeded: bool = False
     failed: bool = False
+    failure_reason: str | None = None
 
 
 def _is_within_scope(
@@ -226,57 +228,80 @@ def _refresh_parent_aindex(
     return updated
 
 
-async def dry_run_project(
+def discover_source_files(
     project_root: Path,
     config: LexibraryConfig,
-) -> list[tuple[Path, ChangeLevel]]:
-    """Preview which files would be processed, without LLM calls or writes.
+    scope_dir: Path | None = None,
+) -> list[Path]:
+    """Discover source files eligible for design file generation.
 
-    Discovers source files within scope_root, runs change detection on each,
-    and returns a list of files that would change with their change levels.
-    Files classified as UNCHANGED are excluded from the result.
-
-    Args:
-        project_root: Absolute path to the project root.
-        config: Project configuration.
-
-    Returns:
-        List of (source_path, change_level) tuples for files that would change.
+    Walks *scope_dir* (defaulting to ``config.scope_root``) recursively,
+    excluding files inside ``.lexibrary/``, binary files, ignored files,
+    and files exceeding ``max_file_size_kb``.
     """
     ignore_matcher = create_ignore_matcher(config, project_root)
     binary_exts = set(config.crawl.binary_extensions)
-    scope_abs = (project_root / config.scope_root).resolve()
 
-    results: list[tuple[Path, ChangeLevel]] = []
+    if scope_dir is not None:
+        scope_abs = scope_dir.resolve()
+    else:
+        scope_abs = (project_root / config.scope_root).resolve()
 
+    source_files: list[Path] = []
     for path in sorted(scope_abs.rglob("*")):
         if not path.is_file():
             continue
 
-        # Skip .lexibrary contents
         try:
             path.relative_to(project_root / LEXIBRARY_DIR)
             continue
         except ValueError:
             pass
 
-        # Skip binary files
         if _is_binary(path, binary_exts):
             continue
 
-        # Skip ignored files
         if ignore_matcher.is_ignored(path):
             continue
 
-        # Skip files above max_file_size_kb
         try:
             file_size_kb = path.stat().st_size / 1024
             if file_size_kb > config.crawl.max_file_size_kb:
+                logger.debug("Skipping oversized file: %s (%.1f KB)", path, file_size_kb)
                 continue
         except OSError:
             continue
 
-        # Run change detection only
+        source_files.append(path)
+
+    return source_files
+
+
+async def dry_run_project(
+    project_root: Path,
+    config: LexibraryConfig,
+    scope_dir: Path | None = None,
+) -> list[tuple[Path, ChangeLevel]]:
+    """Preview which files would be processed, without LLM calls or writes.
+
+    Discovers source files within *scope_dir* (defaulting to
+    ``config.scope_root``), runs change detection on each, and returns a
+    list of files that would change with their change levels.  Files
+    classified as UNCHANGED are excluded from the result.
+
+    Args:
+        project_root: Absolute path to the project root.
+        config: Project configuration.
+        scope_dir: Optional directory to scope the discovery to.  When
+            ``None``, uses ``config.scope_root``.
+
+    Returns:
+        List of (source_path, change_level) tuples for files that would change.
+    """
+    source_files = discover_source_files(project_root, config, scope_dir=scope_dir)
+
+    results: list[tuple[Path, ChangeLevel]] = []
+    for path in source_files:
         content_hash, interface_hash = compute_hashes(path)
         change = check_change(path, project_root, content_hash, interface_hash)
 
@@ -336,6 +361,26 @@ async def dry_run_files(
             results.append((source_path, change))
 
     return results
+
+
+def _extract_llm_failure_reason(error_message: str | None, rel_path: str) -> str:
+    """Extract a concise failure reason from an LLM error message.
+
+    The raw error_message from ArchivistService is typically formatted as
+    ``LLM error generating design file for <path>: <exception>``.  Strip the
+    boilerplate prefix so the UI shows only the actionable exception text.
+    Truncate to 200 characters to keep output readable.
+    """
+    if not error_message:
+        return "LLM generation failed"
+
+    prefix = f"LLM error generating design file for {rel_path}: "
+    reason = error_message.removeprefix(prefix)
+
+    max_len = 200
+    if len(reason) > max_len:
+        reason = reason[:max_len] + "…"
+    return reason
 
 
 async def update_file(
@@ -410,7 +455,11 @@ async def update_file(
             "Skipping %s: unresolved merge conflict markers detected",
             source_path.name,
         )
-        return FileResult(change=change, failed=True)
+        return FileResult(
+            change=change,
+            failed=True,
+            failure_reason="unresolved merge conflict markers",
+        )
 
     # 6. LLM generation: NEW_FILE, CONTENT_ONLY, CONTENT_CHANGED, INTERFACE_CHANGED
     rel_path = str(source_path.relative_to(project_root))
@@ -418,7 +467,11 @@ async def update_file(
         source_content = source_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         logger.error("Cannot read source file: %s", source_path)
-        return FileResult(change=change, failed=True)
+        return FileResult(
+            change=change,
+            failed=True,
+            failure_reason="cannot read source file",
+        )
 
     # Parse interface skeleton for the LLM prompt
     skeleton = parse_interface(source_path)
@@ -457,7 +510,8 @@ async def update_file(
             rel_path,
             result.error_message or "unknown error",
         )
-        return FileResult(change=change, failed=True)
+        reason = _extract_llm_failure_reason(result.error_message, rel_path)
+        return FileResult(change=change, failed=True, failure_reason=reason)
 
     output = result.design_file_output
 
@@ -528,11 +582,18 @@ async def update_file(
     )
 
 
-def _accumulate_stats(stats: UpdateStats, file_result: FileResult) -> None:
+def _accumulate_stats(
+    stats: UpdateStats,
+    file_result: FileResult,
+    source_path: Path | None = None,
+) -> None:
     """Update *stats* in-place from a single file result."""
     change = file_result.change
     if file_result.failed:
         stats.files_failed += 1
+        if source_path is not None:
+            reason = file_result.failure_reason or "unknown error"
+            stats.failed_files.append((str(source_path), reason))
     elif change == ChangeLevel.UNCHANGED:
         stats.files_unchanged += 1
     elif change == ChangeLevel.AGENT_UPDATED:
@@ -887,12 +948,13 @@ async def update_files(
         except Exception as exc:
             logger.exception("Unexpected error processing %s", source_path)
             stats.files_failed += 1
+            stats.failed_files.append((str(source_path), str(exc)))
             stats.error_summary.add("archivist", exc, path=str(source_path))
             if progress_callback is not None:
                 progress_callback(source_path, ChangeLevel.UNCHANGED)
             continue
 
-        _accumulate_stats(stats, file_result)
+        _accumulate_stats(stats, file_result, source_path=source_path)
         processed_paths.append(source_path)
 
         if progress_callback is not None:
@@ -927,6 +989,92 @@ async def update_files(
     return stats
 
 
+async def update_directory(
+    directory: Path,
+    project_root: Path,
+    config: LexibraryConfig,
+    archivist: ArchivistService,
+    progress_callback: ProgressCallback | None = None,
+) -> UpdateStats:
+    """Update design files for source files within a directory subtree.
+
+    Discovers files within *directory*, processes each sequentially, then
+    regenerates ``TOPOLOGY.md``, re-indexes affected directories, and
+    rebuilds the link graph.  Skips project-wide passes (deprecation
+    lifecycle, enrichment queue) that only apply to full-project updates.
+    """
+    stats = UpdateStats()
+
+    concepts_dir = project_root / LEXIBRARY_DIR / "concepts"
+    concept_index = ConceptIndex.load(concepts_dir)
+    available_concepts = concept_index.names() or None
+
+    source_files = discover_source_files(project_root, config, scope_dir=directory)
+
+    logger.info(
+        "Discovered %d source files in %s for processing",
+        len(source_files),
+        directory,
+    )
+
+    changed_file_paths: list[Path] = []
+
+    for source_path in source_files:
+        stats.files_scanned += 1
+
+        try:
+            file_result = await update_file(
+                source_path,
+                project_root,
+                config,
+                archivist,
+                available_concepts=available_concepts,
+            )
+        except Exception as exc:
+            logger.exception("Unexpected error processing %s", source_path)
+            stats.files_failed += 1
+            stats.failed_files.append((str(source_path), str(exc)))
+            stats.error_summary.add("archivist", exc, path=str(source_path))
+            changed_file_paths.append(source_path)
+            if progress_callback is not None:
+                progress_callback(source_path, ChangeLevel.UNCHANGED)
+            continue
+
+        _accumulate_stats(stats, file_result, source_path=source_path)
+
+        if file_result.change not in (ChangeLevel.UNCHANGED, ChangeLevel.AGENT_UPDATED):
+            changed_file_paths.append(source_path)
+
+        if progress_callback is not None:
+            progress_callback(source_path, file_result.change)
+
+    try:
+        generate_topology(project_root)
+    except Exception as exc:
+        logger.exception("Failed to generate TOPOLOGY.md")
+        stats.topology_failed = True
+        stats.error_summary.add("archivist", exc, path="TOPOLOGY.md")
+
+    if _has_meaningful_changes(stats) and changed_file_paths:
+        affected_dirs = sorted({p.parent for p in changed_file_paths})
+        try:
+            reindexed = reindex_directories(list(affected_dirs), project_root, config)
+            stats.aindex_refreshed += reindexed
+        except Exception as exc:
+            logger.exception("Failed to re-index directories after update_directory")
+            stats.error_summary.add("archivist", exc)
+
+    try:
+        build_index(project_root)
+        stats.linkgraph_built = True
+    except Exception as exc:
+        logger.exception("Failed to build link graph index")
+        stats.linkgraph_error = "Link graph full build failed"
+        stats.error_summary.add("linkgraph", exc)
+
+    return stats
+
+
 async def update_project(
     project_root: Path,
     config: LexibraryConfig,
@@ -939,9 +1087,6 @@ async def update_project(
     files, processes each sequentially, then returns accumulated stats.
     """
     stats = UpdateStats()
-    ignore_matcher = create_ignore_matcher(config, project_root)
-    binary_exts = set(config.crawl.binary_extensions)
-    scope_abs = (project_root / config.scope_root).resolve()
 
     # Load available concept names for wikilink guidance
     concepts_dir = project_root / LEXIBRARY_DIR / "concepts"
@@ -949,36 +1094,7 @@ async def update_project(
     available_concepts = concept_index.names() or None
 
     # Discover all source files within scope
-    source_files: list[Path] = []
-    for path in sorted(scope_abs.rglob("*")):
-        if not path.is_file():
-            continue
-
-        # Skip .lexibrary contents
-        try:
-            path.relative_to(project_root / LEXIBRARY_DIR)
-            continue
-        except ValueError:
-            pass
-
-        # Skip binary files
-        if _is_binary(path, binary_exts):
-            continue
-
-        # Skip ignored files
-        if ignore_matcher.is_ignored(path):
-            continue
-
-        # Skip files above max_file_size_kb
-        try:
-            file_size_kb = path.stat().st_size / 1024
-            if file_size_kb > config.crawl.max_file_size_kb:
-                logger.debug("Skipping oversized file: %s (%.1f KB)", path, file_size_kb)
-                continue
-        except OSError:
-            continue
-
-        source_files.append(path)
+    source_files = discover_source_files(project_root, config)
 
     logger.info("Discovered %d source files for processing", len(source_files))
 
@@ -1000,13 +1116,14 @@ async def update_project(
         except Exception as exc:
             logger.exception("Unexpected error processing %s", source_path)
             stats.files_failed += 1
+            stats.failed_files.append((str(source_path), str(exc)))
             stats.error_summary.add("archivist", exc, path=str(source_path))
             changed_file_paths.append(source_path)
             if progress_callback is not None:
                 progress_callback(source_path, ChangeLevel.UNCHANGED)
             continue
 
-        _accumulate_stats(stats, file_result)
+        _accumulate_stats(stats, file_result, source_path=source_path)
 
         # Track files that were actually created, updated, or failed
         if file_result.change not in (ChangeLevel.UNCHANGED, ChangeLevel.AGENT_UPDATED):

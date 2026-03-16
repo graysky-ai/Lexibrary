@@ -4,9 +4,12 @@ Each check function follows the signature:
     check_*(project_root: Path, lexibrary_dir: Path) -> list[ValidationIssue]
 
 Checks are grouped by severity:
-- Error-severity: wikilink_resolution, file_existence, concept_frontmatter
+- Error-severity: wikilink_resolution, file_existence, concept_frontmatter,
+    convention_frontmatter, design_frontmatter, stack_frontmatter,
+    iwh_frontmatter, duplicate_aliases, duplicate_slugs
 - Warning-severity: hash_freshness, token_budgets, orphan_concepts,
-    deprecated_concept_usage, orphaned_designs, convention_orphaned_scope
+    deprecated_concept_usage, orphaned_designs, convention_orphaned_scope,
+    stack_refs_validity, design_deps_existence, aindex_entries
 - Info-severity: forward_dependencies, stack_staleness,
     resolved_post_staleness, aindex_coverage,
     bidirectional_deps, dangling_links, orphan_artifacts, orphaned_iwh,
@@ -121,7 +124,11 @@ def check_wikilink_resolution(
     # Collect wikilinks from Stack posts
     if stack_dir.is_dir():
         for md_path in sorted(stack_dir.glob("ST-*-*.md")):
-            post = parse_stack_post(md_path)
+            try:
+                post = parse_stack_post(md_path)
+            except Exception:
+                logger.warning("Skipping malformed Stack post: %s", md_path)
+                continue
             if post is None:
                 continue
 
@@ -193,7 +200,11 @@ def check_file_existence(
     # Check Stack post refs
     if stack_dir.is_dir():
         for md_path in sorted(stack_dir.glob("ST-*-*.md")):
-            post = parse_stack_post(md_path)
+            try:
+                post = parse_stack_post(md_path)
+            except Exception:
+                logger.warning("Skipping malformed Stack post: %s", md_path)
+                continue
             if post is None:
                 continue
             rel_path = _rel(md_path, project_root)
@@ -333,6 +344,1060 @@ def check_concept_frontmatter(
                         suggestion=(f"Status must be one of: {', '.join(sorted(valid_statuses))}."),
                     )
                 )
+
+    return issues
+
+
+def check_convention_frontmatter(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Validate all convention files have mandatory frontmatter fields.
+
+    Checks that every ``.md`` file in the conventions directory has valid YAML
+    frontmatter with ``title``, ``status``, ``source``, ``scope``, ``tags``,
+    and ``priority`` fields.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of error-severity ValidationIssues for invalid frontmatter.
+    """
+    issues: list[ValidationIssue] = []
+    conventions_dir = lexibrary_dir / "conventions"
+    if not conventions_dir.is_dir():
+        return issues
+
+    valid_statuses = {"draft", "active", "deprecated"}
+    valid_sources = {"user", "agent", "config"}
+
+    for md_path in sorted(conventions_dir.glob("*.md")):
+        rel_path = _rel(md_path, project_root)
+
+        try:
+            text = md_path.read_text(encoding="utf-8")
+        except OSError:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Could not read convention file",
+                    artifact=rel_path,
+                )
+            )
+            continue
+
+        fm_match = _FRONTMATTER_RE.match(text)
+        if not fm_match:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Missing YAML frontmatter",
+                    artifact=rel_path,
+                    suggestion=(
+                        "Add --- delimited YAML frontmatter with "
+                        "title, status, source, scope, tags, priority."
+                    ),
+                )
+            )
+            continue
+
+        try:
+            data = yaml.safe_load(fm_match.group(1))
+        except yaml.YAMLError:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Invalid YAML in frontmatter",
+                    artifact=rel_path,
+                    suggestion="Fix YAML syntax in frontmatter block.",
+                )
+            )
+            continue
+
+        if not isinstance(data, dict):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Frontmatter is not a YAML mapping",
+                    artifact=rel_path,
+                    suggestion="Frontmatter must be a YAML key-value mapping.",
+                )
+            )
+            continue
+
+        # title — must be present and a non-empty string
+        if "title" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Missing mandatory field: title",
+                    artifact=rel_path,
+                    suggestion="Add a 'title' field to the frontmatter.",
+                )
+            )
+        elif not isinstance(data["title"], str) or not data["title"].strip():
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Field 'title' must be a non-empty string",
+                    artifact=rel_path,
+                    suggestion="Add a 'title' field to the frontmatter.",
+                )
+            )
+
+        # status — must be one of valid values
+        if "status" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Missing mandatory field: status",
+                    artifact=rel_path,
+                    suggestion="Add a 'status' field to the frontmatter.",
+                )
+            )
+        elif data["status"] not in valid_statuses:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message=f"Invalid status: {data['status']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"Status must be one of: {', '.join(sorted(valid_statuses))}."
+                    ),
+                )
+            )
+
+        # source — must be one of valid values
+        if "source" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Missing mandatory field: source",
+                    artifact=rel_path,
+                    suggestion="Add a 'source' field to the frontmatter.",
+                )
+            )
+        elif data["source"] not in valid_sources:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message=f"Invalid source: {data['source']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"Source must be one of: {', '.join(sorted(valid_sources))}."
+                    ),
+                )
+            )
+
+        # scope — must be present and a string
+        if "scope" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Missing mandatory field: scope",
+                    artifact=rel_path,
+                    suggestion="Add a 'scope' field to the frontmatter.",
+                )
+            )
+        elif not isinstance(data["scope"], str):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Field 'scope' must be a string",
+                    artifact=rel_path,
+                    suggestion="Add a 'scope' field to the frontmatter.",
+                )
+            )
+
+        # tags — must be present and a list
+        if "tags" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Missing mandatory field: tags",
+                    artifact=rel_path,
+                    suggestion="Add a 'tags' field to the frontmatter.",
+                )
+            )
+        elif not isinstance(data["tags"], list):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Field 'tags' must be a list",
+                    artifact=rel_path,
+                    suggestion="Add a 'tags' field to the frontmatter.",
+                )
+            )
+
+        # priority — must be present and an integer
+        if "priority" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Missing mandatory field: priority",
+                    artifact=rel_path,
+                    suggestion="Add a 'priority' field to the frontmatter.",
+                )
+            )
+        elif not isinstance(data["priority"], int):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Field 'priority' must be an integer",
+                    artifact=rel_path,
+                    suggestion="Add a 'priority' field to the frontmatter.",
+                )
+            )
+
+    return issues
+
+
+def check_design_frontmatter(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Validate all design files have mandatory frontmatter fields.
+
+    Checks that every ``.md`` file in the designs directory (recursively) has
+    valid YAML frontmatter with ``description``, ``updated_by``, and ``status``
+    fields. Skips non-markdown files.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of error-severity ValidationIssues for invalid frontmatter.
+    """
+    issues: list[ValidationIssue] = []
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+    if not designs_dir.is_dir():
+        return issues
+
+    valid_statuses = {"active", "unlinked", "deprecated"}
+    valid_updated_by = {"archivist", "agent", "bootstrap-quick", "maintainer"}
+
+    for md_path in sorted(designs_dir.rglob("*.md")):
+        rel_path = _rel(md_path, project_root)
+
+        try:
+            text = md_path.read_text(encoding="utf-8")
+        except OSError:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="design_frontmatter",
+                    message="Could not read design file",
+                    artifact=rel_path,
+                )
+            )
+            continue
+
+        fm_match = _FRONTMATTER_RE.match(text)
+        if not fm_match:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="design_frontmatter",
+                    message="Missing YAML frontmatter",
+                    artifact=rel_path,
+                    suggestion=(
+                        "Add --- delimited YAML frontmatter with "
+                        "description, updated_by, status."
+                    ),
+                )
+            )
+            continue
+
+        try:
+            data = yaml.safe_load(fm_match.group(1))
+        except yaml.YAMLError:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="design_frontmatter",
+                    message="Invalid YAML in frontmatter",
+                    artifact=rel_path,
+                    suggestion="Fix YAML syntax in frontmatter block.",
+                )
+            )
+            continue
+
+        if not isinstance(data, dict):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="design_frontmatter",
+                    message="Frontmatter is not a YAML mapping",
+                    artifact=rel_path,
+                    suggestion="Frontmatter must be a YAML key-value mapping.",
+                )
+            )
+            continue
+
+        # description — must be present and a non-empty string
+        if "description" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="design_frontmatter",
+                    message="Missing mandatory field: description",
+                    artifact=rel_path,
+                    suggestion="Add a 'description' field to the frontmatter.",
+                )
+            )
+        elif not isinstance(data["description"], str) or not data["description"].strip():
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="design_frontmatter",
+                    message="Field 'description' must be a non-empty string",
+                    artifact=rel_path,
+                    suggestion="Add a 'description' field to the frontmatter.",
+                )
+            )
+
+        # updated_by — must be one of valid values
+        if "updated_by" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="design_frontmatter",
+                    message="Missing mandatory field: updated_by",
+                    artifact=rel_path,
+                    suggestion="Add an 'updated_by' field to the frontmatter.",
+                )
+            )
+        elif data["updated_by"] not in valid_updated_by:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="design_frontmatter",
+                    message=f"Invalid updated_by: {data['updated_by']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        "updated_by must be one of: "
+                        f"{', '.join(sorted(valid_updated_by))}."
+                    ),
+                )
+            )
+
+        # status — must be one of valid values
+        if "status" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="design_frontmatter",
+                    message="Missing mandatory field: status",
+                    artifact=rel_path,
+                    suggestion="Add a 'status' field to the frontmatter.",
+                )
+            )
+        elif data["status"] not in valid_statuses:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="design_frontmatter",
+                    message=f"Invalid status: {data['status']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        "Status must be one of: "
+                        f"{', '.join(sorted(valid_statuses))}."
+                    ),
+                )
+            )
+
+    return issues
+
+
+def check_stack_frontmatter(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Validate all Stack post files have mandatory frontmatter fields.
+
+    Checks that every ``.md`` file in ``.lexibrary/stack/posts/`` has valid
+    YAML frontmatter with ``id`` (ST-NNN), ``title``, ``tags`` (min 1),
+    ``status``, ``created``, ``author``, and optionally ``resolution_type``.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of error-severity ValidationIssues for invalid frontmatter.
+    """
+    issues: list[ValidationIssue] = []
+    posts_dir = lexibrary_dir / "stack" / "posts"
+    if not posts_dir.is_dir():
+        return issues
+
+    valid_statuses = {"open", "resolved", "outdated", "duplicate", "stale"}
+    valid_resolution_types = {
+        "fix",
+        "workaround",
+        "wontfix",
+        "cannot_reproduce",
+        "by_design",
+    }
+    id_pattern = re.compile(r"^ST-\d+$")
+
+    for md_path in sorted(posts_dir.glob("*.md")):
+        rel_path = _rel(md_path, project_root)
+
+        try:
+            text = md_path.read_text(encoding="utf-8")
+        except OSError:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Could not read Stack post file",
+                    artifact=rel_path,
+                )
+            )
+            continue
+
+        fm_match = _FRONTMATTER_RE.match(text)
+        if not fm_match:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Missing YAML frontmatter",
+                    artifact=rel_path,
+                    suggestion=(
+                        "Add --- delimited YAML frontmatter with "
+                        "id, title, tags, status, created, author."
+                    ),
+                )
+            )
+            continue
+
+        try:
+            data = yaml.safe_load(fm_match.group(1))
+        except yaml.YAMLError:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Invalid YAML in frontmatter",
+                    artifact=rel_path,
+                    suggestion="Fix YAML syntax in frontmatter block.",
+                )
+            )
+            continue
+
+        if not isinstance(data, dict):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Frontmatter is not a YAML mapping",
+                    artifact=rel_path,
+                    suggestion="Frontmatter must be a YAML key-value mapping.",
+                )
+            )
+            continue
+
+        # id — must be present and match ST-NNN pattern
+        if "id" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Missing mandatory field: id",
+                    artifact=rel_path,
+                    suggestion="Add an 'id' field in ST-NNN format to the frontmatter.",
+                )
+            )
+        elif not isinstance(data["id"], str) or not id_pattern.match(data["id"]):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message=f"Invalid id format: {data['id']}",
+                    artifact=rel_path,
+                    suggestion="id must match the ST-NNN format (e.g., ST-001).",
+                )
+            )
+
+        # title — must be present and a non-empty string
+        if "title" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Missing mandatory field: title",
+                    artifact=rel_path,
+                    suggestion="Add a 'title' field to the frontmatter.",
+                )
+            )
+        elif not isinstance(data["title"], str) or not data["title"].strip():
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Field 'title' must be a non-empty string",
+                    artifact=rel_path,
+                    suggestion="Add a 'title' field to the frontmatter.",
+                )
+            )
+
+        # tags — must be present, a list, and have at least 1 element
+        if "tags" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Missing mandatory field: tags",
+                    artifact=rel_path,
+                    suggestion=(
+                        "Add a 'tags' field with at least one tag "
+                        "to the frontmatter."
+                    ),
+                )
+            )
+        elif not isinstance(data["tags"], list):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Field 'tags' must be a list",
+                    artifact=rel_path,
+                    suggestion=(
+                        "Add a 'tags' field with at least one tag "
+                        "to the frontmatter."
+                    ),
+                )
+            )
+        elif len(data["tags"]) < 1:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Field 'tags' must have at least 1 element",
+                    artifact=rel_path,
+                    suggestion="Add at least one tag to the 'tags' list.",
+                )
+            )
+
+        # status — must be one of valid values
+        if "status" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Missing mandatory field: status",
+                    artifact=rel_path,
+                    suggestion="Add a 'status' field to the frontmatter.",
+                )
+            )
+        elif data["status"] not in valid_statuses:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message=f"Invalid status: {data['status']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        "Status must be one of: "
+                        f"{', '.join(sorted(valid_statuses))}."
+                    ),
+                )
+            )
+
+        # created — must be present and a valid date
+        if "created" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Missing mandatory field: created",
+                    artifact=rel_path,
+                    suggestion=(
+                        "Add a 'created' field with a valid date "
+                        "to the frontmatter."
+                    ),
+                )
+            )
+        else:
+            from datetime import date as date_type  # noqa: PLC0415
+            from datetime import datetime as datetime_type  # noqa: PLC0415
+
+            if not isinstance(data["created"], (date_type, datetime_type)):
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        check="stack_frontmatter",
+                        message=f"Invalid created date: {data['created']}",
+                        artifact=rel_path,
+                        suggestion="created must be a valid date (YYYY-MM-DD format).",
+                    )
+                )
+
+        # author — must be present and a non-empty string
+        if "author" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Missing mandatory field: author",
+                    artifact=rel_path,
+                    suggestion="Add an 'author' field to the frontmatter.",
+                )
+            )
+        elif not isinstance(data["author"], str) or not data["author"].strip():
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message="Field 'author' must be a non-empty string",
+                    artifact=rel_path,
+                    suggestion="Add an 'author' field to the frontmatter.",
+                )
+            )
+
+        # resolution_type — optional, but if present must be valid
+        if (
+            "resolution_type" in data
+            and data["resolution_type"] is not None
+            and data["resolution_type"] not in valid_resolution_types
+        ):
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        check="stack_frontmatter",
+                        message=f"Invalid resolution_type: {data['resolution_type']}",
+                        artifact=rel_path,
+                        suggestion=(
+                            "resolution_type must be one of: "
+                            f"{', '.join(sorted(valid_resolution_types))}."
+                        ),
+                    )
+                )
+
+    return issues
+
+
+def check_iwh_frontmatter(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Validate all IWH signal files have mandatory fields.
+
+    Finds all ``.iwh`` files under ``.lexibrary/`` (recursively), parses their
+    YAML content, and validates ``author``, ``created`` (ISO 8601), and
+    ``scope`` fields.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of error-severity ValidationIssues for invalid IWH files.
+    """
+    issues: list[ValidationIssue] = []
+    if not lexibrary_dir.is_dir():
+        return issues
+
+    valid_scopes = {"warning", "incomplete", "blocked"}
+
+    for iwh_path in sorted(lexibrary_dir.rglob(".iwh")):
+        if not iwh_path.is_file():
+            continue
+
+        rel_path = _rel(iwh_path, project_root)
+
+        try:
+            text = iwh_path.read_text(encoding="utf-8")
+        except OSError:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="iwh_frontmatter",
+                    message="Could not read IWH file",
+                    artifact=rel_path,
+                )
+            )
+            continue
+
+        # IWH files use frontmatter-style YAML; fall back to raw content
+        fm_match = _FRONTMATTER_RE.match(text)
+        yaml_text = fm_match.group(1) if fm_match else text
+
+        try:
+            data = yaml.safe_load(yaml_text)
+        except yaml.YAMLError:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="iwh_frontmatter",
+                    message="Invalid YAML in IWH file",
+                    artifact=rel_path,
+                    suggestion="Fix YAML syntax in the IWH file.",
+                )
+            )
+            continue
+
+        if not isinstance(data, dict):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="iwh_frontmatter",
+                    message="IWH file content is not a YAML mapping",
+                    artifact=rel_path,
+                    suggestion="IWH file must contain a YAML key-value mapping.",
+                )
+            )
+            continue
+
+        # author — must be present and a non-empty string
+        if "author" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="iwh_frontmatter",
+                    message="Missing mandatory field: author",
+                    artifact=rel_path,
+                    suggestion="Add an 'author' field to the IWH file.",
+                )
+            )
+        elif not isinstance(data["author"], str) or not data["author"].strip():
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="iwh_frontmatter",
+                    message="Field 'author' must be a non-empty string",
+                    artifact=rel_path,
+                    suggestion="Add an 'author' field to the IWH file.",
+                )
+            )
+
+        # created — must be present and a valid ISO 8601 datetime
+        if "created" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="iwh_frontmatter",
+                    message="Missing mandatory field: created",
+                    artifact=rel_path,
+                    suggestion=(
+                        "Add a 'created' field with an ISO 8601 datetime "
+                        "to the IWH file."
+                    ),
+                )
+            )
+        else:
+            from datetime import date as date_type  # noqa: PLC0415
+            from datetime import datetime as datetime_type  # noqa: PLC0415
+
+            if not isinstance(data["created"], (date_type, datetime_type)):
+                created_val = data["created"]
+                if isinstance(created_val, str):
+                    try:
+                        datetime_type.fromisoformat(created_val)
+                    except (ValueError, TypeError):
+                        issues.append(
+                            ValidationIssue(
+                                severity="error",
+                                check="iwh_frontmatter",
+                                message=f"Invalid created datetime: {created_val}",
+                                artifact=rel_path,
+                                suggestion="created must be a valid ISO 8601 datetime.",
+                            )
+                        )
+                else:
+                    issues.append(
+                        ValidationIssue(
+                            severity="error",
+                            check="iwh_frontmatter",
+                            message=f"Invalid created datetime: {data['created']}",
+                            artifact=rel_path,
+                            suggestion="created must be a valid ISO 8601 datetime.",
+                        )
+                    )
+
+        # scope — must be one of valid values
+        if "scope" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="iwh_frontmatter",
+                    message="Missing mandatory field: scope",
+                    artifact=rel_path,
+                    suggestion="Add a 'scope' field to the IWH file.",
+                )
+            )
+        elif data["scope"] not in valid_scopes:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="iwh_frontmatter",
+                    message=f"Invalid scope: {data['scope']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"scope must be one of: {', '.join(sorted(valid_scopes))}."
+                    ),
+                )
+            )
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Infrastructure checks (error + warning severity)
+# ---------------------------------------------------------------------------
+
+
+def check_config_valid(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Re-validate .lexibrary/config.yaml with the LexibraryConfig model.
+
+    Loads the project config YAML and validates it with Pydantic.  Reports
+    error-severity issues for missing files, YAML syntax errors, and
+    per-field Pydantic validation failures.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of error-severity ValidationIssues for config problems.
+    """
+    from pydantic import ValidationError  # noqa: PLC0415
+
+    from lexibrary.config.schema import LexibraryConfig  # noqa: PLC0415
+
+    issues: list[ValidationIssue] = []
+    config_path = lexibrary_dir / "config.yaml"
+    artifact = _rel(config_path, project_root)
+
+    if not config_path.exists():
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                check="config_valid",
+                message="Config file not found",
+                artifact=artifact,
+                suggestion="Run `lexi init` to create the config file.",
+            )
+        )
+        return issues
+
+    # Try to read and parse YAML
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                check="config_valid",
+                message=f"Could not read config file: {exc}",
+                artifact=artifact,
+            )
+        )
+        return issues
+
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                check="config_valid",
+                message=f"Invalid YAML syntax: {exc}",
+                artifact=artifact,
+                suggestion="Fix the YAML syntax in config.yaml.",
+            )
+        )
+        return issues
+
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                check="config_valid",
+                message="Config file is not a YAML mapping",
+                artifact=artifact,
+                suggestion="Config file must contain a YAML key-value mapping.",
+            )
+        )
+        return issues
+
+    # Validate with Pydantic
+    try:
+        LexibraryConfig.model_validate(data)
+    except ValidationError as exc:
+        for error in exc.errors():
+            field_path = " -> ".join(str(loc) for loc in error["loc"])
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="config_valid",
+                    message=f"Validation error at '{field_path}': {error['msg']}",
+                    artifact=artifact,
+                )
+            )
+
+    return issues
+
+
+def check_lexignore_syntax(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Validate each line of .lexignore as a gitignore pattern.
+
+    Reads the ``.lexignore`` file in the project root (if it exists),
+    compiles each non-empty, non-comment line as a gitignore pattern via
+    pathspec, and reports lines that fail to compile at warning severity.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of warning-severity ValidationIssues for invalid patterns.
+    """
+    import pathspec  # noqa: PLC0415
+
+    issues: list[ValidationIssue] = []
+    lexignore_path = project_root / ".lexignore"
+
+    if not lexignore_path.exists():
+        return issues
+
+    try:
+        text = lexignore_path.read_text(encoding="utf-8")
+    except OSError:
+        return issues
+
+    for line_no, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        # Skip blank lines and comments
+        if not line or line.startswith("#"):
+            continue
+
+        try:
+            pathspec.PathSpec.from_lines("gitignore", [line])
+        except Exception:
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    check="lexignore_syntax",
+                    message=f"Invalid gitignore pattern on line {line_no}: {line!r}",
+                    artifact=".lexignore",
+                    suggestion="Fix or remove the invalid pattern.",
+                )
+            )
+
+    return issues
+
+
+def check_linkgraph_version(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Compare the stored linkgraph schema version to the current constant.
+
+    Opens the SQLite database at ``.lexibrary/index.db``, reads the stored
+    schema version from the ``meta`` table, and reports an error-severity
+    issue if it does not match the current ``SCHEMA_VERSION``.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of error-severity ValidationIssues for version mismatches.
+    """
+    issues: list[ValidationIssue] = []
+    db_path = lexibrary_dir / _INDEX_DB_NAME
+
+    if not db_path.exists():
+        return issues
+
+    artifact = _rel(db_path, project_root)
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+    except sqlite3.Error:
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                check="linkgraph_version",
+                message="Could not open linkgraph database",
+                artifact=artifact,
+                suggestion="Delete the index file and rebuild with `lexictl update`.",
+            )
+        )
+        return issues
+
+    try:
+        set_pragmas(conn)
+        stored_version = check_schema_version(conn)
+    except sqlite3.Error:
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                check="linkgraph_version",
+                message="Could not read schema version from linkgraph database",
+                artifact=artifact,
+                suggestion="Delete the index file and rebuild with `lexictl update`.",
+            )
+        )
+        return issues
+    finally:
+        conn.close()
+
+    if stored_version is None:
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                check="linkgraph_version",
+                message="No schema version found in linkgraph database",
+                artifact=artifact,
+                suggestion="Delete the index file and rebuild with `lexictl update`.",
+            )
+        )
+        return issues
+
+    if stored_version != SCHEMA_VERSION:
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                check="linkgraph_version",
+                message=(
+                    f"Schema version mismatch: stored={stored_version}, "
+                    f"current={SCHEMA_VERSION}"
+                ),
+                artifact=artifact,
+                suggestion="Run `lexictl update` to rebuild the linkgraph index.",
+            )
+        )
 
     return issues
 
@@ -703,7 +1768,11 @@ def check_stack_staleness(
         return issues
 
     for post_path in sorted(stack_dir.glob("*.md")):
-        post = parse_stack_post(post_path)
+        try:
+            post = parse_stack_post(post_path)
+        except Exception:
+            logger.warning("Skipping malformed Stack post: %s", post_path)
+            continue
         if post is None:
             continue
 
@@ -806,7 +1875,11 @@ def check_resolved_post_staleness(
     git_available = _git_is_available(project_root)
 
     for post_path in sorted(stack_dir.glob("*.md")):
-        post = parse_stack_post(post_path)
+        try:
+            post = parse_stack_post(post_path)
+        except Exception:
+            logger.warning("Skipping malformed Stack post: %s", post_path)
+            continue
         if post is None:
             continue
 
@@ -1930,6 +3003,602 @@ def check_convention_consistent_violation(
                         "rule needs revision, better communication, or "
                         "deprecation."
                     ),
+                )
+            )
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Error-severity: cross-artifact checks
+# ---------------------------------------------------------------------------
+
+
+def check_duplicate_aliases(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect duplicate aliases and titles across concept files.
+
+    Collects every concept title and alias, then reports when two or more
+    concept files claim the same name (case-insensitive).
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of error-severity ValidationIssues for duplicate aliases.
+    """
+    issues: list[ValidationIssue] = []
+    concepts_dir = lexibrary_dir / "concepts"
+    if not concepts_dir.is_dir():
+        return issues
+
+    # Map lowercase alias/title -> list of (original_name, source_file_stem)
+    seen: dict[str, list[tuple[str, str]]] = {}
+
+    for md_path in sorted(concepts_dir.glob("*.md")):
+        concept = parse_concept_file(md_path)
+        if concept is None:
+            continue
+
+        file_stem = md_path.stem
+        title = concept.frontmatter.title
+        names_to_check = [title] + list(concept.frontmatter.aliases)
+
+        for name in names_to_check:
+            key = name.strip().lower()
+            if not key:
+                continue
+            seen.setdefault(key, []).append((name, file_stem))
+
+    # Report duplicates
+    for _key, entries in sorted(seen.items()):
+        if len(entries) <= 1:
+            continue
+        files = [stem for _, stem in entries]
+        for original_name, file_stem in entries:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="duplicate_aliases",
+                    message=(
+                        f"Alias/title '{original_name}' is duplicated "
+                        f"across files: {', '.join(sorted(set(files)))}"
+                    ),
+                    artifact=f"concepts/{file_stem}.md",
+                    suggestion="Remove or rename the duplicate alias.",
+                )
+            )
+
+    return issues
+
+
+def check_duplicate_slugs(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect duplicate slugs across concept and convention filenames.
+
+    Concept and convention files use filename slugs as identifiers.
+    This check flags cases where two files from different artifact types
+    produce the same slug, which could cause confusion.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of error-severity ValidationIssues for duplicate slugs.
+    """
+    issues: list[ValidationIssue] = []
+
+    # Collect slugs: slug -> list of (artifact_rel_path,)
+    slug_sources: dict[str, list[str]] = {}
+
+    concepts_dir = lexibrary_dir / "concepts"
+    if concepts_dir.is_dir():
+        for md_path in sorted(concepts_dir.glob("*.md")):
+            slug = md_path.stem
+            rel_path = f"concepts/{md_path.name}"
+            slug_sources.setdefault(slug, []).append(rel_path)
+
+    conventions_dir = lexibrary_dir / "conventions"
+    if conventions_dir.is_dir():
+        for md_path in sorted(conventions_dir.glob("*.md")):
+            slug = md_path.stem
+            rel_path = f"conventions/{md_path.name}"
+            slug_sources.setdefault(slug, []).append(rel_path)
+
+    for slug, sources in sorted(slug_sources.items()):
+        if len(sources) <= 1:
+            continue
+        for source in sources:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="duplicate_slugs",
+                    message=(
+                        f"Slug '{slug}' is used by multiple files: "
+                        f"{', '.join(sorted(sources))}"
+                    ),
+                    artifact=source,
+                    suggestion="Rename one of the files to use a unique slug.",
+                )
+            )
+
+    return issues
+
+
+def check_stack_refs_validity(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Verify that Stack post refs.files and refs.designs entries exist on disk.
+
+    Parses all Stack posts and checks that every entry in ``refs.files``
+    and ``refs.designs`` resolves to an existing file.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of warning-severity ValidationIssues for broken refs.
+    """
+    issues: list[ValidationIssue] = []
+    stack_dir = lexibrary_dir / "stack"
+    if not stack_dir.is_dir():
+        return issues
+
+    posts_dir = stack_dir / "posts"
+    # Check both stack/ and stack/posts/ patterns
+    search_dirs: list[Path] = []
+    if posts_dir.is_dir():
+        search_dirs.append(posts_dir)
+    search_dirs.append(stack_dir)
+
+    seen_paths: set[Path] = set()
+    for search_dir in search_dirs:
+        for md_path in sorted(search_dir.glob("ST-*-*.md")):
+            if md_path in seen_paths:
+                continue
+            seen_paths.add(md_path)
+
+            post = parse_stack_post(md_path)
+            if post is None:
+                continue
+
+            rel_post = _rel(md_path, project_root)
+
+            for file_ref in post.frontmatter.refs.files:
+                target = project_root / file_ref
+                if not target.exists():
+                    issues.append(
+                        ValidationIssue(
+                            severity="warning",
+                            check="stack_refs_validity",
+                            message=f"refs.files entry does not exist: {file_ref}",
+                            artifact=rel_post,
+                            suggestion="Update or remove the stale file reference.",
+                        )
+                    )
+
+            for design_ref in post.frontmatter.refs.designs:
+                target = project_root / design_ref
+                if not target.exists():
+                    issues.append(
+                        ValidationIssue(
+                            severity="warning",
+                            check="stack_refs_validity",
+                            message=f"refs.designs entry does not exist: {design_ref}",
+                            artifact=rel_post,
+                            suggestion="Update or remove the stale design reference.",
+                        )
+                    )
+
+    return issues
+
+
+def check_design_deps_existence(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Verify that Dependencies and Dependents in design files resolve.
+
+    Parses each design file and checks that every entry in the
+    ``## Dependencies`` and ``## Dependents`` sections points to an
+    existing design file on disk.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of warning-severity ValidationIssues for broken deps.
+    """
+    issues: list[ValidationIssue] = []
+
+    for design_path in _iter_design_files(lexibrary_dir):
+        design = parse_design_file(design_path)
+        if design is None:
+            continue
+
+        rel_design = _rel(design_path, project_root)
+
+        # Check Dependencies
+        for dep in design.dependencies:
+            dep_stripped = dep.strip()
+            if not dep_stripped or dep_stripped == "(none)":
+                continue
+            # Dependencies are project-relative source paths; look for their design file
+            dep_design = lexibrary_dir / DESIGNS_DIR / f"{dep_stripped}.md"
+            if not dep_design.exists():
+                issues.append(
+                    ValidationIssue(
+                        severity="warning",
+                        check="design_deps_existence",
+                        message=(
+                            f"Dependency '{dep_stripped}' has no design file"
+                        ),
+                        artifact=rel_design,
+                        suggestion=(
+                            f"Remove the dependency or create a design file "
+                            f"for '{dep_stripped}'."
+                        ),
+                    )
+                )
+
+        # Check Dependents
+        for dep in design.dependents:
+            dep_stripped = dep.strip()
+            if not dep_stripped or dep_stripped == "(none)":
+                continue
+            dep_design = lexibrary_dir / DESIGNS_DIR / f"{dep_stripped}.md"
+            if not dep_design.exists():
+                issues.append(
+                    ValidationIssue(
+                        severity="warning",
+                        check="design_deps_existence",
+                        message=(
+                            f"Dependent '{dep_stripped}' has no design file"
+                        ),
+                        artifact=rel_design,
+                        suggestion=(
+                            f"Remove the dependent or create a design file "
+                            f"for '{dep_stripped}'."
+                        ),
+                    )
+                )
+
+    return issues
+
+
+def check_aindex_entries(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Verify that .aindex child map entries exist on disk.
+
+    Parses all ``.aindex`` files under ``.lexibrary/designs/`` and checks
+    that every child map entry (file or directory) exists in the
+    corresponding source directory.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of warning-severity ValidationIssues for stale entries.
+    """
+    from lexibrary.artifacts.aindex_parser import parse_aindex  # noqa: PLC0415
+
+    issues: list[ValidationIssue] = []
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+    if not designs_dir.is_dir():
+        return issues
+
+    for aindex_path_obj in sorted(designs_dir.rglob(".aindex")):
+        aindex = parse_aindex(aindex_path_obj)
+        if aindex is None:
+            continue
+
+        # The directory_path from the aindex is project-relative
+        source_dir = project_root / aindex.directory_path
+        rel_aindex = _rel(aindex_path_obj, project_root)
+
+        for entry in aindex.entries:
+            child_path = source_dir / entry.name
+            if entry.entry_type == "dir":
+                if not child_path.is_dir():
+                    issues.append(
+                        ValidationIssue(
+                            severity="warning",
+                            check="aindex_entries",
+                            message=(
+                                f"Child directory '{entry.name}' does not exist "
+                                f"in {aindex.directory_path}"
+                            ),
+                            artifact=rel_aindex,
+                            suggestion="Remove the stale entry or restore the directory.",
+                        )
+                    )
+            else:
+                if not child_path.is_file():
+                    issues.append(
+                        ValidationIssue(
+                            severity="warning",
+                            check="aindex_entries",
+                            message=(
+                                f"Child file '{entry.name}' does not exist "
+                                f"in {aindex.directory_path}"
+                            ),
+                            artifact=rel_aindex,
+                            suggestion="Remove the stale entry or restore the file.",
+                        )
+                    )
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Body and structure checks
+# ---------------------------------------------------------------------------
+
+# Regex for HTML comment metadata footer used in design files
+_META_FOOTER_RE = re.compile(r"<!--\s*lexibrary:meta\b", re.DOTALL)
+
+
+def check_design_structure(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Verify design files have expected body sections and metadata footer.
+
+    Checks each ``.md`` file in ``.lexibrary/designs/`` (recursively) for:
+
+    - An H1 heading (source path)
+    - A ``## Interface Contract`` section
+    - A ``## Dependencies`` section
+    - A ``## Dependents`` section
+    - A ``<!-- lexibrary:meta ... -->`` metadata footer
+
+    Files that fail frontmatter parsing are skipped (handled by the
+    ``design_frontmatter`` check).
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of warning-severity ValidationIssues for missing sections.
+    """
+    issues: list[ValidationIssue] = []
+
+    design_files = _iter_design_files(lexibrary_dir)
+    if not design_files:
+        return issues
+
+    required_sections = ["Interface Contract", "Dependencies", "Dependents"]
+
+    for design_path in design_files:
+        rel_path = _rel(design_path, project_root)
+
+        try:
+            text = design_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        # Skip files without parseable frontmatter (design_frontmatter handles those)
+        fm_match = _FRONTMATTER_RE.match(text)
+        if not fm_match:
+            continue
+
+        try:
+            data = yaml.safe_load(fm_match.group(1))
+        except yaml.YAMLError:
+            continue
+
+        if not isinstance(data, dict):
+            continue
+
+        # Extract body after frontmatter
+        body = text[fm_match.end() :]
+        body_lines = body.splitlines()
+
+        # Check for H1 heading
+        has_h1 = any(line.strip().startswith("# ") for line in body_lines)
+        if not has_h1:
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    check="design_structure",
+                    message="Missing H1 heading (source path)",
+                    artifact=rel_path,
+                    suggestion="Regenerate the design file to include an H1 heading.",
+                )
+            )
+
+        # Check for required ## sections
+        found_sections: set[str] = set()
+        for line in body_lines:
+            stripped = line.strip()
+            if stripped.startswith("## "):
+                section_name = stripped[3:].strip()
+                found_sections.add(section_name)
+
+        for section in required_sections:
+            if section not in found_sections:
+                issues.append(
+                    ValidationIssue(
+                        severity="warning",
+                        check="design_structure",
+                        message=f"Missing '## {section}' section",
+                        artifact=rel_path,
+                        suggestion=(
+                            "Regenerate the design file to include all required sections."
+                        ),
+                    )
+                )
+
+        # Check for metadata footer
+        if not _META_FOOTER_RE.search(text):
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    check="design_structure",
+                    message="Missing metadata footer (<!-- lexibrary:meta ... -->)",
+                    artifact=rel_path,
+                    suggestion="Regenerate the design file to include the metadata footer.",
+                )
+            )
+
+    return issues
+
+
+def check_stack_body_sections(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Check that Stack posts have a non-empty ``## Problem`` section.
+
+    Parses all Stack post files and verifies that ``## Problem`` exists
+    and contains non-whitespace content.  Posts with malformed YAML are
+    skipped gracefully.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of warning-severity ValidationIssues for missing/empty problem sections.
+    """
+    issues: list[ValidationIssue] = []
+
+    posts_dir = lexibrary_dir / "stack" / "posts"
+    if not posts_dir.is_dir():
+        return issues
+
+    for md_path in sorted(posts_dir.glob("*.md")):
+        rel_path = _rel(md_path, project_root)
+
+        try:
+            text = md_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        # Skip files with no parseable frontmatter
+        fm_match = _FRONTMATTER_RE.match(text)
+        if not fm_match:
+            continue
+
+        try:
+            data = yaml.safe_load(fm_match.group(1))
+        except yaml.YAMLError:
+            continue
+
+        if not isinstance(data, dict):
+            continue
+
+        # Extract body after frontmatter
+        body = text[fm_match.end() :]
+        body_lines = body.splitlines()
+
+        # Look for ## Problem section and extract its content
+        in_problem = False
+        problem_content: list[str] = []
+
+        for line in body_lines:
+            stripped = line.strip()
+            if stripped.startswith("## Problem"):
+                in_problem = True
+                continue
+            if in_problem and (stripped.startswith("## ") or stripped.startswith("### ")):
+                break
+            if in_problem:
+                problem_content.append(line)
+
+        if not in_problem:
+            # No ## Problem heading found at all
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    check="stack_body_sections",
+                    message="Missing '## Problem' section",
+                    artifact=rel_path,
+                    suggestion="Add a '## Problem' section describing the issue.",
+                )
+            )
+        elif not "".join(problem_content).strip():
+            # ## Problem exists but has no content
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    check="stack_body_sections",
+                    message="Empty '## Problem' section",
+                    artifact=rel_path,
+                    suggestion="Add a problem description to the '## Problem' section.",
+                )
+            )
+
+    return issues
+
+
+def check_concept_body(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Check that concept files have non-empty body content after frontmatter.
+
+    Parses all ``.md`` files in ``.lexibrary/concepts/`` and verifies that
+    the body (content after the closing ``---``) contains non-whitespace text.
+    Concepts with empty bodies produce info-severity issues.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for empty concept bodies.
+    """
+    issues: list[ValidationIssue] = []
+    concepts_dir = lexibrary_dir / "concepts"
+    if not concepts_dir.is_dir():
+        return issues
+
+    for md_path in sorted(concepts_dir.glob("*.md")):
+        rel_path = _rel(md_path, project_root)
+
+        try:
+            text = md_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        # Skip files with no parseable frontmatter
+        fm_match = _FRONTMATTER_RE.match(text)
+        if not fm_match:
+            continue
+
+        try:
+            data = yaml.safe_load(fm_match.group(1))
+        except yaml.YAMLError:
+            continue
+
+        if not isinstance(data, dict):
+            continue
+
+        # Extract body after frontmatter
+        body = text[fm_match.end() :]
+
+        if not body.strip():
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="concept_body",
+                    message="Concept has empty body",
+                    artifact=rel_path,
+                    suggestion="Add a summary or description after the frontmatter.",
                 )
             )
 

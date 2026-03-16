@@ -6,8 +6,6 @@ import traceback
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from rich.console import Console
-
 
 @dataclass
 class ErrorRecord:
@@ -57,16 +55,18 @@ class ErrorSummary:
         return self.count > 0
 
 
-def format_error_summary(summary: ErrorSummary, console: Console) -> None:
-    """Print a grouped error summary to the Rich console."""
+def format_error_summary(summary: ErrorSummary) -> None:
+    """Print a grouped error summary to stderr."""
+    from lexibrary.cli._output import error, info  # noqa: PLC0415
+
     if not summary.has_errors():
         return
 
-    console.print()
-    console.print(f"[bold red]Errors ({summary.count}):[/bold red]")
+    info("")
+    error(f"Errors ({summary.count}):")
 
     for phase, records in summary.by_phase().items():
-        console.print(f"\n  [bold]{phase}[/bold] — {len(records)} error(s)")
+        info(f"\n  {phase} -- {len(records)} error(s)")
         for rec in records:
-            path_str = f" [dim]{rec.path}[/dim]" if rec.path else ""
-            console.print(f"    [{rec.error_type}]{path_str}: {rec.message}")
+            path_str = f" {rec.path}" if rec.path else ""
+            info(f"    [{rec.error_type}]{path_str}: {rec.message}")

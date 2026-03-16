@@ -79,6 +79,22 @@ def record_vote(
         raise ValueError(msg)
 
     post = _load_post(post_path)
+
+    # Rate-limit: enforce 60-second cooldown between votes
+    now = datetime.now(tz=UTC)
+    if post.frontmatter.last_vote_at is not None:
+        last_vote = post.frontmatter.last_vote_at
+        if last_vote.tzinfo is None:
+            last_vote = last_vote.replace(tzinfo=UTC)
+        elapsed = (now - last_vote).total_seconds()
+        if elapsed < 60:
+            remaining = int(60 - elapsed)
+            msg = (
+                f"Vote rate-limited: please wait {remaining}s "
+                f"before voting again on {post.frontmatter.id}"
+            )
+            raise ValueError(msg)
+
     delta = 1 if direction == "up" else -1
 
     if target == "post":
@@ -96,6 +112,9 @@ def record_vote(
         if comment is not None:
             tag = "[upvote]" if direction == "up" else "[downvote]"
             finding.comments.append(f"{tag} {author}: {comment}")
+
+    # Record vote timestamp for rate-limiting
+    post.frontmatter.last_vote_at = now
 
     _save_post(post_path, post)
     return _load_post(post_path)
@@ -173,7 +192,7 @@ def mark_stale(post_path: Path) -> StackPost:
         raise ValueError(msg)
 
     post.frontmatter.status = "stale"
-    post.frontmatter.stale_at = datetime.now(tz=UTC).isoformat()
+    post.frontmatter.stale_at = datetime.now(tz=UTC)
 
     _save_post(post_path, post)
     return _load_post(post_path)

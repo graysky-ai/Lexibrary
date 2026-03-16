@@ -53,6 +53,7 @@ def _write_design_file(
 ---
 description: Test design file
 updated_by: archivist
+status: active
 ---
 
 # {source_path}
@@ -167,7 +168,7 @@ def _setup_healthy_project(tmp_path: Path) -> tuple[Path, Path]:
     )
 
     # Create a valid concept that is referenced in the design file
-    _write_concept_file(lexibrary_dir, "Application", aliases=["app", "application"])
+    _write_concept_file(lexibrary_dir, "Application", aliases=["app"])
 
     # Create .aindex files so aindex_coverage check passes
     _write_aindex(project_root, lexibrary_dir, ".")
@@ -448,6 +449,7 @@ class TestCheckFilter:
     def test_all_registered_checks_are_valid(self) -> None:
         """Every key in AVAILABLE_CHECKS should be a valid check name."""
         expected = {
+            # --- Original checks ---
             "wikilink_resolution",
             "file_existence",
             "concept_frontmatter",
@@ -475,6 +477,25 @@ class TestCheckFilter:
             "convention_consistent_violation",
             "lookup_token_budget_exceeded",
             "orphaned_iwh_signals",
+            # --- Schema frontmatter checks (Group 1) ---
+            "convention_frontmatter",
+            "design_frontmatter",
+            "stack_frontmatter",
+            "iwh_frontmatter",
+            # --- Infrastructure checks (Group 2) ---
+            "config_valid",
+            "lexignore_syntax",
+            "linkgraph_version",
+            # --- Cross-artifact checks (Group 3) ---
+            "duplicate_aliases",
+            "duplicate_slugs",
+            "stack_refs_validity",
+            "design_deps_existence",
+            "aindex_entries",
+            # --- Body and structure checks (Group 4) ---
+            "design_structure",
+            "stack_body_sections",
+            "concept_body",
         }
         assert set(AVAILABLE_CHECKS.keys()) == expected
 
@@ -512,9 +533,9 @@ class TestAllChecksRegistered:
     """Verify that validate_library() includes all 27 checks and that
     link-graph checks degrade gracefully when index.db is absent."""
 
-    def test_available_checks_count_is_27(self) -> None:
-        """AVAILABLE_CHECKS should contain exactly 27 entries."""
-        assert len(AVAILABLE_CHECKS) == 27
+    def test_available_checks_count_is_42(self) -> None:
+        """AVAILABLE_CHECKS should contain exactly 42 entries."""
+        assert len(AVAILABLE_CHECKS) == 42
 
     def test_validate_library_runs_all_13_checks_without_filters(self, tmp_path: Path) -> None:
         """With no severity or check filters, all 15 checks should be invoked.

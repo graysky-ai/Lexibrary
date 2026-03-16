@@ -7,10 +7,10 @@ from typing import Annotated
 
 import typer
 
+from lexibrary.cli._output import error, info, warn
 from lexibrary.cli._shared import (
     _run_status,
     _run_validate,
-    console,
     load_dotenv_if_configured,
     require_project_root,
 )
@@ -22,10 +22,11 @@ lexictl_app = typer.Typer(
         "Provides setup, design file generation, and validation for library management."
     ),
     no_args_is_help=True,
+    rich_markup_mode=None,
     callback=load_dotenv_if_configured,
 )
 
-iwh_ctl_app = typer.Typer(help="IWH signal maintenance commands.")
+iwh_ctl_app = typer.Typer(help="IWH signal maintenance commands.", rich_markup_mode=None)
 lexictl_app.add_typer(iwh_ctl_app, name="iwh")
 
 
@@ -55,35 +56,35 @@ def init(
 
     # Re-init guard
     if (project_root / ".lexibrary").exists():
-        console.print(
-            "[red]Project already initialised.[/red]"
-            " Use [cyan]lexictl setup --update[/cyan] to modify settings."
+        error(
+            "Project already initialised."
+            " Use `lexictl setup --update` to modify settings."
         )
         raise typer.Exit(1)
 
     # Non-TTY detection
     if not defaults and not sys.stdin.isatty():
-        console.print(
-            "[red]Non-interactive environment detected.[/red]"
-            " Use [cyan]lexictl init --defaults[/cyan] to run without prompts."
+        error(
+            "Non-interactive environment detected."
+            " Use `lexictl init --defaults` to run without prompts."
         )
         raise typer.Exit(1)
 
     # Show startup banner
     from lexibrary.cli.banner import render_banner  # noqa: PLC0415
 
-    render_banner(console)
+    render_banner()
 
     # Run wizard
-    answers = run_wizard(project_root, console, use_defaults=defaults)
+    answers = run_wizard(project_root, use_defaults=defaults)
 
     if answers is None:
-        console.print("[yellow]Init cancelled.[/yellow]")
+        warn("Init cancelled.")
         raise typer.Exit(1)
 
     # Create skeleton from wizard answers
     created = create_lexibrary_from_wizard(project_root, answers)
-    console.print(f"[green]Created .lexibrary/ skeleton[/green] ({len(created)} items)")
+    info(f"Created .lexibrary/ skeleton ({len(created)} items)")
 
     # Generate agent rule files for selected environments
     if answers.agent_environments:
@@ -95,10 +96,10 @@ def init(
         if valid_envs:
             results = generate_rules(project_root, valid_envs)
             for env_name, paths in results.items():
-                console.print(f"  [green]{env_name}:[/green] {len(paths)} rule file(s) created")
+                info(f"  {env_name}: {len(paths)} rule file(s) created")
                 for p in paths:
                     rel = p.relative_to(project_root)
-                    console.print(f"    [dim]{rel}[/dim]")
+                    info(f"    {rel}")
 
     # Install git hooks if user opted in
     if answers.install_hooks:
@@ -106,28 +107,17 @@ def init(
         from lexibrary.hooks.pre_commit import install_pre_commit_hook  # noqa: PLC0415
 
         post_result = install_post_commit_hook(project_root)
-        if post_result.no_git_dir or post_result.already_installed:
-            console.print(f"[yellow]{post_result.message}[/yellow]")
-        else:
-            console.print(f"[green]{post_result.message}[/green]")
+        info(post_result.message)
 
         pre_result = install_pre_commit_hook(project_root)
-        if pre_result.no_git_dir or pre_result.already_installed:
-            console.print(f"[yellow]{pre_result.message}[/yellow]")
-        else:
-            console.print(f"[green]{pre_result.message}[/green]")
+        info(pre_result.message)
 
     # Post-init: offer to run lexictl update (skip in defaults mode)
     if not defaults:
-        from rich.prompt import Confirm as _Confirm  # noqa: PLC0415
-
-        run_update = _Confirm.ask(
-            "\nRun [cyan]lexictl update[/cyan] now to generate design files?",
-            default=False,
-            console=console,
-        )
+        answer = input("\nRun `lexictl update` now to generate design files? [y/N] ")
+        run_update = answer.strip().lower() in ("y", "yes")
         if run_update:
-            console.print("[dim]Running lexictl update...[/dim]")
+            info("Running lexictl update...")
             import asyncio  # noqa: PLC0415
 
             from lexibrary.archivist.pipeline import update_project  # noqa: PLC0415
@@ -139,18 +129,16 @@ def init(
             rate_limiter = RateLimiter()
             archivist = ArchivistService(rate_limiter=rate_limiter, config=config.llm)
             stats = asyncio.run(update_project(project_root, config, archivist))
-            console.print(
-                f"[green]Update complete.[/green] "
+            info(
+                f"Update complete. "
                 f"{stats.files_scanned} files scanned, "
                 f"{stats.files_created} created, "
                 f"{stats.files_updated} updated."
             )
         else:
-            console.print(
-                "[dim]Run [cyan]lexictl update[/cyan] later to generate design files.[/dim]"
-            )
+            info("Run `lexictl update` later to generate design files.")
     else:
-        console.print("[dim]Run [cyan]lexictl update[/cyan] to generate design files.[/dim]")
+        info("Run `lexictl update` to generate design files.")
 
 
 # ---------------------------------------------------------------------------
@@ -200,12 +188,11 @@ def update(
     """Re-index changed files and regenerate design files."""
     import asyncio  # noqa: PLC0415
 
-    from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn  # noqa: PLC0415
-
     from lexibrary.archivist.pipeline import (  # noqa: PLC0415
         UpdateStats,
         dry_run_files,
         dry_run_project,
+        update_directory,
         update_file,
         update_files,
         update_project,
@@ -216,62 +203,73 @@ def update(
 
     # Mutual exclusivity checks — skeleton first (it subsumes the path argument)
     if skeleton and (changed_only is not None or topology or dry_run):
-        console.print(
-            "[red]Error:[/red] [cyan]--skeleton[/cyan] cannot be combined with"
-            " [cyan]--changed-only[/cyan], [cyan]--topology[/cyan],"
-            " or [cyan]--dry-run[/cyan]."
+        error(
+            "--skeleton cannot be combined with"
+            " --changed-only, --topology,"
+            " or --dry-run."
         )
         raise typer.Exit(1)
 
     if skeleton and path is None:
-        console.print(
-            "[red]Error:[/red] [cyan]--skeleton[/cyan] requires a file path argument."
+        error(
+            "--skeleton requires a file path argument."
         )
         raise typer.Exit(1)
 
     if path is not None and changed_only is not None:
-        console.print(
-            "[red]Error:[/red] [cyan]path[/cyan] and [cyan]--changed-only[/cyan]"
+        error(
+            "path and --changed-only"
             " are mutually exclusive. Use one or the other."
         )
         raise typer.Exit(1)
 
     if topology and (changed_only is not None or path is not None):
-        console.print(
-            "[red]Error:[/red] [cyan]--topology[/cyan] cannot be combined with"
-            " [cyan]path[/cyan] or [cyan]--changed-only[/cyan]."
+        error(
+            "--topology cannot be combined with"
+            " path or --changed-only."
         )
         raise typer.Exit(1)
 
     project_root = require_project_root()
     config = load_config(project_root)
 
+    # Resolve and validate path argument early
+    target: Path | None = None
+    if path is not None:
+        target = Path(path).resolve()
+        if not target.exists():
+            error(f"Path not found: {path}")
+            raise typer.Exit(1)
+        try:
+            target.relative_to(project_root)
+        except ValueError:
+            error(
+                f"Path is outside the project root: {path}\n"
+                f"Project root: {project_root}"
+            )
+            raise typer.Exit(1) from None
+
     # --skeleton: quick skeleton design file without LLM enrichment
     if skeleton:
         from lexibrary.lifecycle.bootstrap import _generate_quick_design  # noqa: PLC0415
         from lexibrary.lifecycle.queue import queue_for_enrichment  # noqa: PLC0415
 
-        target = Path(path).resolve()  # type: ignore[arg-type]
-
-        if not target.exists():
-            console.print(f"[red]File not found:[/red] {path}")
-            raise typer.Exit(1)
+        assert target is not None  # guaranteed by earlier check
 
         if not target.is_file():
-            console.print(f"[red]Not a file:[/red] {path}")
+            error(f"Not a file: {path}")
             raise typer.Exit(1)
 
         try:
             result = _generate_quick_design(target, project_root)
         except Exception as exc:
-            console.print(f"[red]Failed to generate skeleton:[/red] {exc}")
+            error(f"Failed to generate skeleton: {exc}")
             raise typer.Exit(1) from None
 
-        # Queue for later LLM enrichment
         queue_for_enrichment(project_root, target)
 
-        console.print(
-            f"[green]Skeleton generated.[/green] Change level: {result.change.value}"
+        info(
+            f"Skeleton generated. Change level: {result.change.value}"
         )
         return
 
@@ -281,25 +279,32 @@ def update(
 
         try:
             generate_topology(project_root)
-            console.print("[green]TOPOLOGY.md generated.[/green]")
+            info("TOPOLOGY.md generated.")
         except Exception as exc:
-            console.print(f"[red]Failed to generate TOPOLOGY.md:[/red] {exc}")
+            error(f"Failed to generate TOPOLOGY.md: {exc}")
             raise typer.Exit(1) from None
         return
 
     # --dry-run: preview changes without modifications
     if dry_run:
-        console.print("[yellow]DRY-RUN MODE -- no files will be modified[/yellow]")
-        console.print()
+        warn("DRY-RUN MODE -- no files will be modified")
+        info("")
 
         if changed_only is not None:
             resolved_paths = [p.resolve() for p in changed_only]
             results = asyncio.run(dry_run_files(resolved_paths, project_root, config))
+        elif target is not None:
+            if target.is_file():
+                results = asyncio.run(dry_run_files([target], project_root, config))
+            else:
+                results = asyncio.run(
+                    dry_run_project(project_root, config, scope_dir=target)
+                )
         else:
             results = asyncio.run(dry_run_project(project_root, config))
 
         if not results:
-            console.print("[dim]No files would change.[/dim]")
+            info("No files would change.")
             return
 
         # Display results
@@ -308,15 +313,15 @@ def update(
             label = change_level.value.upper()
             counts[label] = counts.get(label, 0) + 1
             rel_path = file_path.relative_to(project_root)
-            console.print(f"  [cyan]{label:<20}[/cyan] {rel_path}")
+            info(f"  {label:<20} {rel_path}")
 
         # Summary
-        console.print()
+        info("")
         total = len(results)
         parts = [f"{total} file{'s' if total != 1 else ''}"]
         for label, count in sorted(counts.items()):
             parts.append(f"{count} {label.lower()}")
-        console.print("[bold]Summary:[/bold] " + ", ".join(parts))
+        info("Summary: " + ", ".join(parts))
         return
 
     rate_limiter = RateLimiter()
@@ -325,102 +330,98 @@ def update(
     # --changed-only: batch update specific files
     if changed_only is not None:
         resolved_paths = [p.resolve() for p in changed_only]
-        console.print(f"Updating [cyan]{len(resolved_paths)}[/cyan] changed file(s)...")
+        info(f"Updating {len(resolved_paths)} changed file(s)...")
 
         stats = asyncio.run(update_files(resolved_paths, project_root, config, archivist))
 
-        console.print()
-        console.print("[bold]Update summary:[/bold]")
-        console.print(f"  Files scanned:       {stats.files_scanned}")
-        console.print(f"  Files unchanged:     {stats.files_unchanged}")
-        console.print(f"  Files created:       {stats.files_created}")
-        console.print(f"  Files updated:       {stats.files_updated}")
-        console.print(f"  Files agent-updated: {stats.files_agent_updated}")
+        info("")
+        info("Update summary:")
+        info(f"  Files scanned:       {stats.files_scanned}")
+        info(f"  Files unchanged:     {stats.files_unchanged}")
+        info(f"  Files created:       {stats.files_created}")
+        info(f"  Files updated:       {stats.files_updated}")
+        info(f"  Files agent-updated: {stats.files_agent_updated}")
         if stats.files_failed:
-            console.print(f"  [red]Files failed:       {stats.files_failed}[/red]")
+            error(f"  Files failed:       {stats.files_failed}")
+            for failed_path, reason in stats.failed_files:
+                try:
+                    rel = Path(failed_path).relative_to(project_root)
+                except ValueError:
+                    rel = failed_path
+                error(f"    - {rel}: {reason}")
 
         if stats.error_summary.has_errors():
             from lexibrary.errors import format_error_summary  # noqa: PLC0415
 
-            format_error_summary(stats.error_summary, console)
+            format_error_summary(stats.error_summary)
 
         if stats.files_failed:
             raise typer.Exit(1)
         return
 
-    if path is not None:
-        target = Path(path).resolve()
-
-        # Validate target exists
-        if not target.exists():
-            console.print(f"[red]Path not found:[/red] {path}")
+    # Single file update
+    if target is not None and target.is_file():
+        info(f"Updating design file for {path}...")
+        result = asyncio.run(update_file(target, project_root, config, archivist))
+        if result.failed:
+            error(f"Failed to update design file for {path}")
             raise typer.Exit(1)
+        info(f"Done. Change level: {result.change.value}")
+        return
 
-        # Validate target is within project root
-        try:
-            target.relative_to(project_root)
-        except ValueError:
-            console.print(
-                f"[red]Path is outside the project root:[/red] {path}\nProject root: {project_root}"
-            )
-            raise typer.Exit(1) from None
+    # Directory-scoped or full project update with progress
+    if target is not None:
+        rel_dir = target.relative_to(project_root)
+        info(f"Updating directory: {rel_dir}/")
 
-        if target.is_file():
-            # Single file update
-            console.print(f"Updating design file for [cyan]{path}[/cyan]...")
-            result = asyncio.run(update_file(target, project_root, config, archivist))
-            if result.failed:
-                console.print(f"[red]Failed[/red] to update design file for {path}")
-                raise typer.Exit(1)
-            console.print(f"[green]Done.[/green] Change level: {result.change.value}")
-            return
-
-        # Directory update -- update all files in subtree
-        # Delegate to update_project but the scope is effectively the whole project;
-        # the pipeline already filters by scope_root. We run the full pipeline.
-        # For directory-scoped updates we run update_project (it respects scope_root).
-
-    # Project or directory update with progress bar
     stats = UpdateStats()
+    _file_count = 0
 
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Updating design files...", total=None)
+    def _progress_callback(file_path: Path, change_level: object) -> None:
+        nonlocal _file_count
+        _file_count += 1
+        info(f"  [{_file_count}] Processing {file_path.name}")
 
-        def _progress_callback(file_path: Path, change_level: object) -> None:
-            progress.update(
-                task,
-                advance=1,
-                description=f"Processing {file_path.name}",
-            )
-
+    if target is not None:
         stats = asyncio.run(
-            update_project(project_root, config, archivist, progress_callback=_progress_callback)
+            update_directory(
+                target, project_root, config, archivist,
+                progress_callback=_progress_callback,
+            )
+        )
+    else:
+        stats = asyncio.run(
+            update_project(
+                project_root, config, archivist,
+                progress_callback=_progress_callback,
+            )
         )
 
     if stats.topology_failed:
-        console.print("[red]Failed to generate TOPOLOGY.md.[/red]")
+        error("Failed to generate TOPOLOGY.md.")
     else:
-        console.print("[green]TOPOLOGY.md generated.[/green]")
+        info("TOPOLOGY.md generated.")
 
     # Print summary stats
-    console.print()
-    console.print("[bold]Update summary:[/bold]")
-    console.print(f"  Files scanned:       {stats.files_scanned}")
-    console.print(f"  Files unchanged:     {stats.files_unchanged}")
-    console.print(f"  Files created:       {stats.files_created}")
-    console.print(f"  Files updated:       {stats.files_updated}")
-    console.print(f"  Files agent-updated: {stats.files_agent_updated}")
+    info("")
+    info("Update summary:")
+    info(f"  Files scanned:       {stats.files_scanned}")
+    info(f"  Files unchanged:     {stats.files_unchanged}")
+    info(f"  Files created:       {stats.files_created}")
+    info(f"  Files updated:       {stats.files_updated}")
+    info(f"  Files agent-updated: {stats.files_agent_updated}")
     if stats.files_failed:
-        console.print(f"  [red]Files failed:       {stats.files_failed}[/red]")
+        error(f"  Files failed:       {stats.files_failed}")
+        for failed_path, reason in stats.failed_files:
+            try:
+                rel = Path(failed_path).relative_to(project_root)
+            except ValueError:
+                rel = failed_path
+            error(f"    - {rel}: {reason}")
     if stats.aindex_refreshed:
-        console.print(f"  .aindex refreshed:   {stats.aindex_refreshed}")
+        info(f"  .aindex refreshed:   {stats.aindex_refreshed}")
     if stats.token_budget_warnings:
-        console.print(f"  [yellow]Token budget warnings: {stats.token_budget_warnings}[/yellow]")
+        warn(f"  Token budget warnings: {stats.token_budget_warnings}")
 
     # Deprecation lifecycle stats
     has_lifecycle = (
@@ -434,49 +435,49 @@ def update(
         + stats.renames_migrated
     ) > 0
     if has_lifecycle:
-        console.print()
-        console.print("[bold]Lifecycle:[/bold]")
+        info("")
+        info("Lifecycle:")
         if stats.renames_detected:
-            console.print(f"  Renames detected:    {stats.renames_detected}")
+            info(f"  Renames detected:    {stats.renames_detected}")
         if stats.renames_migrated:
-            console.print(f"  Renames migrated:    {stats.renames_migrated}")
+            info(f"  Renames migrated:    {stats.renames_migrated}")
         if stats.designs_deprecated:
-            console.print(f"  Designs deprecated:  {stats.designs_deprecated}")
+            info(f"  Designs deprecated:  {stats.designs_deprecated}")
         if stats.designs_unlinked:
-            console.print(f"  Designs unlinked:    {stats.designs_unlinked}")
+            info(f"  Designs unlinked:    {stats.designs_unlinked}")
         if stats.designs_deleted_ttl:
-            console.print(
-                f"  [yellow]Designs TTL-deleted: {stats.designs_deleted_ttl}[/yellow]"
+            warn(
+                f"  Designs TTL-deleted: {stats.designs_deleted_ttl}"
             )
         if stats.concepts_deleted_ttl:
-            console.print(
-                f"  [yellow]Concepts TTL-deleted: {stats.concepts_deleted_ttl}[/yellow]"
+            warn(
+                f"  Concepts TTL-deleted: {stats.concepts_deleted_ttl}"
             )
         if stats.concepts_skipped_referenced:
-            console.print(
+            info(
                 f"  Concepts skipped (referenced): {stats.concepts_skipped_referenced}"
             )
         if stats.conventions_deleted_ttl:
-            console.print(
-                f"  [yellow]Conventions TTL-deleted: {stats.conventions_deleted_ttl}[/yellow]"
+            warn(
+                f"  Conventions TTL-deleted: {stats.conventions_deleted_ttl}"
             )
 
     # Enrichment queue stats
     has_queue = (stats.queue_processed + stats.queue_failed + stats.queue_remaining) > 0
     if has_queue:
-        console.print()
-        console.print("[bold]Enrichment queue:[/bold]")
+        info("")
+        info("Enrichment queue:")
         if stats.queue_processed:
-            console.print(f"  Enriched:            {stats.queue_processed}")
+            info(f"  Enriched:            {stats.queue_processed}")
         if stats.queue_failed:
-            console.print(f"  [red]Failed:             {stats.queue_failed}[/red]")
+            error(f"  Failed:             {stats.queue_failed}")
         if stats.queue_remaining:
-            console.print(f"  Remaining:           {stats.queue_remaining}")
+            info(f"  Remaining:           {stats.queue_remaining}")
 
     if stats.error_summary.has_errors():
         from lexibrary.errors import format_error_summary  # noqa: PLC0415
 
-        format_error_summary(stats.error_summary, console)
+        format_error_summary(stats.error_summary)
 
     # Run IWH cleanup on full project update (no path / no --changed-only)
     if path is None and changed_only is None:
@@ -485,14 +486,14 @@ def update(
         cleanup = iwh_cleanup(project_root, config.iwh.ttl_hours)
         total_cleaned = len(cleanup.expired) + len(cleanup.orphaned)
         if total_cleaned > 0:
-            console.print()
-            console.print("[bold]IWH cleanup:[/bold]")
+            info("")
+            info("IWH cleanup:")
             if cleanup.expired:
-                console.print(f"  Expired:  {len(cleanup.expired)} signal(s) removed")
+                info(f"  Expired:  {len(cleanup.expired)} signal(s) removed")
             if cleanup.orphaned:
-                console.print(f"  Orphaned: {len(cleanup.orphaned)} signal(s) removed")
+                info(f"  Orphaned: {len(cleanup.orphaned)} signal(s) removed")
             if cleanup.kept > 0:
-                console.print(f"  Kept:     {cleanup.kept} signal(s)")
+                info(f"  Kept:     {cleanup.kept} signal(s)")
 
     if stats.files_failed:
         raise typer.Exit(1)
@@ -540,22 +541,14 @@ def bootstrap(
     """
     import asyncio  # noqa: PLC0415
 
-    from rich.progress import (  # noqa: PLC0415
-        BarColumn,
-        MofNCompleteColumn,
-        Progress,
-        SpinnerColumn,
-        TextColumn,
-    )
-
     from lexibrary.config.loader import load_config  # noqa: PLC0415
     from lexibrary.indexer.orchestrator import index_recursive  # noqa: PLC0415
     from lexibrary.lifecycle.bootstrap import bootstrap_full, bootstrap_quick  # noqa: PLC0415
 
     # Mutual exclusivity
     if full and quick:
-        console.print(
-            "[red]Error:[/red] [cyan]--full[/cyan] and [cyan]--quick[/cyan]"
+        error(
+            "--full and --quick"
             " are mutually exclusive."
         )
         raise typer.Exit(1)
@@ -569,11 +562,11 @@ def bootstrap(
 
     # Validate scope directory
     if not scope_dir.exists():
-        console.print(f"[red]Scope directory not found:[/red] {scope_root_str}")
+        error(f"Scope directory not found: {scope_root_str}")
         raise typer.Exit(1)
 
     if not scope_dir.is_dir():
-        console.print(f"[red]Scope root is not a directory:[/red] {scope_root_str}")
+        error(f"Scope root is not a directory: {scope_root_str}")
         raise typer.Exit(1)
 
     # Determine mode label
@@ -581,104 +574,86 @@ def bootstrap(
 
     # Run recursive indexing with progress
     rel_scope = scope_dir.relative_to(project_root) if scope_dir != project_root else Path(".")
-    console.print(
-        f"Bootstrapping [cyan]{rel_scope}[/cyan] in [cyan]{project_root.name}[/cyan]"
-        f" ([cyan]{mode_label}[/cyan] mode)..."
+    info(
+        f"Bootstrapping {rel_scope} in {project_root.name}"
+        f" ({mode_label} mode)..."
     )
 
     # Phase 1: .aindex generation
-    console.print()
-    console.print("[bold]Phase 1:[/bold] Generating .aindex files...")
+    info("")
+    info("Phase 1: Generating .aindex files...")
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Indexing...", total=None)
+    def _index_progress(current: int, total: int, name: str) -> None:
+        info(f"  Indexing [{current}/{total}] {name}")
 
-        def _index_progress(current: int, total: int, name: str) -> None:
-            progress.update(task, description=f"Indexing [{current}/{total}] {name}")
+    index_stats = index_recursive(
+        scope_dir, project_root, config, progress_callback=_index_progress
+    )
 
-        index_stats = index_recursive(
-            scope_dir, project_root, config, progress_callback=_index_progress
-        )
-
-    console.print(
+    info(
         f"  Directories indexed: {index_stats.directories_indexed}, "
         f"Files found: {index_stats.files_found}"
     )
     if index_stats.errors:
-        console.print(f"  [red]Errors: {index_stats.errors}[/red]")
+        error(f"  Errors: {index_stats.errors}")
 
     if index_stats.error_summary.has_errors():
         from lexibrary.errors import format_error_summary  # noqa: PLC0415
 
-        format_error_summary(index_stats.error_summary, console)
+        format_error_summary(index_stats.error_summary)
 
     # Phase 2: Design file generation
-    console.print()
-    console.print(
-        f"[bold]Phase 2:[/bold] Generating design files ([cyan]{mode_label}[/cyan] mode)..."
+    info("")
+    info(
+        f"Phase 2: Generating design files ({mode_label} mode)..."
     )
 
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Generating design files...", total=None)
-        file_count = 0
+    _design_file_count = 0
 
-        def _design_progress(file_path: Path, status: str) -> None:
-            nonlocal file_count
-            file_count += 1
-            progress.update(
-                task,
-                advance=1,
-                description=f"[{status}] {file_path.name}",
-            )
+    def _design_progress(file_path: Path, status: str) -> None:
+        nonlocal _design_file_count
+        _design_file_count += 1
+        info(f"  [{status}] {file_path.name}")
 
-        if full:
-            design_stats = asyncio.run(
-                bootstrap_full(
-                    project_root,
-                    config,
-                    scope_override=scope,
-                    progress_callback=_design_progress,
-                )
-            )
-        else:
-            design_stats = bootstrap_quick(
+    if full:
+        design_stats = asyncio.run(
+            bootstrap_full(
                 project_root,
                 config,
                 scope_override=scope,
                 progress_callback=_design_progress,
             )
+        )
+    else:
+        design_stats = bootstrap_quick(
+            project_root,
+            config,
+            scope_override=scope,
+            progress_callback=_design_progress,
+        )
 
     # Report summary
-    console.print()
-    console.print("[bold]Bootstrap summary:[/bold]")
-    console.print(f"  Files scanned:  {design_stats.files_scanned}")
-    console.print(f"  Files created:  {design_stats.files_created}")
-    console.print(f"  Files updated:  {design_stats.files_updated}")
-    console.print(f"  Files skipped:  {design_stats.files_skipped}")
+    info("")
+    info("Bootstrap summary:")
+    info(f"  Files scanned:  {design_stats.files_scanned}")
+    info(f"  Files created:  {design_stats.files_created}")
+    info(f"  Files updated:  {design_stats.files_updated}")
+    info(f"  Files skipped:  {design_stats.files_skipped}")
     if design_stats.files_failed:
-        console.print(f"  [red]Files failed:  {design_stats.files_failed}[/red]")
+        error(f"  Files failed:  {design_stats.files_failed}")
 
     if design_stats.errors:
-        console.print()
-        console.print("[bold red]Errors:[/bold red]")
+        info("")
+        error("Errors:")
         for err in design_stats.errors:
-            console.print(f"  [red]{err}[/red]")
+            error(f"  {err}")
 
     has_errors = index_stats.errors > 0 or design_stats.files_failed > 0
     if has_errors:
         raise typer.Exit(1)
 
-    console.print()
-    console.print("[green]Bootstrap complete.[/green]")
+    info("")
+    info("Bootstrap complete.")
 
 
 # ---------------------------------------------------------------------------
@@ -699,8 +674,6 @@ def index(
     ] = False,
 ) -> None:
     """Generate .aindex file(s) for a directory."""
-    from rich.progress import Progress, SpinnerColumn, TextColumn  # noqa: PLC0415
-
     from lexibrary.config.loader import load_config  # noqa: PLC0415
     from lexibrary.indexer.orchestrator import index_directory, index_recursive  # noqa: PLC0415
 
@@ -711,19 +684,19 @@ def index(
 
     # Validate directory exists
     if not target.exists():
-        console.print(f"[red]Directory not found:[/red] {directory}")
+        error(f"Directory not found: {directory}")
         raise typer.Exit(1)
 
     if not target.is_dir():
-        console.print(f"[red]Not a directory:[/red] {directory}")
+        error(f"Not a directory: {directory}")
         raise typer.Exit(1)
 
     # Validate directory is within project root
     try:
         target.relative_to(project_root)
     except ValueError:
-        console.print(
-            f"[red]Directory is outside the project root:[/red] {directory}\n"
+        error(
+            f"Directory is outside the project root: {directory}\n"
             f"Project root: {project_root}"
         )
         raise typer.Exit(1) from None
@@ -731,35 +704,28 @@ def index(
     config = load_config(project_root)
 
     if recursive:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Indexing...", total=None)
+        def _progress_callback(current: int, total: int, name: str) -> None:
+            info(f"  Indexing [{current}/{total}] {name}")
 
-            def _progress_callback(current: int, total: int, name: str) -> None:
-                progress.update(task, description=f"Indexing [{current}/{total}] {name}")
+        stats = index_recursive(
+            target, project_root, config, progress_callback=_progress_callback
+        )
 
-            stats = index_recursive(
-                target, project_root, config, progress_callback=_progress_callback
-            )
-
-        console.print(
-            f"\n[green]Indexing complete.[/green] "
+        info(
+            f"\nIndexing complete. "
             f"{stats.directories_indexed} directories indexed, "
             f"{stats.files_found} files found"
-            + (f", [red]{stats.errors} errors[/red]" if stats.errors else "")
+            + (f", {stats.errors} errors" if stats.errors else "")
             + "."
         )
 
         if stats.error_summary.has_errors():
             from lexibrary.errors import format_error_summary  # noqa: PLC0415
 
-            format_error_summary(stats.error_summary, console)
+            format_error_summary(stats.error_summary)
     else:
         output_path = index_directory(target, project_root, config)
-        console.print(f"[green]Wrote[/green] {output_path}")
+        info(f"Wrote {output_path}")
 
 
 # ---------------------------------------------------------------------------
@@ -878,30 +844,30 @@ def setup(
         # Install post-commit hook
         post_result = install_post_commit_hook(project_root)
         if post_result.no_git_dir:
-            console.print(f"[red]{post_result.message}[/red]")
+            error(post_result.message)
             raise typer.Exit(1)
         if post_result.already_installed:
-            console.print(f"[yellow]{post_result.message}[/yellow]")
+            warn(post_result.message)
         else:
-            console.print(f"[green]{post_result.message}[/green]")
+            info(post_result.message)
 
         # Install pre-commit hook
         pre_result = install_pre_commit_hook(project_root)
         if pre_result.no_git_dir:
-            console.print(f"[red]{pre_result.message}[/red]")
+            error(pre_result.message)
             raise typer.Exit(1)
         if pre_result.already_installed:
-            console.print(f"[yellow]{pre_result.message}[/yellow]")
+            warn(pre_result.message)
         else:
-            console.print(f"[green]{pre_result.message}[/green]")
+            info(pre_result.message)
         return
 
     if not update_flag:
-        console.print(
+        info(
             "Usage:\n"
-            "  [cyan]lexictl setup --update[/cyan]  "
+            "  lexictl setup --update  "
             "Update agent rules for configured environments\n"
-            "  [cyan]lexictl init[/cyan]             "
+            "  lexictl init             "
             "Initialise a new Lexibrary project"
         )
         raise typer.Exit(0)
@@ -917,9 +883,9 @@ def setup(
     environments = list(env) if env else list(config.agent_environment)
 
     if not environments:
-        console.print(
-            "[yellow]No agent environments configured.[/yellow]"
-            " Run [cyan]lexictl init[/cyan] to set up agent environments."
+        warn(
+            "No agent environments configured."
+            " Run `lexictl init` to set up agent environments."
         )
         raise typer.Exit(1)
 
@@ -927,8 +893,8 @@ def setup(
     supported = supported_environments()
     unsupported = [e for e in environments if e not in supported]
     if unsupported:
-        console.print(
-            f"[red]Unsupported environment(s):[/red] {', '.join(sorted(unsupported))}\n"
+        error(
+            f"Unsupported environment(s): {', '.join(sorted(unsupported))}\n"
             f"Supported: {', '.join(supported)}"
         )
         raise typer.Exit(1)
@@ -937,18 +903,18 @@ def setup(
     results = generate_rules(project_root, environments)
 
     for env_name, paths in results.items():
-        console.print(f"  [green]{env_name}:[/green] {len(paths)} file(s) written")
+        info(f"  {env_name}: {len(paths)} file(s) written")
         for p in paths:
             rel = p.relative_to(project_root)
-            console.print(f"    [dim]{rel}[/dim]")
+            info(f"    {rel}")
 
     # Ensure IWH files are gitignored
     iwh_modified = ensure_iwh_gitignored(project_root)
     if iwh_modified:
-        console.print("  [green].gitignore:[/green] added IWH pattern")
+        info("  .gitignore: added IWH pattern")
 
     total_files = sum(len(paths) for paths in results.values())
-    console.print(f"\n[green]Setup complete.[/green] {total_files} rule file(s) updated.")
+    info(f"\nSetup complete. {total_files} rule file(s) updated.")
 
 
 @lexictl_app.command()
@@ -990,8 +956,8 @@ def daemon(
     valid_actions = ("start", "stop", "status")
 
     if resolved_action not in valid_actions:
-        console.print(
-            f"[red]Unknown action:[/red] {resolved_action}\n"
+        error(
+            f"Unknown action: {resolved_action}\n"
             f"Valid actions: {', '.join(valid_actions)}"
         )
         raise typer.Exit(1)
@@ -1001,10 +967,10 @@ def daemon(
     if resolved_action == "start":
         config = load_config(project_root)
         if not config.daemon.watchdog_enabled:
-            console.print(
-                "[yellow]Watchdog mode is disabled in config.[/yellow]\n"
-                "Use [cyan]lexictl sweep --watch[/cyan] for periodic sweeps, "
-                "or set [cyan]daemon.watchdog_enabled: true[/cyan] in config."
+            warn(
+                "Watchdog mode is disabled in config.\n"
+                "Use `lexictl sweep --watch` for periodic sweeps, "
+                "or set `daemon.watchdog_enabled: true` in config."
             )
             return
         svc = DaemonService(project_root)
@@ -1012,50 +978,50 @@ def daemon(
 
     elif resolved_action == "stop":
         if not pid_path.exists():
-            console.print("[yellow]No daemon is running (no PID file found).[/yellow]")
+            warn("No daemon is running (no PID file found).")
             return
         try:
             pid = int(pid_path.read_text(encoding="utf-8").strip())
         except (ValueError, OSError):
-            console.print("[red]Cannot read PID file.[/red]")
+            error("Cannot read PID file.")
             pid_path.unlink(missing_ok=True)
             raise typer.Exit(1) from None
 
         try:
             os.kill(pid, _signal.SIGTERM)
-            console.print(f"[green]Sent SIGTERM to daemon (PID {pid}).[/green]")
+            info(f"Sent SIGTERM to daemon (PID {pid}).")
         except ProcessLookupError:
-            console.print(
-                f"[yellow]Process {pid} not found -- cleaning up stale PID file.[/yellow]"
+            warn(
+                f"Process {pid} not found -- cleaning up stale PID file."
             )
             pid_path.unlink(missing_ok=True)
         except PermissionError:
-            console.print(f"[red]Permission denied sending signal to PID {pid}.[/red]")
+            error(f"Permission denied sending signal to PID {pid}.")
             raise typer.Exit(1) from None
 
     elif resolved_action == "status":
         if not pid_path.exists():
-            console.print("[dim]No daemon is running.[/dim]")
+            info("No daemon is running.")
             return
         try:
             pid = int(pid_path.read_text(encoding="utf-8").strip())
         except (ValueError, OSError):
-            console.print("[red]Cannot read PID file.[/red]")
+            error("Cannot read PID file.")
             pid_path.unlink(missing_ok=True)
             raise typer.Exit(1) from None
 
         # Check if process is still running
         try:
             os.kill(pid, 0)
-            console.print(f"[green]Daemon is running[/green] (PID {pid}).")
+            info(f"Daemon is running (PID {pid}).")
         except ProcessLookupError:
-            console.print(
-                f"[yellow]Stale PID file found (PID {pid} is not running).[/yellow] Cleaning up."
+            warn(
+                f"Stale PID file found (PID {pid} is not running). Cleaning up."
             )
             pid_path.unlink(missing_ok=True)
         except PermissionError:
             # Process exists but we can't signal it -- it's running
-            console.print(f"[green]Daemon is running[/green] (PID {pid}).")
+            info(f"Daemon is running (PID {pid}).")
 
 
 # ---------------------------------------------------------------------------
@@ -1066,73 +1032,57 @@ def daemon(
 @lexictl_app.command("help")
 def maintainer_help() -> None:
     """Display structured guidance about lexictl maintenance commands."""
-    from rich.panel import Panel  # noqa: PLC0415
-    from rich.text import Text  # noqa: PLC0415
+    help_text = """\
+=== About lexictl ===
 
-    # -- About -----------------------------------------------------------------
-    about_text = Text()
-    about_text.append("lexictl", style="bold cyan")
-    about_text.append(" is the maintenance CLI for Lexibrary.\n")
-    about_text.append("It is used by project maintainers (humans) for setup, indexing,\n")
-    about_text.append("design file generation, and validation.\n\n")
-    about_text.append("Agents must use ", style="bold")
-    about_text.append("lexi", style="bold cyan")
-    about_text.append(" instead.", style="bold")
-    about_text.append(" All agent-facing commands live there.\n")
-    about_text.append("Running lexictl commands in agent sessions is prohibited per project rules.")
+lexictl is the maintenance CLI for Lexibrary.
+It is used by project maintainers (humans) for setup, indexing,
+design file generation, and validation.
 
-    console.print(Panel(about_text, title="About lexictl", border_style="yellow"))
+Agents must use `lexi` instead. All agent-facing commands live there.
+Running lexictl commands in agent sessions is prohibited per project rules.
 
-    # -- Maintenance Commands --------------------------------------------------
-    cmds_text = Text()
-    cmds_text.append("Setup & Initialization\n", style="bold underline")
-    cmds_text.append("  lexictl init [--defaults]", style="cyan")
-    cmds_text.append("              Initialize project (runs setup wizard)\n")
-    cmds_text.append("  lexictl setup [--update] [--env ENV] [--hooks]", style="cyan")
-    cmds_text.append("\n                                                Install/update agent rules or git hooks\n")
-    cmds_text.append("  lexictl bootstrap [--scope SCOPE] [--full | --quick]", style="cyan")
-    cmds_text.append("\n                                                Batch-initialize library (idempotent)\n")
-    cmds_text.append("\n")
-    cmds_text.append("Indexing & Updates\n", style="bold underline")
-    cmds_text.append("  lexictl index [directory] [-r/--recursive]", style="cyan")
-    cmds_text.append("\n                                                Generate .aindex file(s)\n")
-    cmds_text.append("  lexictl update [path] [--changed-only PATH] [--dry-run] [--topology] [--skeleton]", style="cyan")
-    cmds_text.append("\n                                                Re-index and regenerate design files\n")
-    cmds_text.append("\n")
-    cmds_text.append("Validation & Status\n", style="bold underline")
-    cmds_text.append("  lexictl validate [--severity LEVEL] [--check NAME] [--json] [--ci] [--fix]", style="cyan")
-    cmds_text.append("\n                                                Run consistency checks\n")
-    cmds_text.append("  lexictl status [path] [-q/--quiet]", style="cyan")
-    cmds_text.append("          Library health and staleness summary\n")
-    cmds_text.append("\n")
-    cmds_text.append("Background Processing\n", style="bold underline")
-    cmds_text.append("  lexictl sweep [--watch]", style="cyan")
-    cmds_text.append("                Run update sweep (one-shot or watch mode)\n")
-    cmds_text.append("  lexictl daemon [start|stop|status]", style="cyan")
-    cmds_text.append("      (deprecated -- use 'sweep')\n")
-    cmds_text.append("\n")
-    cmds_text.append("IWH Maintenance\n", style="bold underline")
-    cmds_text.append("  lexictl iwh clean [--older-than N] [--all]", style="cyan")
-    cmds_text.append("\n                                                Remove expired IWH signal files\n")
+=== Maintenance Commands ===
 
-    console.print(Panel(cmds_text, title="Maintenance Commands", border_style="cyan"))
+Setup & Initialization
+  lexictl init [--defaults]              Initialize project (runs setup wizard)
+  lexictl setup [--update] [--env ENV] [--hooks]
+                                         Install/update agent rules or git hooks
+  lexictl bootstrap [--scope SCOPE] [--full | --quick]
+                                         Batch-initialize library (idempotent)
 
-    # -- Agent Guidance --------------------------------------------------------
-    guide_text = Text()
-    guide_text.append("Run ", style="bold")
-    guide_text.append("lexi help", style="cyan")
-    guide_text.append(" to see all agent-facing commands.\n\n")
-    guide_text.append("Key agent commands:\n")
-    guide_text.append("  lexi lookup <file>", style="cyan")
-    guide_text.append("       Understand a file before editing it\n")
-    guide_text.append("  lexi concepts <topic>", style="cyan")
-    guide_text.append("    Check conventions before architectural decisions\n")
-    guide_text.append("  lexi stack search <query>", style="cyan")
-    guide_text.append("  Search for known issues before debugging\n\n")
-    guide_text.append("If you see lexictl in an error message, the project maintainer\n")
-    guide_text.append("needs to run it. Do not run it yourself.")
+Indexing & Updates
+  lexictl index [directory] [-r/--recursive]
+                                         Generate .aindex file(s)
+  lexictl update [path] [--changed-only PATH] [--dry-run] [--topology] [--skeleton]
+                                         Re-index and regenerate design files
 
-    console.print(Panel(guide_text, title="Agent Guidance", border_style="green"))
+Validation & Status
+  lexictl validate [--severity LEVEL] [--check NAME] [--json] [--ci] [--fix]
+                                         Run consistency checks
+  lexictl status [path] [-q/--quiet]     Library health and staleness summary
+
+Background Processing
+  lexictl sweep [--watch]                Run update sweep (one-shot or watch mode)
+  lexictl daemon [start|stop|status]     (deprecated -- use 'sweep')
+
+IWH Maintenance
+  lexictl iwh clean [--older-than N] [--all]
+                                         Remove expired IWH signal files
+
+=== Agent Guidance ===
+
+Run `lexi help` to see all agent-facing commands.
+
+Key agent commands:
+  lexi lookup <file>         Understand a file before editing it
+  lexi concepts <topic>      Check conventions before architectural decisions
+  lexi stack search <query>  Search for known issues before debugging
+
+If you see lexictl in an error message, the project maintainer
+needs to run it. Do not run it yourself."""
+
+    info(help_text)
 
 
 # ---------------------------------------------------------------------------
@@ -1171,7 +1121,7 @@ def iwh_clean(
     results = find_all_iwh(project_root)
 
     if not results:
-        console.print("[dim]No IWH signals to clean.[/dim]")
+        info("No IWH signals to clean.")
         return
 
     # Determine the TTL threshold to apply
@@ -1199,7 +1149,7 @@ def iwh_clean(
         if iwh_file.exists():
             iwh_file.unlink()
             display_dir = f"{source_dir}/" if str(source_dir) != "." else "./"
-            console.print(f"  [red]Removed[/red] {display_dir} ({iwh.scope})")
+            info(f"  Removed {display_dir} ({iwh.scope})")
             removed += 1
 
-    console.print(f"\n[green]Cleaned[/green] {removed} signal(s)")
+    info(f"\nCleaned {removed} signal(s)")

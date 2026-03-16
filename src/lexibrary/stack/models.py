@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -33,7 +33,8 @@ class StackPostFrontmatter(BaseModel):
     duplicate_of: str | None = None
     refs: StackPostRefs = Field(default_factory=StackPostRefs)
     resolution_type: ResolutionType | None = None
-    stale_at: str | None = None
+    stale_at: datetime | None = None
+    last_vote_at: datetime | None = None
 
 
 class StackFinding(BaseModel):

@@ -109,7 +109,10 @@ def _serialize_frontmatter(post: StackPost) -> str:
         fm_data["resolution_type"] = fm.resolution_type
 
     if fm.stale_at is not None:
-        fm_data["stale_at"] = fm.stale_at
+        fm_data["stale_at"] = fm.stale_at.isoformat()
+
+    if fm.last_vote_at is not None:
+        fm_data["last_vote_at"] = fm.last_vote_at.isoformat()
 
     fm_str = yaml.dump(
         fm_data,

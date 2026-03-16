@@ -499,6 +499,40 @@ class LinkGraph:
 
         return results
 
+    # -- convention detail lookup -------------------------------------------
+
+    def get_convention_details(
+        self, artifact_ids: list[int]
+    ) -> dict[int, tuple[str, str]]:
+        """Return ``(directory_path, body)`` for convention artifact IDs.
+
+        Performs a single batch query against the ``conventions`` table.
+        Artifact IDs that have no corresponding convention row are simply
+        omitted from the result dict (graceful degradation for orphaned
+        artifacts).
+
+        Parameters
+        ----------
+        artifact_ids:
+            List of artifact IDs to look up in the conventions table.
+
+        Returns
+        -------
+        dict[int, tuple[str, str]]
+            Mapping from ``artifact_id`` to ``(directory_path, body)``.
+        """
+        if not artifact_ids:
+            return {}
+
+        placeholders = ", ".join("?" for _ in artifact_ids)
+        rows = self._conn.execute(
+            "SELECT artifact_id, directory_path, body "
+            f"FROM conventions WHERE artifact_id IN ({placeholders})",
+            tuple(artifact_ids),
+        ).fetchall()
+
+        return {row[0]: (row[1], row[2]) for row in rows}
+
     # -- multi-hop traversal -----------------------------------------------
 
     _MAX_DEPTH_CAP = 10

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -20,7 +21,7 @@ class ConventionFileFrontmatter(BaseModel):
     source: Literal["user", "agent", "config"] = "user"
     priority: int = 0
     aliases: list[str] = []
-    deprecated_at: str | None = None
+    deprecated_at: datetime | None = None
 
 
 class ConventionFile(BaseModel):

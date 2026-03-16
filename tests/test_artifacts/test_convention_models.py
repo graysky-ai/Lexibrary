@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -49,7 +50,7 @@ class TestConventionFileFrontmatter:
         assert fm.status == "deprecated"
         assert fm.source == "config"
         assert fm.priority == 10
-        assert fm.deprecated_at == "2026-03-04T10:00:00"
+        assert fm.deprecated_at == datetime(2026, 3, 4, 10, 0, 0)
 
     def test_aliases_default_empty(self) -> None:
         fm = ConventionFileFrontmatter(title="Test")
@@ -72,7 +73,7 @@ class TestConventionFileFrontmatter:
             status="deprecated",
             deprecated_at="2026-03-04T10:00:00",
         )
-        assert fm.deprecated_at == "2026-03-04T10:00:00"
+        assert fm.deprecated_at == datetime(2026, 3, 4, 10, 0, 0)
 
     def test_directory_scope(self) -> None:
         fm = ConventionFileFrontmatter(title="Test", scope="src/auth")

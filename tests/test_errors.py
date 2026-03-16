@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from io import StringIO
-
-from rich.console import Console
+from unittest.mock import patch
 
 from lexibrary.errors import ErrorRecord, ErrorSummary, format_error_summary
 
@@ -81,10 +80,14 @@ class TestErrorSummary:
 
 class TestFormatErrorSummary:
     def _render(self, summary: ErrorSummary) -> str:
-        buf = StringIO()
-        console = Console(file=buf, force_terminal=False, width=120)
-        format_error_summary(summary, console)
-        return buf.getvalue()
+        stdout_buf = StringIO()
+        stderr_buf = StringIO()
+        with (
+            patch("lexibrary.cli._output.sys.stdout", stdout_buf),
+            patch("lexibrary.cli._output.sys.stderr", stderr_buf),
+        ):
+            format_error_summary(summary)
+        return stdout_buf.getvalue() + stderr_buf.getvalue()
 
     def test_no_output_when_empty(self) -> None:
         output = self._render(ErrorSummary())

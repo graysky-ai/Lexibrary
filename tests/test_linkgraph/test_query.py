@@ -767,6 +767,43 @@ class TestGetConventionsExtended:
 
 
 # ---------------------------------------------------------------------------
+# 7.10b -- get_convention_details() batch lookup
+# ---------------------------------------------------------------------------
+
+
+class TestGetConventionDetails:
+    """get_convention_details() returns (directory_path, body) keyed by artifact_id."""
+
+    def test_returns_correct_details(self, graph: LinkGraph) -> None:
+        """Known convention artifact IDs return correct directory_path and body."""
+        details = graph.get_convention_details([1])
+        assert 1 in details
+        dir_path, body = details[1]
+        assert dir_path in ("src", "src/auth", "src/auth/middleware")
+        assert body != ""
+        graph.close()
+
+    def test_empty_input_returns_empty_dict(self, graph: LinkGraph) -> None:
+        """Empty artifact_ids list returns an empty dict."""
+        details = graph.get_convention_details([])
+        assert details == {}
+        graph.close()
+
+    def test_nonexistent_ids_returns_empty(self, graph: LinkGraph) -> None:
+        """Artifact IDs with no convention row are omitted from the result."""
+        details = graph.get_convention_details([9999, 8888])
+        assert details == {}
+        graph.close()
+
+    def test_mixed_existing_and_missing(self, graph: LinkGraph) -> None:
+        """Only IDs with convention rows appear in the result; missing ones are omitted."""
+        details = graph.get_convention_details([1, 9999])
+        assert 1 in details
+        assert 9999 not in details
+        graph.close()
+
+
+# ---------------------------------------------------------------------------
 # 7.11 -- build_summary() with and without log entries
 # ---------------------------------------------------------------------------
 

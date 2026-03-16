@@ -80,8 +80,7 @@ def check_convention_ttl_expiry(
     if convention.frontmatter.deprecated_at is None:
         return False
 
-    # deprecated_at is stored as an ISO 8601 string on conventions
-    since_iso = convention.frontmatter.deprecated_at
+    since_iso = convention.frontmatter.deprecated_at.isoformat()
     commit_count = _count_commits_since(project_root, since_iso)
     return commit_count > ttl_commits
 

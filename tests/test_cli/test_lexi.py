@@ -27,12 +27,10 @@ class TestHelp:
         assert result.exit_code == 0
         for cmd in (
             "lookup",
-            "concepts",
             "search",
             "stack",
             "concept",
             "convention",
-            "conventions",
             "describe",
             "validate",
             "status",
@@ -89,6 +87,7 @@ def _create_design_file(tmp_path: Path, source_rel: str, source_content: str) ->
     design_content = f"""---
 description: Design file for {source_rel}
 updated_by: archivist
+status: active
 ---
 
 # {source_rel}
@@ -325,6 +324,7 @@ def _create_design_file_with_tags(
     design_content = f"""---
 description: {description}
 updated_by: archivist
+status: active
 ---
 
 # {source_rel}
@@ -430,8 +430,8 @@ class TestIndexCommandRemoved:
 class TestLookupCommand:
     """Tests for the `lexi lookup` command."""
 
-    def test_lookup_exists(self, tmp_path: Path) -> None:
-        """Lookup with existing design file prints its content."""
+    def test_lookup_exists_brief(self, tmp_path: Path) -> None:
+        """Lookup (default brief) shows description and --full hint."""
         project = _setup_archivist_project(tmp_path)
         source_content = "def hello():\n    pass\n"
         _create_design_file(project, "src/main.py", source_content)
@@ -440,6 +440,27 @@ class TestLookupCommand:
         os.chdir(project)
         try:
             result = runner.invoke(lexi_app, ["lookup", "src/main.py"])
+        finally:
+            os.chdir(old_cwd)
+
+        assert result.exit_code == 0
+        assert "Design file for src/main.py" in result.output
+        assert "--full" in result.output
+        # Brief mode does NOT show the full design file body
+        assert "Interface Contract" not in result.output
+
+    def test_lookup_exists_full(self, tmp_path: Path) -> None:
+        """Lookup with --full shows full design file content."""
+        project = _setup_archivist_project(tmp_path)
+        source_content = "def hello():\n    pass\n"
+        _create_design_file(project, "src/main.py", source_content)
+
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(
+                lexi_app, ["lookup", "src/main.py", "--full"]
+            )
         finally:
             os.chdir(old_cwd)
 
@@ -835,8 +856,8 @@ class TestDescribeCommand:
 # ---------------------------------------------------------------------------
 
 
-class TestConceptsCommand:
-    """Tests for the `lexi concepts` command."""
+class TestSearchTypeConcept:
+    """Tests for `lexi search --type concept` (replaces `lexi concepts`)."""
 
     def _invoke(self, tmp_path: Path, args: list[str]) -> object:
         old_cwd = os.getcwd()
@@ -849,17 +870,17 @@ class TestConceptsCommand:
     def test_concepts_empty(self, tmp_path: Path) -> None:
         """Show message when no concepts exist."""
         _setup_project(tmp_path)
-        result = self._invoke(tmp_path, ["concepts"])
+        result = self._invoke(tmp_path, ["search", "--type", "concept"])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "No concepts found" in result.output  # type: ignore[union-attr]
+        assert "No results found" in result.output  # type: ignore[union-attr]
 
     def test_concepts_list_all(self, tmp_path: Path) -> None:
-        """List all concepts in a Rich table."""
+        """List all concepts when no query is given."""
         _setup_project(tmp_path)
         _create_concept_file(tmp_path, "Authentication", tags=["security"])
         _create_concept_file(tmp_path, "Rate Limiting", tags=["performance"])
 
-        result = self._invoke(tmp_path, ["concepts"])
+        result = self._invoke(tmp_path, ["search", "--type", "concept"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Authentication" in result.output  # type: ignore[union-attr]
         assert "Rate Limiting" in result.output  # type: ignore[union-attr]
@@ -870,7 +891,7 @@ class TestConceptsCommand:
         _create_concept_file(tmp_path, "Authentication", tags=["security"])
         _create_concept_file(tmp_path, "Rate Limiting", tags=["performance"])
 
-        result = self._invoke(tmp_path, ["concepts", "auth"])
+        result = self._invoke(tmp_path, ["search", "auth", "--type", "concept"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Authentication" in result.output  # type: ignore[union-attr]
         assert "Rate Limiting" not in result.output  # type: ignore[union-attr]
@@ -880,32 +901,15 @@ class TestConceptsCommand:
         _setup_project(tmp_path)
         _create_concept_file(tmp_path, "Authentication", tags=["security"])
 
-        result = self._invoke(tmp_path, ["concepts", "zzzzz"])
+        result = self._invoke(tmp_path, ["search", "zzzzz", "--type", "concept"])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "No concepts matching" in result.output  # type: ignore[union-attr]
+        assert "No results found" in result.output  # type: ignore[union-attr]
 
     def test_concepts_no_project(self, tmp_path: Path) -> None:
-        """Concepts without .lexibrary should fail."""
-        result = self._invoke(tmp_path, ["concepts"])
+        """Search without .lexibrary should fail."""
+        result = self._invoke(tmp_path, ["search", "--type", "concept"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
-
-
-# ---------------------------------------------------------------------------
-# Concepts --tag filtering tests (task 3.1)
-# ---------------------------------------------------------------------------
-
-
-class TestConceptsTagFilter:
-    """Tests for `lexi concepts --tag` filtering."""
-
-    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            return runner.invoke(lexi_app, args)
-        finally:
-            os.chdir(old_cwd)
 
     def test_tag_filter_returns_correct_subset(self, tmp_path: Path) -> None:
         """--tag returns only concepts with that tag."""
@@ -914,7 +918,7 @@ class TestConceptsTagFilter:
         _create_concept_file(tmp_path, "Rate Limiting", tags=["performance"])
         _create_concept_file(tmp_path, "Encryption", tags=["security"])
 
-        result = self._invoke(tmp_path, ["concepts", "--tag", "security"])
+        result = self._invoke(tmp_path, ["search", "--type", "concept", "--tag", "security"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Authentication" in output
@@ -928,39 +932,25 @@ class TestConceptsTagFilter:
         _create_concept_file(tmp_path, "Encryption", tags=["security"])
         _create_concept_file(tmp_path, "Config", tags=["core"])
 
-        result = self._invoke(tmp_path, ["concepts", "--tag", "security", "--tag", "core"])
+        result = self._invoke(
+            tmp_path, ["search", "--type", "concept", "--tag", "security", "--tag", "core"]
+        )
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
-        # Only Authentication has both tags
         assert "Authentication" in output
         assert "Encryption" not in output
         assert "Config" not in output
 
     def test_tag_filter_no_match(self, tmp_path: Path) -> None:
-        """--tag with no matching concepts shows filter message."""
+        """--tag with no matching concepts shows message."""
         _setup_project(tmp_path)
         _create_concept_file(tmp_path, "Authentication", tags=["security"])
 
-        result = self._invoke(tmp_path, ["concepts", "--tag", "nonexistent"])
+        result = self._invoke(
+            tmp_path, ["search", "--type", "concept", "--tag", "nonexistent"]
+        )
         assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "No concepts found matching" in result.output  # type: ignore[union-attr]
-
-
-# ---------------------------------------------------------------------------
-# Concepts --status filtering tests (task 3.2)
-# ---------------------------------------------------------------------------
-
-
-class TestConceptsStatusFilter:
-    """Tests for `lexi concepts --status` filtering."""
-
-    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            return runner.invoke(lexi_app, args)
-        finally:
-            os.chdir(old_cwd)
+        assert "No results found" in result.output  # type: ignore[union-attr]
 
     def test_status_active_filter(self, tmp_path: Path) -> None:
         """--status active returns only active concepts."""
@@ -969,7 +959,9 @@ class TestConceptsStatusFilter:
         _create_concept_file(tmp_path, "Draft Concept", status="draft")
         _create_concept_file(tmp_path, "Old Concept", status="deprecated")
 
-        result = self._invoke(tmp_path, ["concepts", "--status", "active"])
+        result = self._invoke(
+            tmp_path, ["search", "--type", "concept", "--status", "active"]
+        )
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Active Concept" in output
@@ -982,7 +974,9 @@ class TestConceptsStatusFilter:
         _create_concept_file(tmp_path, "Active Concept", status="active")
         _create_concept_file(tmp_path, "Draft Concept", status="draft")
 
-        result = self._invoke(tmp_path, ["concepts", "--status", "draft"])
+        result = self._invoke(
+            tmp_path, ["search", "--type", "concept", "--status", "draft"]
+        )
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Draft Concept" in output
@@ -994,37 +988,13 @@ class TestConceptsStatusFilter:
         _create_concept_file(tmp_path, "Active Concept", status="active")
         _create_concept_file(tmp_path, "Old Concept", status="deprecated")
 
-        result = self._invoke(tmp_path, ["concepts", "--status", "deprecated"])
+        result = self._invoke(
+            tmp_path, ["search", "--type", "concept", "--status", "deprecated"]
+        )
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Old Concept" in output
         assert "Active Concept" not in output
-
-    def test_invalid_status_value(self, tmp_path: Path) -> None:
-        """--status with invalid value shows error."""
-        _setup_project(tmp_path)
-        _create_concept_file(tmp_path, "Something", status="active")
-
-        result = self._invoke(tmp_path, ["concepts", "--status", "invalid"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        assert "Invalid status" in result.output  # type: ignore[union-attr]
-
-
-# ---------------------------------------------------------------------------
-# Concepts --all flag tests (task 3.3)
-# ---------------------------------------------------------------------------
-
-
-class TestConceptsAllFlag:
-    """Tests for `lexi concepts --all` flag."""
-
-    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            return runner.invoke(lexi_app, args)
-        finally:
-            os.chdir(old_cwd)
 
     def test_all_flag_includes_deprecated(self, tmp_path: Path) -> None:
         """--all includes deprecated concepts in results."""
@@ -1033,38 +1003,21 @@ class TestConceptsAllFlag:
         _create_concept_file(tmp_path, "Old Concept", status="deprecated")
         _create_concept_file(tmp_path, "Draft Concept", status="draft")
 
-        result = self._invoke(tmp_path, ["concepts", "--all"])
+        result = self._invoke(tmp_path, ["search", "--type", "concept", "--all"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Active Concept" in output
         assert "Old Concept" in output
         assert "Draft Concept" in output
 
-
-# ---------------------------------------------------------------------------
-# Concepts default deprecated exclusion tests (task 3.4)
-# ---------------------------------------------------------------------------
-
-
-class TestConceptsDefaultDeprecatedExclusion:
-    """Tests for default deprecated concept exclusion."""
-
-    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            return runner.invoke(lexi_app, args)
-        finally:
-            os.chdir(old_cwd)
-
-    def test_bare_concepts_hides_deprecated(self, tmp_path: Path) -> None:
-        """Bare `lexi concepts` hides deprecated concepts by default."""
+    def test_bare_search_hides_deprecated(self, tmp_path: Path) -> None:
+        """Bare `lexi search --type concept` hides deprecated concepts by default."""
         _setup_project(tmp_path)
         _create_concept_file(tmp_path, "Active Concept", status="active")
         _create_concept_file(tmp_path, "Draft Concept", status="draft")
         _create_concept_file(tmp_path, "Old Concept", status="deprecated")
 
-        result = self._invoke(tmp_path, ["concepts"])
+        result = self._invoke(tmp_path, ["search", "--type", "concept"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Active Concept" in output
@@ -1077,28 +1030,11 @@ class TestConceptsDefaultDeprecatedExclusion:
         _create_concept_file(tmp_path, "Auth Active", tags=["auth"], status="active")
         _create_concept_file(tmp_path, "Auth Old", tags=["auth"], status="deprecated")
 
-        result = self._invoke(tmp_path, ["concepts", "auth"])
+        result = self._invoke(tmp_path, ["search", "auth", "--type", "concept"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Auth Active" in output
         assert "Auth Old" not in output
-
-
-# ---------------------------------------------------------------------------
-# Concepts combined filter tests (task 3.5)
-# ---------------------------------------------------------------------------
-
-
-class TestConceptsCombinedFilters:
-    """Tests for combining topic + --tag + --status filters with AND logic."""
-
-    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            return runner.invoke(lexi_app, args)
-        finally:
-            os.chdir(old_cwd)
 
     def test_topic_plus_tag(self, tmp_path: Path) -> None:
         """topic + --tag narrows with AND logic."""
@@ -1111,10 +1047,11 @@ class TestConceptsCombinedFilters:
         )
         _create_concept_file(tmp_path, "Encryption", tags=["security"], summary="crypto")
 
-        result = self._invoke(tmp_path, ["concepts", "auth", "--tag", "security"])
+        result = self._invoke(
+            tmp_path, ["search", "auth", "--type", "concept", "--tag", "security"]
+        )
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
-        # Only "Auth Core" matches both topic "auth" and tag "security"
         assert "Auth Core" in output
         assert "Auth Perf" not in output
         assert "Encryption" not in output
@@ -1129,7 +1066,9 @@ class TestConceptsCombinedFilters:
             tmp_path, "Auth Draft", tags=["auth"], status="draft", summary="authentication draft"
         )
 
-        result = self._invoke(tmp_path, ["concepts", "auth", "--status", "draft"])
+        result = self._invoke(
+            tmp_path, ["search", "auth", "--type", "concept", "--status", "draft"]
+        )
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Auth Draft" in output
@@ -1162,11 +1101,10 @@ class TestConceptsCombinedFilters:
 
         result = self._invoke(
             tmp_path,
-            ["concepts", "auth", "--tag", "security", "--status", "active"],
+            ["search", "auth", "--type", "concept", "--tag", "security", "--status", "active"],
         )
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
-        # Only "Auth Core Active" matches all three filters
         assert "Auth Core Active" in output
         assert "Auth Core Draft" not in output
         assert "Auth Perf Active" not in output
@@ -1178,10 +1116,10 @@ class TestConceptsCombinedFilters:
 
         result = self._invoke(
             tmp_path,
-            ["concepts", "auth", "--tag", "nonexistent", "--status", "draft"],
+            ["search", "auth", "--type", "concept", "--tag", "nonexistent", "--status", "draft"],
         )
         assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "No concepts found matching" in result.output  # type: ignore[union-attr]
+        assert "No results found" in result.output  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------
@@ -1190,9 +1128,11 @@ class TestConceptsCombinedFilters:
 
 
 class TestAgentHelpCommand:
-    """Tests for `lexi help` command."""
+    """Tests for `lexi help` tiered help system."""
 
-    def test_help_succeeds_without_project_root(self, tmp_path: Path) -> None:
+    # -- Tier 1 tests --
+
+    def test_tier1_succeeds_without_project_root(self, tmp_path: Path) -> None:
         """lexi help works anywhere -- no .lexibrary/ directory required."""
         old_cwd = os.getcwd()
         os.chdir(tmp_path)
@@ -1204,90 +1144,146 @@ class TestAgentHelpCommand:
         assert result.exit_code == 0
         assert len(result.output) > 0
 
-    def test_help_shows_command_groups(self) -> None:
-        """lexi help displays all command group sections including Inspection & Annotation."""
+    def test_tier1_shows_group_table(self) -> None:
+        """lexi help (no args) returns a table listing all 7 command groups."""
         result = runner.invoke(lexi_app, ["help"])
         assert result.exit_code == 0
         output = result.output
-        assert "Available Commands" in output
-        assert "Lookup" in output or "lookup" in output
-        assert "Concepts" in output or "concepts" in output
-        assert "Stack" in output or "stack" in output
-        # The old "Indexing & Maintenance" section was replaced with "Inspection & Annotation"
-        assert "Inspection" in output or "Annotation" in output
+        for group in ("navigation", "concepts", "conventions", "stack", "iwh", "design", "health"):
+            assert group in output, f"Expected group '{group}' in Tier 1 output"
 
-    def test_help_does_not_reference_lexi_index(self) -> None:
+    def test_tier1_includes_drill_down_instruction(self) -> None:
+        """lexi help tells users how to get detailed help."""
+        result = runner.invoke(lexi_app, ["help"])
+        assert result.exit_code == 0
+        assert "lexi help <group>" in result.output
+
+    def test_tier1_is_concise(self) -> None:
+        """lexi help output is approximately 30 lines or fewer."""
+        result = runner.invoke(lexi_app, ["help"])
+        assert result.exit_code == 0
+        lines = [line for line in result.output.strip().splitlines() if line.strip()]
+        assert len(lines) <= 35, f"Tier 1 output is {len(lines)} non-blank lines, expected <= 35"
+
+    def test_tier1_does_not_reference_lexi_index(self) -> None:
         """lexi help should not reference the removed 'lexi index' command."""
         result = runner.invoke(lexi_app, ["help"])
         assert result.exit_code == 0
-        output = result.output
-        # "lexi index" should NOT appear as a command reference
-        assert "lexi index" not in output
+        assert "lexi index" not in result.output
 
-    def test_help_shows_inspection_section(self) -> None:
-        """lexi help includes 'Inspection & Annotation' with status, validate, describe."""
-        result = runner.invoke(lexi_app, ["help"])
+    # -- Tier 2 tests (one per group) --
+
+    def test_tier2_navigation(self) -> None:
+        """lexi help navigation returns navigation commands with lookup, search, impact."""
+        result = runner.invoke(lexi_app, ["help", "navigation"])
         assert result.exit_code == 0
         output = result.output
-        assert "Inspection" in output
-        assert "lexi status" in output
-        assert "lexi validate" in output
-        assert "lexi describe" in output
+        assert "Navigation Commands" in output
+        for cmd in ("orient", "lookup", "search", "impact", "help"):
+            assert cmd in output, f"Expected '{cmd}' in navigation help"
 
-    def test_help_shows_workflows(self) -> None:
-        """lexi help displays common workflows section."""
-        result = runner.invoke(lexi_app, ["help"])
+    def test_tier2_concepts(self) -> None:
+        """lexi help concepts returns concept commands."""
+        result = runner.invoke(lexi_app, ["help", "concepts"])
         assert result.exit_code == 0
         output = result.output
-        assert "Common Workflows" in output
-        # At least 4 workflows
-        assert "Understand a source file" in output
-        assert "Explore a topic" in output
-        assert "Document an issue" in output
-        # New workflow: "Check library health" replacing "Index a new directory"
-        assert "Check library health" in output
-
-    def test_help_check_library_health_workflow(self) -> None:
-        """lexi help contains the 'Check library health' workflow with status and validate."""
-        result = runner.invoke(lexi_app, ["help"])
-        assert result.exit_code == 0
-        output = result.output
-        assert "Check library health" in output
-        assert "lexi status" in output
-        assert "lexi validate" in output
-
-    def test_help_shows_navigation_tips(self) -> None:
-        """lexi help displays navigation tips section."""
-        result = runner.invoke(lexi_app, ["help"])
-        assert result.exit_code == 0
-        output = result.output
-        assert "Navigation Tips" in output
-        assert "Wikilinks" in output or "wikilink" in output
-
-    def test_help_references_all_agent_commands(self) -> None:
-        """lexi help references all current agent-facing commands (no lexi index)."""
-        result = runner.invoke(lexi_app, ["help"])
-        assert result.exit_code == 0
-        output = result.output
+        assert "Concept Commands" in output
         for cmd in (
-            "lookup",
-            "describe",
-            "concepts",
-            "concept new",
-            "concept link",
-            "stack post",
-            "stack search",
-            "stack view",
-            "stack finding",
-            "stack vote",
-            "stack accept",
-            "stack list",
-            "search",
-            "help",
-            "status",
-            "validate",
+            "search --type concept", "concept new", "concept link",
+            "concept comment", "concept deprecate",
         ):
-            assert cmd in output, f"Expected command '{cmd}' to be referenced in help output"
+            assert cmd in output, f"Expected '{cmd}' in concepts help"
+
+    def test_tier2_conventions(self) -> None:
+        """lexi help conventions returns convention commands."""
+        result = runner.invoke(lexi_app, ["help", "conventions"])
+        assert result.exit_code == 0
+        output = result.output
+        assert "Convention Commands" in output
+        for cmd in (
+            "search --type convention", "convention new", "convention approve",
+            "convention deprecate", "convention comment",
+        ):
+            assert cmd in output, f"Expected '{cmd}' in conventions help"
+
+    def test_tier2_stack(self) -> None:
+        """lexi help stack returns all stack subcommands with flags."""
+        result = runner.invoke(lexi_app, ["help", "stack"])
+        assert result.exit_code == 0
+        output = result.output
+        assert "Stack Commands" in output
+        for cmd in (
+            "stack post", "search --type stack", "stack view",
+            "stack finding", "stack vote", "stack accept",
+            "stack comment", "stack mark-outdated", "stack duplicate",
+            "stack stale", "stack unstale",
+        ):
+            assert cmd in output, f"Expected '{cmd}' in stack help"
+
+    def test_tier2_iwh(self) -> None:
+        """lexi help iwh returns IWH commands."""
+        result = runner.invoke(lexi_app, ["help", "iwh"])
+        assert result.exit_code == 0
+        output = result.output
+        assert "IWH" in output
+        for cmd in ("iwh write", "iwh read", "iwh list"):
+            assert cmd in output, f"Expected '{cmd}' in iwh help"
+
+    def test_tier2_design(self) -> None:
+        """lexi help design returns design file commands."""
+        result = runner.invoke(lexi_app, ["help", "design"])
+        assert result.exit_code == 0
+        output = result.output
+        assert "Design" in output
+        for cmd in ("design update", "design comment"):
+            assert cmd in output, f"Expected '{cmd}' in design help"
+
+    def test_tier2_health(self) -> None:
+        """lexi help health returns health and inspection commands."""
+        result = runner.invoke(lexi_app, ["help", "health"])
+        assert result.exit_code == 0
+        output = result.output
+        assert "Health" in output
+        for cmd in ("status", "validate", "describe"):
+            assert cmd in output, f"Expected '{cmd}' in health help"
+
+    # -- Invalid group error --
+
+    def test_invalid_group_error(self) -> None:
+        """lexi help with an invalid group name returns error with valid groups."""
+        result = runner.invoke(lexi_app, ["help", "nonexistent"])
+        assert result.exit_code == 1
+        output = result.output
+        assert "Unknown help group" in output
+        assert "nonexistent" in output
+        # Should list valid groups
+        for group in (
+            "navigation", "concepts", "conventions",
+            "stack", "iwh", "design", "health",
+        ):
+            assert group in output, f"Expected valid group '{group}' listed in error message"
+
+    def test_group_name_case_insensitive(self) -> None:
+        """lexi help accepts group names in any case."""
+        result = runner.invoke(lexi_app, ["help", "STACK"])
+        assert result.exit_code == 0
+        assert "Stack Commands" in result.output
+
+    # -- All groups accessible --
+
+    def test_all_groups_accessible(self) -> None:
+        """Every valid group name produces output without error."""
+        for group in (
+            "navigation", "concepts", "conventions",
+            "stack", "iwh", "design", "health",
+        ):
+            result = runner.invoke(lexi_app, ["help", group])
+            assert result.exit_code == 0, (
+                f"lexi help {group} failed with exit code {result.exit_code}"
+            )
+            assert len(result.output.strip()) > 0, (
+                f"lexi help {group} produced empty output"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1314,6 +1310,7 @@ class TestConceptNewCommand:
         result = self._invoke(tmp_path, ["concept", "new", "Rate Limiting"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Created" in result.output  # type: ignore[union-attr]
+        assert "slug: RateLimiting" in result.output  # type: ignore[union-attr]
         assert (tmp_path / ".lexibrary" / "concepts" / "RateLimiting.md").exists()
 
     def test_create_concept_with_tags(self, tmp_path: Path) -> None:
@@ -1804,7 +1801,7 @@ class TestConventionApproveCommand:
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Auth required", status="draft")
 
-        result = self._invoke(project, ["convention", "approve", "Auth required"])
+        result = self._invoke(project, ["convention", "approve", "auth-required"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Approved" in result.output  # type: ignore[union-attr]
 
@@ -1813,21 +1810,12 @@ class TestConventionApproveCommand:
         content = conv_path.read_text(encoding="utf-8")
         assert "status: active" in content
 
-    def test_approve_by_slug(self, tmp_path: Path) -> None:
-        """Approve a convention by its slug."""
-        project = _setup_project(tmp_path)
-        _create_convention_file(project, "Auth required", status="draft")
-
-        result = self._invoke(project, ["convention", "approve", "auth-required"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "Approved" in result.output  # type: ignore[union-attr]
-
     def test_approve_already_active(self, tmp_path: Path) -> None:
         """Approving an already active convention should show message and exit 0."""
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Auth required", status="active")
 
-        result = self._invoke(project, ["convention", "approve", "Auth required"])
+        result = self._invoke(project, ["convention", "approve", "auth-required"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Already active" in result.output  # type: ignore[union-attr]
 
@@ -1836,9 +1824,18 @@ class TestConventionApproveCommand:
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Auth required", status="deprecated")
 
-        result = self._invoke(project, ["convention", "approve", "Auth required"])
+        result = self._invoke(project, ["convention", "approve", "auth-required"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "Cannot approve" in result.output  # type: ignore[union-attr]
+
+    def test_approve_title_not_accepted(self, tmp_path: Path) -> None:
+        """Approving by title (not slug) should fail -- slug-only lookups."""
+        project = _setup_project(tmp_path)
+        _create_convention_file(project, "Auth required", status="draft")
+
+        result = self._invoke(project, ["convention", "approve", "Auth required"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Convention not found" in result.output  # type: ignore[union-attr]
 
     def test_approve_not_found(self, tmp_path: Path) -> None:
         """Approving a nonexistent convention should fail."""
@@ -1866,7 +1863,7 @@ class TestConventionDeprecateCommand:
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Auth required", status="active")
 
-        result = self._invoke(project, ["convention", "deprecate", "Auth required"])
+        result = self._invoke(project, ["convention", "deprecate", "auth-required"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Deprecated" in result.output  # type: ignore[union-attr]
 
@@ -1879,7 +1876,7 @@ class TestConventionDeprecateCommand:
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Auth required", status="draft")
 
-        result = self._invoke(project, ["convention", "deprecate", "Auth required"])
+        result = self._invoke(project, ["convention", "deprecate", "auth-required"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Deprecated" in result.output  # type: ignore[union-attr]
 
@@ -1892,18 +1889,18 @@ class TestConventionDeprecateCommand:
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "Convention not found" in result.output  # type: ignore[union-attr]
 
-    def test_deprecate_by_slug(self, tmp_path: Path) -> None:
-        """Deprecate a convention by its slug."""
+    def test_deprecate_title_not_accepted(self, tmp_path: Path) -> None:
+        """Deprecating by title (not slug) should fail -- slug-only lookups."""
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Auth required", status="active")
 
-        result = self._invoke(project, ["convention", "deprecate", "auth-required"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "Deprecated" in result.output  # type: ignore[union-attr]
+        result = self._invoke(project, ["convention", "deprecate", "Auth required"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Convention not found" in result.output  # type: ignore[union-attr]
 
 
-class TestConventionsListCommand:
-    """Tests for the `lexi conventions` command."""
+class TestSearchTypeConvention:
+    """Tests for `lexi search --type convention` (replaces `lexi conventions`)."""
 
     def _invoke(self, tmp_path: Path, args: list[str]) -> object:
         old_cwd = os.getcwd()
@@ -1920,12 +1917,11 @@ class TestConventionsListCommand:
         _create_convention_file(project, "Conv Draft", status="draft")
         _create_convention_file(project, "Conv Deprecated", status="deprecated")
 
-        result = self._invoke(project, ["conventions"])
+        result = self._invoke(project, ["search", "--type", "convention"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Conv Active" in result.output  # type: ignore[union-attr]
         assert "Conv Draft" in result.output  # type: ignore[union-attr]
         assert "Conv Deprecated" not in result.output  # type: ignore[union-attr]
-        assert "Found 2 convention(s)" in result.output  # type: ignore[union-attr]
 
     def test_list_with_all_flag(self, tmp_path: Path) -> None:
         """--all flag includes deprecated conventions."""
@@ -1933,11 +1929,10 @@ class TestConventionsListCommand:
         _create_convention_file(project, "Conv Active", status="active")
         _create_convention_file(project, "Conv Deprecated", status="deprecated")
 
-        result = self._invoke(project, ["conventions", "--all"])
+        result = self._invoke(project, ["search", "--type", "convention", "--all"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Conv Active" in result.output  # type: ignore[union-attr]
         assert "Conv Deprecated" in result.output  # type: ignore[union-attr]
-        assert "Found 2 convention(s)" in result.output  # type: ignore[union-attr]
 
     def test_filter_by_tag(self, tmp_path: Path) -> None:
         """Filter conventions by tag."""
@@ -1945,11 +1940,10 @@ class TestConventionsListCommand:
         _create_convention_file(project, "Python Style", tags=["python"])
         _create_convention_file(project, "Auth Rules", tags=["auth"])
 
-        result = self._invoke(project, ["conventions", "--tag", "python"])
+        result = self._invoke(project, ["search", "--type", "convention", "--tag", "python"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Python Style" in result.output  # type: ignore[union-attr]
         assert "Auth Rules" not in result.output  # type: ignore[union-attr]
-        assert "Found 1 convention(s)" in result.output  # type: ignore[union-attr]
 
     def test_filter_by_status(self, tmp_path: Path) -> None:
         """Filter conventions by status."""
@@ -1957,59 +1951,43 @@ class TestConventionsListCommand:
         _create_convention_file(project, "Active Conv", status="active")
         _create_convention_file(project, "Draft Conv", status="draft")
 
-        result = self._invoke(project, ["conventions", "--status", "draft"])
+        result = self._invoke(project, ["search", "--type", "convention", "--status", "draft"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Draft Conv" in result.output  # type: ignore[union-attr]
         assert "Active Conv" not in result.output  # type: ignore[union-attr]
 
     def test_filter_by_scope(self, tmp_path: Path) -> None:
-        """Filter conventions by scope value."""
+        """Filter conventions by scope (scope inheritance)."""
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Project Wide", scope="project")
         _create_convention_file(project, "Auth Scope", scope="src/auth")
 
-        result = self._invoke(project, ["conventions", "--scope", "src/auth"])
+        result = self._invoke(
+            project, ["search", "--type", "convention", "--scope", "src/auth/login.py"]
+        )
         assert result.exit_code == 0  # type: ignore[union-attr]
+        # Both project-wide and auth-scoped conventions should match via inheritance
+        assert "Project Wide" in result.output  # type: ignore[union-attr]
         assert "Auth Scope" in result.output  # type: ignore[union-attr]
-        assert "Project Wide" not in result.output  # type: ignore[union-attr]
 
-    def test_no_conventions_directory(self, tmp_path: Path) -> None:
-        """When no conventions directory exists, suggest creating one."""
+    def test_no_conventions_empty_result(self, tmp_path: Path) -> None:
+        """When no conventions exist, show no results message."""
         project = _setup_project(tmp_path)
 
-        result = self._invoke(project, ["conventions"])
+        result = self._invoke(project, ["search", "--type", "convention"])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "No conventions found" in result.output  # type: ignore[union-attr]
-        assert "lexi convention new" in result.output  # type: ignore[union-attr]
+        assert "No results found" in result.output  # type: ignore[union-attr]
 
     def test_no_matching_conventions(self, tmp_path: Path) -> None:
         """When no conventions match filters, show message."""
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Active Conv", tags=["python"])
 
-        result = self._invoke(project, ["conventions", "--tag", "nonexistent"])
+        result = self._invoke(
+            project, ["search", "--type", "convention", "--tag", "nonexistent"]
+        )
         assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "No conventions matching" in result.output  # type: ignore[union-attr]
-
-    def test_filter_by_path(self, tmp_path: Path) -> None:
-        """Filter conventions by path argument for scope-based retrieval."""
-        project = _setup_project(tmp_path)
-        _create_convention_file(project, "Project Wide", scope="project")
-        _create_convention_file(project, "Auth Scope", scope="src/auth")
-
-        result = self._invoke(project, ["conventions", "src/auth/login.py"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        # Both project-wide and auth-scoped conventions should match
-        assert "Project Wide" in result.output  # type: ignore[union-attr]
-        assert "Auth Scope" in result.output  # type: ignore[union-attr]
-
-    def test_invalid_status_value(self, tmp_path: Path) -> None:
-        """Invalid status value should show error."""
-        project = _setup_project(tmp_path)
-
-        result = self._invoke(project, ["conventions", "--status", "invalid"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        assert "Invalid status" in result.output  # type: ignore[union-attr]
+        assert "No results found" in result.output  # type: ignore[union-attr]
 
     def test_table_shows_rule_column(self, tmp_path: Path) -> None:
         """Table output includes the Rule column with truncated rule text."""
@@ -2018,7 +1996,7 @@ class TestConventionsListCommand:
             project, "Long Rule Conv", body="This is the rule text for the convention."
         )
 
-        result = self._invoke(project, ["conventions"])
+        result = self._invoke(project, ["search", "--type", "convention"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "This is the rule text" in result.output  # type: ignore[union-attr]
 
@@ -2028,7 +2006,9 @@ class TestConventionsListCommand:
         _create_convention_file(project, "Both Tags", tags=["python", "auth"])
         _create_convention_file(project, "Python Only", tags=["python"])
 
-        result = self._invoke(project, ["conventions", "--tag", "python", "--tag", "auth"])
+        result = self._invoke(
+            project, ["search", "--type", "convention", "--tag", "python", "--tag", "auth"]
+        )
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Both Tags" in result.output  # type: ignore[union-attr]
         assert "Python Only" not in result.output  # type: ignore[union-attr]
@@ -2039,7 +2019,7 @@ class TestConventionsListCommand:
         _create_convention_file(project, "All endpoints require auth decorator", tags=["auth"])
         _create_convention_file(project, "Use dataclasses for models", tags=["python"])
 
-        result = self._invoke(project, ["conventions", "auth"])
+        result = self._invoke(project, ["search", "auth", "--type", "convention"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "auth decorator" in result.output  # type: ignore[union-attr]
         assert "dataclasses" not in result.output  # type: ignore[union-attr]
@@ -2049,9 +2029,9 @@ class TestConventionsListCommand:
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Active Conv")
 
-        result = self._invoke(project, ["conventions", "xyznonexistent"])
+        result = self._invoke(project, ["search", "xyznonexistent", "--type", "convention"])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "No conventions matching" in result.output  # type: ignore[union-attr]
+        assert "No results found" in result.output  # type: ignore[union-attr]
 
     def test_search_combinable_with_tag(self, tmp_path: Path) -> None:
         """Query combined with --tag narrows results."""
@@ -2059,7 +2039,9 @@ class TestConventionsListCommand:
         _create_convention_file(project, "Auth endpoints required", tags=["auth"])
         _create_convention_file(project, "Auth logging required", tags=["logging"])
 
-        result = self._invoke(project, ["conventions", "auth", "--tag", "logging"])
+        result = self._invoke(
+            project, ["search", "auth", "--type", "convention", "--tag", "logging"]
+        )
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Auth logging" in result.output  # type: ignore[union-attr]
         assert "Auth endpoints" not in result.output  # type: ignore[union-attr]
@@ -2070,11 +2052,10 @@ class TestConventionsListCommand:
         _create_convention_file(project, "Conv A")
         _create_convention_file(project, "Conv B")
 
-        result = self._invoke(project, ["conventions"])
+        result = self._invoke(project, ["search", "--type", "convention"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Conv A" in result.output  # type: ignore[union-attr]
         assert "Conv B" in result.output  # type: ignore[union-attr]
-        assert "Found 2 convention(s)" in result.output  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------
@@ -2170,7 +2151,7 @@ class TestConventionDeprecateTimestamp:
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Auth required", status="active")
 
-        result = self._invoke(project, ["convention", "deprecate", "Auth required"])
+        result = self._invoke(project, ["convention", "deprecate", "auth-required"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Deprecated" in result.output  # type: ignore[union-attr]
 
@@ -2184,7 +2165,7 @@ class TestConventionDeprecateTimestamp:
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Auth required", status="deprecated")
 
-        result = self._invoke(project, ["convention", "deprecate", "Auth required"])
+        result = self._invoke(project, ["convention", "deprecate", "auth-required"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Already deprecated" in result.output  # type: ignore[union-attr]
 
@@ -2193,7 +2174,7 @@ class TestConventionDeprecateTimestamp:
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Draft rule", status="draft")
 
-        result = self._invoke(project, ["convention", "deprecate", "Draft rule"])
+        result = self._invoke(project, ["convention", "deprecate", "draft-rule"])
         assert result.exit_code == 0  # type: ignore[union-attr]
 
         conv_path = project / ".lexibrary" / "conventions" / "draft-rule.md"
@@ -2225,7 +2206,7 @@ class TestConventionCommentCommand:
 
         result = self._invoke(
             project,
-            ["convention", "comment", "Use dataclasses", "--body", "Consider narrowing scope"],
+            ["convention", "comment", "use-dataclasses", "--body", "Consider narrowing scope"],
         )
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Comment added" in result.output  # type: ignore[union-attr]
@@ -2245,22 +2226,22 @@ class TestConventionCommentCommand:
 
         result = self._invoke(
             project,
-            ["convention", "comment", "Auth required", "--body", "First feedback"],
+            ["convention", "comment", "auth-required", "--body", "First feedback"],
         )
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert comment_file.exists()
 
-    def test_comment_by_slug(self, tmp_path: Path) -> None:
-        """Add a comment using the convention slug."""
+    def test_comment_title_not_accepted(self, tmp_path: Path) -> None:
+        """Commenting by title (not slug) should fail -- slug-only lookups."""
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Auth required")
 
         result = self._invoke(
             project,
-            ["convention", "comment", "auth-required", "--body", "Test comment"],
+            ["convention", "comment", "Auth required", "--body", "Test comment"],
         )
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "Comment added" in result.output  # type: ignore[union-attr]
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Convention not found" in result.output  # type: ignore[union-attr]
 
     def test_comment_not_found(self, tmp_path: Path) -> None:
         """Comment on nonexistent convention fails with exit code 1."""
@@ -2281,11 +2262,11 @@ class TestConventionCommentCommand:
 
         self._invoke(
             project,
-            ["convention", "comment", "Auth required", "--body", "First comment"],
+            ["convention", "comment", "auth-required", "--body", "First comment"],
         )
         self._invoke(
             project,
-            ["convention", "comment", "Auth required", "--body", "Second comment"],
+            ["convention", "comment", "auth-required", "--body", "Second comment"],
         )
 
         comment_file = project / ".lexibrary" / "conventions" / "auth-required.comments.yaml"
@@ -2377,12 +2358,13 @@ class TestStackPostCommand:
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
 
-    def test_create_post_prints_guidance(self, tmp_path: Path) -> None:
-        """Post command prints guidance about filling in sections."""
+    def test_create_post_prints_blank_warnings(self, tmp_path: Path) -> None:
+        """Post command prints blank-section warnings for omitted fields."""
         _setup_stack_project(tmp_path)
         result = self._invoke(tmp_path, ["stack", "post", "--title", "Bug", "--tag", "auth"])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "Problem" in result.output  # type: ignore[union-attr]
+        assert "Note: The following sections are blank:" in result.output  # type: ignore[union-attr]
+        assert "problem" in result.output  # type: ignore[union-attr]
 
     def test_one_shot_post_with_problem_and_attempts(self, tmp_path: Path) -> None:
         """One-shot post creation with --problem and --attempts populates sections."""
@@ -2475,14 +2457,140 @@ class TestStackPostCommand:
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "--resolution-type requires --resolve" in result.output  # type: ignore[union-attr]
 
+    def test_fix_shortcut_creates_resolved_post(self, tmp_path: Path) -> None:
+        """--fix creates a resolved post with resolution_type=fix."""
+        _setup_stack_project(tmp_path)
+        result = self._invoke(
+            tmp_path,
+            [
+                "stack", "post",
+                "--title", "Auth crash",
+                "--tag", "auth",
+                "--problem", "Login crashes",
+                "--fix", "Added null check before access",
+            ],
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        stack_dir = tmp_path / ".lexibrary" / "stack"
+        files = list(stack_dir.glob("ST-001-*.md"))
+        assert len(files) == 1
+        content = files[0].read_text(encoding="utf-8")
+        assert "status: resolved" in content
+        assert "resolution_type: fix" in content
+        assert "Added null check before access" in content
+        assert "**Accepted:** true" in content
+
+    def test_workaround_shortcut_creates_resolved_post(self, tmp_path: Path) -> None:
+        """--workaround creates a resolved post with resolution_type=workaround."""
+        _setup_stack_project(tmp_path)
+        result = self._invoke(
+            tmp_path,
+            [
+                "stack", "post",
+                "--title", "Timeout issue",
+                "--tag", "perf",
+                "--problem", "API times out",
+                "--workaround", "Increased timeout to 30s",
+            ],
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        stack_dir = tmp_path / ".lexibrary" / "stack"
+        files = list(stack_dir.glob("ST-001-*.md"))
+        assert len(files) == 1
+        content = files[0].read_text(encoding="utf-8")
+        assert "status: resolved" in content
+        assert "resolution_type: workaround" in content
+        assert "Increased timeout to 30s" in content
+        assert "**Accepted:** true" in content
+
+    def test_fix_and_workaround_mutual_exclusion(self, tmp_path: Path) -> None:
+        """--fix and --workaround together produces error."""
+        _setup_stack_project(tmp_path)
+        result = self._invoke(
+            tmp_path,
+            [
+                "stack", "post",
+                "--title", "Bug",
+                "--tag", "bug",
+                "--fix", "Fixed it",
+                "--workaround", "Worked around it",
+            ],
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "--fix and --workaround are mutually exclusive" in result.output  # type: ignore[union-attr]
+
+    def test_fix_conflicts_with_finding(self, tmp_path: Path) -> None:
+        """--fix conflicts with --finding."""
+        _setup_stack_project(tmp_path)
+        result = self._invoke(
+            tmp_path,
+            [
+                "stack", "post",
+                "--title", "Bug",
+                "--tag", "bug",
+                "--fix", "Fixed it",
+                "--finding", "Also a finding",
+            ],
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "--fix conflicts with --finding" in result.output  # type: ignore[union-attr]
+
+    def test_fix_conflicts_with_resolve(self, tmp_path: Path) -> None:
+        """--fix conflicts with --resolve."""
+        _setup_stack_project(tmp_path)
+        result = self._invoke(
+            tmp_path,
+            [
+                "stack", "post",
+                "--title", "Bug",
+                "--tag", "bug",
+                "--fix", "Fixed it",
+                "--resolve",
+            ],
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "--fix conflicts with --resolve" in result.output  # type: ignore[union-attr]
+
+    def test_fix_conflicts_with_resolution_type(self, tmp_path: Path) -> None:
+        """--fix conflicts with --resolution-type."""
+        _setup_stack_project(tmp_path)
+        result = self._invoke(
+            tmp_path,
+            [
+                "stack", "post",
+                "--title", "Bug",
+                "--tag", "bug",
+                "--fix", "Fixed it",
+                "--resolution-type", "workaround",
+            ],
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "--fix conflicts with --resolution-type" in result.output  # type: ignore[union-attr]
+
+    def test_workaround_conflicts_with_finding(self, tmp_path: Path) -> None:
+        """--workaround conflicts with --finding."""
+        _setup_stack_project(tmp_path)
+        result = self._invoke(
+            tmp_path,
+            [
+                "stack", "post",
+                "--title", "Bug",
+                "--tag", "bug",
+                "--workaround", "Worked around",
+                "--finding", "Also a finding",
+            ],
+        )
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "--workaround conflicts with --finding" in result.output  # type: ignore[union-attr]
+
 
 # ---------------------------------------------------------------------------
 # Stack search command tests
 # ---------------------------------------------------------------------------
 
 
-class TestStackSearchCommand:
-    """Tests for the `lexi stack search` command."""
+class TestSearchTypeStack:
+    """Tests for `lexi search --type stack` (replaces `lexi stack search`)."""
 
     def _invoke(self, tmp_path: Path, args: list[str]) -> object:
         old_cwd = os.getcwd()
@@ -2497,7 +2605,7 @@ class TestStackSearchCommand:
         _setup_stack_project(tmp_path)
         _create_stack_post(tmp_path, post_id="ST-001", title="Timezone bug", tags=["datetime"])
         _create_stack_post(tmp_path, post_id="ST-002", title="Auth issue", tags=["auth"])
-        result = self._invoke(tmp_path, ["stack", "search", "timezone"])
+        result = self._invoke(tmp_path, ["search", "timezone", "--type", "stack"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Timezone bug" in result.output  # type: ignore[union-attr]
         assert "Auth issue" not in result.output  # type: ignore[union-attr]
@@ -2507,25 +2615,24 @@ class TestStackSearchCommand:
         _setup_stack_project(tmp_path)
         _create_stack_post(tmp_path, post_id="ST-001", title="Bug one", tags=["auth"])
         _create_stack_post(tmp_path, post_id="ST-002", title="Bug two", tags=["performance"])
-        result = self._invoke(tmp_path, ["stack", "search", "Bug", "--tag", "auth"])
+        result = self._invoke(tmp_path, ["search", "Bug", "--type", "stack", "--tag", "auth"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Bug one" in result.output  # type: ignore[union-attr]
         assert "Bug two" not in result.output  # type: ignore[union-attr]
 
     def test_search_no_results(self, tmp_path: Path) -> None:
-        """Search with no matching posts shows nudge."""
+        """Search with no matching posts shows no results message."""
         _setup_stack_project(tmp_path)
-        result = self._invoke(tmp_path, ["stack", "search", "nonexistent"])
+        result = self._invoke(tmp_path, ["search", "nonexistent", "--type", "stack"])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "No matching posts found" in result.output  # type: ignore[union-attr]
-        assert "lexi stack post" in result.output  # type: ignore[union-attr]
+        assert "No results found" in result.output  # type: ignore[union-attr]
 
     def test_search_with_status_filter(self, tmp_path: Path) -> None:
         """Search filtered by status."""
         _setup_stack_project(tmp_path)
         _create_stack_post(tmp_path, post_id="ST-001", title="Open bug", status="open")
         _create_stack_post(tmp_path, post_id="ST-002", title="Resolved bug", status="resolved")
-        result = self._invoke(tmp_path, ["stack", "search", "--status", "open"])
+        result = self._invoke(tmp_path, ["search", "--type", "stack", "--status", "open"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Open bug" in result.output  # type: ignore[union-attr]
         assert "Resolved bug" not in result.output  # type: ignore[union-attr]
@@ -2545,14 +2652,14 @@ class TestStackSearchCommand:
             title="View bug",
             refs_files=["src/views/home.py"],
         )
-        result = self._invoke(tmp_path, ["stack", "search", "--scope", "src/models/"])
+        result = self._invoke(tmp_path, ["search", "--type", "stack", "--scope", "src/models/"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Model bug" in result.output  # type: ignore[union-attr]
         assert "View bug" not in result.output  # type: ignore[union-attr]
 
     def test_search_no_project(self, tmp_path: Path) -> None:
         """Search without .lexibrary should fail."""
-        result = self._invoke(tmp_path, ["stack", "search", "test"])
+        result = self._invoke(tmp_path, ["search", "test", "--type", "stack"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
 
@@ -2581,12 +2688,49 @@ class TestStackSearchCommand:
         )
         result = self._invoke(
             tmp_path,
-            ["stack", "search", "--resolution-type", "workaround"],
+            ["search", "--type", "stack", "--resolution-type", "workaround"],
         )
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Workaround issue" in result.output  # type: ignore[union-attr]
         assert "Fixed issue" not in result.output  # type: ignore[union-attr]
         assert "Open issue" not in result.output  # type: ignore[union-attr]
+
+    def test_list_all(self, tmp_path: Path) -> None:
+        """List all stack posts (replaces `lexi stack list`)."""
+        _setup_stack_project(tmp_path)
+        _create_stack_post(tmp_path, post_id="ST-001", title="Bug one")
+        _create_stack_post(tmp_path, post_id="ST-002", title="Bug two")
+        result = self._invoke(tmp_path, ["search", "--type", "stack"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Bug one" in result.output  # type: ignore[union-attr]
+        assert "Bug two" in result.output  # type: ignore[union-attr]
+
+    def test_list_filtered_by_status(self, tmp_path: Path) -> None:
+        """List posts filtered by status."""
+        _setup_stack_project(tmp_path)
+        _create_stack_post(tmp_path, post_id="ST-001", title="Open bug", status="open")
+        _create_stack_post(tmp_path, post_id="ST-002", title="Resolved bug", status="resolved")
+        result = self._invoke(tmp_path, ["search", "--type", "stack", "--status", "open"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Open bug" in result.output  # type: ignore[union-attr]
+        assert "Resolved bug" not in result.output  # type: ignore[union-attr]
+
+    def test_list_filtered_by_tag(self, tmp_path: Path) -> None:
+        """List posts filtered by tag."""
+        _setup_stack_project(tmp_path)
+        _create_stack_post(tmp_path, post_id="ST-001", title="Auth issue", tags=["auth"])
+        _create_stack_post(tmp_path, post_id="ST-002", title="Perf issue", tags=["performance"])
+        result = self._invoke(tmp_path, ["search", "--type", "stack", "--tag", "auth"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Auth issue" in result.output  # type: ignore[union-attr]
+        assert "Perf issue" not in result.output  # type: ignore[union-attr]
+
+    def test_list_empty(self, tmp_path: Path) -> None:
+        """List when no posts exist."""
+        _setup_stack_project(tmp_path)
+        result = self._invoke(tmp_path, ["search", "--type", "stack"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "No results found" in result.output  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------
@@ -2810,61 +2954,6 @@ class TestStackViewCommand:
 # ---------------------------------------------------------------------------
 
 
-class TestStackListCommand:
-    """Tests for the `lexi stack list` command."""
-
-    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            return runner.invoke(lexi_app, args)
-        finally:
-            os.chdir(old_cwd)
-
-    def test_list_all(self, tmp_path: Path) -> None:
-        """List all stack posts."""
-        _setup_stack_project(tmp_path)
-        _create_stack_post(tmp_path, post_id="ST-001", title="Bug one")
-        _create_stack_post(tmp_path, post_id="ST-002", title="Bug two")
-        result = self._invoke(tmp_path, ["stack", "list"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "Bug one" in result.output  # type: ignore[union-attr]
-        assert "Bug two" in result.output  # type: ignore[union-attr]
-
-    def test_list_filtered_by_status(self, tmp_path: Path) -> None:
-        """List posts filtered by status."""
-        _setup_stack_project(tmp_path)
-        _create_stack_post(tmp_path, post_id="ST-001", title="Open bug", status="open")
-        _create_stack_post(tmp_path, post_id="ST-002", title="Resolved bug", status="resolved")
-        result = self._invoke(tmp_path, ["stack", "list", "--status", "open"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "Open bug" in result.output  # type: ignore[union-attr]
-        assert "Resolved bug" not in result.output  # type: ignore[union-attr]
-
-    def test_list_filtered_by_tag(self, tmp_path: Path) -> None:
-        """List posts filtered by tag."""
-        _setup_stack_project(tmp_path)
-        _create_stack_post(tmp_path, post_id="ST-001", title="Auth issue", tags=["auth"])
-        _create_stack_post(tmp_path, post_id="ST-002", title="Perf issue", tags=["performance"])
-        result = self._invoke(tmp_path, ["stack", "list", "--tag", "auth"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "Auth issue" in result.output  # type: ignore[union-attr]
-        assert "Perf issue" not in result.output  # type: ignore[union-attr]
-
-    def test_list_empty(self, tmp_path: Path) -> None:
-        """List when no posts exist."""
-        _setup_stack_project(tmp_path)
-        result = self._invoke(tmp_path, ["stack", "list"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "No posts found" in result.output  # type: ignore[union-attr]
-
-    def test_list_no_project(self, tmp_path: Path) -> None:
-        """List without .lexibrary should fail."""
-        result = self._invoke(tmp_path, ["stack", "list"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
-
-
 # ---------------------------------------------------------------------------
 # Unified search command tests
 # ---------------------------------------------------------------------------
@@ -2881,12 +2970,16 @@ class TestUnifiedSearchCommand:
         finally:
             os.chdir(old_cwd)
 
-    def test_search_no_args_requires_input(self, tmp_path: Path) -> None:
-        """Search with no query, tag, or scope should exit 1."""
-        _setup_stack_project(tmp_path)
-        result = self._invoke(tmp_path, ["search"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        assert "Provide a query" in result.output  # type: ignore[union-attr]
+    def test_search_no_args_lists_all(self, tmp_path: Path) -> None:
+        """Search with no args lists all non-deprecated, non-stale artifacts."""
+        project = _setup_unified_search_project(tmp_path)
+        result = self._invoke(project, ["search"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Authentication" in output
+        assert "Rate Limiting" in output
+        assert "src/auth.py" in output
+        assert "Login timeout bug" in output
 
     def test_search_free_text_across_all_types(self, tmp_path: Path) -> None:
         """Free-text search matches across concepts, design files, and Stack posts."""
@@ -2983,6 +3076,80 @@ class TestUnifiedSearchCommand:
 
 
 # ---------------------------------------------------------------------------
+# Type-specific flag validation tests (task 4.4)
+# ---------------------------------------------------------------------------
+
+
+class TestSearchFlagValidation:
+    """Tests for type-specific flag validation on `lexi search`."""
+
+    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            return runner.invoke(lexi_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_concept_flag_infers_stack_type(self, tmp_path: Path) -> None:
+        """--concept without --type auto-infers --type stack."""
+        _setup_stack_project(tmp_path)
+        _create_stack_post(
+            tmp_path,
+            post_id="ST-001",
+            title="Auth bug",
+            refs_concepts=["auth"],
+        )
+        result = self._invoke(tmp_path, ["search", "--concept", "auth"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Auth bug" in result.output  # type: ignore[union-attr]
+
+    def test_concept_flag_conflicts_with_non_stack_type(self, tmp_path: Path) -> None:
+        """--concept with --type concept should error."""
+        _setup_project(tmp_path)
+        result = self._invoke(tmp_path, ["search", "--type", "concept", "--concept", "auth"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "--concept" in result.output  # type: ignore[union-attr]
+        assert "stack" in result.output  # type: ignore[union-attr]
+
+    def test_resolution_type_flag_infers_stack(self, tmp_path: Path) -> None:
+        """--resolution-type without --type auto-infers --type stack."""
+        _setup_stack_project(tmp_path)
+        _create_stack_post(
+            tmp_path,
+            post_id="ST-001",
+            title="Fixed bug",
+            status="resolved",
+            resolution_type="fix",
+        )
+        result = self._invoke(tmp_path, ["search", "--resolution-type", "fix"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Fixed bug" in result.output  # type: ignore[union-attr]
+
+    def test_include_stale_infers_stack(self, tmp_path: Path) -> None:
+        """--include-stale without --type auto-infers --type stack."""
+        _setup_stack_project(tmp_path)
+        _create_stack_post(
+            tmp_path,
+            post_id="ST-001",
+            title="Stale bug",
+            status="stale",
+            stale_at="2026-01-20T00:00:00+00:00",
+        )
+        result = self._invoke(tmp_path, ["search", "--include-stale"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Stale bug" in result.output  # type: ignore[union-attr]
+
+    def test_invalid_type_value(self, tmp_path: Path) -> None:
+        """Invalid --type value shows clear error."""
+        _setup_project(tmp_path)
+        result = self._invoke(tmp_path, ["search", "--type", "foobar"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Invalid --type" in result.output  # type: ignore[union-attr]
+        assert "concept" in result.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
 # Commands without .lexibrary/ should exit 1 with friendly error (lexi)
 # ---------------------------------------------------------------------------
 
@@ -2998,11 +3165,6 @@ class TestNoProjectRoot:
 
     def test_search_no_project_root(self, tmp_path: Path) -> None:
         result = self._invoke_without_project(tmp_path, ["search", "test"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
-
-    def test_concepts_no_project_root(self, tmp_path: Path) -> None:
-        result = self._invoke_without_project(tmp_path, ["concepts"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
 
@@ -3038,6 +3200,7 @@ def _setup_validate_project(tmp_path: Path) -> Path:
     design_content = f"""---
 description: Main module
 updated_by: archivist
+status: active
 ---
 
 # src/main.py
@@ -3096,6 +3259,7 @@ def _setup_validate_project_with_warnings(tmp_path: Path) -> Path:
     design_content = """---
 description: Main module
 updated_by: archivist
+status: active
 ---
 
 # src/main.py
@@ -3484,7 +3648,7 @@ class TestIWH:
         result = runner.invoke(
             lexi_app, ["iwh", "write", "--scope", "incomplete", "--body", "test"]
         )
-        assert result.exit_code == 0
+        assert result.exit_code == 2
         assert "disabled" in result.output
 
     def test_iwh_write_project_root_default(
@@ -3568,7 +3732,7 @@ class TestIWH:
         (tmp_path / ".lexibrary" / "config.yaml").write_text("iwh:\n  enabled: false\n")
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(lexi_app, ["iwh", "read"])
-        assert result.exit_code == 0
+        assert result.exit_code == 2
         assert "disabled" in result.output
 
 
@@ -4070,8 +4234,8 @@ class TestStackUnstaleCommand:
 # ---------------------------------------------------------------------------
 
 
-class TestStackSearchIncludeStale:
-    """Tests for --include-stale flag on `lexi stack search`."""
+class TestSearchStackIncludeStale:
+    """Tests for --include-stale flag on `lexi search --type stack`."""
 
     def _invoke(self, tmp_path: Path, args: list[str]) -> object:
         old_cwd = os.getcwd()
@@ -4092,7 +4256,7 @@ class TestStackSearchIncludeStale:
             status="stale",
             stale_at="2026-01-20T00:00:00+00:00",
         )
-        result = self._invoke(tmp_path, ["stack", "search", "bug"])
+        result = self._invoke(tmp_path, ["search", "bug", "--type", "stack"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Open bug" in result.output  # type: ignore[union-attr]
         assert "Stale bug" not in result.output  # type: ignore[union-attr]
@@ -4108,7 +4272,7 @@ class TestStackSearchIncludeStale:
             status="stale",
             stale_at="2026-01-20T00:00:00+00:00",
         )
-        result = self._invoke(tmp_path, ["stack", "search", "bug", "--include-stale"])
+        result = self._invoke(tmp_path, ["search", "bug", "--include-stale"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Open bug" in result.output  # type: ignore[union-attr]
         assert "Stale bug" in result.output  # type: ignore[union-attr]
@@ -4123,35 +4287,9 @@ class TestStackSearchIncludeStale:
             status="stale",
             stale_at="2026-01-20T00:00:00+00:00",
         )
-        result = self._invoke(tmp_path, ["stack", "search", "--status", "stale"])
+        result = self._invoke(tmp_path, ["search", "--type", "stack", "--status", "stale"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Stale bug" in result.output  # type: ignore[union-attr]
-
-    def test_search_nudge_on_zero_results(self, tmp_path: Path) -> None:
-        """Zero-result search shows documentation tip nudge."""
-        _setup_stack_project(tmp_path)
-        result = self._invoke(tmp_path, ["stack", "search", "nonexistent-xyz"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "No matching posts found" in result.output  # type: ignore[union-attr]
-        assert "lexi stack post" in result.output  # type: ignore[union-attr]
-        assert "Even unsolved issues" in result.output  # type: ignore[union-attr]
-
-
-# ---------------------------------------------------------------------------
-# Stack list --include-stale tests
-# ---------------------------------------------------------------------------
-
-
-class TestStackListIncludeStale:
-    """Tests for --include-stale flag on `lexi stack list`."""
-
-    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            return runner.invoke(lexi_app, args)
-        finally:
-            os.chdir(old_cwd)
 
     def test_list_excludes_stale_by_default(self, tmp_path: Path) -> None:
         """Stale posts are excluded from listing by default."""
@@ -4164,7 +4302,7 @@ class TestStackListIncludeStale:
             status="stale",
             stale_at="2026-01-20T00:00:00+00:00",
         )
-        result = self._invoke(tmp_path, ["stack", "list"])
+        result = self._invoke(tmp_path, ["search", "--type", "stack"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Open bug" in result.output  # type: ignore[union-attr]
         assert "Stale bug" not in result.output  # type: ignore[union-attr]
@@ -4180,7 +4318,7 @@ class TestStackListIncludeStale:
             status="stale",
             stale_at="2026-01-20T00:00:00+00:00",
         )
-        result = self._invoke(tmp_path, ["stack", "list", "--include-stale"])
+        result = self._invoke(tmp_path, ["search", "--type", "stack", "--include-stale"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Open bug" in result.output  # type: ignore[union-attr]
         assert "Stale bug" in result.output  # type: ignore[union-attr]
@@ -4195,7 +4333,7 @@ class TestStackListIncludeStale:
             status="stale",
             stale_at="2026-01-20T00:00:00+00:00",
         )
-        result = self._invoke(tmp_path, ["stack", "list", "--status", "stale"])
+        result = self._invoke(tmp_path, ["search", "--type", "stack", "--status", "stale"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Stale bug" in result.output  # type: ignore[union-attr]
 
@@ -4392,23 +4530,23 @@ class TestOrient:
     # -- No .lexibrary directory --
 
     def test_no_lexibrary_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """orient should exit 0 with empty output when no .lexibrary/ exists."""
+        """orient should exit 0 with informational message when no .lexibrary/ exists."""
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(lexi_app, ["orient"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert result.output.strip() == ""
+        assert "No .lexibrary/" in result.output
 
     # -- Empty .lexibrary --
 
     def test_empty_lexibrary_no_topology(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Empty .lexibrary with no TOPOLOGY.md should produce empty output."""
+        """Empty .lexibrary with no TOPOLOGY.md should produce informational message."""
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".lexibrary").mkdir()
         result = runner.invoke(lexi_app, ["orient"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert result.output.strip() == ""
+        assert "no orientation data" in result.output
 
     def test_empty_lexibrary_with_topology(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -4473,8 +4611,8 @@ class TestOrient:
 
         result = runner.invoke(lexi_app, ["orient"], catch_exceptions=False)
         assert result.exit_code == 0
-        # Should include the omission notice
-        assert "omitted for brevity" in result.output
+        # Should include the omission notice (truncation footer)
+        assert "omitted" in result.output
 
     def test_truncation_preserves_shallow_entries(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -5211,7 +5349,7 @@ class TestLookupIWHPeek:
     """Tests for IWH signal peek in lookup output (task 6.3)."""
 
     def test_iwh_peek_file_lookup(self, tmp_path: Path) -> None:
-        """IWH signal in parent dir mirror shows in file lookup."""
+        """IWH signal in parent dir mirror shows in full file lookup."""
         project = _setup_archivist_project(tmp_path)
         source_content = "def hello():\n    pass\n"
         _create_design_file(project, "src/main.py", source_content)
@@ -5222,7 +5360,7 @@ class TestLookupIWHPeek:
         old_cwd = os.getcwd()
         os.chdir(project)
         try:
-            result = runner.invoke(lexi_app, ["lookup", "src/main.py"])
+            result = runner.invoke(lexi_app, ["lookup", "src/main.py", "--full"])
         finally:
             os.chdir(old_cwd)
 
@@ -5242,7 +5380,7 @@ class TestLookupIWHPeek:
         old_cwd = os.getcwd()
         os.chdir(project)
         try:
-            runner.invoke(lexi_app, ["lookup", "src/main.py"])
+            runner.invoke(lexi_app, ["lookup", "src/main.py", "--full"])
         finally:
             os.chdir(old_cwd)
 
@@ -5383,3 +5521,124 @@ class TestLookupTokenBudget:
         assert _estimate_tokens("hello world") > 0
         # ~4 chars per token
         assert _estimate_tokens("a" * 400) == 100
+
+
+class TestLookupBriefMode:
+    """Tests for brief vs full lookup mode (task 8.1)."""
+
+    def test_brief_shows_description_not_body(self, tmp_path: Path) -> None:
+        project = _setup_archivist_project(tmp_path)
+        _create_design_file(project, "src/main.py", "def hello():\n    pass\n")
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["lookup", "src/main.py"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 0
+        assert "Design file for src/main.py" in result.output
+        assert "Interface Contract" not in result.output
+        assert "--full" in result.output
+
+    def test_full_shows_design_body(self, tmp_path: Path) -> None:
+        project = _setup_archivist_project(tmp_path)
+        _create_design_file(project, "src/main.py", "def hello():\n    pass\n")
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["lookup", "src/main.py", "--full"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 0
+        assert "Interface Contract" in result.output
+
+
+class TestLookupTruncationFooter:
+    """Tests for lookup truncation footer (task 8.2)."""
+
+    def test_truncation_omits_sections(self) -> None:
+        from lexibrary.cli.lexi_app import _truncate_lookup_sections
+
+        sections = [("issues", "x" * 200, 2), ("iwh", "y" * 200, 3), ("links", "z" * 200, 4)]
+        result = _truncate_lookup_sections(sections, total_budget=60)
+        included = {name for name, _ in result}
+        assert len({"issues", "iwh", "links"} - included) > 0
+
+
+class TestOrientTruncationFooter:
+    """Tests for orient truncation footer (task 8.3)."""
+
+    def test_orient_truncation_starred_format(self, tmp_path: Path) -> None:
+        from lexibrary.cli.lexi_app import _build_orient_content
+
+        project = _setup_archivist_project(tmp_path)
+        (project / ".lexibrary" / "TOPOLOGY.md").write_text("x" * 20000, encoding="utf-8")
+        now = datetime.now().isoformat()
+        ap = project / ".lexibrary" / "designs" / "src" / ".aindex"
+        ap.parent.mkdir(parents=True, exist_ok=True)
+        ap.write_text(
+            f'# src/\n\nSrc\n\n## Child Map\n\n| Name | Type | Description |\n'
+            f'| --- | --- | --- |\n| `main.py` | file | Main |\n\n'
+            f'## Local Conventions\n\n(none)\n\n'
+            f'<!-- lexibrary:meta source="src" source_hash="a" '
+            f'generated="{now}" generator="lexibrary-v2" -->\n',
+            encoding="utf-8",
+        )
+        output = _build_orient_content(project)
+        if "*Truncated:" in output:
+            assert "file descriptions omitted" in output
+
+
+class TestBlankSectionWarnings:
+    """Tests for blank-section warnings (task 8.4)."""
+
+    def test_stack_post_warns_blank_problem(self, tmp_path: Path) -> None:
+        project = _setup_stack_project(tmp_path)
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["stack", "post", "--title", "Bug", "--tag", "test"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 0
+        assert "Note: The following sections are blank:" in result.output
+        assert "problem" in result.output
+
+    def test_stack_post_no_warning_all_fields(self, tmp_path: Path) -> None:
+        project = _setup_stack_project(tmp_path)
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(
+                lexi_app,
+                ["stack", "post", "--title", "Bug", "--tag", "test",
+                 "--problem", "Broke", "--context", "Testing",
+                 "--evidence", "Log", "--attempts", "Restarted"],
+            )
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 0
+        assert "Note: The following sections are blank:" not in result.output
+
+    def test_concept_new_warns_blank_tags(self, tmp_path: Path) -> None:
+        project = _setup_archivist_project(tmp_path)
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["concept", "new", "Test Concept"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 0
+        assert "Note: The following sections are blank:" in result.output
+        assert "tags" in result.output
+
+    def test_concept_new_no_warning_with_tags(self, tmp_path: Path) -> None:
+        project = _setup_archivist_project(tmp_path)
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["concept", "new", "Tagged Concept", "--tag", "arch"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 0
+        assert "Note: The following sections are blank:" not in result.output

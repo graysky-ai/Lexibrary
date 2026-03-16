@@ -11,25 +11,40 @@ from lexibrary.errors import ErrorSummary
 from lexibrary.exceptions import LexibraryError
 from lexibrary.validator.checks import (
     check_aindex_coverage,
+    check_aindex_entries,
     check_bidirectional_deps,
     check_comment_accumulation,
+    check_concept_body,
     check_concept_frontmatter,
+    check_config_valid,
     check_convention_consistent_violation,
+    check_convention_frontmatter,
     check_convention_gap,
     check_convention_orphaned_scope,
     check_convention_stale,
     check_dangling_links,
     check_deprecated_concept_usage,
     check_deprecated_ttl,
+    check_design_deps_existence,
+    check_design_frontmatter,
+    check_design_structure,
+    check_duplicate_aliases,
+    check_duplicate_slugs,
     check_file_existence,
     check_forward_dependencies,
     check_hash_freshness,
+    check_iwh_frontmatter,
+    check_lexignore_syntax,
+    check_linkgraph_version,
     check_lookup_token_budget_exceeded,
     check_orphan_artifacts,
     check_orphan_concepts,
     check_orphaned_designs,
     check_orphaned_iwh_signals,
     check_resolved_post_staleness,
+    check_stack_body_sections,
+    check_stack_frontmatter,
+    check_stack_refs_validity,
     check_stack_staleness,
     check_stale_concepts,
     check_supersession_candidates,
@@ -63,6 +78,7 @@ CheckFn = Callable[[Path, Path], list[ValidationIssue]]
 # The default_severity is the severity the check is designed to produce;
 # it determines which checks are included when severity_filter is applied.
 AVAILABLE_CHECKS: dict[str, tuple[CheckFn, Severity]] = {
+    # --- Original checks ---
     "wikilink_resolution": (check_wikilink_resolution, "error"),
     "file_existence": (check_file_existence, "error"),
     "concept_frontmatter": (check_concept_frontmatter, "error"),
@@ -90,6 +106,25 @@ AVAILABLE_CHECKS: dict[str, tuple[CheckFn, Severity]] = {
     "convention_consistent_violation": (check_convention_consistent_violation, "info"),
     "lookup_token_budget_exceeded": (check_lookup_token_budget_exceeded, "info"),
     "orphaned_iwh_signals": (check_orphaned_iwh_signals, "info"),
+    # --- Schema frontmatter checks (Group 1) ---
+    "convention_frontmatter": (check_convention_frontmatter, "error"),
+    "design_frontmatter": (check_design_frontmatter, "error"),
+    "stack_frontmatter": (check_stack_frontmatter, "error"),
+    "iwh_frontmatter": (check_iwh_frontmatter, "error"),
+    # --- Infrastructure checks (Group 2) ---
+    "config_valid": (check_config_valid, "error"),
+    "lexignore_syntax": (check_lexignore_syntax, "warning"),
+    "linkgraph_version": (check_linkgraph_version, "error"),
+    # --- Cross-artifact checks (Group 3) ---
+    "duplicate_aliases": (check_duplicate_aliases, "warning"),
+    "duplicate_slugs": (check_duplicate_slugs, "warning"),
+    "stack_refs_validity": (check_stack_refs_validity, "warning"),
+    "design_deps_existence": (check_design_deps_existence, "warning"),
+    "aindex_entries": (check_aindex_entries, "warning"),
+    # --- Body and structure checks (Group 4) ---
+    "design_structure": (check_design_structure, "warning"),
+    "stack_body_sections": (check_stack_body_sections, "warning"),
+    "concept_body": (check_concept_body, "info"),
 }
 
 # Severity levels ordered from most to least severe.

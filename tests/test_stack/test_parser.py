@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -797,7 +797,7 @@ class TestParseStaleAtField:
         p.write_text(_POST_WITH_STALE_AT)
         post = parse_stack_post(p)
         assert post is not None
-        assert post.frontmatter.stale_at == "2026-06-15T10:00:00"
+        assert post.frontmatter.stale_at == datetime(2026, 6, 15, 10, 0, 0)
 
     def test_stale_status_parsed(self, tmp_path: Path) -> None:
         p = tmp_path / "ST-020.md"

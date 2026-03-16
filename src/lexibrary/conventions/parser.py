@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)
 
 
-def _extract_rule(body: str) -> str:
+def extract_rule(body: str) -> str:
     """Extract the first paragraph from the body as the prescriptive rule.
 
     The rule is the text up to the first blank line. If the body is empty
@@ -58,7 +58,7 @@ def parse_convention_file(path: Path) -> ConventionFile | None:
         return None
 
     body = text[fm_match.end():]
-    rule = _extract_rule(body)
+    rule = extract_rule(body)
 
     return ConventionFile(
         frontmatter=frontmatter,

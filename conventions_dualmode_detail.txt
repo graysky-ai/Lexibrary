@@ -1,0 +1,276 @@
+DETAILED ANALYSIS: CONVENTIONS DUAL-MODE ARGUMENT IMPLEMENTATION
+==========================================================
+
+THE FEATURE
+─────────────────────────────────────────────────────────────────
+
+Command:  lexi conventions [query]
+
+Single positional argument that serves TWO purposes:
+  1. PATH MODE: Find conventions applicable to a specific file/directory
+  2. FREE-TEXT MODE: Search for conventions matching keywords
+
+Examples:
+  lexi conventions src/auth              # Path mode: conventions for src/auth/
+  lexi conventions "future imports"      # Free-text mode: search by text
+  lexi conventions                       # List all (no query)
+
+
+DETECTION HEURISTIC (src/lexibrary/cli/lexi_app.py:948-959)
+─────────────────────────────────────────────────────────────────
+
+```python
+if query is not None and ("/" in query or "." in query):
+    # PATH MODE: treat as file/directory path
+    from lexibrary.config.loader import load_config
+    config = load_config(project_root)
+    results = idx.find_by_scope(query, scope_root=config.scope_root)
+    title = f"Conventions for '{query}'"
+    
+elif query is not None:
+    # FREE-TEXT MODE: treat as search query
+    results = idx.search(query)
+    title = f"Conventions matching '{query}'"
+    
+else:
+    # LIST MODE: no query provided
+    results = list(idx.conventions)
+    title = "All conventions"
+```
+
+DECISION RULE:
+  If query contains "/" (directory separator) OR "." (dot character):
+    → Treat as PATH
+  Else:
+    → Treat as FREE-TEXT SEARCH
+
+
+PATH MODE SEMANTICS: find_by_scope()
+─────────────────────────────────────────────────────────────────
+
+Called on: ConventionIndex.find_by_scope(query, scope_root)
+
+Returns conventions applicable to the given file/directory path:
+  - Conventions with scope == "project" (apply globally)
+  - Conventions with scope == parent directory of query
+  - Conventions with scope == ancestor directory of query
+  - Sorted by scope depth (project first, then nearest-to-farthest)
+
+Example: lexi conventions "src/auth/models.py"
+  Returns:
+    1. (project) Future annotations import
+    2. (src/auth) All endpoints require auth decorator
+    3. (src) Standard logging levels
+
+Would NOT return:
+  - Conventions scoped to "src/lexibrary" (different branch)
+  - Conventions scoped to "src/auth/specialized" (child scope, not parent)
+
+
+FREE-TEXT MODE SEMANTICS: idx.search()
+─────────────────────────────────────────────────────────────────
+
+Called on: ConventionIndex.search(query)
+
+Substring match across:
+  - Convention titles
+  - Convention bodies
+  - Convention rules
+
+Case-insensitive, substring anywhere in text
+
+Example: lexi conventions "annotation"
+  Returns all conventions with "annotation" anywhere
+
+
+INTERACTIVE BEHAVIOR FLOW
+─────────────────────────────────────────────────────────────────
+
+Input: lexi conventions "src/auth"
+  ├─ Contains "/" ? YES
+  ├─ Mode: PATH
+  └─ find_by_scope("src/auth", scope_root) → conventions for src/auth
+
+Input: lexi conventions "Docker.io"
+  ├─ Contains "." ? YES
+  ├─ Mode: PATH (WRONG! User meant free-text search)
+  └─ find_by_scope("Docker.io", ...) → no results (directory doesn't exist)
+  ❌ BUG: Ambiguous query silently treated as path
+
+Input: lexi conventions "auth"
+  ├─ Contains "/" ? NO
+  ├─ Contains "." ? NO
+  ├─ Mode: FREE-TEXT
+  └─ idx.search("auth") → all conventions with "auth" in text
+
+Input: lexi conventions "config.yaml"
+  ├─ Contains "." ? YES
+  ├─ Mode: PATH (WRONG! User meant to search for "config.yaml")
+  └─ find_by_scope("config.yaml", ...) → conventions for that file
+  ❌ BUG: Ambiguous query treated as path, not searched
+
+
+EDGE CASES & FRAGILITY
+─────────────────────────────────────────────────────────────────
+
+Input: "."
+  ├─ Contains "." ? YES
+  ├─ Mode: PATH
+  └─ find_by_scope(".", ...) → conventions for current directory
+  ✓ Works as intended (single dot is ambiguous but usually means cwd)
+
+Input: ".."
+  ├─ Contains "." ? YES
+  ├─ Mode: PATH
+  └─ find_by_scope("..", ...) → conventions for parent directory
+  ✓ Works as intended
+
+Input: "src.auth.models"
+  ├─ Contains "." ? YES
+  ├─ Mode: PATH (WRONG!)
+  └─ find_by_scope("src.auth.models", ...) → no matches (not a real path)
+  ❌ BUG: Meant as search query, treated as nonexistent path
+
+Input: "authentication/authorization"
+  ├─ Contains "/" ? YES
+  ├─ Mode: PATH
+  └─ find_by_scope("authentication/authorization", ...)
+  ✓ Correct if this is a real directory path
+  ❌ WRONG if user wanted free-text search for "authentication/authorization"
+
+Input: "decorator" (single word, no "/" or ".")
+  ├─ Mode: FREE-TEXT
+  └─ idx.search("decorator") → conventions with "decorator"
+  ✓ Works correctly
+
+
+WHY THIS HEURISTIC IS FRAGILE
+─────────────────────────────────────────────────────────────────
+
+PROBLEM #1: Overlapping Naming Domains
+  - Filesystem paths often have extensions: "loader.py", "auth.middleware"
+  - Search queries often have dots: "config.auth.verify", "Docker.io"
+  - No syntactic way to disambiguate
+
+PROBLEM #2: Directory Names Can Look Like Queries
+  - "src/utils" is a valid path and a valid search query
+  - "logging" is a valid directory name and a search term
+  - Heuristic provides no way to force one or the other
+
+PROBLEM #3: Silent Failure on Ambiguous Input
+  - "Docker.io" → treated as path → no matches → silent empty result
+  - User gets no indication that their search query was misinterpreted
+  - No error message, no clarification, just empty table
+
+PROBLEM #4: Inconsistent Behavior Across Projects
+  - Project A has directory "src/auth" → works as path
+  - Project B has no directory "auth" → treated as path but fails silently
+  - Same input → different behavior depending on filesystem
+
+
+COMPARISON WITH OTHER COMMANDS
+─────────────────────────────────────────────────────────────────
+
+lexi search --scope src/auth
+  ├─ Explicit --scope flag (no ambiguity)
+  ├─ Uses simple prefix matching (not hierarchical inheritance)
+  └─ Only applies to file-scoped artifacts (omits concepts)
+
+lexi conventions src/auth
+  ├─ Implicit mode detection (ambiguous)
+  ├─ Uses hierarchical inheritance (different semantics than search)
+  └─ Concepts not involved (concepts are global)
+
+lexi lookup src/auth/models.py
+  ├─ Explicit file path
+  ├─ Returns conventions internally (no dual-mode confusion)
+  └─ File must exist (checked at start)
+
+
+PROPOSED IMPROVEMENTS
+─────────────────────────────────────────────────────────────────
+
+OPTION 1: Explicit Flags (Recommended)
+  lexi conventions --path src/auth
+  lexi conventions --query "authentication"
+  lexi conventions                    # List all
+
+  Pros:
+    - No ambiguity
+    - Clear intent
+    - Backward compatible (add as optional, keep positional for compatibility)
+  Cons:
+    - Requires two flags for different use cases
+    - Slightly more verbose
+
+OPTION 2: Path Validation
+  if query and ("/" in query or "." in query):
+      # Verify path exists in project before treating as path
+      scope_abs = (project_root / config.scope_root / query).resolve()
+      if scope_abs.is_dir() or scope_abs.is_file():
+          # Treat as path
+      else:
+          # Fall back to search
+          # Or raise error: "Path '{query}' not found, treating as search query"
+
+  Pros:
+    - Single positional arg preserved
+    - Validation prevents silent failures
+  Cons:
+    - Still ambiguous (both might exist)
+    - Adds filesystem checks (minor perf cost)
+
+OPTION 3: Fuzzy Heuristic
+  if query and ("/" in query or query.endswith(".py") or query.endswith(".md")):
+      # More specific: must be file-like (with extension) or have /
+      # Avoids "Docker.io" → path confusion
+  else:
+      # Search query
+
+  Pros:
+    - Reduces false positives
+    - Less code change
+  Cons:
+    - Still fragile (other extensions exist)
+    - What about "Dockerfile"?
+
+OPTION 4: Query Type Inference
+  if query and (project_root / config.scope_root / query).exists():
+      # Definite path
+  elif query and ("/" in query):
+      # Looks like path but doesn't exist → search (with warning)
+  else:
+      # Search
+
+  Pros:
+    - Tries to disambiguate more intelligently
+  Cons:
+    - Complex logic
+    - Still has edge cases
+
+
+RECOMMENDED FIX
+─────────────────────────────────────────────────────────────────
+
+1. In LEXI APP (CLI command):
+   Add optional flags for explicit mode control:
+   - lexi conventions [query] [--path] [--search]
+   - If neither provided, use heuristic
+   - If both provided, error
+
+2. In DOCUMENTATION (CLAUDE.md, docs/):
+   Clarify that dual-mode exists:
+   - "Use path separator (/) to find conventions for a directory"
+   - "Use free-text keywords to search conventions"
+   - Document the heuristic rule explicitly
+   - Warn about ambiguous queries (Docker.io, config.auth.verify)
+
+3. In TESTS:
+   Add test cases for edge cases:
+   - "Docker.io" (dot but not a real path)
+   - "config.auth.verify" (multiple dots)
+   - "src/auth" (directory path)
+   - Verify behavior matches expectations
+
+4. FUTURE CONSIDERATION:
+   Move to explicit flags when breaking changes are acceptable

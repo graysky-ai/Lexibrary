@@ -134,6 +134,7 @@ def _create_design_file(tmp_path: Path, source_rel: str, source_content: str) ->
     design_content = f"""---
 description: Design file for {source_rel}
 updated_by: archivist
+status: active
 ---
 
 # {source_rel}
@@ -342,7 +343,7 @@ class TestUpdateCommand:
         assert "new_file" in result.output
 
     def test_update_directory(self, tmp_path: Path) -> None:
-        """Update directory calls update_project with progress bar."""
+        """Update directory calls update_directory with progress bar."""
         project = _setup_archivist_project(tmp_path)
 
         mock_stats = UpdateStats(
@@ -351,20 +352,21 @@ class TestUpdateCommand:
             files_updated=2,
             files_created=1,
         )
-        mock_update_project = AsyncMock(return_value=mock_stats)
+        mock_update_directory = AsyncMock(return_value=mock_stats)
 
         old_cwd = os.getcwd()
         os.chdir(project)
         try:
             with patch(
-                "lexibrary.archivist.pipeline.update_project",
-                mock_update_project,
+                "lexibrary.archivist.pipeline.update_directory",
+                mock_update_directory,
             ):
                 result = runner.invoke(lexictl_app, ["update", "src"])
         finally:
             os.chdir(old_cwd)
 
         assert result.exit_code == 0
+        assert "Updating directory" in result.output
         assert "Files scanned" in result.output
         assert "5" in result.output
 
@@ -452,6 +454,7 @@ def _setup_validate_project(tmp_path: Path) -> Path:
     design_content = f"""---
 description: Main module
 updated_by: archivist
+status: active
 ---
 
 # src/main.py
@@ -518,6 +521,7 @@ def _setup_validate_project_with_warnings(tmp_path: Path) -> Path:
     design_content = """---
 description: Main module
 updated_by: archivist
+status: active
 ---
 
 # src/main.py
@@ -2307,13 +2311,13 @@ class TestUpdateIWHCleanup:
         project = _setup_archivist_project(tmp_path)
 
         mock_stats = UpdateStats(files_scanned=2, files_unchanged=2)
-        mock_update_project = AsyncMock(return_value=mock_stats)
+        mock_update_directory = AsyncMock(return_value=mock_stats)
         mock_iwh_cleanup = MagicMock()
 
         with (
             patch(
-                "lexibrary.archivist.pipeline.update_project",
-                mock_update_project,
+                "lexibrary.archivist.pipeline.update_directory",
+                mock_update_directory,
             ),
             patch(
                 "lexibrary.iwh.cleanup.iwh_cleanup",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from lexibrary.conventions.parser import parse_convention_file
@@ -244,7 +245,7 @@ class TestParseConventionFileDeprecatedAt:
         path.write_text(DEPRECATED_CONVENTION)
         result = parse_convention_file(path)
         assert result is not None
-        assert result.frontmatter.deprecated_at == "2026-03-04T10:00:00"
+        assert result.frontmatter.deprecated_at == datetime(2026, 3, 4, 10, 0, 0)
         assert result.frontmatter.status == "deprecated"
 
     def test_deprecated_at_none_when_absent(self, tmp_path: Path) -> None:

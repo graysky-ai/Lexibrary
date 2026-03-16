@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -119,13 +119,13 @@ class TestStackPostFrontmatter:
         """status='stale' with stale_at timestamp SHALL validate successfully."""
         fm = self._make(status="stale", stale_at="2026-06-15T10:00:00")
         assert fm.status == "stale"
-        assert fm.stale_at == "2026-06-15T10:00:00"
+        assert fm.stale_at == datetime(2026, 6, 15, 10, 0, 0)
 
     def test_stale_at_with_non_stale_status(self) -> None:
         """stale_at can be set independently of status (model does not enforce coupling)."""
         fm = self._make(status="resolved", stale_at="2026-06-15T10:00:00")
         assert fm.status == "resolved"
-        assert fm.stale_at == "2026-06-15T10:00:00"
+        assert fm.stale_at == datetime(2026, 6, 15, 10, 0, 0)
 
     def test_stale_status_without_stale_at(self) -> None:
         """status='stale' without stale_at validates (stale_at defaults to None)."""

@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import json as _json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from rich.console import Console
-from rich.table import Table
+from lexibrary.cli._format import OutputFormat, get_format
+from lexibrary.cli._output import info, markdown_table
+from lexibrary.conventions.parser import extract_rule
 
 if TYPE_CHECKING:
-    from lexibrary.linkgraph.query import LinkGraph
+    from lexibrary.linkgraph.query import ArtifactResult, LinkGraph
 
 
 @dataclass
@@ -26,89 +28,95 @@ class SearchResults:
         """Return True if any group has results."""
         return bool(self.concepts or self.conventions or self.design_files or self.stack_posts)
 
-    def render(self, console: Console) -> None:
-        """Render grouped results with Rich formatting."""
+    def render(self) -> None:
+        """Render grouped results, respecting the global ``--format`` flag."""
+        fmt = get_format()
+        if fmt == OutputFormat.json:
+            self._render_json()
+        elif fmt == OutputFormat.plain:
+            self._render_plain()
+        else:
+            self._render_markdown()
+
+    # -- JSON rendering -----------------------------------------------------
+
+    def _render_json(self) -> None:
+        """Emit a single JSON array of result dicts."""
+        records: list[dict[str, object]] = []
+        for c in self.concepts:
+            records.append({"name": c.name, "tags": c.tags, "status": c.status})
+        for cv in self.conventions:
+            records.append(
+                {"title": cv.title, "scope": cv.scope, "tags": cv.tags, "status": cv.status}
+            )
+        for s in self.stack_posts:
+            records.append(
+                {"id": s.post_id, "title": s.title, "votes": s.votes, "tags": s.tags, "status": s.status}
+            )
+        for d in self.design_files:
+            records.append(
+                {"source": d.source_path, "description": d.description, "tags": d.tags}
+            )
+        info(_json.dumps(records))
+
+    # -- Plain (tab-separated) rendering ------------------------------------
+
+    def _render_plain(self) -> None:
+        """Emit tab-separated lines with no markdown formatting."""
+        for c in self.concepts:
+            info(f"{c.name}\t{', '.join(c.tags)}\t{c.status}")
+        for cv in self.conventions:
+            info(f"{cv.title}\t{cv.scope}\t{', '.join(cv.tags)}\t{cv.status}")
+        for s in self.stack_posts:
+            info(f"{s.post_id}\t{s.title}\t{s.votes}\t{', '.join(s.tags)}\t{s.status}")
+        for d in self.design_files:
+            info(f"{d.source_path}\t{d.description}\t{', '.join(d.tags)}")
+
+    # -- Markdown rendering (original behaviour) ----------------------------
+
+    def _render_markdown(self) -> None:
+        """Render grouped results as plain Markdown tables."""
         if self.concepts:
-            console.print()
-            table = Table(title="Concepts")
-            table.add_column("Name", style="cyan")
-            table.add_column("Status")
-            table.add_column("Tags")
-            table.add_column("Summary", max_width=50)
-            for c in self.concepts:
-                status_style = {
-                    "active": "green",
-                    "draft": "yellow",
-                    "deprecated": "red",
-                }.get(c.status, "dim")
-                table.add_row(
-                    c.name,
-                    f"[{status_style}]{c.status}[/{status_style}]",
-                    ", ".join(c.tags),
-                    c.summary[:50] if c.summary else "",
-                )
-            console.print(table)
+            info("")
+            info("## Concepts\n")
+            rows = [
+                [c.name, c.status, ", ".join(c.tags), c.summary[:50] if c.summary else ""]
+                for c in self.concepts
+            ]
+            info(markdown_table(["Name", "Status", "Tags", "Summary"], rows))
 
         if self.conventions:
-            console.print()
-            table = Table(title="Conventions")
-            table.add_column("Title", style="cyan")
-            table.add_column("Scope")
-            table.add_column("Status")
-            table.add_column("Rule", max_width=50)
-            table.add_column("Tags")
-            for cv in self.conventions:
-                status_style = {
-                    "active": "green",
-                    "draft": "yellow",
-                    "deprecated": "red",
-                }.get(cv.status, "dim")
-                table.add_row(
+            info("")
+            info("## Conventions\n")
+            rows = [
+                [
                     cv.title,
                     cv.scope,
-                    f"[{status_style}]{cv.status}[/{status_style}]",
+                    cv.status,
                     cv.rule[:50] if cv.rule else "",
                     ", ".join(cv.tags),
-                )
-            console.print(table)
+                ]
+                for cv in self.conventions
+            ]
+            info(markdown_table(["Title", "Scope", "Status", "Rule", "Tags"], rows))
 
         if self.design_files:
-            console.print()
-            table = Table(title="Design Files")
-            table.add_column("Source", style="cyan")
-            table.add_column("Description", max_width=60)
-            table.add_column("Tags")
-            for d in self.design_files:
-                table.add_row(
-                    d.source_path,
-                    d.description[:60] if d.description else "",
-                    ", ".join(d.tags),
-                )
-            console.print(table)
+            info("")
+            info("## Design Files\n")
+            rows = [
+                [d.source_path, d.description[:60] if d.description else "", ", ".join(d.tags)]
+                for d in self.design_files
+            ]
+            info(markdown_table(["Source", "Description", "Tags"], rows))
 
         if self.stack_posts:
-            console.print()
-            table = Table(title="Stack")
-            table.add_column("ID", style="cyan")
-            table.add_column("Status")
-            table.add_column("Votes", justify="right")
-            table.add_column("Title")
-            table.add_column("Tags")
-            for s in self.stack_posts:
-                status_style = {
-                    "open": "green",
-                    "resolved": "blue",
-                    "outdated": "yellow",
-                    "duplicate": "red",
-                }.get(s.status, "dim")
-                table.add_row(
-                    s.post_id,
-                    f"[{status_style}]{s.status}[/{status_style}]",
-                    str(s.votes),
-                    s.title,
-                    ", ".join(s.tags),
-                )
-            console.print(table)
+            info("")
+            info("## Stack\n")
+            rows = [
+                [s.post_id, s.status, str(s.votes), s.title, ", ".join(s.tags)]
+                for s in self.stack_posts
+            ]
+            info(markdown_table(["ID", "Status", "Votes", "Title", "Tags"], rows))
 
 
 @dataclass
@@ -144,59 +152,168 @@ class _StackResult:
     tags: list[str]
 
 
+# Valid artifact type values for ``artifact_type`` parameter.
+VALID_ARTIFACT_TYPES = ("concept", "convention", "design", "stack")
+
+
 def unified_search(
     project_root: Path,
     *,
     query: str | None = None,
     tag: str | None = None,
+    tags: list[str] | None = None,
     scope: str | None = None,
     link_graph: LinkGraph | None = None,
+    artifact_type: str | None = None,
+    status: str | None = None,
+    include_deprecated: bool = False,
+    concept: str | None = None,
+    resolution_type: str | None = None,
+    include_stale: bool = False,
 ) -> SearchResults:
-    """Search across concepts, design files, and Stack posts.
+    """Search across concepts, conventions, design files, and Stack posts.
 
-    When *link_graph* is provided and *tag* is specified, the function uses
-    the index-accelerated code path (O(1) tag lookup via the ``tags`` table)
-    instead of scanning artifact files.  When *link_graph* is provided and
-    a free-text *query* is given (without *tag*), the function uses FTS5
-    full-text search for relevance-ranked results.  When *link_graph* is
+    When *link_graph* is provided and *tag*/*tags* is specified, the function
+    uses the index-accelerated code path (O(1) tag lookup via the ``tags``
+    table) instead of scanning artifact files.  When *link_graph* is provided
+    and a free-text *query* is given (without *tag*/*tags*), the function uses
+    FTS5 full-text search for relevance-ranked results.  When *link_graph* is
     ``None``, the existing file-scanning code paths are used as a fallback
     for both tag and free-text queries.
 
     Args:
         project_root: Absolute path to the project root.
         query: Free-text search query (matches titles, summaries, bodies).
-        tag: Filter by tag across all artifact types.
+        tag: Filter by a single tag across all artifact types.  Convenience
+            alias -- wraps into a single-element ``tags`` list.
+        tags: Filter by multiple tags with AND logic (all tags must match).
         scope: Filter by file scope path.
         link_graph: Optional :class:`LinkGraph` instance for index-accelerated
             queries.  When ``None``, file-scanning fallback is used.
+        artifact_type: Restrict search to a single artifact type.  Valid
+            values: ``"concept"``, ``"convention"``, ``"design"``, ``"stack"``.
+        status: Filter results by artifact status value.
+        include_deprecated: When ``True``, include deprecated concepts and
+            conventions (hidden by default).
+        concept: Stack-only filter: match posts referencing this concept.
+        resolution_type: Stack-only filter: match posts with this resolution
+            type.
+        include_stale: Stack-only: when ``True``, include stale posts
+            (hidden by default).
 
     Returns:
         Grouped :class:`SearchResults`.
     """
+    # Normalise tag/tags: merge ``tag`` convenience alias into ``tags`` list.
+    resolved_tags = _resolve_tags(tag=tag, tags=tags)
+
+    # Pick the first tag for index-accelerated paths (they accept a single tag;
+    # additional tags are applied as post-filters).
+    first_tag = resolved_tags[0] if resolved_tags else None
+
     # --- Index-accelerated tag search ---
-    if link_graph is not None and tag is not None:
-        return _tag_search_from_index(link_graph, tag=tag, scope=scope)
+    if link_graph is not None and first_tag is not None:
+        return _tag_search_from_index(
+            link_graph,
+            tag=first_tag,
+            extra_tags=resolved_tags[1:],
+            scope=scope,
+            artifact_type=artifact_type,
+            status=status,
+            include_deprecated=include_deprecated,
+            include_stale=include_stale,
+        )
 
     # --- FTS-accelerated free-text search (index available, query without tag) ---
-    if link_graph is not None and query is not None and tag is None:
-        return _fts_search(link_graph, query=query, scope=scope)
+    if link_graph is not None and query is not None and first_tag is None:
+        return _fts_search(
+            link_graph,
+            query=query,
+            scope=scope,
+            artifact_type=artifact_type,
+            status=status,
+            include_deprecated=include_deprecated,
+            include_stale=include_stale,
+        )
 
     # --- Fallback: file-scanning search ---
     results = SearchResults()
 
-    # --- Concepts ---
-    results.concepts = _search_concepts(project_root, query=query, tag=tag, scope=scope)
+    # Determine which artifact types to search.
+    search_concepts = artifact_type is None or artifact_type == "concept"
+    search_conventions = artifact_type is None or artifact_type == "convention"
+    search_designs = artifact_type is None or artifact_type == "design"
+    search_stack = artifact_type is None or artifact_type == "stack"
 
-    # --- Design Files ---
-    results.design_files = _search_design_files(project_root, query=query, tag=tag, scope=scope)
+    if search_concepts:
+        results.concepts = _search_concepts(
+            project_root,
+            query=query,
+            tag=first_tag,
+            extra_tags=resolved_tags[1:] if resolved_tags else [],
+            scope=scope,
+            status=status,
+            include_deprecated=include_deprecated,
+        )
 
-    # --- Stack Posts ---
-    results.stack_posts = _search_stack_posts(project_root, query=query, tag=tag, scope=scope)
+    if search_designs:
+        results.design_files = _search_design_files(
+            project_root,
+            query=query,
+            tag=first_tag,
+            extra_tags=resolved_tags[1:] if resolved_tags else [],
+            scope=scope,
+            status=status,
+        )
 
-    # --- Conventions ---
-    results.conventions = _search_conventions(project_root, query=query, tag=tag, scope=scope)
+    if search_stack:
+        results.stack_posts = _search_stack_posts(
+            project_root,
+            query=query,
+            tag=first_tag,
+            extra_tags=resolved_tags[1:] if resolved_tags else [],
+            scope=scope,
+            status=status,
+            concept=concept,
+            resolution_type=resolution_type,
+            include_stale=include_stale,
+        )
+
+    if search_conventions:
+        results.conventions = _search_conventions(
+            project_root,
+            query=query,
+            tag=first_tag,
+            extra_tags=resolved_tags[1:] if resolved_tags else [],
+            scope=scope,
+            status=status,
+            include_deprecated=include_deprecated,
+        )
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Tag / tags normalisation helper
+# ---------------------------------------------------------------------------
+
+
+def _resolve_tags(
+    *, tag: str | None, tags: list[str] | None
+) -> list[str]:
+    """Merge ``tag`` (single convenience alias) and ``tags`` (multi-tag list).
+
+    Returns a deduplicated list of lowercase tag strings, preserving order.
+    """
+    combined: list[str] = []
+    if tag is not None:
+        combined.append(tag.strip().lower())
+    if tags is not None:
+        for t in tags:
+            norm = t.strip().lower()
+            if norm and norm not in combined:
+                combined.append(norm)
+    return combined
 
 
 # ---------------------------------------------------------------------------
@@ -210,11 +327,75 @@ _KIND_DESIGN = "design"
 _KIND_STACK = "stack"
 
 
+def _should_include_hit(
+    hit: ArtifactResult,
+    *,
+    artifact_type: str | None,
+    status: str | None,
+    include_deprecated: bool,
+    include_stale: bool,
+) -> bool:
+    """Decide whether an index hit should be included in results.
+
+    Shared filter logic for both ``_tag_search_from_index`` and
+    ``_fts_search``.
+    """
+    # Artifact type filter
+    if artifact_type is not None and hit.kind != artifact_type:
+        return False
+
+    hit_status = hit.status or ("active" if hit.kind != _KIND_STACK else "open")
+
+    # Explicit status filter
+    if status is not None and hit_status != status:
+        return False
+
+    # Hide deprecated concepts/conventions by default
+    if (
+        not include_deprecated
+        and hit_status == "deprecated"
+        and hit.kind in (_KIND_CONCEPT, _KIND_CONVENTION)
+    ):
+        return False
+
+    # Hide stale stack posts by default (unless caller explicitly asked for status="stale")
+    return not (
+        not include_stale
+        and hit_status == "stale"
+        and hit.kind == _KIND_STACK
+        and status != "stale"
+    )
+
+
+def _extra_tag_ids(
+    extra_tags: list[str],
+    link_graph: LinkGraph,
+) -> set[int] | None:
+    """Return the set of artifact IDs that match ALL *extra_tags* (AND logic).
+
+    Returns ``None`` when *extra_tags* is empty (meaning no filtering needed).
+    Each extra tag is looked up via ``search_by_tag`` and the resulting ID sets
+    are intersected.
+    """
+    if not extra_tags:
+        return None
+    id_sets: list[set[int]] = []
+    for et in extra_tags:
+        hits = link_graph.search_by_tag(et)
+        id_sets.append({h.id for h in hits})
+    return id_sets[0].intersection(*id_sets[1:]) if id_sets else set()
+
+
 def _tag_search_from_index(
     link_graph: LinkGraph,
     *,
     tag: str,
+    extra_tags: list[str],
     scope: str | None,
+    artifact_type: str | None,
+    status: str | None,
+    include_deprecated: bool,
+    include_stale: bool,
 ) -> SearchResults:
     """Perform tag search using the link graph index.
 
@@ -230,9 +411,29 @@ def _tag_search_from_index(
     tag_lower = tag.strip().lower()
     hits = link_graph.search_by_tag(tag_lower)
 
+    # Pre-compute the set of IDs that match ALL extra tags (AND logic).
+    allowed_ids = _extra_tag_ids(extra_tags, link_graph)
+
     results = SearchResults()
 
+    conv_ids = [hit.id for hit in hits if hit.kind == _KIND_CONVENTION]
+    conv_details = link_graph.get_convention_details(conv_ids) if conv_ids else {}
+
     for hit in hits:
+        # Apply shared inclusion filters (type, status, deprecated, stale)
+        if not _should_include_hit(
+            hit,
+            artifact_type=artifact_type,
+            status=status,
+            include_deprecated=include_deprecated,
+            include_stale=include_stale,
+        ):
+            continue
+
+        # Multi-tag AND: verify the hit also has all extra tags
+        if allowed_ids is not None and hit.id not in allowed_ids:
+            continue
+
         # Apply scope filter: skip artifacts whose path does not match
         if scope is not None:
             # Concepts are not file-scoped; omit them when scope is active
@@ -251,13 +452,21 @@ def _tag_search_from_index(
                 )
             )
         elif hit.kind == _KIND_CONVENTION:
+            detail = conv_details.get(hit.id)
+            if detail is not None:
+                dir_path, body = detail
+                conv_scope = "project" if dir_path == "." else dir_path
+                conv_rule = extract_rule(body)
+            else:
+                conv_scope = ""
+                conv_rule = ""
             results.conventions.append(
                 _ConventionResult(
                     title=hit.title or hit.path,
-                    scope="",
+                    scope=conv_scope,
                     status=hit.status or "active",
                     tags=[tag],
-                    rule="",
+                    rule=conv_rule,
                 )
             )
         elif hit.kind == _KIND_DESIGN:
@@ -292,6 +501,10 @@ def _fts_search(
     *,
     query: str,
     scope: str | None,
+    artifact_type: str | None,
+    status: str | None,
+    include_deprecated: bool,
+    include_stale: bool,
 ) -> SearchResults:
     """Perform full-text search using the link graph FTS5 index.
 
@@ -309,7 +522,20 @@ def _fts_search(
 
     results = SearchResults()
 
+    conv_ids = [hit.id for hit in hits if hit.kind == _KIND_CONVENTION]
+    conv_details = link_graph.get_convention_details(conv_ids) if conv_ids else {}
+
     for hit in hits:
+        # Apply shared inclusion filters (type, status, deprecated, stale)
+        if not _should_include_hit(
+            hit,
+            artifact_type=artifact_type,
+            status=status,
+            include_deprecated=include_deprecated,
+            include_stale=include_stale,
+        ):
+            continue
+
         # Apply scope filter: skip artifacts whose path does not match
         if scope is not None:
             # Concepts are not file-scoped; omit them when scope is active
@@ -328,13 +554,21 @@ def _fts_search(
                 )
             )
         elif hit.kind == _KIND_CONVENTION:
+            detail = conv_details.get(hit.id)
+            if detail is not None:
+                dir_path, body = detail
+                conv_scope = "project" if dir_path == "." else dir_path
+                conv_rule = extract_rule(body)
+            else:
+                conv_scope = ""
+                conv_rule = ""
             results.conventions.append(
                 _ConventionResult(
                     title=hit.title or hit.path,
-                    scope="",
+                    scope=conv_scope,
                     status=hit.status or "active",
                     tags=[],
-                    rule="",
+                    rule=conv_rule,
                 )
             )
         elif hit.kind == _KIND_DESIGN:
@@ -364,9 +598,16 @@ def _search_concepts(
     *,
     query: str | None,
     tag: str | None,
+    extra_tags: list[str],
     scope: str | None,
+    status: str | None,
+    include_deprecated: bool,
 ) -> list[_ConceptResult]:
-    """Search concepts via ConceptIndex."""
+    """Search concepts via ConceptIndex.
+
+    Supports list-all (no query/tag returns all concepts), multi-tag AND,
+    status filtering, and deprecated hiding.
+    """
     from lexibrary.wiki.index import ConceptIndex
 
     concepts_dir = project_root / ".lexibrary" / "concepts"
@@ -379,12 +620,37 @@ def _search_concepts(
     if scope is not None:
         return []
 
-    if tag is not None:
-        matches = index.by_tag(tag)
-    elif query is not None:
+    if query is not None:
         matches = index.search(query)
+    elif tag is not None:
+        matches = index.by_tag(tag)
     else:
-        return []
+        # List-all: return all concepts
+        all_found = [index.find(name) for name in index.names()]
+        matches = [m for m in all_found if m is not None]
+
+    # Apply tag filter (even when query was the primary search)
+    if tag is not None and query is not None:
+        tag_set = {c.frontmatter.title for c in index.by_tag(tag)}
+        matches = [c for c in matches if c.frontmatter.title in tag_set]
+
+    # Multi-tag AND: filter for extra tags
+    if extra_tags:
+        matches = [
+            c for c in matches
+            if all(
+                any(t.strip().lower() == et for t in c.frontmatter.tags)
+                for et in extra_tags
+            )
+        ]
+
+    # Status filter
+    if status is not None:
+        matches = [c for c in matches if c.frontmatter.status == status]
+
+    # Hide deprecated by default (unless explicitly requested via status or flag)
+    if not include_deprecated and status != "deprecated":
+        matches = [c for c in matches if c.frontmatter.status != "deprecated"]
 
     return [
         _ConceptResult(
@@ -402,9 +668,15 @@ def _search_design_files(
     *,
     query: str | None,
     tag: str | None,
+    extra_tags: list[str],
     scope: str | None,
+    status: str | None,
 ) -> list[_DesignFileResult]:
-    """Search design files by scanning YAML frontmatter and tags."""
+    """Search design files by scanning YAML frontmatter and tags.
+
+    Supports list-all (no query/tag returns all design files) and status
+    filtering.
+    """
     from lexibrary.artifacts.design_file_parser import parse_design_file
     from lexibrary.utils.paths import DESIGNS_DIR
 
@@ -430,6 +702,12 @@ def _search_design_files(
             if not any(t.lower() == tag_lower for t in design.tags):
                 continue
 
+        # Multi-tag AND: all extra tags must match
+        if extra_tags:
+            design_tags_lower = {t.lower() for t in design.tags}
+            if not all(et in design_tags_lower for et in extra_tags):
+                continue
+
         # Apply free-text query filter
         if query is not None:
             needle = query.strip().lower()
@@ -442,6 +720,10 @@ def _search_design_files(
             )
             if needle not in searchable:
                 continue
+
+        # Status filter
+        if status is not None and design.frontmatter.status != status:
+            continue
 
         results.append(
             _DesignFileResult(
@@ -459,9 +741,18 @@ def _search_stack_posts(
     *,
     query: str | None,
     tag: str | None,
+    extra_tags: list[str],
     scope: str | None,
+    status: str | None,
+    concept: str | None,
+    resolution_type: str | None,
+    include_stale: bool,
 ) -> list[_StackResult]:
-    """Search Stack posts via StackIndex."""
+    """Search Stack posts via StackIndex.
+
+    Supports list-all, multi-tag AND, status filter, concept filter,
+    resolution_type filter, and stale hiding.
+    """
     from lexibrary.stack.index import StackIndex
 
     idx = StackIndex.build(project_root)
@@ -476,10 +767,33 @@ def _search_stack_posts(
         tag_set = {p.frontmatter.id for p in idx.by_tag(tag)}
         matches = [p for p in matches if p.frontmatter.id in tag_set]
 
+    # Multi-tag AND: filter for extra tags
+    if extra_tags:
+        for et in extra_tags:
+            et_set = {p.frontmatter.id for p in idx.by_tag(et)}
+            matches = [p for p in matches if p.frontmatter.id in et_set]
+
     # Apply scope filter
     if scope is not None:
         scope_set = {p.frontmatter.id for p in idx.by_scope(scope)}
         matches = [p for p in matches if p.frontmatter.id in scope_set]
+
+    # Apply status filter
+    if status is not None:
+        matches = [p for p in matches if p.frontmatter.status == status]
+
+    # Apply concept filter (stack-specific)
+    if concept is not None:
+        concept_set = {p.frontmatter.id for p in idx.by_concept(concept)}
+        matches = [p for p in matches if p.frontmatter.id in concept_set]
+
+    # Apply resolution_type filter (stack-specific)
+    if resolution_type is not None:
+        matches = [p for p in matches if p.frontmatter.resolution_type == resolution_type]
+
+    # Hide stale posts by default (unless include_stale or status is "stale")
+    if not include_stale and status != "stale":
+        matches = [p for p in matches if p.frontmatter.status != "stale"]
 
     return [
         _StackResult(
@@ -498,12 +812,16 @@ def _search_conventions(
     *,
     query: str | None,
     tag: str | None,
+    extra_tags: list[str],
     scope: str | None,
+    status: str | None,
+    include_deprecated: bool,
 ) -> list[_ConventionResult]:
     """Search conventions via ConventionIndex (file-scanning fallback).
 
     When *tag* is provided, uses :meth:`ConventionIndex.by_tag`.
     When *query* is provided, uses :meth:`ConventionIndex.search`.
+    When neither is provided, returns all conventions (list-all).
     When *scope* is provided, results are filtered to conventions whose
     scope matches (convention scope is a prefix of the query scope, or
     convention scope is ``"project"``).
@@ -520,12 +838,31 @@ def _search_conventions(
     if len(index) == 0:
         return []
 
-    if tag is not None:
-        matches = index.by_tag(tag)
-    elif query is not None:
+    if query is not None:
         matches = index.search(query)
+    elif tag is not None:
+        matches = index.by_tag(tag)
     else:
-        return []
+        # List-all: return all conventions
+        matches = list(index.conventions)
+
+    # Apply tag filter (even when query was the primary search)
+    if tag is not None and query is not None:
+        tag_lower = tag.strip().lower()
+        matches = [
+            c for c in matches
+            if any(t.strip().lower() == tag_lower for t in c.frontmatter.tags)
+        ]
+
+    # Multi-tag AND: filter for extra tags
+    if extra_tags:
+        matches = [
+            c for c in matches
+            if all(
+                any(t.strip().lower() == et for t in c.frontmatter.tags)
+                for et in extra_tags
+            )
+        ]
 
     # Apply scope filter: keep conventions whose scope is "project" or
     # whose scope is a prefix of the query scope.
@@ -537,6 +874,14 @@ def _search_conventions(
             if c.frontmatter.scope == "project"
             or norm_scope.startswith(c.frontmatter.scope.strip("/"))
         ]
+
+    # Status filter
+    if status is not None:
+        matches = [c for c in matches if c.frontmatter.status == status]
+
+    # Hide deprecated by default (unless explicitly requested via status or flag)
+    if not include_deprecated and status != "deprecated":
+        matches = [c for c in matches if c.frontmatter.status != "deprecated"]
 
     return [
         _ConventionResult(

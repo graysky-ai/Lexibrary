@@ -88,3 +88,7 @@ real-project-testing.md
 lexibrary-overview.md
 TODO.md
 **/.iwh
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db

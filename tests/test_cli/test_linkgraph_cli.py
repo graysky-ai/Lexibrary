@@ -384,7 +384,7 @@ class TestLookupReverseLinkDisplay:
         db_path = _create_linkgraph_db(project)
         _populate_db_with_imports(db_path, "src/main.py")
 
-        result = _invoke(project, ["lookup", "src/main.py"])
+        result = _invoke(project, ["lookup", "src/main.py", "--full"])
         assert result.exit_code == 0
         output = result.output
         assert "Dependents (imports this file)" in output
@@ -402,7 +402,7 @@ class TestLookupReverseLinkDisplay:
         db_path = _create_linkgraph_db(project)
         _populate_db_with_crossrefs(db_path, "src/main.py")
 
-        result = _invoke(project, ["lookup", "src/main.py"])
+        result = _invoke(project, ["lookup", "src/main.py", "--full"])
         assert result.exit_code == 0
         output = result.output
         # No dependents section (no ast_import links)
@@ -421,7 +421,7 @@ class TestLookupReverseLinkDisplay:
         db_path = _create_linkgraph_db(project)
         _populate_db_with_both(db_path, "src/main.py")
 
-        result = _invoke(project, ["lookup", "src/main.py"])
+        result = _invoke(project, ["lookup", "src/main.py", "--full"])
         assert result.exit_code == 0
         output = result.output
         assert "Dependents (imports this file)" in output
@@ -445,7 +445,7 @@ class TestLookupReverseLinkDisplay:
         conn.commit()
         conn.close()
 
-        result = _invoke(project, ["lookup", "src/main.py"])
+        result = _invoke(project, ["lookup", "src/main.py", "--full"])
         assert result.exit_code == 0
         output = result.output
         assert "Dependents (imports this file)" not in output
@@ -467,7 +467,7 @@ class TestLookupGracefulDegradation:
         _create_design_file(project, "src/main.py", source_content)
 
         # No index.db created -- open_index should return None
-        result = _invoke(project, ["lookup", "src/main.py"])
+        result = _invoke(project, ["lookup", "src/main.py", "--full"])
         assert result.exit_code == 0
         output = result.output
         # Design file content should still be displayed
@@ -486,7 +486,7 @@ class TestLookupGracefulDegradation:
         corrupt_db = project / ".lexibrary" / "index.db"
         corrupt_db.write_text("this is not a sqlite database!")
 
-        result = _invoke(project, ["lookup", "src/main.py"])
+        result = _invoke(project, ["lookup", "src/main.py", "--full"])
         assert result.exit_code == 0
         output = result.output
         assert "Interface Contract" in output
@@ -509,7 +509,7 @@ class TestLookupGracefulDegradation:
         conn.commit()
         conn.close()
 
-        result = _invoke(project, ["lookup", "src/main.py"])
+        result = _invoke(project, ["lookup", "src/main.py", "--full"])
         assert result.exit_code == 0
         output = result.output
         assert "Interface Contract" in output

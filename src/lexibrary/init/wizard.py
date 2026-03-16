@@ -510,7 +510,7 @@ def _step_summary(
 
 def run_wizard(
     project_root: Path,
-    console: Console,
+    console: Console | None = None,
     *,
     use_defaults: bool = False,
 ) -> WizardAnswers | None:
@@ -518,7 +518,7 @@ def run_wizard(
 
     Args:
         project_root: Absolute path to the project root directory.
-        console: Rich console for output.
+        console: Rich console for output. Created automatically if not provided.
         use_defaults: If ``True``, accept all detected/default values
             without interactive prompts.
 
@@ -526,6 +526,8 @@ def run_wizard(
         ``WizardAnswers`` with ``confirmed=True`` on success, or
         ``None`` if the user cancelled at the summary step.
     """
+    if console is None:
+        console = Console()
     answers = WizardAnswers()
 
     # Step 1: Project name

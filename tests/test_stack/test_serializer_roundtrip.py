@@ -6,7 +6,7 @@ parse it back using the real parser, and verify equivalence.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from lexibrary.stack.models import (
@@ -252,7 +252,7 @@ class TestStaleAtRoundTrip:
         parsed = _roundtrip(original, tmp_path)
 
         assert parsed.frontmatter.status == "stale"
-        assert parsed.frontmatter.stale_at == "2026-06-15T10:00:00"
+        assert parsed.frontmatter.stale_at == datetime(2026, 6, 15, 10, 0, 0)
         assert parsed.frontmatter.resolution_type == "fix"
         assert parsed.frontmatter == original.frontmatter
 
@@ -281,7 +281,7 @@ class TestStaleAtRoundTrip:
         )
         # First round-trip
         parsed = _roundtrip(original, tmp_path)
-        assert parsed.frontmatter.stale_at == "2026-07-01T14:30:00"
+        assert parsed.frontmatter.stale_at == datetime(2026, 7, 1, 14, 30, 0)
 
         # Second round-trip: serialize the parsed result and parse again
         text2 = serialize_stack_post(parsed)
@@ -289,7 +289,7 @@ class TestStaleAtRoundTrip:
         path2.write_text(text2, encoding="utf-8")
         parsed2 = parse_stack_post(path2)
         assert parsed2 is not None
-        assert parsed2.frontmatter.stale_at == "2026-07-01T14:30:00"
+        assert parsed2.frontmatter.stale_at == datetime(2026, 7, 1, 14, 30, 0)
 
     def test_roundtrip_stale_post_with_all_fields(self, tmp_path: Path) -> None:
         """Fully populated stale post round-trips faithfully."""
@@ -333,7 +333,7 @@ class TestStaleAtRoundTrip:
 
         assert parsed.frontmatter == original.frontmatter
         assert parsed.frontmatter.status == "stale"
-        assert parsed.frontmatter.stale_at == "2026-06-20T08:15:00"
+        assert parsed.frontmatter.stale_at == datetime(2026, 6, 20, 8, 15, 0)
         assert parsed.frontmatter.resolution_type == "workaround"
         assert parsed.problem == original.problem
         assert parsed.context == original.context
@@ -354,7 +354,7 @@ class TestStaleAtRoundTrip:
             problem="Was stale, now un-staled.",
         )
         parsed_stale = _roundtrip(stale_post, tmp_path)
-        assert parsed_stale.frontmatter.stale_at == "2026-06-15T10:00:00"
+        assert parsed_stale.frontmatter.stale_at == datetime(2026, 6, 15, 10, 0, 0)
 
         # Simulate unstale: set status back to resolved and clear stale_at
         unstaled = StackPost(

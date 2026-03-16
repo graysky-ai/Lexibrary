@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+import json as _json
 from pathlib import Path
 
 import typer
-from rich.console import Console
 
+from lexibrary.cli._output import error, info, warn
 from lexibrary.exceptions import LexibraryNotFoundError
 from lexibrary.utils.root import find_project_root
-
-console = Console()
 
 
 def require_project_root() -> Path:
@@ -18,17 +17,14 @@ def require_project_root() -> Path:
     try:
         return find_project_root()
     except LexibraryNotFoundError:
-        console.print(
-            "[red]No .lexibrary/ directory found.[/red]"
-            " Run [cyan]lexictl init[/cyan] to create one."
-        )
+        error("No .lexibrary/ directory found. Run `lexictl init` to create one.")
         raise typer.Exit(1) from None
 
 
 def stub(name: str) -> None:
     """Print a standard stub message for unimplemented commands."""
     require_project_root()
-    console.print(f"[yellow]Not yet implemented.[/yellow]  ([dim]{name}[/dim])")
+    warn(f"Not yet implemented. ({name})")
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +44,7 @@ def _run_validate(
     """Run validation checks and render output.
 
     Accepts parsed CLI args, calls ``validate_library()``, renders the
-    results via Rich or JSON, and returns the process exit code.
+    results via plain text or JSON, and returns the process exit code.
 
     Args:
         project_root: Resolved project root directory.
@@ -56,9 +52,9 @@ def _run_validate(
             or ``"info"``).  ``None`` means all severities.
         check: Run only the named check.  ``None`` means all checks.
         json_output: When ``True``, output results as JSON instead of
-            Rich tables.
+            plain tables.
         ci_mode: When ``True``, output a compact single-line summary
-            suitable for CI pipelines. No Rich formatting is used.
+            suitable for CI pipelines.
         fix: When ``True``, attempt to auto-fix fixable issues after
             validation.
 
@@ -69,8 +65,6 @@ def _run_validate(
         typer.Exit: With code 1 when ``check`` names an unknown check or
             ``severity`` is not a valid severity level.
     """
-    import json as _json  # noqa: PLC0415
-
     from lexibrary.validator import AVAILABLE_CHECKS, validate_library  # noqa: PLC0415
 
     lexibrary_dir = project_root / ".lexibrary"
@@ -83,13 +77,13 @@ def _run_validate(
             check_filter=check,
         )
     except ValueError as exc:
-        console.print(f"[red]Error:[/red] {exc}")
+        error(str(exc))
         # Show available checks if an unknown check was requested
         if check is not None and check not in AVAILABLE_CHECKS:
-            console.print("[dim]Available checks:[/dim] " + ", ".join(sorted(AVAILABLE_CHECKS)))
+            info("Available checks: " + ", ".join(sorted(AVAILABLE_CHECKS)))
         raise typer.Exit(1) from None
 
-    # CI mode: compact single-line output, no Rich formatting
+    # CI mode: compact single-line output
     if ci_mode:
         counts = report.counts_by_severity()
         print(  # noqa: T201
@@ -113,31 +107,25 @@ def _run_validate(
             if fixer is not None:
                 result = fixer(issue, project_root, config)
                 if result.fixed:
-                    console.print(
-                        f"  [green][FIXED][/green] {issue.check}: {result.message}"
-                    )
+                    info(f"  [FIXED] {issue.check}: {result.message}")
                     fixed_count += 1
                 else:
-                    console.print(
-                        f"  [yellow][SKIP][/yellow] {issue.check}: {result.message}"
-                    )
+                    info(f"  [SKIP] {issue.check}: {result.message}")
             else:
-                console.print(
-                    f"  [yellow][SKIP][/yellow] {issue.check}: no auto-fix available"
-                )
+                info(f"  [SKIP] {issue.check}: no auto-fix available")
 
         manual_count = total_issues - fixed_count
-        console.print()
-        console.print(
+        info("")
+        info(
             f"Fixed {fixed_count} of {total_issues} issues."
             f" {manual_count} require manual attention."
         )
         return report.exit_code()
 
     if json_output:
-        console.print(_json.dumps(report.to_dict(), indent=2))
+        info(_json.dumps(report.to_dict(), indent=2))
     else:
-        report.render(console)
+        report.render()
 
     return report.exit_code()
 
@@ -250,33 +238,33 @@ def _run_status(
             parts: list[str] = []
             parts.append(f"{error_count} error{'s' if error_count != 1 else ''}")
             parts.append(f"{warning_count} warning{'s' if warning_count != 1 else ''}")
-            console.print(
+            info(
                 f"{cli_prefix}: " + ", ".join(parts) + f" \u2014 run `{cli_prefix} validate`"
             )
         elif error_count > 0:
-            console.print(
+            info(
                 f"{cli_prefix}: {error_count} error{'s' if error_count != 1 else ''}"
                 f" \u2014 run `{cli_prefix} validate`"
             )
         elif warning_count > 0:
-            console.print(
+            info(
                 f"{cli_prefix}: {warning_count} warning{'s' if warning_count != 1 else ''}"
                 f" \u2014 run `{cli_prefix} validate`"
             )
         else:
-            console.print(f"{cli_prefix}: library healthy")
+            info(f"{cli_prefix}: library healthy")
         return report.exit_code()
 
     # --- Full dashboard ---
-    console.print()
-    console.print("[bold]Lexibrary Status[/bold]")
-    console.print()
+    info("")
+    info("Lexibrary Status")
+    info("")
 
     # Files
     if stale_count > 0:
-        console.print(f"  Files: {total_designs} tracked, {stale_count} stale")
+        info(f"  Files: {total_designs} tracked, {stale_count} stale")
     else:
-        console.print(f"  Files: {total_designs} tracked")
+        info(f"  Files: {total_designs} tracked")
 
     # Concepts
     concept_parts: list[str] = []
@@ -287,25 +275,25 @@ def _run_status(
     if concept_counts["draft"] > 0:
         concept_parts.append(f"{concept_counts['draft']} draft")
     if concept_parts:
-        console.print("  Concepts: " + ", ".join(concept_parts))
+        info("  Concepts: " + ", ".join(concept_parts))
     else:
-        console.print("  Concepts: 0")
+        info("  Concepts: 0")
 
     # Stack
     if total_stack > 0:
-        console.print(
+        info(
             f"  Stack: {total_stack} post{'s' if total_stack != 1 else ''}"
             f" ({stack_counts.get('resolved', 0)} resolved,"
             f" {stack_counts.get('open', 0)} open)"
         )
     else:
-        console.print("  Stack: 0 posts")
+        info("  Stack: 0 posts")
 
     # Link graph health
     index_health = read_index_health(project_root)
     if index_health.artifact_count is not None:
         built_part = f" (built {index_health.built_at})" if index_health.built_at else ""
-        console.print(
+        info(
             f"  Link graph: {index_health.artifact_count} artifact"
             f"{'s' if index_health.artifact_count != 1 else ''}"
             f", {index_health.link_count} link"
@@ -313,12 +301,12 @@ def _run_status(
             f"{built_part}"
         )
     else:
-        console.print("  Link graph: not built (run lexictl update to create)")
+        info("  Link graph: not built (run lexictl update to create)")
 
-    console.print()
+    info("")
 
     # Issues
-    console.print(
+    info(
         f"  Issues: {error_count} error{'s' if error_count != 1 else ''},"
         f" {warning_count} warning{'s' if warning_count != 1 else ''}"
     )
@@ -342,15 +330,15 @@ def _run_status(
         else:
             days = total_seconds // 86400
             time_str = f"{days} day{'s' if days != 1 else ''} ago"
-        console.print(f"  Updated: {time_str}")
+        info(f"  Updated: {time_str}")
     else:
-        console.print("  Updated: never")
+        info("  Updated: never")
 
-    console.print()
+    info("")
 
     # Suggest validate if issues exist
     if error_count > 0 or warning_count > 0:
-        console.print(f"Run `{cli_prefix} validate` for details.")
+        info(f"Run `{cli_prefix} validate` for details.")
 
     return report.exit_code()
 
@@ -364,7 +352,7 @@ def load_dotenv_if_configured() -> None:
     ``load_dotenv(project_root / ".env", override=False)`` so that env
     vars already set in the shell take precedence.
 
-    All errors are silently swallowed — the normal project-not-found or
+    All errors are silently swallowed -- the normal project-not-found or
     config-not-found error surfaces later when a command actually runs.
     """
     try:
@@ -389,6 +377,6 @@ def load_dotenv_if_configured() -> None:
         if llm_section.get("api_key_source") == "dotenv":
             load_dotenv(project_root / ".env", override=False)
     except Exception:  # noqa: BLE001
-        # Silently skip — errors will surface later during normal
+        # Silently skip -- errors will surface later during normal
         # config loading when a command actually runs.
         pass

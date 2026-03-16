@@ -4,55 +4,116 @@
 
 # Lexibrary
 
-AI-friendly codebase indexer that creates `.aindex` files for LLM context navigation.
+A semantic code library that gives AI coding agents structured, queryable context — so they look up what they need instead of guessing or dumping entire files into their context window.
 
 ## About
 
-Lexibrary turns your codebase into a queryable semantic library that AI coding agents can navigate efficiently. Instead of dumping entire files into context windows, agents use Lexibrary to look up exactly what they need — design summaries, dependency graphs, public API skeletons, and cross-file relationships.
+Lexibrary indexes your codebase into a layered knowledge base of design summaries, dependency graphs, conventions, domain concepts, and known-issue records. Agents query this library through the `lexi` CLI to orient themselves, understand file roles before editing, trace cross-file dependencies, and avoid repeating past debugging dead ends.
 
-**Key capabilities:**
+**For project maintainers**, the `lexictl` CLI handles initialization, indexing, design file generation, and library health maintenance.
 
-- **Crawl & index** — Bottom-up traversal with SHA-256 change detection
-- **Design files** — LLM-generated per-file summaries with dependency maps
-- **Link graph** — SQLite-backed cross-file dependency analysis and reverse lookups
-- **Unified search** — Full-text search across indexes, design files, and conventions
-- **AST parsing** — Language-aware public API extraction (Python, JS, TS)
-- **Conventions** — Project-wide rules and patterns as first-class artifacts
-- **Stack** — Contextual working-set management for focused exploration
-- **Daemon mode** — Watchdog-based background indexing with debounce
+## Features
 
-**Architecture:** Two CLIs — `lexi` (agent-facing queries) and `lexictl` (setup/maintenance). Zero infrastructure — all state lives in repo files and a local SQLite graph.
+| Feature | What it does |
+|---|---|
+| **Design files** | LLM-generated per-file summaries with dependency maps and interface contracts |
+| **Link graph** | SQLite-backed cross-file dependency analysis with reverse lookups and full-text search |
+| **Conventions** | Project-wide and scope-local coding rules as first-class, enforceable artifacts |
+| **Concepts** | Domain vocabulary definitions with aliases, wikilink resolution, and lifecycle management |
+| **Stack** | Stack Overflow-style Q&A knowledge base for bugs, decisions, and workarounds — including failed attempts so agents don't repeat dead ends |
+| **IWH signals** | Ephemeral "I Was Here" breadcrumbs for inter-agent handoff of incomplete or blocked work |
+| **Validator** | 40+ library health checks across frontmatter, wikilinks, staleness, orphans, and cross-artifact consistency |
+| **Impact analysis** | Reverse dependency lookups to understand what breaks when a file changes |
+| **AST parsing** | Language-aware public API extraction (Python, JS, TS) |
+| **Unified search** | Full-text search across all artifact types with format options (JSON, plain, markdown) |
 
-## Installation
+## How It Works
 
-```bash
-uv sync --dev
+Lexibrary builds and maintains a layered knowledge base alongside your source code:
+
+```
+lexictl init          Set up config + directory structure
+       │
+       ▼
+lexictl bootstrap     Batch-generate .aindex files + design files
+       │
+       ▼
+lexictl update        Re-index changed files, regenerate stale designs
+       │
+       ▼
+  ┌────┴────┐
+  │ SQLite  │         Link graph: dependencies, tags, aliases, FTS index
+  │  graph  │
+  └────┬────┘
+       │
+       ▼
+  .lexibrary/         Artifacts on disk: designs/, concepts/, conventions/,
+                      stack/, .aindex files — all version-controlled
 ```
 
-## Usage
+Agents then query this library at runtime through `lexi`:
+
+```
+lexi orient      →  Project topology, stats, pending IWH signals
+lexi lookup      →  File role, dependencies, conventions before editing
+lexi search      →  Find concepts, conventions, designs, stack posts
+lexi impact      →  What depends on this file?
+lexi validate    →  Check library health after changes
+```
+
+**Key design choices:**
+- **Two CLIs** — `lexi` is read-only and agent-safe; `lexictl` mutates state and is for maintainers
+- **Zero infrastructure** — all state lives in repo files and a local SQLite graph
+- **File-first** — artifacts are markdown with YAML frontmatter, easily diffable and version-controlled
+
+## Agent Integration
+
+Lexibrary is designed to slot into an AI coding agent's workflow. The typical session:
+
+```
+1. lexi orient                     # Understand project structure + check for IWH signals
+2. lexi iwh read <dir>             # Consume any handoff signals from previous agents
+3. lexi lookup <file>              # Before editing — understand role, deps, conventions
+4. lexi search <topic>             # Before architectural decisions — find existing patterns
+5. lexi stack post --title "..."   # After solving a bug — document the fix + failed attempts
+6. lexi validate                   # After editing — check for broken links, stale artifacts
+7. lexi iwh write <dir>            # If stopping early — leave a breadcrumb for the next agent
+```
+
+Agents also have access to `concept`, `convention`, `design`, and `stack` subcommand groups for managing those artifact types. See the full reference at [docs/agent/lexi-reference.md](docs/agent/lexi-reference.md).
+
+## Quick Start
+
+**Prerequisites:** Python 3.11+ and [uv](https://docs.astral.sh/uv/)
 
 ```bash
-# Initialize a project
+# Install dependencies
+uv sync
+
+# Initialize Lexibrary in your project
 lexictl init
 
-# Crawl and index a codebase
-lexi crawl
+# Generate the initial library (indexes + design files)
+lexictl bootstrap
 
-# Check indexing status
-lexi status
+# Verify library health
+lexi validate
 
-# Start background daemon
-lexi daemon
+# Orient yourself
+lexi orient
 
-# Clean all .aindex files
-lexi clean
+# Look up a specific file
+lexi lookup src/main.py
+
+# Search for a topic
+lexi search "authentication"
 ```
 
 ## Configuration
 
 Lexibrary is configured through two layers:
 
-1. **`lexibrary.toml`** — project-level config (created by `lexictl init`)
+1. **`.lexibrary/config.yaml`** — project-level config (created by `lexictl init`)
 2. **`.env`** — local environment overrides (gitignored)
 
 Copy the template to get started:
@@ -66,29 +127,62 @@ cp .env.example .env
 | Variable | Description |
 |---|---|
 | `LEXI_PROJECT_PATH` | Project root to crawl. Defaults to current working directory. |
-| `LEXI_LLM_PROVIDER` | LLM provider override: `anthropic`, `openai`, or `ollama` |
-| `LEXI_LLM_MODEL` | Model identifier override (e.g. `claude-sonnet-4-5-20250514`, `gpt-4o-mini`) |
+| `LEXI_LLM_PROVIDER` | LLM provider: `anthropic`, `openai`, or `ollama` |
+| `LEXI_LLM_MODEL` | Model identifier (e.g. `claude-sonnet-4-5-20250514`, `gpt-4o-mini`) |
 | `LEXI_API_KEY` | API key override — applies to whichever provider is active |
 | `ANTHROPIC_API_KEY` | Anthropic API key (used when `LEXI_API_KEY` is not set) |
 | `OPENAI_API_KEY` | OpenAI API key (used when `LEXI_API_KEY` is not set) |
 
-Environment variables override values from `lexibrary.toml`. The `.env` file is loaded automatically when running any `lexi` command.
+Environment variables override values from `.lexibrary/config.yaml`. The `.env` file is loaded automatically when running any command.
+
+## CLI Reference
+
+### lexi (agent-facing)
+
+| Command | Purpose |
+|---|---|
+| `orient` | Project topology, stats, and IWH signals |
+| `lookup <path>` | File context: role, dependencies, conventions |
+| `search <query>` | Full-text search across all artifact types |
+| `impact <file>` | Reverse dependency lookup |
+| `validate` | Library consistency checks (read-only) |
+| `status` | Library health and staleness summary |
+| **Subcommand groups** | `stack`, `concept`, `convention`, `design`, `iwh` |
+
+Full reference: [docs/agent/lexi-reference.md](docs/agent/lexi-reference.md)
+
+### lexictl (maintenance)
+
+| Command | Purpose |
+|---|---|
+| `init` | Project setup wizard |
+| `bootstrap` | Batch-generate indexes and design files |
+| `update` | Re-index changed files, regenerate stale designs |
+| `validate` | Consistency checks with `--fix` support |
+| `status` | Library health summary |
+| `setup` | Install/update agent rules and hooks |
+| `sweep` | One-shot or watch-mode library update |
+
+Full reference: [docs/user/lexictl-reference.md](docs/user/lexictl-reference.md)
 
 ## Development
 
 This project uses:
 - **uv** for dependency management
 - **Typer** for CLI
-- **Pydantic** for configuration
+- **Pydantic 2** for configuration and models
+- **BAML** for LLM prompt definitions
+- **tree-sitter** for AST parsing
 - **Pytest** for testing
-- **Ruff** for linting
-- **Mypy** for type checking
+- **Ruff** for linting and formatting
+- **Mypy** for strict type checking
 
 ```bash
-uv run pytest --cov=lexibrary    # tests + coverage
-uv run ruff check src/ tests/    # lint
-uv run ruff format src/ tests/   # format
-uv run mypy src/                 # type check (strict)
+uv sync --dev                        # install with dev deps
+uv run pytest --cov=lexibrary        # tests + coverage
+uv run ruff check src/ tests/        # lint
+uv run ruff format src/ tests/       # format
+uv run mypy src/                     # type check (strict)
 ```
 
 ## License

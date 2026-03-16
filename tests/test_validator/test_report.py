@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from io import StringIO
-
-from rich.console import Console
+from unittest.mock import patch
 
 from lexibrary.validator import ValidationIssue, ValidationReport, ValidationSummary
 
@@ -296,8 +295,8 @@ class TestValidationReportRender:
     @staticmethod
     def _capture_render(report: ValidationReport) -> str:
         buf = StringIO()
-        console = Console(file=buf, force_terminal=False, width=120)
-        report.render(console)
+        with patch("lexibrary.cli._output.sys.stdout", buf):
+            report.render()
         return buf.getvalue()
 
     def test_empty_report_shows_clean_message(self) -> None:

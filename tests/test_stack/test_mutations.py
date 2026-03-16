@@ -386,11 +386,10 @@ class TestMarkStale:
 
         assert result.frontmatter.status == "stale"
         assert result.frontmatter.stale_at is not None
-        # stale_at should be a valid ISO timestamp string
-        from datetime import datetime
+        # stale_at should be a datetime object
+        from datetime import datetime as _datetime
 
-        parsed = datetime.fromisoformat(result.frontmatter.stale_at)
-        assert parsed is not None
+        assert isinstance(result.frontmatter.stale_at, _datetime)
 
     def test_mark_open_post_as_stale_raises(self, tmp_path: Path) -> None:
         """Open posts cannot be marked stale."""

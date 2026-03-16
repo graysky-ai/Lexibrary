@@ -32,7 +32,7 @@ def serialize_convention_file(convention: ConventionFile) -> str:
         fm_data["aliases"] = convention.frontmatter.aliases
 
     if convention.frontmatter.deprecated_at is not None:
-        fm_data["deprecated_at"] = convention.frontmatter.deprecated_at
+        fm_data["deprecated_at"] = convention.frontmatter.deprecated_at.isoformat()
 
     fm_str = yaml.dump(fm_data, default_flow_style=False, sort_keys=False).rstrip("\n")
 

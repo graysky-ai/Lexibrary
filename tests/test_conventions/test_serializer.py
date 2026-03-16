@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from lexibrary.artifacts.convention import ConventionFile, ConventionFileFrontmatter
@@ -202,7 +203,7 @@ class TestRoundTrip:
         parsed = parse_convention_file(path)
 
         assert parsed is not None
-        assert parsed.frontmatter.deprecated_at == "2026-03-04T10:00:00"
+        assert parsed.frontmatter.deprecated_at == datetime(2026, 3, 4, 10, 0, 0)
 
     def test_round_trip_aliases(self, tmp_path: Path) -> None:
         original = ConventionFile(
