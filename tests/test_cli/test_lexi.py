@@ -47,7 +47,7 @@ class TestHelp:
 
         command_names = re.findall(r"│\s+(\w+)\s{2,}", result.output)
         # Maintenance commands should NOT be registered as top-level commands in lexi
-        for cmd in ("init", "update", "setup", "daemon", "index"):
+        for cmd in ("init", "update", "setup", "index"):
             assert cmd not in command_names, f"Maintenance command '{cmd}' should not be in lexi"
 
 
@@ -458,9 +458,7 @@ class TestLookupCommand:
         old_cwd = os.getcwd()
         os.chdir(project)
         try:
-            result = runner.invoke(
-                lexi_app, ["lookup", "src/main.py", "--full"]
-            )
+            result = runner.invoke(lexi_app, ["lookup", "src/main.py", "--full"])
         finally:
             os.chdir(old_cwd)
 
@@ -946,9 +944,7 @@ class TestSearchTypeConcept:
         _setup_project(tmp_path)
         _create_concept_file(tmp_path, "Authentication", tags=["security"])
 
-        result = self._invoke(
-            tmp_path, ["search", "--type", "concept", "--tag", "nonexistent"]
-        )
+        result = self._invoke(tmp_path, ["search", "--type", "concept", "--tag", "nonexistent"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "No results found" in result.output  # type: ignore[union-attr]
 
@@ -959,9 +955,7 @@ class TestSearchTypeConcept:
         _create_concept_file(tmp_path, "Draft Concept", status="draft")
         _create_concept_file(tmp_path, "Old Concept", status="deprecated")
 
-        result = self._invoke(
-            tmp_path, ["search", "--type", "concept", "--status", "active"]
-        )
+        result = self._invoke(tmp_path, ["search", "--type", "concept", "--status", "active"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Active Concept" in output
@@ -974,9 +968,7 @@ class TestSearchTypeConcept:
         _create_concept_file(tmp_path, "Active Concept", status="active")
         _create_concept_file(tmp_path, "Draft Concept", status="draft")
 
-        result = self._invoke(
-            tmp_path, ["search", "--type", "concept", "--status", "draft"]
-        )
+        result = self._invoke(tmp_path, ["search", "--type", "concept", "--status", "draft"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Draft Concept" in output
@@ -988,9 +980,7 @@ class TestSearchTypeConcept:
         _create_concept_file(tmp_path, "Active Concept", status="active")
         _create_concept_file(tmp_path, "Old Concept", status="deprecated")
 
-        result = self._invoke(
-            tmp_path, ["search", "--type", "concept", "--status", "deprecated"]
-        )
+        result = self._invoke(tmp_path, ["search", "--type", "concept", "--status", "deprecated"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "Old Concept" in output
@@ -1125,165 +1115,6 @@ class TestSearchTypeConcept:
 # ---------------------------------------------------------------------------
 # Agent help command tests (task 3.6)
 # ---------------------------------------------------------------------------
-
-
-class TestAgentHelpCommand:
-    """Tests for `lexi help` tiered help system."""
-
-    # -- Tier 1 tests --
-
-    def test_tier1_succeeds_without_project_root(self, tmp_path: Path) -> None:
-        """lexi help works anywhere -- no .lexibrary/ directory required."""
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            result = runner.invoke(lexi_app, ["help"])
-        finally:
-            os.chdir(old_cwd)
-
-        assert result.exit_code == 0
-        assert len(result.output) > 0
-
-    def test_tier1_shows_group_table(self) -> None:
-        """lexi help (no args) returns a table listing all 7 command groups."""
-        result = runner.invoke(lexi_app, ["help"])
-        assert result.exit_code == 0
-        output = result.output
-        for group in ("navigation", "concepts", "conventions", "stack", "iwh", "design", "health"):
-            assert group in output, f"Expected group '{group}' in Tier 1 output"
-
-    def test_tier1_includes_drill_down_instruction(self) -> None:
-        """lexi help tells users how to get detailed help."""
-        result = runner.invoke(lexi_app, ["help"])
-        assert result.exit_code == 0
-        assert "lexi help <group>" in result.output
-
-    def test_tier1_is_concise(self) -> None:
-        """lexi help output is approximately 30 lines or fewer."""
-        result = runner.invoke(lexi_app, ["help"])
-        assert result.exit_code == 0
-        lines = [line for line in result.output.strip().splitlines() if line.strip()]
-        assert len(lines) <= 35, f"Tier 1 output is {len(lines)} non-blank lines, expected <= 35"
-
-    def test_tier1_does_not_reference_lexi_index(self) -> None:
-        """lexi help should not reference the removed 'lexi index' command."""
-        result = runner.invoke(lexi_app, ["help"])
-        assert result.exit_code == 0
-        assert "lexi index" not in result.output
-
-    # -- Tier 2 tests (one per group) --
-
-    def test_tier2_navigation(self) -> None:
-        """lexi help navigation returns navigation commands with lookup, search, impact."""
-        result = runner.invoke(lexi_app, ["help", "navigation"])
-        assert result.exit_code == 0
-        output = result.output
-        assert "Navigation Commands" in output
-        for cmd in ("orient", "lookup", "search", "impact", "help"):
-            assert cmd in output, f"Expected '{cmd}' in navigation help"
-
-    def test_tier2_concepts(self) -> None:
-        """lexi help concepts returns concept commands."""
-        result = runner.invoke(lexi_app, ["help", "concepts"])
-        assert result.exit_code == 0
-        output = result.output
-        assert "Concept Commands" in output
-        for cmd in (
-            "search --type concept", "concept new", "concept link",
-            "concept comment", "concept deprecate",
-        ):
-            assert cmd in output, f"Expected '{cmd}' in concepts help"
-
-    def test_tier2_conventions(self) -> None:
-        """lexi help conventions returns convention commands."""
-        result = runner.invoke(lexi_app, ["help", "conventions"])
-        assert result.exit_code == 0
-        output = result.output
-        assert "Convention Commands" in output
-        for cmd in (
-            "search --type convention", "convention new", "convention approve",
-            "convention deprecate", "convention comment",
-        ):
-            assert cmd in output, f"Expected '{cmd}' in conventions help"
-
-    def test_tier2_stack(self) -> None:
-        """lexi help stack returns all stack subcommands with flags."""
-        result = runner.invoke(lexi_app, ["help", "stack"])
-        assert result.exit_code == 0
-        output = result.output
-        assert "Stack Commands" in output
-        for cmd in (
-            "stack post", "search --type stack", "stack view",
-            "stack finding", "stack vote", "stack accept",
-            "stack comment", "stack mark-outdated", "stack duplicate",
-            "stack stale", "stack unstale",
-        ):
-            assert cmd in output, f"Expected '{cmd}' in stack help"
-
-    def test_tier2_iwh(self) -> None:
-        """lexi help iwh returns IWH commands."""
-        result = runner.invoke(lexi_app, ["help", "iwh"])
-        assert result.exit_code == 0
-        output = result.output
-        assert "IWH" in output
-        for cmd in ("iwh write", "iwh read", "iwh list"):
-            assert cmd in output, f"Expected '{cmd}' in iwh help"
-
-    def test_tier2_design(self) -> None:
-        """lexi help design returns design file commands."""
-        result = runner.invoke(lexi_app, ["help", "design"])
-        assert result.exit_code == 0
-        output = result.output
-        assert "Design" in output
-        for cmd in ("design update", "design comment"):
-            assert cmd in output, f"Expected '{cmd}' in design help"
-
-    def test_tier2_health(self) -> None:
-        """lexi help health returns health and inspection commands."""
-        result = runner.invoke(lexi_app, ["help", "health"])
-        assert result.exit_code == 0
-        output = result.output
-        assert "Health" in output
-        for cmd in ("status", "validate", "describe"):
-            assert cmd in output, f"Expected '{cmd}' in health help"
-
-    # -- Invalid group error --
-
-    def test_invalid_group_error(self) -> None:
-        """lexi help with an invalid group name returns error with valid groups."""
-        result = runner.invoke(lexi_app, ["help", "nonexistent"])
-        assert result.exit_code == 1
-        output = result.output
-        assert "Unknown help group" in output
-        assert "nonexistent" in output
-        # Should list valid groups
-        for group in (
-            "navigation", "concepts", "conventions",
-            "stack", "iwh", "design", "health",
-        ):
-            assert group in output, f"Expected valid group '{group}' listed in error message"
-
-    def test_group_name_case_insensitive(self) -> None:
-        """lexi help accepts group names in any case."""
-        result = runner.invoke(lexi_app, ["help", "STACK"])
-        assert result.exit_code == 0
-        assert "Stack Commands" in result.output
-
-    # -- All groups accessible --
-
-    def test_all_groups_accessible(self) -> None:
-        """Every valid group name produces output without error."""
-        for group in (
-            "navigation", "concepts", "conventions",
-            "stack", "iwh", "design", "health",
-        ):
-            result = runner.invoke(lexi_app, ["help", group])
-            assert result.exit_code == 0, (
-                f"lexi help {group} failed with exit code {result.exit_code}"
-            )
-            assert len(result.output.strip()) > 0, (
-                f"lexi help {group} produced empty output"
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -1983,9 +1814,7 @@ class TestSearchTypeConvention:
         project = _setup_project(tmp_path)
         _create_convention_file(project, "Active Conv", tags=["python"])
 
-        result = self._invoke(
-            project, ["search", "--type", "convention", "--tag", "nonexistent"]
-        )
+        result = self._invoke(project, ["search", "--type", "convention", "--tag", "nonexistent"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "No results found" in result.output  # type: ignore[union-attr]
 
@@ -2372,12 +2201,18 @@ class TestStackPostCommand:
         result = self._invoke(
             tmp_path,
             [
-                "stack", "post",
-                "--title", "Config fails",
-                "--tag", "config",
-                "--problem", "Config parsing fails on startup",
-                "--attempts", "Tried strict mode",
-                "--attempts", "Tried permissive mode",
+                "stack",
+                "post",
+                "--title",
+                "Config fails",
+                "--tag",
+                "config",
+                "--problem",
+                "Config parsing fails on startup",
+                "--attempts",
+                "Tried strict mode",
+                "--attempts",
+                "Tried permissive mode",
             ],
         )
         assert result.exit_code == 0  # type: ignore[union-attr]
@@ -2396,11 +2231,16 @@ class TestStackPostCommand:
         result = self._invoke(
             tmp_path,
             [
-                "stack", "post",
-                "--title", "Bug",
-                "--tag", "bug",
-                "--problem", "Something broke",
-                "--finding", "Set extra=forbid in the model",
+                "stack",
+                "post",
+                "--title",
+                "Bug",
+                "--tag",
+                "bug",
+                "--problem",
+                "Something broke",
+                "--finding",
+                "Set extra=forbid in the model",
             ],
         )
         assert result.exit_code == 0  # type: ignore[union-attr]
@@ -2417,10 +2257,14 @@ class TestStackPostCommand:
         result = self._invoke(
             tmp_path,
             [
-                "stack", "post",
-                "--title", "Bug",
-                "--tag", "bug",
-                "--finding", "Fixed it",
+                "stack",
+                "post",
+                "--title",
+                "Bug",
+                "--tag",
+                "bug",
+                "--finding",
+                "Fixed it",
                 "--resolve",
             ],
         )
@@ -2448,10 +2292,14 @@ class TestStackPostCommand:
         result = self._invoke(
             tmp_path,
             [
-                "stack", "post",
-                "--title", "Bug",
-                "--tag", "bug",
-                "--resolution-type", "fix",
+                "stack",
+                "post",
+                "--title",
+                "Bug",
+                "--tag",
+                "bug",
+                "--resolution-type",
+                "fix",
             ],
         )
         assert result.exit_code == 1  # type: ignore[union-attr]
@@ -2463,11 +2311,16 @@ class TestStackPostCommand:
         result = self._invoke(
             tmp_path,
             [
-                "stack", "post",
-                "--title", "Auth crash",
-                "--tag", "auth",
-                "--problem", "Login crashes",
-                "--fix", "Added null check before access",
+                "stack",
+                "post",
+                "--title",
+                "Auth crash",
+                "--tag",
+                "auth",
+                "--problem",
+                "Login crashes",
+                "--fix",
+                "Added null check before access",
             ],
         )
         assert result.exit_code == 0  # type: ignore[union-attr]
@@ -2486,11 +2339,16 @@ class TestStackPostCommand:
         result = self._invoke(
             tmp_path,
             [
-                "stack", "post",
-                "--title", "Timeout issue",
-                "--tag", "perf",
-                "--problem", "API times out",
-                "--workaround", "Increased timeout to 30s",
+                "stack",
+                "post",
+                "--title",
+                "Timeout issue",
+                "--tag",
+                "perf",
+                "--problem",
+                "API times out",
+                "--workaround",
+                "Increased timeout to 30s",
             ],
         )
         assert result.exit_code == 0  # type: ignore[union-attr]
@@ -2509,11 +2367,16 @@ class TestStackPostCommand:
         result = self._invoke(
             tmp_path,
             [
-                "stack", "post",
-                "--title", "Bug",
-                "--tag", "bug",
-                "--fix", "Fixed it",
-                "--workaround", "Worked around it",
+                "stack",
+                "post",
+                "--title",
+                "Bug",
+                "--tag",
+                "bug",
+                "--fix",
+                "Fixed it",
+                "--workaround",
+                "Worked around it",
             ],
         )
         assert result.exit_code == 1  # type: ignore[union-attr]
@@ -2525,11 +2388,16 @@ class TestStackPostCommand:
         result = self._invoke(
             tmp_path,
             [
-                "stack", "post",
-                "--title", "Bug",
-                "--tag", "bug",
-                "--fix", "Fixed it",
-                "--finding", "Also a finding",
+                "stack",
+                "post",
+                "--title",
+                "Bug",
+                "--tag",
+                "bug",
+                "--fix",
+                "Fixed it",
+                "--finding",
+                "Also a finding",
             ],
         )
         assert result.exit_code == 1  # type: ignore[union-attr]
@@ -2541,10 +2409,14 @@ class TestStackPostCommand:
         result = self._invoke(
             tmp_path,
             [
-                "stack", "post",
-                "--title", "Bug",
-                "--tag", "bug",
-                "--fix", "Fixed it",
+                "stack",
+                "post",
+                "--title",
+                "Bug",
+                "--tag",
+                "bug",
+                "--fix",
+                "Fixed it",
                 "--resolve",
             ],
         )
@@ -2557,11 +2429,16 @@ class TestStackPostCommand:
         result = self._invoke(
             tmp_path,
             [
-                "stack", "post",
-                "--title", "Bug",
-                "--tag", "bug",
-                "--fix", "Fixed it",
-                "--resolution-type", "workaround",
+                "stack",
+                "post",
+                "--title",
+                "Bug",
+                "--tag",
+                "bug",
+                "--fix",
+                "Fixed it",
+                "--resolution-type",
+                "workaround",
             ],
         )
         assert result.exit_code == 1  # type: ignore[union-attr]
@@ -2573,11 +2450,16 @@ class TestStackPostCommand:
         result = self._invoke(
             tmp_path,
             [
-                "stack", "post",
-                "--title", "Bug",
-                "--tag", "bug",
-                "--workaround", "Worked around",
-                "--finding", "Also a finding",
+                "stack",
+                "post",
+                "--title",
+                "Bug",
+                "--tag",
+                "bug",
+                "--workaround",
+                "Worked around",
+                "--finding",
+                "Also a finding",
             ],
         )
         assert result.exit_code == 1  # type: ignore[union-attr]
@@ -4678,9 +4560,7 @@ class TestOrient:
 
     # -- IWH signals peek --
 
-    def test_iwh_signals_displayed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_iwh_signals_displayed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """orient should show IWH signals without consuming them."""
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".lexibrary").mkdir()
@@ -4733,9 +4613,7 @@ class TestOrient:
         concepts_dir = tmp_path / ".lexibrary" / "concepts"
         concepts_dir.mkdir(parents=True)
         (concepts_dir / "AuthFlow.md").write_text("---\ntitle: AuthFlow\n---\n", encoding="utf-8")
-        (concepts_dir / "DataModel.md").write_text(
-            "---\ntitle: DataModel\n---\n", encoding="utf-8"
-        )
+        (concepts_dir / "DataModel.md").write_text("---\ntitle: DataModel\n---\n", encoding="utf-8")
 
         result = runner.invoke(lexi_app, ["orient"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -4921,10 +4799,10 @@ def _setup_impact_project(tmp_path: Path) -> Path:
     (tmp_path / "src" / "app").mkdir(parents=True)
     (tmp_path / "src" / "core" / "utils.py").write_text("def helper(): pass\n")
     (tmp_path / "src" / "api" / "controller.py").write_text("from src.core.utils import helper\n")
-    (tmp_path / "src" / "cli" / "handler.py").write_text("from src.core.utils import format_output\n")
-    (tmp_path / "src" / "app" / "main.py").write_text(
-        "from src.api.controller import Controller\n"
+    (tmp_path / "src" / "cli" / "handler.py").write_text(
+        "from src.core.utils import format_output\n"
     )
+    (tmp_path / "src" / "app" / "main.py").write_text("from src.api.controller import Controller\n")
     return tmp_path
 
 
@@ -5075,9 +4953,7 @@ class TestImpact:
         assert result.exit_code == 0
         assert result.output.strip() == ""
 
-    def test_open_stack_post_warning(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_open_stack_post_warning(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Impact shows a warning when a dependent has an open stack post."""
         project = _setup_impact_project(tmp_path)
         monkeypatch.chdir(project)
@@ -5104,12 +4980,11 @@ class TestImpact:
         _populate_impact_db(db_path)
 
         # Create a design file for controller.py
-        design_path = (
-            project / ".lexibrary" / "designs" / "src" / "api" / "controller.py.md"
-        )
+        design_path = project / ".lexibrary" / "designs" / "src" / "api" / "controller.py.md"
         design_path.parent.mkdir(parents=True, exist_ok=True)
         design_path.write_text(
-            "---\ndescription: HTTP API request handler\nupdated_by: archivist\n---\n\n# controller\n",
+            "---\ndescription: HTTP API request handler\nupdated_by: archivist\n"
+            "---\n\n# controller\n",
             encoding="utf-8",
         )
 
@@ -5165,13 +5040,13 @@ def _create_iwh_signal(
     body: str = "Work not finished",
 ) -> Path:
     """Create an IWH signal file in the mirror tree."""
-    from datetime import timezone
-
     iwh_dir = tmp_path / ".lexibrary" / "designs" / rel_dir
     iwh_dir.mkdir(parents=True, exist_ok=True)
     iwh_path = iwh_dir / ".iwh"
 
-    created = datetime.now(tz=timezone.utc).isoformat()
+    from datetime import UTC  # noqa: PLC0415
+
+    created = datetime.now(tz=UTC).isoformat()
     fm_data = {
         "author": author,
         "created": created,
@@ -5213,9 +5088,7 @@ class TestLookupKnownIssues:
             def __init__(self, links: list[LinkResult]) -> None:
                 self._links = links
 
-            def reverse_deps(
-                self, path: str, link_type: str | None = None
-            ) -> list[LinkResult]:
+            def reverse_deps(self, path: str, link_type: str | None = None) -> list[LinkResult]:
                 if link_type == "stack_file_ref":
                     return self._links
                 return []
@@ -5243,9 +5116,7 @@ class TestLookupKnownIssues:
             )
             fake_graph = FakeLinkGraph([fake_link])
 
-            result = _render_known_issues(
-                fake_graph, "src/main.py", project, display_limit=3
-            )
+            result = _render_known_issues(fake_graph, "src/main.py", project, display_limit=3)
 
         assert "Known Issues" in result
         assert "[open]" in result
@@ -5262,9 +5133,7 @@ class TestLookupKnownIssues:
             def __init__(self, links: list[LinkResult]) -> None:
                 self._links = links
 
-            def reverse_deps(
-                self, path: str, link_type: str | None = None
-            ) -> list[LinkResult]:
+            def reverse_deps(self, path: str, link_type: str | None = None) -> list[LinkResult]:
                 if link_type == "stack_file_ref":
                     return self._links
                 return []
@@ -5290,9 +5159,7 @@ class TestLookupKnownIssues:
             )
             fake_graph = FakeLinkGraph([fake_link])
 
-            result = _render_known_issues(
-                fake_graph, "src/main.py", project, display_limit=3
-            )
+            result = _render_known_issues(fake_graph, "src/main.py", project, display_limit=3)
 
         # Should be empty because the only post is stale
         assert result == ""
@@ -5306,9 +5173,7 @@ class TestLookupKnownIssues:
             def __init__(self, links: list[LinkResult]) -> None:
                 self._links = links
 
-            def reverse_deps(
-                self, path: str, link_type: str | None = None
-            ) -> list[LinkResult]:
+            def reverse_deps(self, path: str, link_type: str | None = None) -> list[LinkResult]:
                 if link_type == "stack_file_ref":
                     return self._links
                 return []
@@ -5337,9 +5202,7 @@ class TestLookupKnownIssues:
 
             fake_graph = FakeLinkGraph(links)
 
-            result = _render_known_issues(
-                fake_graph, "src/main.py", project, display_limit=2
-            )
+            result = _render_known_issues(fake_graph, "src/main.py", project, display_limit=2)
 
         assert "Issue number" in result
         assert "3 more issues" in result
@@ -5577,9 +5440,9 @@ class TestOrientTruncationFooter:
         ap = project / ".lexibrary" / "designs" / "src" / ".aindex"
         ap.parent.mkdir(parents=True, exist_ok=True)
         ap.write_text(
-            f'# src/\n\nSrc\n\n## Child Map\n\n| Name | Type | Description |\n'
-            f'| --- | --- | --- |\n| `main.py` | file | Main |\n\n'
-            f'## Local Conventions\n\n(none)\n\n'
+            f"# src/\n\nSrc\n\n## Child Map\n\n| Name | Type | Description |\n"
+            f"| --- | --- | --- |\n| `main.py` | file | Main |\n\n"
+            f"## Local Conventions\n\n(none)\n\n"
             f'<!-- lexibrary:meta source="src" source_hash="a" '
             f'generated="{now}" generator="lexibrary-v2" -->\n',
             encoding="utf-8",
@@ -5611,9 +5474,22 @@ class TestBlankSectionWarnings:
         try:
             result = runner.invoke(
                 lexi_app,
-                ["stack", "post", "--title", "Bug", "--tag", "test",
-                 "--problem", "Broke", "--context", "Testing",
-                 "--evidence", "Log", "--attempts", "Restarted"],
+                [
+                    "stack",
+                    "post",
+                    "--title",
+                    "Bug",
+                    "--tag",
+                    "test",
+                    "--problem",
+                    "Broke",
+                    "--context",
+                    "Testing",
+                    "--evidence",
+                    "Log",
+                    "--attempts",
+                    "Restarted",
+                ],
             )
         finally:
             os.chdir(old_cwd)

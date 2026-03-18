@@ -121,15 +121,10 @@ def convention_approve(
 
     if not conv_path.exists():
         available = (
-            sorted(p.stem for p in conventions_dir.glob("*.md"))
-            if conventions_dir.is_dir()
-            else []
+            sorted(p.stem for p in conventions_dir.glob("*.md")) if conventions_dir.is_dir() else []
         )
         if available:
-            error(
-                f"Convention not found: '{slug}'\n"
-                "Available conventions: " + ", ".join(available)
-            )
+            error(f"Convention not found: '{slug}'\nAvailable conventions: " + ", ".join(available))
         else:
             error(
                 f"Convention not found: '{slug}'\n"
@@ -186,15 +181,10 @@ def convention_deprecate(
 
     if not conv_path.exists():
         available = (
-            sorted(p.stem for p in conventions_dir.glob("*.md"))
-            if conventions_dir.is_dir()
-            else []
+            sorted(p.stem for p in conventions_dir.glob("*.md")) if conventions_dir.is_dir() else []
         )
         if available:
-            error(
-                f"Convention not found: '{slug}'\n"
-                "Available conventions: " + ", ".join(available)
-            )
+            error(f"Convention not found: '{slug}'\nAvailable conventions: " + ", ".join(available))
         else:
             error(
                 f"Convention not found: '{slug}'\n"
@@ -255,15 +245,10 @@ def convention_comment(
 
     if not conv_path.exists():
         available = (
-            sorted(p.stem for p in conventions_dir.glob("*.md"))
-            if conventions_dir.is_dir()
-            else []
+            sorted(p.stem for p in conventions_dir.glob("*.md")) if conventions_dir.is_dir() else []
         )
         if available:
-            error(
-                f"Convention not found: '{slug}'\n"
-                "Available conventions: " + ", ".join(available)
-            )
+            error(f"Convention not found: '{slug}'\nAvailable conventions: " + ", ".join(available))
         else:
             error(
                 f"Convention not found: '{slug}'\n"
@@ -274,7 +259,4 @@ def convention_comment(
 
     append_convention_comment(conv_path, body)
     comment_file = convention_comment_path(conv_path)
-    info(
-        f"Comment added for convention '{slug}' -- "
-        f"{comment_file.relative_to(project_root)}"
-    )
+    info(f"Comment added for convention '{slug}' -- {comment_file.relative_to(project_root)}")

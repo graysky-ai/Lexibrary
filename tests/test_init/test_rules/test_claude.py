@@ -1173,7 +1173,8 @@ class TestIntegrationHookMerge:
         assert any("lexi-pre-edit.sh" in cmd for cmd in commands)
 
     def test_preserves_user_subagent_start_hooks(self, tmp_path: Path) -> None:
-        """User SubagentStart hooks survive full generation even though Lexibrary no longer adds any."""
+        """User SubagentStart hooks survive full generation even though Lexibrary no longer
+        adds any."""
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir(parents=True, exist_ok=True)
         existing = {

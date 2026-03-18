@@ -223,9 +223,7 @@ def hard_delete_expired_concepts(
     """
     concepts_dir = lexibrary_dir / "concepts"
     if not concepts_dir.is_dir():
-        return ConceptDeletionResult(
-            deleted=[], skipped_referenced=[], comments_deleted=[]
-        )
+        return ConceptDeletionResult(deleted=[], skipped_referenced=[], comments_deleted=[])
 
     deleted: list[Path] = []
     skipped_referenced: list[tuple[Path, list[str]]] = []
@@ -255,8 +253,7 @@ def hard_delete_expired_concepts(
         if refs:
             skipped_referenced.append((concept_path, refs))
             logger.warning(
-                "Skipping deletion of expired concept '%s': "
-                "still referenced by %d artefact(s)",
+                "Skipping deletion of expired concept '%s': still referenced by %d artefact(s)",
                 concept.frontmatter.title,
                 len(refs),
             )

@@ -407,9 +407,7 @@ def _make_extended_post(
     concepts_yaml = "\n".join(f"    - {c}" for c in concepts) if concepts else "    []"
     files_yaml = "\n".join(f"    - {f}" for f in files) if files else "    []"
     attempts_yaml = "\n".join(f"- {a}" for a in attempts) if attempts else ""
-    resolution_type_yaml = (
-        f"resolution_type: {resolution_type}\n" if resolution_type else ""
-    )
+    resolution_type_yaml = f"resolution_type: {resolution_type}\n" if resolution_type else ""
 
     content = _EXTENDED_POST_TEMPLATE.format(
         id=post_id,
@@ -543,9 +541,7 @@ class TestByResolutionType:
         assert len(results) == 1
         assert results[0].frontmatter.id == "ST-001"
 
-    def test_filter_workaround_excludes_non_matching(
-        self, tmp_path: Path, stack_dir: Path
-    ) -> None:
+    def test_filter_workaround_excludes_non_matching(self, tmp_path: Path, stack_dir: Path) -> None:
         _make_extended_post(
             stack_dir,
             post_id="ST-001",
@@ -574,9 +570,7 @@ class TestByResolutionType:
         # Ensure "fix" posts are excluded
         assert all(r.frontmatter.resolution_type == "workaround" for r in results)
 
-    def test_filter_no_matching_resolution_type(
-        self, tmp_path: Path, stack_dir: Path
-    ) -> None:
+    def test_filter_no_matching_resolution_type(self, tmp_path: Path, stack_dir: Path) -> None:
         _make_extended_post(
             stack_dir,
             post_id="ST-001",

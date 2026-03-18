@@ -34,7 +34,6 @@ class TestHelp:
             "status",
             "setup",
             "sweep",
-            "daemon",
             "index",
             "bootstrap",
             "help",
@@ -82,20 +81,14 @@ class TestMaintainerHelpCommand:
             "status",
             "setup",
             "sweep",
-            "daemon",
             "iwh clean",
         ):
             assert cmd in result.output, f"Command '{cmd}' missing from help output"
 
-    def test_help_mentions_deprecated_daemon(self) -> None:
-        result = runner.invoke(lexictl_app, ["help"])
-        assert result.exit_code == 0
-        assert "deprecated" in result.output.lower()
-
     def test_help_directs_agents_to_lexi(self) -> None:
         result = runner.invoke(lexictl_app, ["help"])
         assert result.exit_code == 0
-        assert "lexi help" in result.output
+        assert "lexi --help" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -1211,7 +1204,7 @@ class TestUpdateChangedOnly:
 
 
 class TestSweepCommand:
-    """Tests for the ``lexictl sweep`` command."""
+    """Tests for the ``lexictl sweep`` command (inline implementation)."""
 
     def _invoke(self, tmp_path: Path, args: list[str]) -> object:
         old_cwd = os.getcwd()
@@ -1221,31 +1214,75 @@ class TestSweepCommand:
         finally:
             os.chdir(old_cwd)
 
-    def test_sweep_one_shot_calls_run_once(self, tmp_path: Path) -> None:
-        """``lexictl sweep`` invokes DaemonService.run_once()."""
+    def test_sweep_one_shot_calls_update_project(self, tmp_path: Path) -> None:
+        """``lexictl sweep`` calls update_project() directly."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
 
-        with patch("lexibrary.daemon.service.DaemonService") as mock_cls:
-            mock_svc = mock_cls.return_value
+        mock_stats = MagicMock(
+            files_scanned=5, files_updated=1, files_created=0,
+            files_unchanged=4, files_failed=0,
+        )
+        with patch(
+            "lexibrary.archivist.pipeline.update_project",
+            new_callable=AsyncMock,
+            return_value=mock_stats,
+        ):
             result = self._invoke(tmp_path, ["sweep"])
 
         assert result.exit_code == 0  # type: ignore[union-attr]
-        mock_svc.run_once.assert_called_once()
-        mock_svc.run_watch.assert_not_called()
+        assert "Sweep complete" in result.output  # type: ignore[union-attr]
 
-    def test_sweep_watch_calls_run_watch(self, tmp_path: Path) -> None:
-        """``lexictl sweep --watch`` invokes DaemonService.run_watch()."""
+    def test_sweep_one_shot_skip_unchanged(self, tmp_path: Path) -> None:
+        """``lexictl sweep`` skips when no changes detected and skip_if_unchanged is True."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
 
-        with patch("lexibrary.daemon.service.DaemonService") as mock_cls:
-            mock_svc = mock_cls.return_value
+        with (
+            patch("lexibrary.cli.lexictl_app._has_changes", return_value=False),
+            patch(
+                "lexibrary.config.loader.load_config",
+                return_value=MagicMock(
+                    sweep=MagicMock(sweep_skip_if_unchanged=True, sweep_interval_seconds=60),
+                    llm=MagicMock(),
+                ),
+            ),
+        ):
+            result = self._invoke(tmp_path, ["sweep"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "No changes detected" in result.output  # type: ignore[union-attr]
+
+    def test_sweep_watch_runs_loop(self, tmp_path: Path) -> None:
+        """``lexictl sweep --watch`` runs the inline watch loop."""
+        (tmp_path / ".lexibrary").mkdir()
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
+
+        mock_stats = MagicMock(
+            files_scanned=5, files_updated=1, files_created=0,
+            files_unchanged=4, files_failed=0,
+        )
+
+        call_count = 0
+
+        def _side_effect(*args: object, **kwargs: object) -> object:
+            nonlocal call_count
+            call_count += 1
+            # After first sweep, simulate shutdown via signal
+            import signal as _sig
+
+            _sig.raise_signal(_sig.SIGINT)
+            return mock_stats
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_project",
+            new_callable=AsyncMock,
+            side_effect=_side_effect,
+        ):
             result = self._invoke(tmp_path, ["sweep", "--watch"])
 
         assert result.exit_code == 0  # type: ignore[union-attr]
-        mock_svc.run_watch.assert_called_once()
-        mock_svc.run_once.assert_not_called()
+        assert call_count >= 1
 
     def test_sweep_no_project_exits_1(self, tmp_path: Path) -> None:
         """sweep without .lexibrary/ exits 1."""
@@ -1309,148 +1346,6 @@ class TestSetupHooks:
 
 
 # ---------------------------------------------------------------------------
-# Daemon command tests (start/stop/status)
-# ---------------------------------------------------------------------------
-
-
-class TestDaemonCommand:
-    """Tests for the ``lexictl daemon`` command (start/stop/status)."""
-
-    def _invoke(self, tmp_path: Path, args: list[str]) -> object:
-        old_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            return runner.invoke(lexictl_app, args)
-        finally:
-            os.chdir(old_cwd)
-
-    def test_daemon_start_watchdog_disabled(self, tmp_path: Path) -> None:
-        """``daemon start`` when watchdog_enabled is False shows message."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-
-        result = self._invoke(tmp_path, ["daemon", "start"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "disabled" in output.lower()
-        assert "sweep --watch" in output
-
-    def test_daemon_default_action_is_start(self, tmp_path: Path) -> None:
-        """``daemon`` with no action defaults to start."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-
-        result = self._invoke(tmp_path, ["daemon"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        # Default is start; with watchdog disabled, should suggest sweep
-        assert "disabled" in output.lower()
-
-    def test_daemon_unknown_action(self, tmp_path: Path) -> None:
-        """``daemon foo`` exits 1 with error about valid actions."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-
-        result = self._invoke(tmp_path, ["daemon", "foo"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "Unknown action" in output
-        assert "start" in output
-        assert "stop" in output
-        assert "status" in output
-
-    def test_daemon_stop_no_pid_file(self, tmp_path: Path) -> None:
-        """``daemon stop`` with no PID file shows no daemon running."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-
-        result = self._invoke(tmp_path, ["daemon", "stop"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "No daemon" in output or "no PID" in output.lower()
-
-    def test_daemon_stop_sends_sigterm(self, tmp_path: Path) -> None:
-        """``daemon stop`` reads PID and sends SIGTERM."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-        (tmp_path / ".lexibrary" / "daemon.pid").write_text("12345")
-
-        with patch("os.kill") as mock_kill:
-            result = self._invoke(tmp_path, ["daemon", "stop"])
-
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "SIGTERM" in output
-        assert "12345" in output
-        mock_kill.assert_called_once()
-
-    def test_daemon_stop_stale_pid(self, tmp_path: Path) -> None:
-        """``daemon stop`` with stale PID cleans up PID file."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-        (tmp_path / ".lexibrary" / "daemon.pid").write_text("99999")
-
-        with patch(
-            "os.kill",
-            side_effect=ProcessLookupError,
-        ):
-            result = self._invoke(tmp_path, ["daemon", "stop"])
-
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "not found" in output.lower() or "stale" in output.lower()
-        # PID file should be cleaned up
-        assert not (tmp_path / ".lexibrary" / "daemon.pid").exists()
-
-    def test_daemon_status_no_pid_file(self, tmp_path: Path) -> None:
-        """``daemon status`` with no PID file shows no daemon running."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-
-        result = self._invoke(tmp_path, ["daemon", "status"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "No daemon" in output or "not running" in output.lower()
-
-    def test_daemon_status_running(self, tmp_path: Path) -> None:
-        """``daemon status`` with valid PID reports running."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-        (tmp_path / ".lexibrary" / "daemon.pid").write_text("12345")
-
-        with patch("os.kill"):
-            result = self._invoke(tmp_path, ["daemon", "status"])
-
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "running" in output.lower()
-        assert "12345" in output
-
-    def test_daemon_status_stale_pid(self, tmp_path: Path) -> None:
-        """``daemon status`` with stale PID cleans up."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-        (tmp_path / ".lexibrary" / "daemon.pid").write_text("99999")
-
-        with patch(
-            "os.kill",
-            side_effect=ProcessLookupError,
-        ):
-            result = self._invoke(tmp_path, ["daemon", "status"])
-
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "Stale" in output or "stale" in output.lower()
-        assert not (tmp_path / ".lexibrary" / "daemon.pid").exists()
-
-    def test_daemon_no_project_root(self, tmp_path: Path) -> None:
-        """daemon without .lexibrary/ exits 1."""
-        result = self._invoke(tmp_path, ["daemon"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
-
-
-# ---------------------------------------------------------------------------
 # Commands without .lexibrary/ should exit 1 with friendly error (lexictl)
 # ---------------------------------------------------------------------------
 
@@ -1473,11 +1368,6 @@ class TestNoProjectRoot:
         result = self._invoke_without_project(tmp_path, ["validate"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "lexictl init" in result.output  # type: ignore[union-attr]
-
-    def test_daemon_no_project_root(self, tmp_path: Path) -> None:
-        result = self._invoke_without_project(tmp_path, ["daemon"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
 
     def test_update_no_project_root(self, tmp_path: Path) -> None:
         result = self._invoke_without_project(tmp_path, ["update"])
@@ -1911,9 +1801,7 @@ class TestUpdateDryRun:
             "lexibrary.archivist.pipeline.dry_run_files",
             mock_dry_run_files,
         ):
-            result = self._invoke(
-                project, ["update", "--dry-run", "--changed-only", "src/main.py"]
-            )
+            result = self._invoke(project, ["update", "--dry-run", "--changed-only", "src/main.py"])
 
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
@@ -1957,9 +1845,7 @@ class TestUpdateTopology:
     def test_topology_mutual_exclusivity_with_changed_only(self, tmp_path: Path) -> None:
         """--topology and --changed-only cannot be used together."""
         project = _setup_archivist_project(tmp_path)
-        result = self._invoke(
-            project, ["update", "--topology", "--changed-only", "src/main.py"]
-        )
+        result = self._invoke(project, ["update", "--topology", "--changed-only", "src/main.py"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "cannot be combined" in output
@@ -2063,9 +1949,7 @@ class TestUpdateSkeleton:
     def test_skeleton_mutual_exclusivity_with_dry_run(self, tmp_path: Path) -> None:
         """--skeleton and --dry-run cannot be used together."""
         project = _setup_archivist_project(tmp_path)
-        result = self._invoke(
-            project, ["update", "--skeleton", "--dry-run", "src/main.py"]
-        )
+        result = self._invoke(project, ["update", "--skeleton", "--dry-run", "src/main.py"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "cannot be combined" in output
@@ -2073,9 +1957,7 @@ class TestUpdateSkeleton:
     def test_skeleton_mutual_exclusivity_with_topology(self, tmp_path: Path) -> None:
         """--skeleton and --topology cannot be used together."""
         project = _setup_archivist_project(tmp_path)
-        result = self._invoke(
-            project, ["update", "--skeleton", "--topology", "src/main.py"]
-        )
+        result = self._invoke(project, ["update", "--skeleton", "--topology", "src/main.py"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "cannot be combined" in output
@@ -2347,9 +2229,7 @@ class TestUpdateIWHCleanup:
                 mock_iwh_cleanup,
             ),
         ):
-            result = self._invoke(
-                project, ["update", "--changed-only", "src/main.py"]
-            )
+            result = self._invoke(project, ["update", "--changed-only", "src/main.py"])
 
         assert result.exit_code == 0  # type: ignore[union-attr]
         mock_iwh_cleanup.assert_not_called()
@@ -2487,3 +2367,144 @@ class TestIWHCleanConfigAware:
         result = self._invoke(project, ["iwh", "clean", "--all"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "No IWH signals to clean" in result.output  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Update --unlimited tests (task 7.1-7.3)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateUnlimited:
+    """Tests for the ``--unlimited`` flag on ``lexictl update``."""
+
+    @staticmethod
+    def _invoke(project: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            return runner.invoke(lexictl_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_unlimited_default_false(self, tmp_path: Path) -> None:
+        """--unlimited defaults to False; update_project receives unlimited=False."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=1, files_unchanged=1)
+        mock_update_project = AsyncMock(return_value=mock_stats)
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_project",
+            mock_update_project,
+        ):
+            result = self._invoke(project, ["update"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        # Verify unlimited=False was passed
+        _, kwargs = mock_update_project.call_args
+        assert kwargs.get("unlimited") is False
+
+    def test_unlimited_flag_accepted(self, tmp_path: Path) -> None:
+        """--unlimited flag is accepted and passed through to update_project."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=1, files_unchanged=1)
+        mock_update_project = AsyncMock(return_value=mock_stats)
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_project",
+            mock_update_project,
+        ):
+            result = self._invoke(project, ["update", "--unlimited"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        _, kwargs = mock_update_project.call_args
+        assert kwargs.get("unlimited") is True
+
+    def test_unlimited_single_file(self, tmp_path: Path) -> None:
+        """--unlimited is threaded through to update_file for single file update."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_result = FileResult(change=ChangeLevel.NEW_FILE)
+        mock_update_file = AsyncMock(return_value=mock_result)
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_file",
+            mock_update_file,
+        ):
+            result = self._invoke(project, ["update", "--unlimited", "src/main.py"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        _, kwargs = mock_update_file.call_args
+        assert kwargs.get("unlimited") is True
+
+    def test_unlimited_changed_only(self, tmp_path: Path) -> None:
+        """--unlimited is threaded through to update_files for --changed-only."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=1, files_unchanged=1)
+        mock_update_files = AsyncMock(return_value=mock_stats)
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_files",
+            mock_update_files,
+        ):
+            result = self._invoke(
+                project, ["update", "--unlimited", "--changed-only", "src/main.py"]
+            )
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        _, kwargs = mock_update_files.call_args
+        assert kwargs.get("unlimited") is True
+
+    def test_unlimited_directory(self, tmp_path: Path) -> None:
+        """--unlimited is threaded through to update_directory."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=1, files_unchanged=1)
+        mock_update_directory = AsyncMock(return_value=mock_stats)
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_directory",
+            mock_update_directory,
+        ):
+            result = self._invoke(project, ["update", "--unlimited", "src"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        _, kwargs = mock_update_directory.call_args
+        assert kwargs.get("unlimited") is True
+
+    def test_unlimited_skeleton_mutual_exclusion(self, tmp_path: Path) -> None:
+        """--unlimited and --skeleton cannot be used together."""
+        project = _setup_archivist_project(tmp_path)
+
+        result = self._invoke(
+            project, ["update", "--unlimited", "--skeleton", "src/main.py"]
+        )
+
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "--skeleton cannot be combined" in result.output  # type: ignore[union-attr]
+
+    def test_unlimited_passes_to_build_client_registry(self, tmp_path: Path) -> None:
+        """--unlimited is passed to build_client_registry."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=1, files_unchanged=1)
+        mock_update_project = AsyncMock(return_value=mock_stats)
+        mock_build_registry = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "lexibrary.archivist.pipeline.update_project",
+                mock_update_project,
+            ),
+            patch(
+                "lexibrary.llm.client_registry.build_client_registry",
+                mock_build_registry,
+            ),
+        ):
+            result = self._invoke(project, ["update", "--unlimited"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        _, kwargs = mock_build_registry.call_args
+        assert kwargs.get("unlimited") is True

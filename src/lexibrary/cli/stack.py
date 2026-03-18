@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 
-from lexibrary.cli._output import error, hint, info, markdown_table, warn
+from lexibrary.cli._output import error, hint, info
 from lexibrary.cli._shared import require_project_root
 
 stack_app = typer.Typer(help="Stack issue management commands.", rich_markup_mode=None)
@@ -164,9 +164,7 @@ def stack_post(
 
     # Mutual exclusivity: shortcuts conflict with --finding, --resolve, --resolution-type
     shortcut_name = (
-        "--fix" if fix is not None
-        else "--workaround" if workaround is not None
-        else None
+        "--fix" if fix is not None else "--workaround" if workaround is not None else None
     )
     if shortcut_name is not None:
         if finding is not None:
@@ -240,10 +238,7 @@ def stack_post(
     if not attempts:
         blank_sections.append("attempts")
     if blank_sections:
-        info(
-            f"Note: The following sections are blank: "
-            f"{', '.join(blank_sections)}"
-        )
+        info(f"Note: The following sections are blank: {', '.join(blank_sections)}")
 
 
 @stack_app.command("finding")
@@ -324,10 +319,7 @@ def stack_vote(
                 info(f"Recorded {direction}vote on F{finding} (votes: {a.votes})")
                 return
     else:
-        info(
-            f"Recorded {direction}vote on {post_id} "
-            f"(votes: {updated.frontmatter.votes})"
-        )
+        info(f"Recorded {direction}vote on {post_id} (votes: {updated.frontmatter.votes})")
 
 
 @stack_app.command("accept")
@@ -499,10 +491,7 @@ def stack_comment(
 
     append_stack_comment(project_root, post_id, body)
     count = stack_comment_count(project_root, post_id)
-    info(
-        f"Comment added for post {post_id} "
-        f"({count} comment{'s' if count != 1 else ''} total)"
-    )
+    info(f"Comment added for post {post_id} ({count} comment{'s' if count != 1 else ''} total)")
 
 
 @stack_app.command("stale")

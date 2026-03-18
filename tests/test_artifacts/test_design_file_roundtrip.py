@@ -239,9 +239,7 @@ class TestDesignFileRoundtrip:
 
     def test_roundtrip_unlinked_status(self, tmp_path: Path) -> None:
         """Unlinked status (no deprecation fields) survives round-trip."""
-        df = _design_file(
-            frontmatter=_frontmatter(status="unlinked")
-        )
+        df = _design_file(frontmatter=_frontmatter(status="unlinked"))
         content = serialize_design_file(df)
         f = tmp_path / "design.md"
         f.write_text(content)

@@ -32,7 +32,7 @@ A single-page reference for everything an agent needs when working in a Lexibrar
 | Command | What It Does | When to Use |
 |---------|-------------|-------------|
 | `lexi orient` | Show project topology, stats, IWH signals | At session start (first command) |
-| `lexi help` | Show structured agent guidance | First time using lexi |
+| `lexi --help` | Show all available commands | First time using lexi |
 
 ### Lookup & Navigation
 
@@ -158,7 +158,7 @@ lexi concept link path-validation src/lexibrary/config/loader.py
 lexi iwh write src/lexibrary/config/ --scope incomplete --body "Refactoring config validation. Completed schema.py changes. Still need to update loader.py and defaults.py. Tests in test_schema.py pass."
 
 # Leave a blocked signal
-lexi iwh write src/lexibrary/daemon/ --scope blocked --body "Waiting on upstream fix for watchdog race condition."
+lexi iwh write src/lexibrary/config/ --scope blocked --body "Waiting on upstream fix for config validation race condition."
 ```
 
 ### Picking up where someone left off
@@ -177,7 +177,7 @@ lexi iwh read src/lexibrary/config/
 
 ## What NOT to Do
 
-- Never run `lexictl` commands (init, update, validate, status, setup, sweep, daemon)
+- Never run `lexictl` commands (init, update, validate, status, setup, sweep)
 - Never modify `.lexibrary/config.yaml`
 - Never delete files from `.lexibrary/` (except `.iwh` after acting on them)
 - Never edit `.aindex` files directly (use `lexi describe` instead)

@@ -4,7 +4,7 @@ Lexibrary is an AI-friendly codebase indexer that produces a `.lexibrary/` direc
 
 Lexibrary provides two CLIs:
 
-- **`lexictl`** -- Operator-facing maintenance commands (init, update, validate, status, setup, sweep, daemon)
+- **`lexictl`** -- Operator-facing maintenance commands (init, update, validate, status, setup, sweep)
 - **`lexi`** -- Agent-facing lookup and query commands (lookup, index, describe, concepts, stack, search)
 
 ## Who are you?
@@ -51,7 +51,7 @@ Documentation for operators and team members who install, configure, and maintai
 |----------|-------------|
 | [Design File Generation](user/design-file-generation.md) | How `lexictl update` works end-to-end -- file discovery, change detection, LLM generation |
 | [Validation](user/validation.md) | How `lexictl validate` works -- 13 checks, severity levels, JSON output, exit codes |
-| [CI Integration](user/ci-integration.md) | CI/CD recipes -- git hooks, periodic sweeps, daemon mode, validation as CI gate |
+| [CI Integration](user/ci-integration.md) | CI/CD recipes -- git hooks, periodic sweeps, validation as CI gate |
 | [Concepts Wiki](user/concepts-wiki.md) | Project-specific vocabulary and architectural patterns -- creating, linking, and managing concepts |
 | [Stack Q&A](user/stack-qa.md) | Structured problem/solution knowledge base -- posts, findings, voting, searching |
 | [Link Graph](user/link-graph.md) | The SQLite index -- what it indexes, what queries it accelerates, how to rebuild |

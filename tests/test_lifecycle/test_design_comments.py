@@ -30,9 +30,7 @@ def _create_design_file(
 ) -> Path:
     """Create a minimal design file in the mirror tree."""
     content_hash = hashlib.sha256(source_content.encode()).hexdigest()
-    design_path = (
-        project_root / LEXIBRARY_DIR / DESIGNS_DIR / f"{source_rel}.md"
-    )
+    design_path = project_root / LEXIBRARY_DIR / DESIGNS_DIR / f"{source_rel}.md"
     design_path.parent.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now(UTC).isoformat()
@@ -120,9 +118,7 @@ class TestDesignCommentPath:
         """Works with deeply nested paths."""
         dp = Path("/project/.lexibrary/designs/src/deep/nested/module.py.md")
         result = design_comment_path(dp)
-        assert result == Path(
-            "/project/.lexibrary/designs/src/deep/nested/module.py.comments.yaml"
-        )
+        assert result == Path("/project/.lexibrary/designs/src/deep/nested/module.py.comments.yaml")
 
 
 # ---------------------------------------------------------------------------

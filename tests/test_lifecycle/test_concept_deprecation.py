@@ -65,9 +65,7 @@ def _create_comment_file(concept_path: Path) -> Path:
     """Create a sibling .comments.yaml file for a concept."""
     comment_path = concept_path.with_suffix(".comments.yaml")
     comment_path.write_text(
-        "comments:\n"
-        "  - body: 'A test comment'\n"
-        "    date: '2026-01-01T00:00:00+00:00'\n",
+        "comments:\n  - body: 'A test comment'\n    date: '2026-01-01T00:00:00+00:00'\n",
         encoding="utf-8",
     )
     return comment_path
@@ -215,9 +213,7 @@ class TestFindConceptReferences:
         lexibrary_dir = tmp_path / ".lexibrary"
         lexibrary_dir.mkdir(parents=True, exist_ok=True)
 
-        refs = find_concept_references(
-            "Orphaned Concept", [], tmp_path, lexibrary_dir
-        )
+        refs = find_concept_references("Orphaned Concept", [], tmp_path, lexibrary_dir)
         assert refs == []
 
     def test_design_file_references_by_title(self, tmp_path: Path) -> None:
@@ -225,13 +221,9 @@ class TestFindConceptReferences:
         lexibrary_dir = tmp_path / ".lexibrary"
         lexibrary_dir.mkdir(parents=True, exist_ok=True)
 
-        _create_design_file_with_wikilinks(
-            tmp_path, "src/module.py", ["My Concept"]
-        )
+        _create_design_file_with_wikilinks(tmp_path, "src/module.py", ["My Concept"])
 
-        refs = find_concept_references(
-            "My Concept", [], tmp_path, lexibrary_dir
-        )
+        refs = find_concept_references("My Concept", [], tmp_path, lexibrary_dir)
         assert len(refs) == 1
         assert "src/module.py.md" in refs[0]
 
@@ -240,13 +232,9 @@ class TestFindConceptReferences:
         lexibrary_dir = tmp_path / ".lexibrary"
         lexibrary_dir.mkdir(parents=True, exist_ok=True)
 
-        _create_design_file_with_wikilinks(
-            tmp_path, "src/module.py", ["my_alias"]
-        )
+        _create_design_file_with_wikilinks(tmp_path, "src/module.py", ["my_alias"])
 
-        refs = find_concept_references(
-            "My Concept", ["my_alias"], tmp_path, lexibrary_dir
-        )
+        refs = find_concept_references("My Concept", ["my_alias"], tmp_path, lexibrary_dir)
         assert len(refs) == 1
 
     def test_deprecated_design_excluded(self, tmp_path: Path) -> None:
@@ -258,9 +246,7 @@ class TestFindConceptReferences:
             tmp_path, "src/old.py", ["My Concept"], status="deprecated"
         )
 
-        refs = find_concept_references(
-            "My Concept", [], tmp_path, lexibrary_dir
-        )
+        refs = find_concept_references("My Concept", [], tmp_path, lexibrary_dir)
         assert refs == []
 
     def test_active_concept_references_in_body(self, tmp_path: Path) -> None:
@@ -276,9 +262,7 @@ class TestFindConceptReferences:
             body="This references [[Target Concept]] in the body.\n",
         )
 
-        refs = find_concept_references(
-            "Target Concept", [], tmp_path, lexibrary_dir
-        )
+        refs = find_concept_references("Target Concept", [], tmp_path, lexibrary_dir)
         assert len(refs) == 1
         assert "referencing-concept.md" in refs[0]
 
@@ -295,9 +279,7 @@ class TestFindConceptReferences:
             body="References [[Target Concept]] but is deprecated.\n",
         )
 
-        refs = find_concept_references(
-            "Target Concept", [], tmp_path, lexibrary_dir
-        )
+        refs = find_concept_references("Target Concept", [], tmp_path, lexibrary_dir)
         assert refs == []
 
     def test_self_reference_excluded(self, tmp_path: Path) -> None:
@@ -313,9 +295,7 @@ class TestFindConceptReferences:
             body="References [[Self Ref]] in own body.\n",
         )
 
-        refs = find_concept_references(
-            "Self Ref", [], tmp_path, lexibrary_dir
-        )
+        refs = find_concept_references("Self Ref", [], tmp_path, lexibrary_dir)
         assert refs == []
 
 
@@ -342,9 +322,7 @@ class TestHardDeleteExpiredConcepts:
             "lexibrary.lifecycle.concept_deprecation._count_commits_since",
             return_value=100,
         ):
-            result = hard_delete_expired_concepts(
-                tmp_path, lexibrary_dir, ttl_commits=50
-            )
+            result = hard_delete_expired_concepts(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert concept_path in result.deleted
         assert not concept_path.exists()
@@ -364,23 +342,17 @@ class TestHardDeleteExpiredConcepts:
             "lexibrary.lifecycle.concept_deprecation._count_commits_since",
             return_value=10,
         ):
-            result = hard_delete_expired_concepts(
-                tmp_path, lexibrary_dir, ttl_commits=50
-            )
+            result = hard_delete_expired_concepts(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert result.deleted == []
         assert concept_path.exists()
 
     def test_preserves_active_concept(self, tmp_path: Path) -> None:
         """Active concepts are never deleted."""
-        concept_path = _create_concept_file(
-            tmp_path, "active", title="Active", status="active"
-        )
+        concept_path = _create_concept_file(tmp_path, "active", title="Active", status="active")
         lexibrary_dir = tmp_path / ".lexibrary"
 
-        result = hard_delete_expired_concepts(
-            tmp_path, lexibrary_dir, ttl_commits=50
-        )
+        result = hard_delete_expired_concepts(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert result.deleted == []
         assert concept_path.exists()
@@ -403,9 +375,7 @@ class TestHardDeleteExpiredConcepts:
             "lexibrary.lifecycle.concept_deprecation._count_commits_since",
             return_value=100,
         ):
-            result = hard_delete_expired_concepts(
-                tmp_path, lexibrary_dir, ttl_commits=50
-            )
+            result = hard_delete_expired_concepts(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert concept_path in result.deleted
         assert not concept_path.exists()
@@ -424,17 +394,13 @@ class TestHardDeleteExpiredConcepts:
         lexibrary_dir = tmp_path / ".lexibrary"
 
         # Create a design file that references this concept
-        _create_design_file_with_wikilinks(
-            tmp_path, "src/module.py", ["Referenced Concept"]
-        )
+        _create_design_file_with_wikilinks(tmp_path, "src/module.py", ["Referenced Concept"])
 
         with patch(
             "lexibrary.lifecycle.concept_deprecation._count_commits_since",
             return_value=100,
         ):
-            result = hard_delete_expired_concepts(
-                tmp_path, lexibrary_dir, ttl_commits=50
-            )
+            result = hard_delete_expired_concepts(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert result.deleted == []
         assert len(result.skipped_referenced) == 1
@@ -446,9 +412,7 @@ class TestHardDeleteExpiredConcepts:
         lexibrary_dir = tmp_path / ".lexibrary"
         lexibrary_dir.mkdir(parents=True, exist_ok=True)
 
-        result = hard_delete_expired_concepts(
-            tmp_path, lexibrary_dir, ttl_commits=50
-        )
+        result = hard_delete_expired_concepts(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert result.deleted == []
         assert result.skipped_referenced == []
@@ -481,9 +445,7 @@ class TestHardDeleteExpiredConcepts:
             "lexibrary.lifecycle.concept_deprecation._count_commits_since",
             side_effect=mock_count,
         ):
-            result = hard_delete_expired_concepts(
-                tmp_path, lexibrary_dir, ttl_commits=50
-            )
+            result = hard_delete_expired_concepts(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert expired_path in result.deleted
         assert not expired_path.exists()
@@ -508,9 +470,7 @@ class TestHardDeleteExpiredConcepts:
             "lexibrary.lifecycle.concept_deprecation._count_commits_since",
             return_value=100,
         ):
-            result = hard_delete_expired_concepts(
-                tmp_path, lexibrary_dir, ttl_commits=50
-            )
+            result = hard_delete_expired_concepts(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert concept_path in result.deleted
         assert not concept_path.exists()
@@ -526,9 +486,7 @@ class TestConceptDeletionResult:
     """Tests for ConceptDeletionResult dataclass."""
 
     def test_empty_result(self) -> None:
-        result = ConceptDeletionResult(
-            deleted=[], skipped_referenced=[], comments_deleted=[]
-        )
+        result = ConceptDeletionResult(deleted=[], skipped_referenced=[], comments_deleted=[])
         assert result.deleted == []
         assert result.skipped_referenced == []
         assert result.comments_deleted == []

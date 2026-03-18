@@ -317,9 +317,9 @@ After creation, fill in the `## Problem` and `### Evidence` sections in the gene
 lexi stack post --title "Config loader silently ignores unknown keys" --tag config --tag bug
 
 # Create a post with file and concept references
-lexi stack post --title "Race condition in daemon sweep" --tag daemon --tag concurrency \
-  --file src/lexibrary/daemon/service.py \
-  --concept daemon-sweep
+lexi stack post --title "Race condition in sweep watch mode" --tag sweep --tag concurrency \
+  --file src/lexibrary/cli/lexictl_app.py \
+  --concept sweep-watch
 ```
 
 **When to use:** After solving a non-trivial bug or discovering an important pattern. Document the problem and solution so future agents do not have to re-discover it.
@@ -360,7 +360,7 @@ All filters are AND-combined. You can provide a query with filters, or just filt
 lexi stack search "config loader"
 
 # Filter by tag
-lexi stack search --tag daemon
+lexi stack search --tag sweep
 
 # Combine query and filters
 lexi stack search "timeout" --tag llm --status open

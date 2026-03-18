@@ -6,7 +6,9 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from lexibrary.baml_client.async_client import b
+from baml_py import ClientRegistry
+
+from lexibrary.baml_client.async_client import BamlAsyncClient, b
 from lexibrary.baml_client.types import FileInput
 from lexibrary.exceptions import LLMServiceError
 from lexibrary.llm.rate_limiter import RateLimiter
@@ -43,16 +45,30 @@ class DirectorySummaryRequest:
 
 
 class LLMService:
-    """Async wrapper around the BAML client with rate limiting and error fallback."""
+    """Async wrapper around the BAML client with rate limiting and error fallback.
 
-    def __init__(self, rate_limiter: RateLimiter) -> None:
+    Uses a BAML ``ClientRegistry`` for provider routing via the
+    ``lexibrary-summarize`` client. Client selection is delegated entirely
+    to the registry -- this service contains no provider-to-client mapping.
+    """
+
+    def __init__(self, rate_limiter: RateLimiter, client_registry: ClientRegistry) -> None:
         self._rate_limiter = rate_limiter
+        self._client_registry = client_registry
+
+    def _get_baml_client(self) -> BamlAsyncClient:
+        """Return the BAML async client configured via the registry."""
+        return b.with_options(
+            client_registry=self._client_registry,
+            client="lexibrary-summarize",
+        )
 
     async def summarize_file(self, request: FileSummaryRequest) -> FileSummaryResult:
         """Summarize a single file. Returns fallback summary on error."""
         await self._rate_limiter.acquire()
         try:
-            result = await b.SummarizeFile(
+            client = self._get_baml_client()
+            result = await client.SummarizeFile(
                 filename=request.path.name,
                 language=request.language,
                 content=request.content,
@@ -61,9 +77,7 @@ class LLMService:
             return FileSummaryResult(path=request.path, summary=result.summary)
         except Exception as exc:
             logger.warning("LLM error summarizing %s", request.path, exc_info=True)
-            raise LLMServiceError(
-                f"Failed to summarize {request.path}: {exc}"
-            ) from exc
+            raise LLMServiceError(f"Failed to summarize {request.path}: {exc}") from exc
 
     async def summarize_files_batch(
         self, requests: list[FileSummaryRequest]
@@ -74,6 +88,7 @@ class LLMService:
 
         await self._rate_limiter.acquire()
         try:
+            client = self._get_baml_client()
             file_inputs = [
                 FileInput(
                     filename=req.path.name,
@@ -82,7 +97,7 @@ class LLMService:
                 )
                 for req in requests
             ]
-            results = await b.SummarizeFilesBatch(files=file_inputs)
+            results = await client.SummarizeFilesBatch(files=file_inputs)
             if len(results) != len(requests):
                 logger.warning(
                     "Batch returned %d results for %d files, marking as errors",
@@ -106,13 +121,12 @@ class LLMService:
         """Summarize a directory. Returns fallback summary on error."""
         await self._rate_limiter.acquire()
         try:
-            return await b.SummarizeDirectory(
+            client = self._get_baml_client()
+            return await client.SummarizeDirectory(
                 dirname=request.path.name,
                 file_list=request.file_list,
                 subdir_list=request.subdir_list,
             )
         except Exception as exc:
             logger.warning("LLM error summarizing directory %s", request.path, exc_info=True)
-            raise LLMServiceError(
-                f"Failed to summarize directory {request.path}: {exc}"
-            ) from exc
+            raise LLMServiceError(f"Failed to summarize directory {request.path}: {exc}") from exc

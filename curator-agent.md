@@ -33,16 +33,50 @@ artifacts so that working agents always operate against a trustworthy index.
 - **Cascade analysis**: Before deprecating, trace dependents via `reverse_deps()`
   to quantify downstream impact and generate a migration brief.
 
+#### Artifact State Machines
+
+The Deprecation Analyst must enforce valid state transitions. Each artifact type
+has a distinct lifecycle. Full definitions with transition triggers and
+idempotency rules are in
+[spec-opportunities.md §Opportunity 3](spec-opportunities.md#opportunity-3-explicit-state-machine-documentation).
+Summary:
+
+**Design Files**: `active → deprecated` (source deleted/renamed/manual) or
+`active → unlinked` (source outside scope). `unlinked → active` on re-addition.
+Deprecated is terminal.
+
+**Concepts**: `draft → active → deprecated`. Deprecated is terminal; sets
+`superseded_by` and `deprecated_at`. Confirm policy:
+`config.concepts.deprecation_confirm`.
+
+**Conventions**: `draft → active → deprecated → HARD DELETED` (after
+`config.deprecation.ttl_commits`, default 50). Hard deletion removes `.md` and
+sibling `.comments.yaml`. Confirm policy:
+`config.conventions.deprecation_confirm`.
+
+**Stack Posts**: `open → resolved` (via `accept_finding`), `open → duplicate`,
+`open → outdated`, `resolved → stale` (after TTL), `stale → resolved`
+(unstale). `mark_stale()` requires status="resolved".
+
 ### 2.3 Validation Sweep
 
 - Run the full `lexi validate` check suite (13 checks across error/warning/info).
 - Triage results by severity, grouping related issues into actionable work items.
 - Auto-fix trivially correctable issues (e.g. missing bidirectional dep entries).
+- Leverage actionable validator suggestions to self-correct — see
+  [harness-opportunities.md §1](harness-opportunities.md#1-actionable-validator-remediation)
+  for the plan to upgrade suggestion text to include runnable commands.
 
 ### 2.4 Staleness Management
 
-- **Hash freshness**: Compare `source_hash` in design files against current
-  source SHA-256. Rank staleness by age and downstream impact.
+- **Hash freshness**: Lexibrary uses two-tier hashing — a **content hash**
+  (SHA-256 of the full source file, stored as `source_hash` in design file
+  frontmatter) and an **interface hash** (Tree-sitter AST skeleton rendering,
+  stored as `interface_hash` in `.aindex` YAML). The Curator should use both:
+  a content-hash mismatch with a stable interface hash indicates an
+  implementation-only change (lower impact), while an interface-hash mismatch
+  signals a public API change (higher impact, more dependents affected).
+  Rank staleness by age, hash tier, and downstream impact.
 - **Stack post decay**: Flag stack posts whose referenced code has changed
   substantially since posting.
 - **IWH signal cleanup**: Consume stale `incomplete`/`blocked` IWH signals that
@@ -60,6 +94,11 @@ artifacts so that working agents always operate against a trustworthy index.
 - Ensure convention scoping is consistent (directory-level conventions apply to
   all children).
 - Detect conflicting conventions across overlapping scopes.
+- Enforce identifier normalisation rules — case-sensitive tags, case-insensitive
+  wikilink resolution, convention-first precedence, slug collision suffixes. The
+  Consistency Checker must understand these semantics to avoid introducing bugs.
+  Full normalisation rules are documented in
+  [spec-opportunities.md §Opportunity 9](spec-opportunities.md#opportunity-9-normalisation-rules-as-explicit-contracts).
 
 ### 2.7 Index Health (Speculative)
 
@@ -74,7 +113,23 @@ artifacts so that working agents always operate against a trustworthy index.
   artifacts and generate a batch migration plan (or execute it, depending on
   autonomy level).
 
-### 2.9 Agent-Edited Design File Reconciliation
+### 2.9 IWH Signal Triage
+
+- React to `blocked` IWH signals — escalate to human or create a Stack post
+  if the blocker persists across multiple agent sessions.
+- Detect `incomplete` signals that have been superseded by subsequent commits
+  touching the same directory, and consume them.
+- Surface signals older than `config.iwh.ttl_hours` for cleanup.
+
+### 2.10 Convention-from-Failure Detection (Speculative)
+
+When the Curator observes recurring validation failures of the same type across
+multiple files (e.g. repeated `wikilink_resolution` errors for the same missing
+concept), it can propose a new convention or concept to prevent the pattern.
+See [harness-opportunities.md §2](harness-opportunities.md#2-convention-from-failure-workflow)
+for the detailed workflow design.
+
+### 2.11 Agent-Edited Design File Reconciliation
 
 When an agent edits a design file (setting `updated_by: agent`), the current
 `lexictl update` pipeline classifies it as `AGENT_UPDATED` and **never
@@ -128,11 +183,22 @@ that orchestrates sub-agents in a fixed sequence:
 
 The coordinator does NOT make judgment calls. It routes based on issue type.
 
+**Graceful degradation**: The coordinator must handle an unavailable link
+graph (`LinkGraph.open()` returns `None`). This happens when the database file
+is missing, the database is corrupt, or the schema version mismatches the
+expected version. When the graph is unavailable:
+
+- Skip checks that require it (orphan detection, bidirectional deps, alias
+  collisions, dependent fan-out).
+- Fall back to file-scanning for staleness detection (walk `.lexibrary/designs/`
+  and compare `source_hash` against on-disk files).
+- Log a warning recommending `lexictl update` to rebuild the index.
+
 ### 3.2 Sub-Agents
 
 | Sub-Agent | Responsibility | Model Tier |
 |-----------|---------------|------------|
-| **Staleness Resolver** | Regenerate stale design files from source; reconcile agent-edited designs via hybrid merge (2.9) | Heavy (Opus) |
+| **Staleness Resolver** | Regenerate stale design files from source; reconcile agent-edited designs via hybrid merge (2.11) | Heavy (Opus) |
 | **Deprecation Analyst** | Assess impact, draft migration briefs, execute deprecations | Heavy (Opus) |
 | **Comment Curator** | Audit and clean descriptions, TODOs, summaries | Light (Haiku/Sonnet) |
 | **Consistency Checker** | Fix wikilinks, bidirectional deps, alias conflicts | Light (Haiku) |
@@ -141,13 +207,19 @@ The coordinator does NOT make judgment calls. It routes based on issue type.
 Sub-agents receive a focused work item (not the full triage), do their task, and
 return a structured result.
 
+**Existing agent patterns to follow**: The Explore agent (Haiku, read-only,
+structured output) and Bead agent (Opus, claim-work-close lifecycle) in
+`.claude/agents/` are the two established sub-agent patterns. Curator sub-agents
+should follow similar conventions — lightweight agents use Haiku with Read/Bash
+tools; heavyweight agents use Opus with full tool access and structured reports.
+
 ### 3.3 Trigger Modes
 
 #### Scheduled (Periodic)
 
 - Full health sweep: daily or weekly (configurable).
 - Lightweight hash-freshness check: after every N commits or on a short interval.
-- Implementation: cron job or daemon integration (watchdog already exists).
+- Implementation: cron job or `lexictl sweep --watch` integration.
 
 #### Reactive (Event-Driven)
 
@@ -163,6 +235,58 @@ return a structured result.
 - `/curator` skill — user invokes directly.
 - `lexi curate [--scope <path>] [--check <check-name>]` CLI command.
 - Can be scoped to a directory, a specific check, or a full sweep.
+
+### 3.4 Python APIs (Coordinator-Level)
+
+The coordinator should call Python APIs directly rather than scraping CLI output.
+Key entry points:
+
+| API | Module | Purpose |
+|-----|--------|---------|
+| `LinkGraph.open(db_path)` | `linkgraph.query` | Read-only graph queries; returns `None` if unavailable |
+| `open_index(project_root)` | `linkgraph.query` | Convenience wrapper — finds db, opens graph |
+| `get_artifact(path)` | `linkgraph.query` | Look up single artifact by path |
+| `reverse_deps(path, link_type)` | `linkgraph.query` | Inbound links to an artifact |
+| `resolve_alias(alias)` | `linkgraph.query` | Case-insensitive concept/convention lookup |
+| `search_by_tag(tag)` | `linkgraph.query` | Find artifacts by tag (exact match) |
+| `full_text_search(query, limit=20)` | `linkgraph.query` | FTS5 full-text search across artifacts |
+| `get_conventions(directory_paths)` | `linkgraph.query` | Conventions scoped to directories; root-to-leaf ordering |
+| `traverse(start_path, max_depth=3)` | `linkgraph.query` | Multi-hop graph traversal with cycle detection (max 10 depth) |
+| `build_summary()` | `linkgraph.query` | Aggregate build statistics from most recent index build |
+| `find_all_iwh(project_root)` | `iwh.reader` | Discover all IWH signals; returns `list[(dir, IWHFile)]` |
+| `validate_library(root, checks, severity)` | `validator` | Run validation; returns `ValidationReport` |
+| `parse_design_file(path)` | `artifacts.design_file_parser` | Full design file parse |
+| `parse_design_file_frontmatter(path)` | `artifacts.design_file_parser` | Lightweight frontmatter-only parse |
+| `WikilinkResolver` | `wiki.resolver` | Resolves `[[wikilinks]]` to concepts or Stack posts |
+| `ConceptIndex` | `wiki.index` | Search concepts by title, alias, tag, or substring |
+
+#### Key Data Models
+
+The coordinator's triage step consumes these types from the validation and
+link graph systems:
+
+**Validation models** (`validator.report`):
+- `ValidationReport` — top-level container for a validation run
+- `ValidationIssue` — single issue: `path`, `severity`, `message`, `suggestions`
+- `ValidationSummary` — aggregate counts by severity
+
+**Link graph result types** (`linkgraph.query`):
+- `ArtifactResult` — lookup result: `id`, `path`, `kind`, `title`, `status`
+- `LinkResult` — inbound edge: `source_path`, `link_type`, `context`
+- `ConventionResult` — convention body scoped to a directory
+- `TraversalNode` — node in multi-hop graph traversal
+- `BuildSummaryEntry` — build statistics entry
+
+**Link types** stored in the graph (used to filter `reverse_deps` and
+`traverse` calls):
+- `ast_import` — source code import relationship
+- `wikilink` — `[[Concept]]` cross-reference
+- `concept_file_ref` — concept referencing a file
+- `stack_file_ref` — Stack post referencing a file
+- `convention` — scoped coding standard
+
+The `lexi curate` CLI command is a thin wrapper over these APIs — same pattern
+as `search.py` providing `SearchResults` that the CLI renders.
 
 ---
 
@@ -337,10 +461,14 @@ dependencies). This is the hardest part.
 - The sub-agent receives: (1) current source file content, (2) the
   agent-edited design file, (3) the source diff since the design was last
   generated (reconstructible from git or from the stored `source_hash`).
-- The sub-agent must distinguish **mechanical sections** (interface skeleton,
-  dependency list, file description accuracy) from **agent-added value**
-  (custom notes, refined summaries, added context, wikilinks the LLM
-  wouldn't generate).
+- The sub-agent must distinguish **mechanical sections** from **agent-added
+  value**. Design files have a known section structure:
+  - **Mechanical** (regenerable from source): Summary, Interface (table of
+    public functions/classes with signatures), Dependencies (Lexibrary-internal
+    imports), Dependents (which modules import this one)
+  - **Agent-added value** (must be preserved): Key Concepts (wikilink
+    cross-references the agent added), Dragons (real gotchas), custom notes,
+    refined descriptions beyond what the archivist would generate
 - The output should read as a coherent design file, not a merge-conflict
   patchwork.
 
@@ -386,11 +514,12 @@ generation and agent edits.
 For the autonomy system (Q5), where does reconciliation sit?
 
 - If the source change is small (e.g. only internal implementation changed,
-  interface stable): **Low risk** — mechanical update, interface skeleton
-  refresh.
+  interface stable — detectable via `interface_hash` being unchanged even
+  though `source_hash` differs): **Low risk** — mechanical update, interface
+  skeleton refresh.
 - If the source change is large (e.g. new public API, renamed functions,
-  removed exports): **Medium risk** — LLM must reason about what agent notes
-  still apply.
+  removed exports — `interface_hash` has changed): **Medium risk** — LLM
+  must reason about what agent notes still apply.
 - If the agent additions are extensive (substantial custom content beyond
   what the archivist would generate): **High risk** — lossy merge possible.
 
@@ -410,7 +539,7 @@ only the low-risk cases, `propose` flags everything for review.
 | **Bead System** | Could create ephemeral beads for tracked maintenance work. |
 | **Design Files** | Primary write target for staleness resolution. |
 | **Concepts/Conventions** | Lifecycle management (deprecation, migration). |
-| **Daemon** (watchdog) | Potential trigger source for reactive mode. |
+| **Sweep** (`lexictl sweep --watch`) | Potential trigger source for reactive mode. |
 
 ---
 
@@ -445,11 +574,15 @@ only the low-risk cases, `propose` flags everything for review.
 - Implement Budget Trimmer sub-agent.
 - Reactive hooks (post-edit, post-bead-close).
 
-### Phase 4: Scheduled + Daemon Integration
+### Phase 4: Scheduled + Sweep Integration
 
-- Cron/daemon integration for periodic sweeps.
+- Cron/sweep integration for periodic sweeps.
 - Report persistence and history.
 - `/curator` skill for interactive invocation.
+- Auto-promote `draft` conventions to `active` after review threshold.
+- Suggest concepts for archival when no usage detected for N days.
+- Convention-from-failure detection (§2.10) — propose conventions from
+  recurring validation failure patterns.
 
 ---
 
@@ -461,3 +594,40 @@ only the low-risk cases, `propose` flags everything for review.
   artifacts).
 - **PR review**: Out of scope — this is a maintenance agent, not a review agent.
 - **Cross-repo**: Single-repo only. No multi-repo federation.
+
+---
+
+## 9. Failure Model
+
+The Curator must never make a bad situation worse. Its failure handling follows
+the project's established error collection pattern. For the full Lexibrary
+failure taxonomy (exception hierarchy, recovery strategies, error collection),
+see [spec-opportunities.md §Opportunity 7](spec-opportunities.md#opportunity-7-failure-model-documentation).
+
+### Coordinator Failures
+
+| Condition | Behaviour |
+|-----------|-----------|
+| Link graph missing/corrupt | Degrade gracefully: skip graph-dependent checks, fall back to file scanning. Log warning. |
+| `validate_library()` raises | Log error, skip validation sweep, continue with other signal sources (hash checks, IWH scan). |
+| Config parse failure | Abort run with clear error. Do not attempt partial execution with defaults. |
+| IWH read failure on a single signal | Log and skip that signal. Continue with remaining signals. |
+
+### Sub-Agent Failures
+
+| Condition | Behaviour |
+|-----------|-----------|
+| Sub-agent returns malformed output | Discard result, log error, record in `ErrorSummary`. Do not write partial artifacts. |
+| Sub-agent times out | Kill process, log timeout, queue the work item for the next run. |
+| LLM returns garbage for design reconciliation | Do not write the result. Flag the file for human review (IWH signal with `scope: warning`). |
+| Sub-agent modifies a file that has uncommitted changes | Should never happen — coordinator checks `git status` before dispatching. If it does, abort the sub-agent's write and log a conflict warning. |
+
+### Recovery Principle
+
+The Curator uses the project's `ErrorSummary` pattern: leaf operations raise,
+the coordinator catches and records via `summary.add(phase, error, path)`, and
+processing continues. The final report includes all errors encountered. Exit
+code 1 if `summary.has_errors()`.
+
+**Never silently swallow errors.** Every failure must appear in the report so
+the user knows what was skipped and why.

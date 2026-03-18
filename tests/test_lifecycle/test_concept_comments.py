@@ -57,9 +57,7 @@ def _setup_project_with_concept(
     lexibrary_dir = project_root / ".lexibrary"
     lexibrary_dir.mkdir()
 
-    concept_path = _create_concept_file(
-        project_root, slug, title=title, status=status
-    )
+    concept_path = _create_concept_file(project_root, slug, title=title, status=status)
     return project_root, concept_path
 
 

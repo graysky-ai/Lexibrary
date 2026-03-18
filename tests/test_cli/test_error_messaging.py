@@ -159,9 +159,7 @@ class TestRequirePost:
     ) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
-        result = runner.invoke(
-            lexi_app, ["stack", "view", "ST-999"]
-        )
+        result = runner.invoke(lexi_app, ["stack", "view", "ST-999"])
         assert result.exit_code == 1
         assert "Post not found: ST-999" in result.output
         assert "lexi search --type stack" in result.output
@@ -171,9 +169,7 @@ class TestRequirePost:
     ) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
-        result = runner.invoke(
-            lexi_app, ["stack", "finding", "ST-999", "--body", "test"]
-        )
+        result = runner.invoke(lexi_app, ["stack", "finding", "ST-999", "--body", "test"])
         assert result.exit_code == 1
         assert "Post not found" in result.output
         assert "lexi search --type stack" in result.output
@@ -183,9 +179,7 @@ class TestRequirePost:
     ) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
-        result = runner.invoke(
-            lexi_app, ["stack", "vote", "ST-999", "up"]
-        )
+        result = runner.invoke(lexi_app, ["stack", "vote", "ST-999", "up"])
         assert result.exit_code == 1
         assert "Post not found" in result.output
         assert "lexi search --type stack" in result.output
@@ -210,9 +204,7 @@ class TestRecoveryHints:
             "---\ntitle: Test Concept\nstatus: active\ntags: []\n---\n\nA concept.\n"
         )
         monkeypatch.chdir(project)
-        result = runner.invoke(
-            lexi_app, ["concept", "link", "test-concept", "nonexistent.py"]
-        )
+        result = runner.invoke(lexi_app, ["concept", "link", "test-concept", "nonexistent.py"])
         assert result.exit_code == 1
         assert "Source file not found" in result.output
         assert "Hint:" in result.output
@@ -223,9 +215,7 @@ class TestRecoveryHints:
         project = _setup_project(tmp_path)
         (project / ".lexibrary" / "conventions").mkdir(parents=True, exist_ok=True)
         monkeypatch.chdir(project)
-        result = runner.invoke(
-            lexi_app, ["convention", "approve", "nonexistent-convention"]
-        )
+        result = runner.invoke(lexi_app, ["convention", "approve", "nonexistent-convention"])
         assert result.exit_code == 1
         assert "Convention not found" in result.output
         assert "lexi search --type convention" in result.output
@@ -245,9 +235,7 @@ class TestVoteRateLimiting:
         project = _setup_project(tmp_path)
         _create_stack_post(project, post_id="ST-001")
         monkeypatch.chdir(project)
-        result = runner.invoke(
-            lexi_app, ["stack", "vote", "ST-001", "up"]
-        )
+        result = runner.invoke(lexi_app, ["stack", "vote", "ST-001", "up"])
         assert result.exit_code == 0
         assert "Recorded upvote" in result.output
 
@@ -259,9 +247,7 @@ class TestVoteRateLimiting:
         recent_vote = (datetime.now(tz=UTC) - timedelta(seconds=10)).isoformat()
         _create_stack_post(project, post_id="ST-001", last_vote_at=recent_vote)
         monkeypatch.chdir(project)
-        result = runner.invoke(
-            lexi_app, ["stack", "vote", "ST-001", "up"]
-        )
+        result = runner.invoke(lexi_app, ["stack", "vote", "ST-001", "up"])
         assert result.exit_code == 1
         assert "rate-limited" in result.output
 
@@ -273,22 +259,16 @@ class TestVoteRateLimiting:
         old_vote = (datetime.now(tz=UTC) - timedelta(seconds=120)).isoformat()
         _create_stack_post(project, post_id="ST-001", last_vote_at=old_vote)
         monkeypatch.chdir(project)
-        result = runner.invoke(
-            lexi_app, ["stack", "vote", "ST-001", "up"]
-        )
+        result = runner.invoke(lexi_app, ["stack", "vote", "ST-001", "up"])
         assert result.exit_code == 0
         assert "Recorded upvote" in result.output
 
-    def test_vote_sets_last_vote_at(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_vote_sets_last_vote_at(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         project = _setup_project(tmp_path)
         post_path = _create_stack_post(project, post_id="ST-001")
         monkeypatch.chdir(project)
 
-        result = runner.invoke(
-            lexi_app, ["stack", "vote", "ST-001", "up"]
-        )
+        result = runner.invoke(lexi_app, ["stack", "vote", "ST-001", "up"])
         assert result.exit_code == 0
 
         # Verify last_vote_at was written to the post

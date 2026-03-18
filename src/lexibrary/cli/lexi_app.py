@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from lexibrary.cli._format import OutputFormat, set_format
-from lexibrary.cli._output import error, hint, info, markdown_table, warn
+from lexibrary.cli._output import error, hint, info, warn
 from lexibrary.cli._shared import (
     _run_status,
     _run_validate,
@@ -107,9 +107,7 @@ def _render_conventions(
 
     if total_count > display_limit:
         omitted = total_count - display_limit
-        info(
-            f"... and {omitted} more -- run `lexi conventions {rel_target}` to see all\n"
-        )
+        info(f"... and {omitted} more -- run `lexi conventions {rel_target}` to see all\n")
 
 
 def _render_known_issues(
@@ -312,9 +310,7 @@ def _lookup_directory(
             info("| --- | --- | --- |")
             for entry in aindex.entries:
                 suffix = "/" if entry.entry_type == "dir" else ""
-                info(
-                    f"| `{entry.name}{suffix}` | {entry.entry_type} | {entry.description} |"
-                )
+                info(f"| `{entry.name}{suffix}` | {entry.entry_type} | {entry.description} |")
             info("")
     else:
         info(f"# {rel_target}\n")
@@ -360,10 +356,7 @@ def lookup(
         bool,
         typer.Option(
             "--full",
-            help=(
-                "Show full output (default is brief: "
-                "description + conventions + issue count)."
-            ),
+            help=("Show full output (default is brief: description + conventions + issue count)."),
         ),
     ] = False,
 ) -> None:
@@ -399,10 +392,7 @@ def lookup(
     try:
         target.relative_to(scope_abs)
     except ValueError:
-        error(
-            f"{file} is outside the configured scope_root "
-            f"({config.scope_root})."
-        )
+        error(f"{file} is outside the configured scope_root ({config.scope_root}).")
         raise typer.Exit(1) from None
 
     # Directory lookup mode
@@ -462,9 +452,7 @@ def lookup(
         if link_graph is not None:
             from lexibrary.stack.parser import parse_stack_post  # noqa: PLC0415
 
-            stack_links = link_graph.reverse_deps(
-                rel_target, link_type="stack_file_ref"
-            )
+            stack_links = link_graph.reverse_deps(rel_target, link_type="stack_file_ref")
             open_count = 0
             for slink in stack_links:
                 post_path = project_root / slink.source_path
@@ -566,9 +554,7 @@ def lookup(
         ("links", links_text, 4),
     ]
     remaining_budget = max(0, total_budget - used_tokens)
-    truncated_sections = _truncate_lookup_sections(
-        supplementary, remaining_budget
-    )
+    truncated_sections = _truncate_lookup_sections(supplementary, remaining_budget)
 
     # Track what was omitted for the truncation footer (task 8.2)
     included_names = {name for name, _ in truncated_sections}
@@ -589,10 +575,7 @@ def lookup(
             info(section_content)
 
     if omitted_parts:
-        info(
-            f"\n*Truncated: {', '.join(omitted_parts)} omitted "
-            f"(token budget: {total_budget})*"
-        )
+        info(f"\n*Truncated: {', '.join(omitted_parts)} omitted (token budget: {total_budget})*")
 
 
 # ---------------------------------------------------------------------------
@@ -706,8 +689,10 @@ def validate(
         lexibrary_dir = project_root / ".lexibrary"
         try:
             report = validate_library(
-                project_root, lexibrary_dir,
-                severity_filter=severity, check_filter=check,
+                project_root,
+                lexibrary_dir,
+                severity_filter=severity,
+                check_filter=check,
             )
         except ValueError as exc:
             error(str(exc))
@@ -717,7 +702,9 @@ def validate(
         else:
             for issue in report.issues:
                 suggestion = issue.suggestion or ""
-                info(f"{issue.severity}\t{issue.check}\t{issue.artifact}\t{issue.message}\t{suggestion}")
+                info(
+                    f"{issue.severity}\t{issue.check}\t{issue.artifact}\t{issue.message}\t{suggestion}"
+                )
         raise typer.Exit(report.exit_code())
 
     exit_code = _run_validate(project_root, severity=severity, check=check, json_output=json_output)
@@ -745,209 +732,6 @@ def status(
     project_root = require_project_root()
     exit_code = _run_status(project_root, path=path, quiet=quiet, cli_prefix="lexi")
     raise typer.Exit(exit_code)
-
-
-# ---------------------------------------------------------------------------
-# help
-# ---------------------------------------------------------------------------
-
-
-_VALID_HELP_GROUPS = frozenset(
-    {"navigation", "concepts", "conventions", "stack", "iwh", "design", "health"}
-)
-
-
-def _tier1_help() -> str:
-    """Return Tier 1 slim help index (~30 lines)."""
-    table = markdown_table(
-        ["Group", "Description"],
-        [
-            ["navigation", "lookup, search, impact, orient -- find and explore files"],
-            ["concepts", "concept new/link/comment/deprecate, search --type concept"],
-            ["conventions", "convention new/approve/deprecate/comment, search --type convention"],
-            ["stack", "stack post/view/finding/vote/accept, search --type stack"],
-            ["iwh", "iwh write/read/list -- I Was Here signals"],
-            ["design", "design update/comment -- design file management"],
-            ["health", "status, validate, describe -- library health checks"],
-        ],
-    )
-    return f"""\
-# lexi help
-
-{table}
-
-Run `lexi help <group>` for detailed commands and flags.
-Run `lexi <command> --help` for specific usage."""
-
-
-def _tier2_navigation() -> str:
-    """Return Tier 2 help for the navigation group."""
-    return """\
-# Navigation Commands
-
-| Command | Description |
-| --- | --- |
-| `lexi orient` | Return project topology, library stats, and IWH signal summaries |
-| `lexi help [group]` | Return this index, or detailed help for a command group |
-| `lexi lookup <file>` | Return design file, conventions, and reverse links |
-| `lexi search [query]` | Return matching concepts, design files, and Stack posts |
-| `lexi impact <file>` | Return reverse dependents (--depth 1-3, --quiet) |
-
-## Workflow: Start a session
-  lexi orient
-  lexi iwh list
-  Check project context and consume signals from previous sessions.
-
-## Workflow: Understand a source file
-  lexi lookup src/mypackage/module.py
-  Returns design file content with conventions and dependency graph."""
-
-
-def _tier2_concepts() -> str:
-    """Return Tier 2 help for the concepts group."""
-    return """\
-# Concept Commands
-
-| Command | Description |
-| --- | --- |
-| `lexi search --type concept [query]` | Return matching concepts (--tag, --status, --all) |
-| `lexi concept new <name>` | Create a concept file from template (--tag) |
-| `lexi concept link <slug> <file>` | Add a [[wikilink]] from a design file to a concept |
-| `lexi concept comment <slug>` | Append a comment to a concept (--body) |
-| `lexi concept deprecate <slug>` | Set concept status to deprecated (--comment) |
-
-## Workflow: Explore a topic
-  lexi search auth --type concept --tag security
-  lexi search auth
-  Search concepts by type, then use cross-artifact search for related design files and Stack posts."""
-
-
-def _tier2_conventions() -> str:
-    """Return Tier 2 help for the conventions group."""
-    return """\
-# Convention Commands
-
-| Command | Description |
-| --- | --- |
-| `lexi search --type convention [query]` | Return matching conventions (--tag, --status, --scope, --all) |
-| `lexi convention new` | Create a convention (--scope, --body, --tag, --title, --alias) |
-| `lexi convention approve <slug>` | Promote a draft convention to active status |
-| `lexi convention deprecate <slug>` | Set convention status to deprecated (--comment) |
-| `lexi convention comment <slug>` | Append a comment to a convention (--body) |
-
-## Workflow: Create and manage conventions
-  lexi convention new --scope project --body "Always use plain output"
-  lexi search --type convention
-  lexi convention approve "always-use-plain-output"
-  Create, list, and promote conventions through their lifecycle."""
-
-
-def _tier2_stack() -> str:
-    """Return Tier 2 help for the stack group."""
-    return """\
-# Stack Commands
-
-| Command | Description |
-| --- | --- |
-| `lexi stack post` | Create a Stack issue (--title, --tag, --problem, --finding, --resolve) |
-| `lexi search --type stack [query]` | Return matching issues (--tag, --status, --concept, --resolution-type, --include-stale) |
-| `lexi stack view <id>` | Return full issue content with findings and votes |
-| `lexi stack finding <id>` | Add a finding to an issue (--body, --author) |
-| `lexi stack vote <id> up/down` | Vote on an issue or finding (--finding, --comment) |
-| `lexi stack accept <id>` | Accept a finding and resolve the issue (--finding, --resolution-type) |
-| `lexi stack comment <id>` | Add a comment to an issue (--body) |
-| `lexi stack mark-outdated <id>` | Mark an issue as outdated |
-| `lexi stack duplicate <id>` | Mark as duplicate of another issue (--of) |
-| `lexi stack stale <id>` | Mark a resolved issue as stale for re-evaluation |
-| `lexi stack unstale <id>` | Reverse staleness, returning issue to resolved |
-
-## Workflow: Document and resolve an issue
-  lexi stack post --title "Config fails" --tag config --problem "..." --resolve
-  Or use the multi-step flow:
-  lexi stack post --title "Why does X use Y?" --tag arch
-  lexi stack finding ST-001 --body "Because ..."
-  lexi stack accept ST-001 --finding 1 --resolution-type fix"""
-
-
-def _tier2_iwh() -> str:
-    """Return Tier 2 help for the iwh group."""
-    return """\
-# IWH (I Was Here) Commands
-
-| Command | Description |
-| --- | --- |
-| `lexi iwh write [dir]` | Create an IWH signal for a directory (--scope, --body, --author) |
-| `lexi iwh read [dir]` | Read and consume an IWH signal (--peek to preserve) |
-| `lexi iwh list` | Return all IWH signals across the project |
-
-Scopes: incomplete, blocked, warning.
-
-## Workflow: Hand off work
-  lexi iwh write src/auth --scope incomplete --body "Token refresh not yet tested"
-  Leave a signal so the next session knows what remains."""
-
-
-def _tier2_design() -> str:
-    """Return Tier 2 help for the design group."""
-    return """\
-# Design File Commands
-
-| Command | Description |
-| --- | --- |
-| `lexi design update <file>` | Return existing design file content, or scaffold a new one |
-| `lexi design comment <file>` | Append a comment to a design file (--body) |
-
-Design files live in .lexibrary/ mirroring the source tree. They document
-purpose, interface, dependencies, and conventions for each source file."""
-
-
-def _tier2_health() -> str:
-    """Return Tier 2 help for the health group."""
-    return """\
-# Health & Inspection Commands
-
-| Command | Description |
-| --- | --- |
-| `lexi status [path]` | Return library health and staleness summary (--quiet for single-line) |
-| `lexi validate` | Return consistency check results (--severity, --check, --json) |
-| `lexi describe <dir> <desc>` | Update the billboard description in a directory's .aindex file |
-
-## Workflow: Check library health
-  lexi status
-  lexi validate --severity warning
-  Use status for a quick overview, then validate for specific issues."""
-
-
-_TIER2_DISPATCH: dict[str, Callable[[], str]] = {
-    "navigation": _tier2_navigation,
-    "concepts": _tier2_concepts,
-    "conventions": _tier2_conventions,
-    "stack": _tier2_stack,
-    "iwh": _tier2_iwh,
-    "design": _tier2_design,
-    "health": _tier2_health,
-}
-
-
-@lexi_app.command("help")
-def agent_help(
-    group: Annotated[
-        str | None,
-        typer.Argument(help="Command group to show detailed help for."),
-    ] = None,
-) -> None:
-    """Return command index, or detailed help for a command group."""
-    if group is None:
-        info(_tier1_help())
-        return
-
-    group_lower = group.strip().lower()
-    if group_lower not in _VALID_HELP_GROUPS:
-        valid = ", ".join(sorted(_VALID_HELP_GROUPS))
-        error(f"Unknown help group: '{group}'. Valid groups: {valid}")
-        raise typer.Exit(1)
-
-    info(_TIER2_DISPATCH[group_lower]())
 
 
 # ---------------------------------------------------------------------------
@@ -1024,7 +808,8 @@ def search(
             artifact_type = "stack"
         elif artifact_type != "stack":
             used = [
-                f for f, v in [
+                f
+                for f, v in [
                     ("--concept", concept),
                     ("--resolution-type", resolution_type),
                     ("--include-stale", include_stale if include_stale else None),
@@ -1168,9 +953,7 @@ def _build_orient_content(project_root: Path) -> str:
                 parts[-1] = "## File Descriptions\n\n" + "\n".join(included)
 
             if omitted > 0:
-                parts.append(
-                    f"\n*Truncated: {omitted} file descriptions omitted*"
-                )
+                parts.append(f"\n*Truncated: {omitted} file descriptions omitted*")
 
     # 3. Library stats (concept count, convention count, open stack posts)
     stats = _collect_library_stats(project_root)
@@ -1332,10 +1115,7 @@ def impact(
     try:
         target.relative_to(scope_abs)
     except ValueError:
-        error(
-            f"{file} is outside the configured scope_root "
-            f"({config.scope_root})."
-        )
+        error(f"{file} is outside the configured scope_root ({config.scope_root}).")
         raise typer.Exit(1) from None
 
     rel_path = str(target.relative_to(project_root))

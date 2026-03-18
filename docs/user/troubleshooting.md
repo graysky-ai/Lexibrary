@@ -306,54 +306,7 @@ status: active
 Concept description goes here.
 ```
 
-## Daemon Issues
-
-### Stale PID file
-
-**Symptoms:** `lexictl daemon status` reports the daemon is running, but no daemon process is actually active. Or `lexictl daemon start` refuses to start because it thinks a daemon is already running.
-
-**Cause:** The daemon process was terminated without cleaning up its PID file at `.lexibrary/daemon.pid` (e.g., the system was rebooted, or the process was killed with `kill -9`).
-
-**Fix:** `lexictl daemon stop` handles stale PID files gracefully -- it checks whether the process is actually running and cleans up the PID file if not:
-
-```bash
-lexictl daemon stop
-lexictl daemon start
-```
-
-If that does not work, manually remove the PID file:
-
-```bash
-rm .lexibrary/daemon.pid
-lexictl daemon start
-```
-
-### Watchdog not starting
-
-**Symptoms:** `lexictl daemon start` prints a message suggesting `lexictl sweep --watch` instead, and does not start the daemon.
-
-**Cause:** The daemon requires `daemon.watchdog_enabled: true` in config. By default, watchdog mode is disabled.
-
-**Fix:** Enable watchdog mode in config:
-
-```yaml
-daemon:
-  watchdog_enabled: true
-```
-
-Then start the daemon:
-
-```bash
-lexictl daemon start
-```
-
-Alternatively, use the sweep command which does not require watchdog to be enabled:
-
-```bash
-lexictl sweep --watch
-```
-
-See [CI Integration -- Daemon vs Sweep](ci-integration.md#daemon-vs-sweep) for guidance on which to use.
+## Sweep Issues
 
 ### Sweep not detecting changes
 
@@ -361,7 +314,7 @@ See [CI Integration -- Daemon vs Sweep](ci-integration.md#daemon-vs-sweep) for g
 
 **Cause:**
 
-- `daemon.sweep_skip_if_unchanged` is `true` (the default), and the sweep's change detection is not picking up your changes. This can happen if files were modified but their SHA-256 hashes happen to match (extremely rare), or if the files are excluded by ignore patterns.
+- `sweep.sweep_skip_if_unchanged` is `true` (the default), and the sweep's change detection is not picking up your changes. This can happen if files were modified but their SHA-256 hashes happen to match (extremely rare), or if the files are excluded by ignore patterns.
 - The sweep interval may be too long for your workflow.
 
 **Fix:**
@@ -375,13 +328,13 @@ See [CI Integration -- Daemon vs Sweep](ci-integration.md#daemon-vs-sweep) for g
 
 3. To reduce the sweep interval for more responsive detection:
    ```yaml
-   daemon:
+   sweep:
      sweep_interval_seconds: 300    # Every 5 minutes instead of every hour
    ```
 
 4. To force sweeps to always run (even when no changes are detected):
    ```yaml
-   daemon:
+   sweep:
      sweep_skip_if_unchanged: false
    ```
 

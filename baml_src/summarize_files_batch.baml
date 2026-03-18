@@ -1,7 +1,7 @@
 // Batch file summarization
 
 function SummarizeFilesBatch(files: FileInput[]) -> BatchFileSummary[] {
-  client PrimaryClient
+  client ConfigDriven
   prompt #"
     Summarize each of the following files in ONLY 1-2 sentences each.
     Focus on what each file does, its main purpose, and key exports or interfaces.

@@ -93,9 +93,7 @@ def check_wikilink_resolution(
     index = ConceptIndex.load(concepts_dir)
     stack_dir = lexibrary_dir / "stack"
     convention_dir = lexibrary_dir / "conventions"
-    resolver = WikilinkResolver(
-        index, stack_dir=stack_dir, convention_dir=convention_dir
-    )
+    resolver = WikilinkResolver(index, stack_dir=stack_dir, convention_dir=convention_dir)
 
     # Collect wikilinks from design files
     for design_path in _iter_design_files(lexibrary_dir):
@@ -471,9 +469,7 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message=f"Invalid status: {data['status']}",
                     artifact=rel_path,
-                    suggestion=(
-                        f"Status must be one of: {', '.join(sorted(valid_statuses))}."
-                    ),
+                    suggestion=(f"Status must be one of: {', '.join(sorted(valid_statuses))}."),
                 )
             )
 
@@ -495,9 +491,7 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message=f"Invalid source: {data['source']}",
                     artifact=rel_path,
-                    suggestion=(
-                        f"Source must be one of: {', '.join(sorted(valid_sources))}."
-                    ),
+                    suggestion=(f"Source must be one of: {', '.join(sorted(valid_sources))}."),
                 )
             )
 
@@ -593,7 +587,7 @@ def check_design_frontmatter(
         return issues
 
     valid_statuses = {"active", "unlinked", "deprecated"}
-    valid_updated_by = {"archivist", "agent", "bootstrap-quick", "maintainer"}
+    valid_updated_by = {"archivist", "agent", "bootstrap-quick", "skeleton-fallback", "maintainer"}
 
     for md_path in sorted(designs_dir.rglob("*.md")):
         rel_path = _rel(md_path, project_root)
@@ -620,8 +614,7 @@ def check_design_frontmatter(
                     message="Missing YAML frontmatter",
                     artifact=rel_path,
                     suggestion=(
-                        "Add --- delimited YAML frontmatter with "
-                        "description, updated_by, status."
+                        "Add --- delimited YAML frontmatter with description, updated_by, status."
                     ),
                 )
             )
@@ -694,8 +687,7 @@ def check_design_frontmatter(
                     message=f"Invalid updated_by: {data['updated_by']}",
                     artifact=rel_path,
                     suggestion=(
-                        "updated_by must be one of: "
-                        f"{', '.join(sorted(valid_updated_by))}."
+                        f"updated_by must be one of: {', '.join(sorted(valid_updated_by))}."
                     ),
                 )
             )
@@ -718,10 +710,7 @@ def check_design_frontmatter(
                     check="design_frontmatter",
                     message=f"Invalid status: {data['status']}",
                     artifact=rel_path,
-                    suggestion=(
-                        "Status must be one of: "
-                        f"{', '.join(sorted(valid_statuses))}."
-                    ),
+                    suggestion=(f"Status must be one of: {', '.join(sorted(valid_statuses))}."),
                 )
             )
 
@@ -870,10 +859,7 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Missing mandatory field: tags",
                     artifact=rel_path,
-                    suggestion=(
-                        "Add a 'tags' field with at least one tag "
-                        "to the frontmatter."
-                    ),
+                    suggestion=("Add a 'tags' field with at least one tag to the frontmatter."),
                 )
             )
         elif not isinstance(data["tags"], list):
@@ -883,10 +869,7 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Field 'tags' must be a list",
                     artifact=rel_path,
-                    suggestion=(
-                        "Add a 'tags' field with at least one tag "
-                        "to the frontmatter."
-                    ),
+                    suggestion=("Add a 'tags' field with at least one tag to the frontmatter."),
                 )
             )
         elif len(data["tags"]) < 1:
@@ -918,10 +901,7 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message=f"Invalid status: {data['status']}",
                     artifact=rel_path,
-                    suggestion=(
-                        "Status must be one of: "
-                        f"{', '.join(sorted(valid_statuses))}."
-                    ),
+                    suggestion=(f"Status must be one of: {', '.join(sorted(valid_statuses))}."),
                 )
             )
 
@@ -933,10 +913,7 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Missing mandatory field: created",
                     artifact=rel_path,
-                    suggestion=(
-                        "Add a 'created' field with a valid date "
-                        "to the frontmatter."
-                    ),
+                    suggestion=("Add a 'created' field with a valid date to the frontmatter."),
                 )
             )
         else:
@@ -982,18 +959,18 @@ def check_stack_frontmatter(
             and data["resolution_type"] is not None
             and data["resolution_type"] not in valid_resolution_types
         ):
-                issues.append(
-                    ValidationIssue(
-                        severity="error",
-                        check="stack_frontmatter",
-                        message=f"Invalid resolution_type: {data['resolution_type']}",
-                        artifact=rel_path,
-                        suggestion=(
-                            "resolution_type must be one of: "
-                            f"{', '.join(sorted(valid_resolution_types))}."
-                        ),
-                    )
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="stack_frontmatter",
+                    message=f"Invalid resolution_type: {data['resolution_type']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        "resolution_type must be one of: "
+                        f"{', '.join(sorted(valid_resolution_types))}."
+                    ),
                 )
+            )
 
     return issues
 
@@ -1100,10 +1077,7 @@ def check_iwh_frontmatter(
                     check="iwh_frontmatter",
                     message="Missing mandatory field: created",
                     artifact=rel_path,
-                    suggestion=(
-                        "Add a 'created' field with an ISO 8601 datetime "
-                        "to the IWH file."
-                    ),
+                    suggestion=("Add a 'created' field with an ISO 8601 datetime to the IWH file."),
                 )
             )
         else:
@@ -1154,9 +1128,7 @@ def check_iwh_frontmatter(
                     check="iwh_frontmatter",
                     message=f"Invalid scope: {data['scope']}",
                     artifact=rel_path,
-                    suggestion=(
-                        f"scope must be one of: {', '.join(sorted(valid_scopes))}."
-                    ),
+                    suggestion=(f"scope must be one of: {', '.join(sorted(valid_scopes))}."),
                 )
             )
 
@@ -1391,8 +1363,7 @@ def check_linkgraph_version(
                 severity="error",
                 check="linkgraph_version",
                 message=(
-                    f"Schema version mismatch: stored={stored_version}, "
-                    f"current={SCHEMA_VERSION}"
+                    f"Schema version mismatch: stored={stored_version}, current={SCHEMA_VERSION}"
                 ),
                 artifact=artifact,
                 suggestion="Run `lexictl update` to rebuild the linkgraph index.",
@@ -2252,8 +2223,7 @@ def find_orphaned_aindex(
                     severity="warning",
                     check="orphaned_aindex",
                     message=(
-                        f"Orphaned .aindex file: source directory "
-                        f"{relative_dir} no longer exists"
+                        f"Orphaned .aindex file: source directory {relative_dir} no longer exists"
                     ),
                     artifact=rel_aindex,
                     suggestion=(
@@ -2310,13 +2280,11 @@ def find_orphaned_iwh(
                     severity="info",
                     check="orphaned_iwh",
                     message=(
-                        f"Orphaned .iwh file: source directory "
-                        f"{relative_dir} no longer exists"
+                        f"Orphaned .iwh file: source directory {relative_dir} no longer exists"
                     ),
                     artifact=rel_iwh,
                     suggestion=(
-                        "Run `lexictl update` or `lexictl iwh clean` to remove "
-                        "orphaned .iwh files."
+                        "Run `lexictl update` or `lexictl iwh clean` to remove orphaned .iwh files."
                     ),
                 )
             )
@@ -2441,9 +2409,7 @@ def check_orphaned_designs(
                 ValidationIssue(
                     severity="warning",
                     check="orphaned_designs",
-                    message=(
-                        f"Design file references missing source: {source_rel}"
-                    ),
+                    message=(f"Design file references missing source: {source_rel}"),
                     artifact=rel_design,
                     suggestion=(
                         "Run `lexictl update` to trigger deprecation workflow, "
@@ -2493,10 +2459,7 @@ def check_comment_accumulation(
                 ValidationIssue(
                     severity="info",
                     check="comment_accumulation",
-                    message=(
-                        f"Design file has {count} comments "
-                        f"(threshold: {threshold})"
-                    ),
+                    message=(f"Design file has {count} comments (threshold: {threshold})"),
                     artifact=rel_design,
                     suggestion=(
                         "Run the maintainer-agent to incorporate or prune "
@@ -2550,10 +2513,7 @@ def check_deprecated_ttl(
                 ValidationIssue(
                     severity="info",
                     check="deprecated_ttl",
-                    message=(
-                        f"Deprecated design file has exceeded TTL "
-                        f"({ttl_commits} commits)"
-                    ),
+                    message=(f"Deprecated design file has exceeded TTL ({ttl_commits} commits)"),
                     artifact=rel_design,
                     suggestion=(
                         "Run `lexictl update` to hard-delete expired files, "
@@ -2616,9 +2576,7 @@ def check_stale_concepts(
                 ValidationIssue(
                     severity="info",
                     check="stale_concept",
-                    message=(
-                        f"Active concept references missing file(s): {missing_str}"
-                    ),
+                    message=(f"Active concept references missing file(s): {missing_str}"),
                     artifact=f"concepts/{concept.frontmatter.title}",
                     suggestion=(
                         "Review the concept and update linked file references, "
@@ -2671,9 +2629,7 @@ def check_supersession_candidates(
             continue
         if concept.frontmatter.status != "active":
             continue
-        active_concepts.append(
-            (concept.frontmatter.title, list(concept.frontmatter.aliases))
-        )
+        active_concepts.append((concept.frontmatter.title, list(concept.frontmatter.aliases)))
 
     # Build maps: normalized name -> list of concept titles that claim it
     name_owners: dict[str, list[str]] = {}
@@ -2772,9 +2728,7 @@ def check_convention_orphaned_scope(
                 ValidationIssue(
                     severity="warning",
                     check="convention_orphaned_scope",
-                    message=(
-                        f"Convention scope directory '{scope}' does not exist"
-                    ),
+                    message=(f"Convention scope directory '{scope}' does not exist"),
                     artifact=rel_convention,
                     suggestion=(
                         "Update the convention's scope to a valid directory, "
@@ -2926,9 +2880,7 @@ def check_convention_gap(
         applicable = conv_index.find_by_scope(representative, scope_root_str)
 
         # Filter to only active conventions
-        active_applicable = [
-            c for c in applicable if c.frontmatter.status == "active"
-        ]
+        active_applicable = [c for c in applicable if c.frontmatter.status == "active"]
 
         if not active_applicable:
             issues.append(
@@ -3120,8 +3072,7 @@ def check_duplicate_slugs(
                     severity="error",
                     check="duplicate_slugs",
                     message=(
-                        f"Slug '{slug}' is used by multiple files: "
-                        f"{', '.join(sorted(sources))}"
+                        f"Slug '{slug}' is used by multiple files: {', '.join(sorted(sources))}"
                     ),
                     artifact=source,
                     suggestion="Rename one of the files to use a unique slug.",
@@ -3239,13 +3190,10 @@ def check_design_deps_existence(
                     ValidationIssue(
                         severity="warning",
                         check="design_deps_existence",
-                        message=(
-                            f"Dependency '{dep_stripped}' has no design file"
-                        ),
+                        message=(f"Dependency '{dep_stripped}' has no design file"),
                         artifact=rel_design,
                         suggestion=(
-                            f"Remove the dependency or create a design file "
-                            f"for '{dep_stripped}'."
+                            f"Remove the dependency or create a design file for '{dep_stripped}'."
                         ),
                     )
                 )
@@ -3261,13 +3209,10 @@ def check_design_deps_existence(
                     ValidationIssue(
                         severity="warning",
                         check="design_deps_existence",
-                        message=(
-                            f"Dependent '{dep_stripped}' has no design file"
-                        ),
+                        message=(f"Dependent '{dep_stripped}' has no design file"),
                         artifact=rel_design,
                         suggestion=(
-                            f"Remove the dependent or create a design file "
-                            f"for '{dep_stripped}'."
+                            f"Remove the dependent or create a design file for '{dep_stripped}'."
                         ),
                     )
                 )
@@ -3436,9 +3381,7 @@ def check_design_structure(
                         check="design_structure",
                         message=f"Missing '## {section}' section",
                         artifact=rel_path,
-                        suggestion=(
-                            "Regenerate the design file to include all required sections."
-                        ),
+                        suggestion=("Regenerate the design file to include all required sections."),
                     )
                 )
 
@@ -3799,10 +3742,7 @@ def check_orphaned_iwh_signals(
                 ValidationIssue(
                     severity="info",
                     check="orphaned_iwh_signals",
-                    message=(
-                        f"IWH signal expired: {int(age_hours)}h old "
-                        f"(TTL is {ttl_hours}h)"
-                    ),
+                    message=(f"IWH signal expired: {int(age_hours)}h old (TTL is {ttl_hours}h)"),
                     artifact=rel_path,
                     suggestion=(
                         "Consume the signal with `lexi iwh read` or "

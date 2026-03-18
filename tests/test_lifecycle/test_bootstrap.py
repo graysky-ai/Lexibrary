@@ -8,8 +8,15 @@ from typing import Literal
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from baml_py import ClientRegistry
 
 from lexibrary.archivist.change_checker import ChangeLevel
+from lexibrary.archivist.skeleton import (
+    _extract_module_docstring,
+)
+from lexibrary.archivist.skeleton import (
+    heuristic_description as _heuristic_description,
+)
 from lexibrary.artifacts.design_file import (
     DesignFile,
     DesignFileFrontmatter,
@@ -21,9 +28,7 @@ from lexibrary.config.schema import LexibraryConfig
 from lexibrary.lifecycle.bootstrap import (
     BootstrapStats,
     _discover_source_files,
-    _extract_module_docstring,
     _generate_quick_design,
-    _heuristic_description,
     bootstrap_full,
     bootstrap_quick,
 )
@@ -37,9 +42,7 @@ from lexibrary.utils.paths import mirror_path
 def _setup_project(tmp_path: Path, scope_root: str = ".") -> Path:
     """Create a minimal project structure with .lexibrary and config."""
     (tmp_path / ".lexibrary").mkdir()
-    (tmp_path / ".lexibrary" / "config.yaml").write_text(
-        f"scope_root: {scope_root}\n"
-    )
+    (tmp_path / ".lexibrary" / "config.yaml").write_text(f"scope_root: {scope_root}\n")
     return tmp_path
 
 
@@ -60,7 +63,9 @@ def _make_design_file(
     source_rel: str,
     *,
     source_hash: str = "abc123",
-    updated_by: Literal["archivist", "agent", "bootstrap-quick", "maintainer"] = "archivist",
+    updated_by: Literal[
+        "archivist", "agent", "bootstrap-quick", "skeleton-fallback", "maintainer"
+    ] = "archivist",
 ) -> Path:
     """Create a minimal design file on disk and return its path."""
     design_path = mirror_path(project_root, Path(source_rel))
@@ -151,18 +156,14 @@ class TestHeuristicDescription:
 
     def test_init_file(self, tmp_path: Path) -> None:
         """Generates appropriate description for __init__.py."""
-        source = _make_source_file(
-            tmp_path, "pkg/__init__.py", ""
-        )
+        source = _make_source_file(tmp_path, "pkg/__init__.py", "")
         result = _heuristic_description(source)
         assert "Package initializer" in result
         assert "pkg" in result
 
     def test_main_file(self, tmp_path: Path) -> None:
         """Generates appropriate description for __main__.py."""
-        source = _make_source_file(
-            tmp_path, "pkg/__main__.py", ""
-        )
+        source = _make_source_file(tmp_path, "pkg/__main__.py", "")
         result = _heuristic_description(source)
         assert "Entry point" in result
         assert "pkg" in result
@@ -443,9 +444,7 @@ class TestBootstrapQuick:
         config = LexibraryConfig()
 
         # Mock _generate_quick_design to fail on first file, succeed on second
-        with patch(
-            "lexibrary.lifecycle.bootstrap._generate_quick_design"
-        ) as mock_gen:
+        with patch("lexibrary.lifecycle.bootstrap._generate_quick_design") as mock_gen:
             from lexibrary.archivist.pipeline import FileResult  # noqa: PLC0415
 
             mock_gen.side_effect = [
@@ -483,7 +482,9 @@ class TestBootstrapFull:
 
             mock_update.return_value = FileResult(change=ChangeLevel.NEW_FILE)
 
-            stats = await bootstrap_full(project, config)
+            stats = await bootstrap_full(
+                project, config, client_registry=ClientRegistry()
+            )
 
         assert stats.files_scanned == 1
         assert stats.files_created == 1
@@ -509,7 +510,9 @@ class TestBootstrapFull:
                 FileResult(change=ChangeLevel.NEW_FILE),
             ]
 
-            stats = await bootstrap_full(project, config)
+            stats = await bootstrap_full(
+                project, config, client_registry=ClientRegistry()
+            )
 
         assert stats.files_failed == 1
         assert stats.files_created == 1
@@ -534,7 +537,9 @@ class TestBootstrapFull:
 
             mock_update.return_value = FileResult(change=ChangeLevel.NEW_FILE)
 
-            await bootstrap_full(project, config, progress_callback=callback)
+            await bootstrap_full(
+                project, config, progress_callback=callback, client_registry=ClientRegistry()
+            )
 
         assert len(callbacks) == 1
         assert callbacks[0][1] == "created"
@@ -555,7 +560,9 @@ class TestBootstrapFull:
 
             mock_update.return_value = FileResult(change=ChangeLevel.UNCHANGED)
 
-            stats = await bootstrap_full(project, config)
+            stats = await bootstrap_full(
+                project, config, client_registry=ClientRegistry()
+            )
 
         assert stats.files_skipped == 1
         assert stats.files_created == 0
@@ -577,7 +584,9 @@ class TestBootstrapFull:
 
             mock_update.return_value = FileResult(change=ChangeLevel.NEW_FILE)
 
-            stats = await bootstrap_full(project, config, scope_override="src")
+            stats = await bootstrap_full(
+                project, config, scope_override="src", client_registry=ClientRegistry()
+            )
 
         # Only src/a.py should be processed
         assert stats.files_scanned == 1

@@ -86,10 +86,7 @@ class TestParseConventionFileValid:
         path.write_text(VALID_CONVENTION)
         result = parse_convention_file(path)
         assert result is not None
-        expected_rule = (
-            "Every Python module must include"
-            " `from __future__ import annotations`."
-        )
+        expected_rule = "Every Python module must include `from __future__ import annotations`."
         assert result.rule == expected_rule
 
     def test_body_preserved(self, tmp_path: Path) -> None:
@@ -148,9 +145,7 @@ class TestParseConventionFileMinimal:
 class TestParseConventionFileRuleExtraction:
     def test_rule_from_multiline_first_paragraph(self, tmp_path: Path) -> None:
         text = (
-            "---\ntitle: Test\n---\n"
-            "First line of rule.\nSecond line of rule.\n\n"
-            "Rationale below.\n"
+            "---\ntitle: Test\n---\nFirst line of rule.\nSecond line of rule.\n\nRationale below.\n"
         )
         path = tmp_path / "test.md"
         path.write_text(text)

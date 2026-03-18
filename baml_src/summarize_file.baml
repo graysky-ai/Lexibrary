@@ -1,7 +1,7 @@
 // Single file summarization
 
 function SummarizeFile(filename: string, language: string, content: string, is_truncated: bool) -> FileSummary {
-  client PrimaryClient
+  client ConfigDriven
   prompt #"
     Summarize the following {{ language }} file in 1-2 sentences ONLY.
     Focus on what the file does, its main purpose, and key exports or interfaces.

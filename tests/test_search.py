@@ -278,16 +278,26 @@ class TestTagSearchConventions:
         _create_populated_index(
             db_path,
             artifacts=[
-                (1, ".lexibrary/conventions/auth-required.md", "convention", "Auth required", "active"),
+                (
+                    1,
+                    ".lexibrary/conventions/auth-required.md",
+                    "convention",
+                    "Auth required",
+                    "active",
+                ),
             ],
             tags=[
                 (1, "security"),
             ],
             conventions=[
                 (
-                    1, "src/auth", 0,
+                    1,
+                    "src/auth",
+                    0,
                     "All endpoints must use the auth decorator.\n\nExtra detail.",
-                    "user", "active", 0,
+                    "user",
+                    "active",
+                    0,
                 ),
             ],
         )
@@ -315,7 +325,13 @@ class TestTagSearchConventions:
             db_path,
             artifacts=[
                 (1, ".lexibrary/concepts/auth.md", "concept", "Authentication", "active"),
-                (2, ".lexibrary/conventions/auth-required.md", "convention", "Auth required", "active"),
+                (
+                    2,
+                    ".lexibrary/conventions/auth-required.md",
+                    "convention",
+                    "Auth required",
+                    "active",
+                ),
             ],
             tags=[
                 (1, "security"),
@@ -352,16 +368,26 @@ class TestFTSSearchConventions:
         _create_populated_index(
             db_path,
             artifacts=[
-                (1, ".lexibrary/conventions/auth-required.md", "convention", "Auth decorator required", "active"),
+                (
+                    1,
+                    ".lexibrary/conventions/auth-required.md",
+                    "convention",
+                    "Auth decorator required",
+                    "active",
+                ),
             ],
             fts=[
                 (1, "Auth decorator required", "All endpoints must use the auth decorator"),
             ],
             conventions=[
                 (
-                    1, "src/auth", 0,
+                    1,
+                    "src/auth",
+                    0,
                     "All endpoints must use the auth decorator.\n\nMore info here.",
-                    "user", "active", 0,
+                    "user",
+                    "active",
+                    0,
                 ),
             ],
         )
@@ -387,7 +413,13 @@ class TestFTSSearchConventions:
             db_path,
             artifacts=[
                 (1, ".lexibrary/concepts/auth.md", "concept", "Authentication", "active"),
-                (2, ".lexibrary/conventions/auth-required.md", "convention", "Auth Required", "active"),
+                (
+                    2,
+                    ".lexibrary/conventions/auth-required.md",
+                    "convention",
+                    "Auth Required",
+                    "active",
+                ),
                 (3, "src/auth.py", "design", "Auth service module", None),
             ],
             fts=[
@@ -555,8 +587,11 @@ class TestConventionEnrichmentEdgeCases:
             db_path,
             artifacts=[
                 (
-                    1, ".lexibrary/conventions/proj-conv.md",
-                    "convention", "Project convention", "active",
+                    1,
+                    ".lexibrary/conventions/proj-conv.md",
+                    "convention",
+                    "Project convention",
+                    "active",
                 ),
             ],
             fts=[
@@ -641,12 +676,8 @@ class TestFallbackSearchConventions:
         _create_convention_file(
             project, "Auth handlers convention", tags=["auth"], scope="src/auth"
         )
-        _create_convention_file(
-            project, "Models convention", tags=["models"], scope="src/models"
-        )
-        _create_convention_file(
-            project, "Project wide convention", tags=["auth"], scope="project"
-        )
+        _create_convention_file(project, "Models convention", tags=["models"], scope="src/models")
+        _create_convention_file(project, "Project wide convention", tags=["auth"], scope="project")
 
         # Scope "src/auth/handlers" should match "src/auth" (prefix) and "project"
         results = unified_search(
@@ -758,7 +789,13 @@ class TestSearchCLIConventions:
         _create_populated_index(
             db_path,
             artifacts=[
-                (1, ".lexibrary/conventions/auth-required.md", "convention", "Auth decorator", "active"),
+                (
+                    1,
+                    ".lexibrary/conventions/auth-required.md",
+                    "convention",
+                    "Auth decorator",
+                    "active",
+                ),
             ],
             fts=[
                 (1, "Auth decorator", "All endpoints require the auth decorator"),
@@ -779,7 +816,13 @@ class TestSearchCLIConventions:
         _create_populated_index(
             db_path,
             artifacts=[
-                (1, ".lexibrary/conventions/auth-required.md", "convention", "Auth required", "active"),
+                (
+                    1,
+                    ".lexibrary/conventions/auth-required.md",
+                    "convention",
+                    "Auth required",
+                    "active",
+                ),
             ],
             tags=[
                 (1, "security"),

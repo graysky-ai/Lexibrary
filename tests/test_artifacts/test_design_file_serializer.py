@@ -68,16 +68,12 @@ class TestSerializeDesignFileFrontmatterStatus:
         assert "status: active" in result
 
     def test_frontmatter_includes_status_deprecated(self) -> None:
-        df = _design_file(
-            frontmatter=_frontmatter(status="deprecated")
-        )
+        df = _design_file(frontmatter=_frontmatter(status="deprecated"))
         result = serialize_design_file(df)
         assert "status: deprecated" in result
 
     def test_frontmatter_includes_status_unlinked(self) -> None:
-        df = _design_file(
-            frontmatter=_frontmatter(status="unlinked")
-        )
+        df = _design_file(frontmatter=_frontmatter(status="unlinked"))
         result = serialize_design_file(df)
         assert "status: unlinked" in result
 

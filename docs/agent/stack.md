@@ -22,8 +22,8 @@ ST-005   open      1      YAML parse error on nested lists      config, yaml
 You can filter by tag, status, scope, concept, or resolution type:
 
 ```bash
-# Find resolved daemon issues
-lexi stack search --tag daemon --status resolved
+# Find resolved sweep issues
+lexi stack search --tag sweep --status resolved
 
 # Find issues related to a specific file path
 lexi stack search --scope src/lexibrary/config/
@@ -55,23 +55,23 @@ After solving a non-trivial bug or discovering an important pattern, create a St
 Use the one-shot workflow to create a fully populated post in a single command:
 
 ```bash
-lexi stack post --title "Race condition in daemon sweep" --tag daemon --tag concurrency \
-  --problem "Concurrent sweep and watch events cause duplicate index entries." \
-  --context "Running lexictl update while watchdog is active." \
+lexi stack post --title "Race condition in sweep watch mode" --tag sweep --tag concurrency \
+  --problem "Concurrent sweep iterations cause duplicate index entries." \
+  --context "Running lexictl sweep --watch with short interval." \
   --evidence "Duplicate ST-* entries in link graph after concurrent sweep" \
   --evidence "Race window is ~200ms between file scan and index write" \
-  --attempts "Tried file-level locking but it deadlocked with the watchdog" \
+  --attempts "Tried file-level locking but it caused deadlocks" \
   --attempts "Tried debouncing sweep trigger but window was too narrow"
 ```
 
 To also record the solution in one step:
 
 ```bash
-lexi stack post --title "Race condition in daemon sweep" --tag daemon --tag concurrency \
-  --problem "Concurrent sweep and watch events cause duplicate index entries." \
-  --context "Running lexictl update while watchdog is active." \
-  --attempts "Tried file-level locking but it deadlocked with the watchdog" \
-  --finding "Added a sweep-in-progress flag that watch events check before writing." \
+lexi stack post --title "Race condition in sweep watch mode" --tag sweep --tag concurrency \
+  --problem "Concurrent sweep iterations cause duplicate index entries." \
+  --context "Running lexictl sweep --watch with short interval." \
+  --attempts "Tried file-level locking but it caused deadlocks" \
+  --finding "Added a sweep-in-progress flag that prevents overlapping sweep iterations." \
   --resolve --resolution-type fix
 ```
 
@@ -166,7 +166,7 @@ lexi stack vote ST-001 up --finding 2
 Downvote findings that are incorrect or misleading (a comment is required):
 
 ```bash
-lexi stack vote ST-003 down --comment "This solution introduces a memory leak in the daemon loop"
+lexi stack vote ST-003 down --comment "This solution introduces a memory leak in the sweep loop"
 ```
 
 Voting surfaces the best findings and helps future agents identify which solutions actually work.

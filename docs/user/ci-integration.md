@@ -1,6 +1,6 @@
 # CI Integration
 
-This guide covers how to integrate Lexibrary into your CI/CD pipeline and development workflow -- from git hooks for automatic updates to validation gates and daemon-based continuous monitoring.
+This guide covers how to integrate Lexibrary into your CI/CD pipeline and development workflow -- from git hooks for automatic updates to validation gates and periodic sweep monitoring.
 
 ## Git Post-Commit Hook
 
@@ -66,46 +66,9 @@ This runs a full `lexictl update` cycle once and exits. Useful in cron jobs or s
 lexictl sweep --watch
 ```
 
-This runs periodic sweeps in the foreground at the interval configured by `daemon.sweep_interval_seconds` (default: 3600 seconds / 1 hour). The process runs until interrupted with Ctrl+C.
+This runs periodic sweeps in the foreground at the interval configured by `sweep.sweep_interval_seconds` (default: 3600 seconds / 1 hour). The process runs until interrupted with Ctrl+C.
 
-If `daemon.sweep_skip_if_unchanged` is `true` (the default), sweeps that detect no changed files skip the LLM generation step entirely.
-
-## Daemon Mode
-
-For continuous file watching using the OS file system event API:
-
-```bash
-lexictl daemon start
-```
-
-This starts a watchdog-based daemon that monitors the project for file changes and triggers incremental updates automatically. The daemon:
-
-- Writes its PID to `.lexibrary/daemon.pid`.
-- Uses debouncing (`daemon.debounce_seconds`, default: 2 seconds) to batch rapid file changes.
-- Suppresses updates during git operations (`daemon.git_suppression_seconds`, default: 5 seconds).
-- Requires `daemon.watchdog_enabled: true` in config (disabled by default).
-
-### Daemon Commands
-
-```bash
-# Start the daemon (foreground, requires watchdog_enabled: true)
-lexictl daemon start
-
-# Check if the daemon is running
-lexictl daemon status
-
-# Stop the daemon
-lexictl daemon stop
-```
-
-### Daemon vs Sweep
-
-| Feature | `lexictl sweep --watch` | `lexictl daemon start` |
-|---|---|---|
-| Trigger | Timer-based (periodic) | File system events (immediate) |
-| Config required | None | `daemon.watchdog_enabled: true` |
-| Update type | Full project sweep | Incremental (changed files only) |
-| Use case | CI/scheduled pipelines | Active development |
+If `sweep.sweep_skip_if_unchanged` is `true` (the default), sweeps that detect no changed files skip the LLM generation step entirely.
 
 ## Validation as a CI Gate
 
@@ -304,7 +267,7 @@ Key config settings that affect CI behavior:
 
 | Setting | Default | CI Recommendation |
 |---|---|---|
-| `daemon.sweep_skip_if_unchanged` | `true` | Keep `true` to avoid unnecessary LLM calls |
+| `sweep.sweep_skip_if_unchanged` | `true` | Keep `true` to avoid unnecessary LLM calls |
 | `llm.max_retries` | `3` | Consider lowering to `1` for faster CI failures |
 | `llm.timeout` | `60` | Consider lowering for CI time constraints |
 | `crawl.max_file_size_kb` | `512` | Increase if your project has large source files |
@@ -313,5 +276,5 @@ Key config settings that affect CI behavior:
 
 - [Design File Generation](design-file-generation.md) -- How `lexictl update` and `--changed-only` work
 - [Validation](validation.md) -- The 13 checks and their exit codes
-- [Configuration](configuration.md) -- `daemon`, `llm`, and `crawl` settings
+- [Configuration](configuration.md) -- `sweep`, `llm`, and `crawl` settings
 - [Project Setup](project-setup.md) -- `lexictl init --defaults` and `lexictl setup --hooks`

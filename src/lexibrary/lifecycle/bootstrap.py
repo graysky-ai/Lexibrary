@@ -9,11 +9,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 
+from baml_py import ClientRegistry
+
 from lexibrary.archivist.change_checker import ChangeLevel, check_change
-from lexibrary.archivist.dependency_extractor import extract_dependencies
 from lexibrary.archivist.pipeline import (
     FileResult,
     _is_binary,
@@ -21,21 +21,15 @@ from lexibrary.archivist.pipeline import (
     _refresh_parent_aindex,
     update_file,
 )
-from lexibrary.artifacts.design_file import (
-    DesignFile,
-    DesignFileFrontmatter,
-    StalenessMetadata,
-)
+from lexibrary.archivist.skeleton import generate_skeleton_design, heuristic_description
 from lexibrary.artifacts.design_file_serializer import serialize_design_file
-from lexibrary.ast_parser import compute_hashes, parse_interface, render_skeleton
+from lexibrary.ast_parser import compute_hashes
 from lexibrary.config.schema import LexibraryConfig
 from lexibrary.ignore import create_ignore_matcher
 from lexibrary.utils.atomic import atomic_write
 from lexibrary.utils.paths import LEXIBRARY_DIR, mirror_path
 
 logger = logging.getLogger(__name__)
-
-_GENERATOR_ID = "lexibrary-v2"
 
 # Progress callback receives (source_path, status_label)
 BootstrapProgressCallback = Callable[[Path, str], None]
@@ -51,54 +45,6 @@ class BootstrapStats:
     files_skipped: int = 0
     files_failed: int = 0
     errors: list[str] = field(default_factory=list)
-
-
-def _extract_module_docstring(source_path: Path) -> str | None:
-    """Extract the module-level docstring from a Python file.
-
-    Returns the docstring text or None if no module docstring is found.
-    """
-    if source_path.suffix not in (".py", ".pyi"):
-        return None
-
-    try:
-        source = source_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-
-    import ast  # noqa: PLC0415
-
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return None
-
-    return ast.get_docstring(tree)
-
-
-def _heuristic_description(source_path: Path) -> str:
-    """Generate a heuristic description from filename and docstrings.
-
-    Checks for a module-level docstring first. Falls back to a
-    description derived from the filename.
-    """
-    docstring = _extract_module_docstring(source_path)
-    if docstring:
-        # Use first line of docstring as description
-        first_line = docstring.strip().split("\n")[0].strip()
-        if first_line:
-            return first_line
-
-    # Fallback: generate from filename
-    stem = source_path.stem
-    if stem == "__init__":
-        return f"Package initializer for {source_path.parent.name}"
-    if stem == "__main__":
-        return f"Entry point for {source_path.parent.name}"
-
-    # Convert snake_case to readable
-    readable = stem.replace("_", " ").strip()
-    return f"Design file for {readable}"
 
 
 def _discover_source_files(
@@ -153,9 +99,9 @@ def _generate_quick_design(
 ) -> FileResult:
     """Generate a skeleton design file for a single source file without LLM.
 
-    Uses tree-sitter for interface extraction, AST for dependency extraction,
-    and heuristics for the description. Marks the file with
-    ``updated_by: bootstrap-quick``.
+    Delegates core skeleton generation to the shared
+    :func:`~lexibrary.archivist.skeleton.generate_skeleton_design` helper,
+    passing ``updated_by="bootstrap-quick"``.
 
     Returns a FileResult indicating what happened.
     """
@@ -176,38 +122,11 @@ def _generate_quick_design(
     design_path = mirror_path(project_root, source_path)
     design_path.parent.mkdir(parents=True, exist_ok=True)
 
-    rel_path = str(source_path.relative_to(project_root))
-
-    # Extract interface skeleton
-    skeleton = parse_interface(source_path)
-    skeleton_text = ""
-    if skeleton is not None:
-        skeleton_text = render_skeleton(skeleton)
-
-    # Extract dependencies
-    deps = extract_dependencies(source_path, project_root)
-
-    # Heuristic description
-    description = _heuristic_description(source_path)
-
-    # Build DesignFile model
-    design_file = DesignFile(
-        source_path=rel_path,
-        frontmatter=DesignFileFrontmatter(
-            description=description,
-            updated_by="bootstrap-quick",
-        ),
-        summary=description,
-        interface_contract=skeleton_text,
-        dependencies=deps,
-        dependents=[],
-        metadata=StalenessMetadata(
-            source=rel_path,
-            source_hash=content_hash,
-            interface_hash=interface_hash,
-            generated=datetime.now(UTC).replace(tzinfo=None),
-            generator=_GENERATOR_ID,
-        ),
+    # Generate skeleton design file via shared helper
+    design_file = generate_skeleton_design(
+        source_path,
+        project_root,
+        updated_by="bootstrap-quick",
     )
 
     # Serialize and write
@@ -216,6 +135,7 @@ def _generate_quick_design(
     logger.info("Bootstrap (quick): wrote %s", design_path)
 
     # Refresh parent .aindex
+    description = heuristic_description(source_path)
     aindex_refreshed = _refresh_parent_aindex(source_path, project_root, description)
 
     return FileResult(
@@ -290,6 +210,7 @@ async def bootstrap_full(
     config: LexibraryConfig,
     scope_override: str | None = None,
     progress_callback: BootstrapProgressCallback | None = None,
+    client_registry: ClientRegistry | None = None,
 ) -> BootstrapStats:
     """Run full-mode bootstrap: generate LLM-enriched design files for all source files.
 
@@ -302,6 +223,8 @@ async def bootstrap_full(
         config: Project configuration.
         scope_override: Optional scope root override (relative to project root).
         progress_callback: Optional callback receiving (source_path, status_label).
+        client_registry: Pre-built BAML ``ClientRegistry``. When ``None``,
+            one is created automatically from *config*.
 
     Returns:
         BootstrapStats with counts of scanned, created, updated, skipped files.
@@ -315,9 +238,15 @@ async def bootstrap_full(
     scope_root_str = scope_override if scope_override is not None else config.scope_root
     scope_dir = (project_root / scope_root_str).resolve()
 
+    # Build registry if not provided
+    if client_registry is None:
+        from lexibrary.llm.client_registry import build_client_registry  # noqa: PLC0415
+
+        client_registry = build_client_registry(config)
+
     # Create archivist service for LLM enrichment
     rate_limiter = RateLimiter()
-    archivist = ArchivistService(rate_limiter=rate_limiter, config=config.llm)
+    archivist = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
 
     # Discover source files
     source_files = _discover_source_files(scope_dir, project_root, config)

@@ -5,9 +5,10 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from baml_py import ClientRegistry
+from baml_py.baml_py import BamlClientError
 
 from lexibrary.archivist.service import (
-    _PROVIDER_CLIENT_MAP,
     ArchivistService,
     DesignFileRequest,
     DesignFileResult,
@@ -16,7 +17,7 @@ from lexibrary.baml_client.types import (
     DesignFileDependency,
     DesignFileOutput,
 )
-from lexibrary.config.schema import LLMConfig
+from lexibrary.exceptions import ArchivistTruncationError
 from lexibrary.llm.rate_limiter import RateLimiter
 
 # ---------------------------------------------------------------------------
@@ -31,18 +32,16 @@ def rate_limiter() -> RateLimiter:
 
 
 @pytest.fixture()
-def anthropic_config() -> LLMConfig:
-    return LLMConfig(provider="anthropic")
-
-
-@pytest.fixture()
-def openai_config() -> LLMConfig:
-    return LLMConfig(provider="openai", model="gpt-5-mini", api_key_env="OPENAI_API_KEY")
-
-
-@pytest.fixture()
-def unknown_config() -> LLMConfig:
-    return LLMConfig(provider="ollama", model="llama3", api_key_env="")
+def client_registry() -> ClientRegistry:
+    """A minimal client registry for tests."""
+    registry = ClientRegistry()
+    registry.add_llm_client(
+        name="lexibrary-archivist",
+        provider="anthropic",
+        options={"model": "test-model", "api_key": "test-key", "max_tokens": 100},
+    )
+    registry.set_primary("lexibrary-archivist")
+    return registry
 
 
 @pytest.fixture()
@@ -123,34 +122,19 @@ class TestDesignFileResult:
 
 
 # ---------------------------------------------------------------------------
-# ArchivistService — provider routing
+# ArchivistService — construction
 # ---------------------------------------------------------------------------
 
 
-class TestProviderRouting:
-    """Verify BAML client selection based on LLMConfig.provider."""
+class TestConstruction:
+    """Verify ArchivistService accepts client_registry."""
 
-    def test_anthropic_client_selected(
-        self, rate_limiter: RateLimiter, anthropic_config: LLMConfig
+    def test_accepts_client_registry(
+        self, rate_limiter: RateLimiter, client_registry: ClientRegistry
     ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=anthropic_config)
-        assert service._client_name == "AnthropicArchivist"
-
-    def test_openai_client_selected(
-        self, rate_limiter: RateLimiter, openai_config: LLMConfig
-    ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=openai_config)
-        assert service._client_name == "OpenAIArchivist"
-
-    def test_unknown_provider_falls_back(
-        self, rate_limiter: RateLimiter, unknown_config: LLMConfig
-    ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=unknown_config)
-        assert service._client_name is None
-
-    def test_provider_client_map_covers_expected_providers(self) -> None:
-        assert "anthropic" in _PROVIDER_CLIENT_MAP
-        assert "openai" in _PROVIDER_CLIENT_MAP
+        service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
+        assert service._client_registry is client_registry
+        assert service._rate_limiter is rate_limiter
 
 
 # ---------------------------------------------------------------------------
@@ -165,11 +149,11 @@ class TestGenerateDesignFile:
     async def test_successful_generation(
         self,
         rate_limiter: RateLimiter,
-        anthropic_config: LLMConfig,
+        client_registry: ClientRegistry,
         design_file_request: DesignFileRequest,
         sample_design_file_output: DesignFileOutput,
     ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=anthropic_config)
+        service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
 
         mock_client = MagicMock()
         mock_client.ArchivistGenerateDesignFile = AsyncMock(return_value=sample_design_file_output)
@@ -195,10 +179,10 @@ class TestGenerateDesignFile:
     async def test_error_returns_error_result(
         self,
         rate_limiter: RateLimiter,
-        anthropic_config: LLMConfig,
+        client_registry: ClientRegistry,
         design_file_request: DesignFileRequest,
     ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=anthropic_config)
+        service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
 
         mock_client = MagicMock()
         mock_client.ArchivistGenerateDesignFile = AsyncMock(
@@ -217,10 +201,10 @@ class TestGenerateDesignFile:
     async def test_non_code_file_request(
         self,
         rate_limiter: RateLimiter,
-        anthropic_config: LLMConfig,
+        client_registry: ClientRegistry,
         sample_design_file_output: DesignFileOutput,
     ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=anthropic_config)
+        service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
         request = DesignFileRequest(
             source_path="config.yaml",
             source_content="key: value",
@@ -254,14 +238,14 @@ class TestRateLimiting:
     @pytest.mark.asyncio()
     async def test_rate_limiter_acquired_before_design_file(
         self,
-        anthropic_config: LLMConfig,
+        client_registry: ClientRegistry,
         design_file_request: DesignFileRequest,
         sample_design_file_output: DesignFileOutput,
     ) -> None:
         mock_limiter = MagicMock(spec=RateLimiter)
         mock_limiter.acquire = AsyncMock()
 
-        service = ArchivistService(rate_limiter=mock_limiter, config=anthropic_config)
+        service = ArchivistService(rate_limiter=mock_limiter, client_registry=client_registry)
 
         mock_client = MagicMock()
         mock_client.ArchivistGenerateDesignFile = AsyncMock(return_value=sample_design_file_output)
@@ -274,13 +258,13 @@ class TestRateLimiting:
     @pytest.mark.asyncio()
     async def test_rate_limiter_acquired_even_on_error(
         self,
-        anthropic_config: LLMConfig,
+        client_registry: ClientRegistry,
         design_file_request: DesignFileRequest,
     ) -> None:
         mock_limiter = MagicMock(spec=RateLimiter)
         mock_limiter.acquire = AsyncMock()
 
-        service = ArchivistService(rate_limiter=mock_limiter, config=anthropic_config)
+        service = ArchivistService(rate_limiter=mock_limiter, client_registry=client_registry)
 
         mock_client = MagicMock()
         mock_client.ArchivistGenerateDesignFile = AsyncMock(side_effect=RuntimeError("fail"))
@@ -294,42 +278,25 @@ class TestRateLimiting:
 
 
 # ---------------------------------------------------------------------------
-# ArchivistService — client routing integration
+# ArchivistService — client routing via registry
 # ---------------------------------------------------------------------------
 
 
 class TestClientRouting:
-    """Verify that _get_baml_client routes to correct provider."""
+    """Verify that _get_baml_client uses the registry with the archivist client."""
 
-    def test_anthropic_routes_to_with_options(
-        self, rate_limiter: RateLimiter, anthropic_config: LLMConfig
+    def test_routes_via_registry(
+        self, rate_limiter: RateLimiter, client_registry: ClientRegistry
     ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=anthropic_config)
+        service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
 
         with patch("lexibrary.archivist.service.b") as mock_b:
             mock_b.with_options.return_value = mock_b
             service._get_baml_client()
-            mock_b.with_options.assert_called_once_with(client="AnthropicArchivist")
-
-    def test_openai_routes_to_with_options(
-        self, rate_limiter: RateLimiter, openai_config: LLMConfig
-    ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=openai_config)
-
-        with patch("lexibrary.archivist.service.b") as mock_b:
-            mock_b.with_options.return_value = mock_b
-            service._get_baml_client()
-            mock_b.with_options.assert_called_once_with(client="OpenAIArchivist")
-
-    def test_unknown_provider_returns_default_client(
-        self, rate_limiter: RateLimiter, unknown_config: LLMConfig
-    ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=unknown_config)
-
-        with patch("lexibrary.archivist.service.b") as mock_b:
-            result = service._get_baml_client()
-            mock_b.with_options.assert_not_called()
-            assert result is mock_b
+            mock_b.with_options.assert_called_once_with(
+                client_registry=client_registry,
+                client="lexibrary-archivist",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -377,10 +344,10 @@ class TestGenerateDesignFileWithConcepts:
     async def test_concepts_passed_to_baml(
         self,
         rate_limiter: RateLimiter,
-        anthropic_config: LLMConfig,
+        client_registry: ClientRegistry,
         sample_design_file_output: DesignFileOutput,
     ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=anthropic_config)
+        service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
 
         concepts = ["Authentication", "Session Management"]
         request = DesignFileRequest(
@@ -409,10 +376,10 @@ class TestGenerateDesignFileWithConcepts:
     async def test_none_concepts_passed_to_baml(
         self,
         rate_limiter: RateLimiter,
-        anthropic_config: LLMConfig,
+        client_registry: ClientRegistry,
         sample_design_file_output: DesignFileOutput,
     ) -> None:
-        service = ArchivistService(rate_limiter=rate_limiter, config=anthropic_config)
+        service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
 
         request = DesignFileRequest(
             source_path="src/auth.py",
@@ -434,3 +401,118 @@ class TestGenerateDesignFileWithConcepts:
             existing_design_file=None,
             available_concepts=None,
         )
+
+
+# ---------------------------------------------------------------------------
+# ArchivistService — truncation detection
+# ---------------------------------------------------------------------------
+
+
+class TestTruncationDetection:
+    """Verify that BamlClientError with truncation indicators raises ArchivistTruncationError."""
+
+    @pytest.mark.asyncio()
+    async def test_stop_reason_length_raises_truncation_error(
+        self,
+        rate_limiter: RateLimiter,
+        client_registry: ClientRegistry,
+        design_file_request: DesignFileRequest,
+    ) -> None:
+        """stop_reason: length raises ArchivistTruncationError."""
+        service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
+
+        mock_client = MagicMock()
+        mock_client.ArchivistGenerateDesignFile = AsyncMock(
+            side_effect=BamlClientError("stop_reason: length - output truncated")
+        )
+
+        with (
+            patch.object(service, "_get_baml_client", return_value=mock_client),
+            pytest.raises(ArchivistTruncationError, match="truncated"),
+        ):
+            await service.generate_design_file(design_file_request)
+
+    @pytest.mark.asyncio()
+    async def test_finish_reason_length_raises_truncation_error(
+        self,
+        rate_limiter: RateLimiter,
+        client_registry: ClientRegistry,
+        design_file_request: DesignFileRequest,
+    ) -> None:
+        """finish_reason: length raises ArchivistTruncationError."""
+        service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
+
+        mock_client = MagicMock()
+        mock_client.ArchivistGenerateDesignFile = AsyncMock(
+            side_effect=BamlClientError("finish_reason: length")
+        )
+
+        with (
+            patch.object(service, "_get_baml_client", return_value=mock_client),
+            pytest.raises(ArchivistTruncationError),
+        ):
+            await service.generate_design_file(design_file_request)
+
+    @pytest.mark.asyncio()
+    async def test_max_tokens_raises_truncation_error(
+        self,
+        rate_limiter: RateLimiter,
+        client_registry: ClientRegistry,
+        design_file_request: DesignFileRequest,
+    ) -> None:
+        """A BamlClientError mentioning max_tokens should raise ArchivistTruncationError."""
+        service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
+
+        mock_client = MagicMock()
+        mock_client.ArchivistGenerateDesignFile = AsyncMock(
+            side_effect=BamlClientError("exceeded max_tokens limit")
+        )
+
+        with (
+            patch.object(service, "_get_baml_client", return_value=mock_client),
+            pytest.raises(ArchivistTruncationError),
+        ):
+            await service.generate_design_file(design_file_request)
+
+    @pytest.mark.asyncio()
+    async def test_non_truncation_baml_error_returns_error_result(
+        self,
+        rate_limiter: RateLimiter,
+        client_registry: ClientRegistry,
+        design_file_request: DesignFileRequest,
+    ) -> None:
+        """Non-truncation BamlClientError returns error result, not raise."""
+        service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
+
+        mock_client = MagicMock()
+        mock_client.ArchivistGenerateDesignFile = AsyncMock(
+            side_effect=BamlClientError("authentication failed: invalid API key")
+        )
+
+        with patch.object(service, "_get_baml_client", return_value=mock_client):
+            result = await service.generate_design_file(design_file_request)
+
+        assert result.error is True
+        assert result.error_message is not None
+        assert "authentication failed" in result.error_message
+
+    @pytest.mark.asyncio()
+    async def test_non_baml_error_unchanged(
+        self,
+        rate_limiter: RateLimiter,
+        client_registry: ClientRegistry,
+        design_file_request: DesignFileRequest,
+    ) -> None:
+        """A generic exception (not BamlClientError) should still return an error result."""
+        service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
+
+        mock_client = MagicMock()
+        mock_client.ArchivistGenerateDesignFile = AsyncMock(
+            side_effect=RuntimeError("connection reset")
+        )
+
+        with patch.object(service, "_get_baml_client", return_value=mock_client):
+            result = await service.generate_design_file(design_file_request)
+
+        assert result.error is True
+        assert "connection reset" in result.error_message

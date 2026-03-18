@@ -12,6 +12,7 @@ from lexibrary.archivist.change_checker import ChangeLevel
 from lexibrary.archivist.pipeline import (
     FileResult,
     UpdateStats,
+    _accumulate_stats,
     _has_meaningful_changes,
     _is_binary,
     _is_within_scope,
@@ -976,6 +977,7 @@ class TestUpdateProjectConceptLoading:
             cfg: LexibraryConfig,
             svc: ArchivistService,
             available_concepts: list[str] | None = None,
+            **kwargs: object,
         ) -> FileResult:
             captured_concepts.append(available_concepts)
             return FileResult(change=ChangeLevel.UNCHANGED)
@@ -1005,6 +1007,7 @@ class TestUpdateProjectConceptLoading:
             cfg: LexibraryConfig,
             svc: ArchivistService,
             available_concepts: list[str] | None = None,
+            **kwargs: object,
         ) -> FileResult:
             captured_concepts.append(available_concepts)
             return FileResult(change=ChangeLevel.UNCHANGED)
@@ -1276,6 +1279,7 @@ class TestUpdateFilesLinkGraph:
 # ---------------------------------------------------------------------------
 # reindex_directories (task 7.5)
 # ---------------------------------------------------------------------------
+
 
 class TestReindexDirectories:
     """Tests for automated index regeneration after update_project() (task 7.5)."""
@@ -2137,8 +2141,8 @@ class TestUpdateProjectDeprecationIntegration:
         mock_deprecation.assert_called_once()
         call_args = mock_deprecation.call_args
         assert call_args[0][0] == tmp_path  # project_root
-        assert call_args[0][1] is config   # config
-        assert call_args[0][2] is stats    # stats
+        assert call_args[0][1] is config  # config
+        assert call_args[0][2] is stats  # stats
 
     @pytest.mark.asyncio()
     async def test_queue_processing_called(self, tmp_path: Path) -> None:
@@ -2175,10 +2179,10 @@ class TestUpdateProjectDeprecationIntegration:
         # Queue processing should have been called
         mock_queue.assert_called_once()
         call_args = mock_queue.call_args
-        assert call_args[0][0] == tmp_path    # project_root
-        assert call_args[0][1] is config      # config
-        assert call_args[0][2] is archivist   # archivist
-        assert call_args[0][3] is stats       # stats
+        assert call_args[0][0] == tmp_path  # project_root
+        assert call_args[0][1] is config  # config
+        assert call_args[0][2] is archivist  # archivist
+        assert call_args[0][3] is stats  # stats
 
     @pytest.mark.asyncio()
     async def test_deprecation_before_linkgraph(self, tmp_path: Path) -> None:
@@ -2257,3 +2261,298 @@ class TestUpdateProjectDeprecationIntegration:
 
         # Errors were caught and recorded in the error summary
         assert stats.error_summary.has_errors()
+
+
+# ---------------------------------------------------------------------------
+# should_skip_llm — size gate tests
+# ---------------------------------------------------------------------------
+
+
+class TestShouldSkipLlm:
+    """Tests for the two-tier size gate that prevents wasted LLM calls."""
+
+    def test_small_file_passes(self) -> None:
+        """Files under SIZE_GATE_BYTES are never gated, regardless of tokens."""
+        from lexibrary.archivist.pipeline import SIZE_GATE_BYTES, should_skip_llm
+
+        # Content is small — well under the byte threshold
+        content = "x = 1\n"
+        assert len(content.encode()) < SIZE_GATE_BYTES
+        assert should_skip_llm(content, len(content.encode()), archivist_max_tokens=5000) is False
+
+    def test_small_file_skips_tokenizer(self) -> None:
+        """Files under SIZE_GATE_BYTES must not invoke tiktoken at all."""
+        from lexibrary.archivist.pipeline import SIZE_GATE_BYTES, should_skip_llm
+
+        content = "x = 1\n"
+        file_size = len(content.encode())
+        assert file_size < SIZE_GATE_BYTES
+
+        with patch("lexibrary.archivist.pipeline._get_tiktoken") as mock_tok:
+            result = should_skip_llm(content, file_size, archivist_max_tokens=5000)
+            assert result is False
+            mock_tok.assert_not_called()
+
+    def test_medium_file_passes(self) -> None:
+        """A file above SIZE_GATE_BYTES but under the token threshold passes."""
+        from lexibrary.archivist.pipeline import (
+            SIZE_GATE_BYTES,
+            should_skip_llm,
+        )
+
+        # Create content that is above the byte gate but well under the
+        # token limit.  At archivist_max_tokens=5000, the threshold is
+        # 5000 * 5 = 25 000 tokens.  A line like "x = 1\n" is ~4 tokens,
+        # so 1000 lines = ~4000 tokens — well under.
+        line = "x = 1\n"
+        content = line * 3000  # ~18 KB, ~12 000 tokens
+        file_size = len(content.encode())
+        assert file_size > SIZE_GATE_BYTES
+
+        archivist_max = 5000
+        assert should_skip_llm(content, file_size, archivist_max) is False
+
+    def test_large_file_triggers_gate(self) -> None:
+        """A file whose tokens exceed archivist_max_tokens * GATE_MULTIPLIER is gated."""
+        from lexibrary.archivist.pipeline import (
+            SIZE_GATE_BYTES,
+            should_skip_llm,
+        )
+
+        # Use a very low archivist_max_tokens so we can trigger the gate
+        # with a modest amount of content.  threshold = 10 * 5 = 50 tokens.
+        archivist_max = 10
+        # Create content with enough tokens to exceed the threshold.
+        # Each "word " is roughly 1 token; 200 words >> 50 tokens.
+        content = "word " * 5000  # ~25 KB, ~5000 tokens >> 50
+        file_size = len(content.encode())
+        assert file_size > SIZE_GATE_BYTES
+
+        assert should_skip_llm(content, file_size, archivist_max) is True
+
+    def test_uses_offline_tiktoken_not_api(self) -> None:
+        """The size gate must use the offline TiktokenCounter, not an API counter."""
+        from lexibrary.archivist.pipeline import SIZE_GATE_BYTES, should_skip_llm
+
+        # Build content large enough to pass the byte gate
+        content = "word " * 5000
+        file_size = len(content.encode())
+        assert file_size > SIZE_GATE_BYTES
+
+        # Patch _get_tiktoken to verify it returns a TiktokenCounter
+        from lexibrary.tokenizer.tiktoken_counter import TiktokenCounter
+
+        mock_counter = MagicMock(spec=TiktokenCounter)
+        mock_counter.count.return_value = 100  # under any reasonable threshold
+
+        with patch("lexibrary.archivist.pipeline._get_tiktoken", return_value=mock_counter):
+            should_skip_llm(content, file_size, archivist_max_tokens=5000)
+            mock_counter.count.assert_called_once_with(content)
+
+    def test_gate_constants_match_design(self) -> None:
+        """Verify the gate constants match the documented design values."""
+        from lexibrary.archivist.pipeline import GATE_MULTIPLIER, SIZE_GATE_BYTES
+
+        assert SIZE_GATE_BYTES == 12_288  # 12 KB
+        assert GATE_MULTIPLIER == 5
+
+
+# ---------------------------------------------------------------------------
+# Pipeline Integration — size gate skeleton, unlimited bypass,
+# SKELETON_ONLY skip/re-enrich, truncation fallback
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineIntegrationSizeGate:
+    """Size gate writes skeleton fallback when file is too large."""
+
+    @pytest.mark.asyncio()
+    async def test_size_gate_writes_skeleton(self, tmp_path: Path) -> None:
+        """When should_skip_llm returns True, a skeleton fallback is written."""
+        source = _make_source_file(tmp_path, "src/big.py", "x = 1\n" * 5000)
+        config = _make_config()
+        archivist = _mock_archivist()
+
+        with patch("lexibrary.archivist.pipeline.should_skip_llm", return_value=True):
+            result = await update_file(source, tmp_path, config, archivist)
+
+        assert result.skeleton is True
+        assert not result.failed
+
+        # LLM was NOT called
+        archivist.generate_design_file.assert_not_awaited()
+
+        # Design file exists with skeleton-fallback marker
+        design_path = tmp_path / ".lexibrary" / "designs" / "src" / "big.py.md"
+        assert design_path.exists()
+        content = design_path.read_text()
+        assert "skeleton-fallback" in content
+
+    @pytest.mark.asyncio()
+    async def test_unlimited_bypasses_size_gate(self, tmp_path: Path) -> None:
+        """When unlimited=True, the size gate is skipped and LLM is called."""
+        source = _make_source_file(tmp_path, "src/big.py", "def foo(): pass")
+        config = _make_config()
+        archivist = _mock_archivist(summary="Big module.")
+
+        # should_skip_llm should NOT be called when unlimited=True
+        with patch(
+            "lexibrary.archivist.pipeline.should_skip_llm",
+            side_effect=AssertionError("should_skip_llm should not be called"),
+        ):
+            result = await update_file(
+                source, tmp_path, config, archivist, unlimited=True
+            )
+
+        assert not result.failed
+        assert not result.skeleton
+        archivist.generate_design_file.assert_awaited_once()
+
+
+class TestPipelineIntegrationSkeletonOnly:
+    """SKELETON_ONLY change level handling."""
+
+    @pytest.mark.asyncio()
+    async def test_skeleton_only_skipped_in_normal_mode(self, tmp_path: Path) -> None:
+        """SKELETON_ONLY files are treated as UNCHANGED in normal mode."""
+        source_rel = "src/foo.py"
+        source = _make_source_file(tmp_path, source_rel, "def bar(): pass")
+
+        # Create a skeleton-fallback design file with matching source hash
+        _make_design_file(
+            tmp_path,
+            source_rel,
+            source_hash=hashlib.sha256(source.read_bytes()).hexdigest(),
+            description="Design file for foo",
+            body=(
+                "---\n"
+                "description: Design file for foo\n"
+                "updated_by: skeleton-fallback\n"
+                "---\n"
+                "\n"
+                f"# {source_rel}\n"
+                "\n"
+                "## Interface Contract\n"
+                "\n"
+                "```python\ndef bar(): ...\n```\n"
+                "\n"
+                "## Dependencies\n"
+                "\n"
+                "(none)\n"
+                "\n"
+                "## Dependents\n"
+                "\n"
+                "(none)\n"
+            ),
+        )
+
+        config = _make_config()
+        archivist = _mock_archivist()
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        # Treated as UNCHANGED -- no LLM call
+        assert result.change == ChangeLevel.UNCHANGED
+        archivist.generate_design_file.assert_not_awaited()
+
+    @pytest.mark.asyncio()
+    async def test_skeleton_only_re_enriched_with_unlimited(self, tmp_path: Path) -> None:
+        """SKELETON_ONLY files proceed to LLM when unlimited=True."""
+        source_rel = "src/foo.py"
+        source = _make_source_file(tmp_path, source_rel, "def bar(): pass")
+
+        # Create a skeleton-fallback design file with matching source hash
+        _make_design_file(
+            tmp_path,
+            source_rel,
+            source_hash=hashlib.sha256(source.read_bytes()).hexdigest(),
+            description="Design file for foo",
+            body=(
+                "---\n"
+                "description: Design file for foo\n"
+                "updated_by: skeleton-fallback\n"
+                "---\n"
+                "\n"
+                f"# {source_rel}\n"
+                "\n"
+                "## Interface Contract\n"
+                "\n"
+                "```python\ndef bar(): ...\n```\n"
+                "\n"
+                "## Dependencies\n"
+                "\n"
+                "(none)\n"
+                "\n"
+                "## Dependents\n"
+                "\n"
+                "(none)\n"
+            ),
+        )
+
+        config = _make_config()
+        archivist = _mock_archivist(summary="Enriched foo module.")
+
+        # unlimited bypasses size gate too, so mock it out
+        with patch("lexibrary.archivist.pipeline.should_skip_llm", return_value=False):
+            result = await update_file(
+                source, tmp_path, config, archivist, unlimited=True
+            )
+
+        # LLM was called to re-enrich the skeleton
+        archivist.generate_design_file.assert_awaited_once()
+        assert not result.failed
+
+
+class TestPipelineIntegrationTruncation:
+    """ArchivistTruncationError triggers skeleton fallback."""
+
+    @pytest.mark.asyncio()
+    async def test_truncation_writes_skeleton_fallback(self, tmp_path: Path) -> None:
+        """When LLM truncates, a skeleton fallback is written instead of failing."""
+        from lexibrary.exceptions import ArchivistTruncationError
+
+        source = _make_source_file(tmp_path, "src/trunc.py", "def hello(): pass")
+        config = _make_config()
+        archivist = _mock_archivist()
+
+        # Make archivist raise truncation error
+        archivist.generate_design_file = AsyncMock(
+            side_effect=ArchivistTruncationError("Output truncated: stop_reason=length"),
+        )
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        assert result.skeleton is True
+        assert not result.failed
+
+        # Design file exists with skeleton-fallback marker
+        design_path = tmp_path / ".lexibrary" / "designs" / "src" / "trunc.py.md"
+        assert design_path.exists()
+        content = design_path.read_text()
+        assert "skeleton-fallback" in content
+
+
+class TestPipelineIntegrationSkeletonStats:
+    """files_skeletons counter is tracked in stats."""
+
+    @pytest.mark.asyncio()
+    async def test_skeleton_counter_tracked(self, tmp_path: Path) -> None:
+        """Skeleton fallbacks increment files_skeletons in UpdateStats."""
+        stats = UpdateStats()
+        skeleton_result = FileResult(
+            change=ChangeLevel.NEW_FILE, skeleton=True
+        )
+        _accumulate_stats(stats, skeleton_result)
+
+        assert stats.files_skeletons == 1
+        assert stats.files_created == 1  # still counts as created
+
+    @pytest.mark.asyncio()
+    async def test_non_skeleton_does_not_increment(self, tmp_path: Path) -> None:
+        """Normal file results do not increment files_skeletons."""
+        stats = UpdateStats()
+        normal_result = FileResult(change=ChangeLevel.NEW_FILE)
+        _accumulate_stats(stats, normal_result)
+
+        assert stats.files_skeletons == 0
+        assert stats.files_created == 1

@@ -23,6 +23,10 @@ class LLMServiceError(LexibraryError):
     """LLM API call failure — timeout, auth, rate limit, malformed response."""
 
 
+class ArchivistTruncationError(LLMServiceError):
+    """LLM output was truncated (stop_reason: length) before completing the design file."""
+
+
 class ParseError(LexibraryError):
     """AST/file parsing failure — bad syntax, unsupported language, read error."""
 

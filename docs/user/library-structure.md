@@ -25,15 +25,14 @@ After running `lexictl init` and `lexictl update`, your `.lexibrary/` directory 
 │   ├── ST-001-fix-import-cycle.md
 │   └── ST-002-api-timeout-handling.md
 ├── index.db                 # Link graph SQLite index (gitignored)
-├── daemon.pid               # Daemon PID file (present only when daemon is running)
-└── logs/                    # Daemon log files
+└── logs/                    # Sweep log files
 ```
 
 ## Artifact Types
 
 ### config.yaml
 
-The project configuration file. Created by `lexictl init` and edited manually or via `lexictl setup --update`. Contains all settings that control Lexibrary's behavior: scope root, LLM provider, token budgets, ignore patterns, daemon settings, and more.
+The project configuration file. Created by `lexictl init` and edited manually or via `lexictl setup --update`. Contains all settings that control Lexibrary's behavior: scope root, LLM provider, token budgets, ignore patterns, sweep settings, and more.
 
 See [Configuration](configuration.md) for the full reference.
 
@@ -185,24 +184,17 @@ When the link graph is not available (e.g., `index.db` was deleted), commands gr
 
 **Rebuilt by:** Delete `index.db` and run `lexictl update` to rebuild from scratch.
 
-### daemon.pid
-
-A file containing the process ID of the running daemon. Present only when `lexictl daemon start` or `lexictl sweep --watch` is active. If the daemon crashes, a stale PID file may remain -- `lexictl daemon status` detects and cleans up stale PID files.
-
-**Produced by:** `lexictl daemon start`, `lexictl sweep --watch`.
-
 ### logs/ Directory
 
-Log files produced by the daemon when running in background mode. The log level is controlled by the `daemon.log_level` config setting (default: `info`).
+Log files produced by `lexictl sweep --watch` during periodic sweep operations. The log level is controlled by the `sweep.log_level` config setting (default: `info`).
 
-**Produced by:** The daemon process during sweep and watchdog operations.
+**Produced by:** The sweep process during watch mode operations.
 
 ## What Gets Gitignored
 
 The following items inside `.lexibrary/` should typically be gitignored:
 
 - `index.db` -- Rebuilt from artifacts, can be large.
-- `daemon.pid` -- Transient process file.
 - `logs/` -- Operational log files.
 
 Everything else (config, design files, `.aindex` files, concepts, Stack posts, `START_HERE.md`) should be committed to version control. These artifacts represent accumulated project knowledge and should be shared with the team.

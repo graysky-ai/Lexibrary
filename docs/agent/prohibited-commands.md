@@ -14,7 +14,6 @@ The entire `lexictl` CLI is off-limits for agents. This includes:
 | `lexictl status` | Shows library health dashboard | Read-only, but intended for operator situational awareness, not agent consumption. |
 | `lexictl setup` | Updates agent environment rules | Modifies environment-specific files (CLAUDE.md, .cursor/rules/). Operator must control what rules are injected. |
 | `lexictl sweep` | Runs a one-time update sweep | Same as `update` -- makes LLM calls, expensive, operator-controlled. |
-| `lexictl daemon` | Starts/stops the background daemon | Controls a persistent process. Operator manages daemon lifecycle. |
 
 ### Why This Matters
 
@@ -22,18 +21,18 @@ The entire `lexictl` CLI is off-limits for agents. This includes:
 
 1. **LLM API calls.** `lexictl update` sends source files to an LLM provider to generate design files. Each call costs tokens and takes seconds to minutes. Running this unnecessarily wastes money and time.
 
-2. **Operator oversight.** The operator decides when to regenerate design files, which validation issues to address, and how to configure the daemon. Agents should not make these decisions autonomously.
+2. **Operator oversight.** The operator decides when to regenerate design files, which validation issues to address, and how to configure sweep settings. Agents should not make these decisions autonomously.
 
-3. **Multi-agent conflicts.** If multiple agents run `lexictl update` simultaneously, they may overwrite each other's design files or create race conditions with the daemon.
+3. **Multi-agent conflicts.** If multiple agents run `lexictl update` simultaneously, they may overwrite each other's design files or create race conditions.
 
 ## Never Modify `.lexibrary/config.yaml`
 
-The configuration file controls how Lexibrary behaves -- LLM provider settings, token budgets, ignore patterns, daemon configuration, and more. Changing it can:
+The configuration file controls how Lexibrary behaves -- LLM provider settings, token budgets, ignore patterns, sweep configuration, and more. Changing it can:
 
 - Break LLM API calls (wrong provider, bad model name, missing API key)
 - Change what files get indexed (scope_root, ignore patterns)
 - Alter design file generation behavior (token budgets, AST settings)
-- Disrupt the daemon (sweep intervals, debounce timing)
+- Disrupt sweep scheduling (sweep intervals, skip-if-unchanged behavior)
 
 If you believe a config change is needed, document it in a Stack post or IWH file for the operator.
 

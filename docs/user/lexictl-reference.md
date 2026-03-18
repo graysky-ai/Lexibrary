@@ -1,6 +1,6 @@
 # lexictl CLI Reference
 
-`lexictl` is the operator-facing maintenance CLI for Lexibrary. It provides commands for project initialization, design file generation, validation, health monitoring, agent environment setup, background sweeps, and daemon management.
+`lexictl` is the operator-facing maintenance CLI for Lexibrary. It provides commands for project initialization, design file generation, validation, health monitoring, agent environment setup, and background sweeps.
 
 Run `lexictl --help` for a summary of all commands.
 
@@ -14,7 +14,6 @@ Run `lexictl --help` for a summary of all commands.
 | `status` | Show library health and staleness summary |
 | `setup` | Install or update agent environment rules |
 | `sweep` | Run a library update sweep (one-shot or watch mode) |
-| `daemon` | Manage the watchdog daemon (deprecated -- prefer `sweep`) |
 
 ---
 
@@ -434,16 +433,16 @@ lexictl sweep [--watch]
 lexictl sweep
 ```
 
-**Watch mode**: Runs periodic sweeps at the interval configured in `daemon.sweep_interval_seconds` (default: 3600 seconds / 1 hour). Runs in the foreground and can be interrupted with Ctrl+C.
+**Watch mode**: Runs periodic sweeps at the interval configured in `sweep.sweep_interval_seconds` (default: 3600 seconds / 1 hour). Runs in the foreground and can be interrupted with Ctrl+C.
 
 ```bash
 lexictl sweep --watch
 ```
 
-The sweep interval and skip-if-unchanged behavior are controlled by the `daemon` section of `config.yaml`:
+The sweep interval and skip-if-unchanged behavior are controlled by the `sweep` section of `config.yaml`:
 
-- `daemon.sweep_interval_seconds` -- Time between sweeps (default: 3600)
-- `daemon.sweep_skip_if_unchanged` -- Skip sweeps when no files have changed (default: true)
+- `sweep.sweep_interval_seconds` -- Time between sweeps (default: 3600)
+- `sweep.sweep_skip_if_unchanged` -- Skip sweeps when no files have changed (default: true)
 
 ### Examples
 
@@ -453,70 +452,6 @@ lexictl sweep
 
 # Continuous sweeps in the foreground
 lexictl sweep --watch
-```
-
----
-
-## daemon
-
-Manage the watchdog daemon for real-time file monitoring. The daemon uses the `watchdog` library to detect file changes and trigger updates in real time.
-
-**Note:** The daemon command is deprecated in favor of `lexictl sweep --watch`. It remains available for real-time file watching use cases that require immediate response to file changes (rather than periodic polling).
-
-```
-lexictl daemon [ACTION]
-```
-
-### Arguments
-
-| Argument | Description |
-|----------|-------------|
-| `ACTION` | Action to perform: `start`, `stop`, or `status`. Defaults to `start` if omitted. |
-
-### Prerequisite
-
-The daemon requires `daemon.watchdog_enabled: true` in `config.yaml`. If watchdog mode is disabled (the default), `lexictl daemon start` will display a message suggesting `lexictl sweep --watch` instead.
-
-### Actions
-
-**start** -- Start the watchdog daemon. Writes a PID file to `.lexibrary/daemon.pid`.
-
-```bash
-lexictl daemon start
-# or equivalently:
-lexictl daemon
-```
-
-**stop** -- Send SIGTERM to the running daemon process using the PID from `.lexibrary/daemon.pid`. Cleans up stale PID files if the process is no longer running.
-
-```bash
-lexictl daemon stop
-```
-
-**status** -- Check whether the daemon is running by reading the PID file and verifying the process exists.
-
-```bash
-lexictl daemon status
-```
-
-### Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Action completed successfully |
-| 1 | Invalid action, cannot read PID file, or permission denied |
-
-### Examples
-
-```bash
-# Start the daemon (requires watchdog_enabled: true)
-lexictl daemon start
-
-# Check if the daemon is running
-lexictl daemon status
-
-# Stop the daemon
-lexictl daemon stop
 ```
 
 ---

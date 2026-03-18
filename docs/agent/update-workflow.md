@@ -109,7 +109,7 @@ updated_by: agent
 
 Defines the LexibraryConfig Pydantic model and all sub-models for
 .lexibrary/config.yaml. Includes field-level validation for paths,
-token budgets, and the new cross-field consistency check for daemon settings.
+token budgets, and sweep settings.
 
 ## Interface Contract
 
@@ -117,9 +117,6 @@ class LexibraryConfig(BaseModel):
     scope_root: str = "."
     project_name: str = ""
     ...
-    def validate_daemon_consistency(self) -> None:
-        """Ensure daemon sweep_interval <= debounce_seconds. Added in Phase 10."""
-        ...
 ```
 
 ## Summary Checklist

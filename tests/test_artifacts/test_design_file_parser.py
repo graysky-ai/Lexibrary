@@ -449,9 +449,7 @@ generator: lexibrary-v2
 -->
 """
 
-    def test_legacy_file_no_updated_by_defaults_both(
-        self, tmp_path: Path
-    ) -> None:
+    def test_legacy_file_no_updated_by_defaults_both(self, tmp_path: Path) -> None:
         """Legacy file without updated_by or status defaults both."""
         f = tmp_path / "minimal.md"
         f.write_text(self._MINIMAL_LEGACY)

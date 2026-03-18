@@ -93,7 +93,7 @@ def _make_design_file(
 
 
 class TestChangeLevelEnum:
-    """Verify ChangeLevel has exactly six values."""
+    """Verify ChangeLevel has exactly seven values."""
 
     def test_all_change_levels_defined(self) -> None:
         expected = {
@@ -103,6 +103,7 @@ class TestChangeLevelEnum:
             "CONTENT_CHANGED",
             "INTERFACE_CHANGED",
             "NEW_FILE",
+            "SKELETON_ONLY",
         }
         actual = {member.name for member in ChangeLevel}
         assert actual == expected
@@ -415,3 +416,149 @@ class TestComputeDesignContentHash:
         hash2 = _compute_design_content_hash(path2)
 
         assert hash1 == hash2
+
+
+# ---------------------------------------------------------------------------
+# SKELETON_ONLY detection
+# ---------------------------------------------------------------------------
+
+
+class TestCheckChangeSkeletonOnly:
+    """Skeleton-fallback design files with matching source hash -> SKELETON_ONLY."""
+
+    def test_skeleton_with_matching_hash(self, tmp_path: Path) -> None:
+        """A skeleton-fallback file whose source hash matches returns SKELETON_ONLY."""
+        source_rel = "src/big_module.py"
+        source = tmp_path / source_rel
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("# large file", encoding="utf-8")
+
+        source_hash = "matching_hash"
+
+        body = (
+            "---\n"
+            "description: Design file for big module\n"
+            "updated_by: skeleton-fallback\n"
+            "---\n"
+            "\n"
+            f"# {source_rel}\n"
+            "\n"
+            "## Interface Contract\n"
+            "\n"
+            "```python\nclass BigModule: ...\n```\n"
+            "\n"
+            "## Dependencies\n"
+            "\n"
+            "(none)\n"
+            "\n"
+            "## Dependents\n"
+            "\n"
+            "(none)\n"
+        )
+
+        _make_design_file(
+            tmp_path,
+            source_rel,
+            source_hash=source_hash,
+            interface_hash="iface_hash",
+            body=body,
+        )
+
+        result = check_change(
+            source_path=source,
+            project_root=tmp_path,
+            content_hash=source_hash,  # matches -> would be UNCHANGED normally
+            interface_hash="iface_hash",
+        )
+        assert result == ChangeLevel.SKELETON_ONLY
+
+    def test_skeleton_with_changed_hash(self, tmp_path: Path) -> None:
+        """A skeleton-fallback file whose source hash changed falls through to normal detection."""
+        source_rel = "src/big_module.py"
+        source = tmp_path / source_rel
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("# large file v2", encoding="utf-8")
+
+        body = (
+            "---\n"
+            "description: Design file for big module\n"
+            "updated_by: skeleton-fallback\n"
+            "---\n"
+            "\n"
+            f"# {source_rel}\n"
+            "\n"
+            "## Interface Contract\n"
+            "\n"
+            "```python\nclass BigModule: ...\n```\n"
+            "\n"
+            "## Dependencies\n"
+            "\n"
+            "(none)\n"
+            "\n"
+            "## Dependents\n"
+            "\n"
+            "(none)\n"
+        )
+
+        _make_design_file(
+            tmp_path,
+            source_rel,
+            source_hash="old_hash",
+            interface_hash="old_iface",
+            body=body,
+        )
+
+        result = check_change(
+            source_path=source,
+            project_root=tmp_path,
+            content_hash="new_hash",  # source changed -> normal detection
+            interface_hash="new_iface",  # interface also changed
+        )
+        # Source changed + interface changed -> INTERFACE_CHANGED (normal flow)
+        assert result == ChangeLevel.INTERFACE_CHANGED
+
+    def test_non_skeleton_file_unaffected(self, tmp_path: Path) -> None:
+        """A normal archivist file with matching hash still returns UNCHANGED."""
+        source_rel = "src/normal.py"
+        source = tmp_path / source_rel
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("# normal file", encoding="utf-8")
+
+        source_hash = "matching_hash"
+
+        body = (
+            "---\n"
+            "description: Normal module.\n"
+            "updated_by: archivist\n"
+            "---\n"
+            "\n"
+            f"# {source_rel}\n"
+            "\n"
+            "## Interface Contract\n"
+            "\n"
+            "```python\ndef normal(): ...\n```\n"
+            "\n"
+            "## Dependencies\n"
+            "\n"
+            "(none)\n"
+            "\n"
+            "## Dependents\n"
+            "\n"
+            "(none)\n"
+        )
+
+        _make_design_file(
+            tmp_path,
+            source_rel,
+            source_hash=source_hash,
+            interface_hash="iface_hash",
+            body=body,
+        )
+
+        result = check_change(
+            source_path=source,
+            project_root=tmp_path,
+            content_hash=source_hash,  # matches
+            interface_hash="iface_hash",
+        )
+        assert result == ChangeLevel.UNCHANGED

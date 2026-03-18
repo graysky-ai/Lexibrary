@@ -17,10 +17,9 @@ if TYPE_CHECKING:
 LEXIBRARY_DIR = ".lexibrary"
 
 # Patterns for generated artifacts that should be gitignored.
-# Daemon runtime files (daemon.log, daemon.pid, cache.json) now live inside
-# .lexibrary/, which is already bulk-ignored.  Only the link graph index.db
-# needs an explicit entry (it's inside .lexibrary/ but called out for clarity).
-_DAEMON_GITIGNORE_PATTERNS = [".lexibrary/index.db"]
+# The link graph index.db needs an explicit entry (it's inside .lexibrary/
+# but called out for clarity).
+_GENERATED_GITIGNORE_PATTERNS = [".lexibrary/index.db"]
 
 LEXIGNORE_HEADER = read_template("scaffolder/lexignore_header.txt")
 
@@ -97,13 +96,12 @@ def _generate_config_yaml(answers: WizardAnswers) -> str:
     )
 
 
-def _ensure_daemon_files_gitignored(project_root: Path) -> bool:
+def _ensure_generated_files_gitignored(project_root: Path) -> bool:
     """Ensure generated artifacts are listed in ``.gitignore``.
 
     Appends ``.lexibrary/index.db`` to the project's ``.gitignore`` if
     it is not already present.  Creates the ``.gitignore`` file if it
-    does not exist.  Daemon runtime files (log, PID, cache) now live
-    inside ``.lexibrary/`` which is already bulk-ignored.
+    does not exist.
 
     Args:
         project_root: Root directory of the project.
@@ -121,7 +119,7 @@ def _ensure_daemon_files_gitignored(project_root: Path) -> bool:
         content = ""
         existing_patterns = set()
 
-    missing = [p for p in _DAEMON_GITIGNORE_PATTERNS if p not in existing_patterns]
+    missing = [p for p in _GENERATED_GITIGNORE_PATTERNS if p not in existing_patterns]
     if not missing:
         return False
 
@@ -182,8 +180,8 @@ def create_lexibrary_skeleton(project_root: Path) -> list[Path]:
     # Ensure .iwh files are gitignored
     ensure_iwh_gitignored(project_root)
 
-    # Ensure daemon runtime files are gitignored
-    _ensure_daemon_files_gitignored(project_root)
+    # Ensure generated artifacts are gitignored
+    _ensure_generated_files_gitignored(project_root)
 
     return created
 
@@ -246,7 +244,7 @@ def create_lexibrary_from_wizard(
     # Ensure .iwh files are gitignored
     ensure_iwh_gitignored(project_root)
 
-    # Ensure daemon runtime files are gitignored
-    _ensure_daemon_files_gitignored(project_root)
+    # Ensure generated artifacts are gitignored
+    _ensure_generated_files_gitignored(project_root)
 
     return created

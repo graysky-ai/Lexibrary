@@ -127,9 +127,7 @@ class TestIWHCleanupOrphaned:
         designs = project / ".lexibrary" / "designs"
         # Source directory does NOT exist -- no project/src/deleted_module/
         recent_time = datetime.now(UTC) - timedelta(hours=10)
-        iwh_path = _write_iwh(
-            designs, "src/deleted_module", created=recent_time, scope="blocked"
-        )
+        iwh_path = _write_iwh(designs, "src/deleted_module", created=recent_time, scope="blocked")
 
         result = iwh_cleanup(project, ttl_hours=72)
 
@@ -274,9 +272,7 @@ class TestIWHCleanupMixed:
 
         # 3. Within TTL but source missing -> orphaned
         orphan_time = datetime.now(UTC) - timedelta(hours=5)
-        orphan_path = _write_iwh(
-            designs, "src/gone", created=orphan_time, scope="warning"
-        )
+        orphan_path = _write_iwh(designs, "src/gone", created=orphan_time, scope="warning")
 
         result = iwh_cleanup(project, ttl_hours=72)
 

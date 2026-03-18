@@ -7,7 +7,6 @@ from lexibrary.config.schema import (
     ConceptConfig,
     ConventionConfig,
     ConventionDeclaration,
-    DaemonConfig,
     DeprecationConfig,
     IgnoreConfig,
     IWHConfig,
@@ -15,6 +14,7 @@ from lexibrary.config.schema import (
     LLMConfig,
     MappingConfig,
     StackConfig,
+    SweepConfig,
     TokenBudgetConfig,
     TokenizerConfig,
 )
@@ -25,7 +25,6 @@ __all__ = [
     "ConceptConfig",
     "ConventionConfig",
     "ConventionDeclaration",
-    "DaemonConfig",
     "DeprecationConfig",
     "IgnoreConfig",
     "IWHConfig",
@@ -33,6 +32,7 @@ __all__ = [
     "LLMConfig",
     "MappingConfig",
     "StackConfig",
+    "SweepConfig",
     "TokenBudgetConfig",
     "TokenizerConfig",
 ]

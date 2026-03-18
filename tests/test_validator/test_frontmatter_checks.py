@@ -463,13 +463,9 @@ Body.
         designs_dir = ld / "designs"
         designs_dir.mkdir(parents=True)
         # Write a .comments.yaml file — should be skipped (not .md)
-        (designs_dir / ".comments.yaml").write_text(
-            "count: 3\n", encoding="utf-8"
-        )
+        (designs_dir / ".comments.yaml").write_text("count: 3\n", encoding="utf-8")
         # Write an .iwh file — should be skipped (not .md)
-        (designs_dir / ".iwh").write_text(
-            "---\nauthor: test\n---\n", encoding="utf-8"
-        )
+        (designs_dir / ".iwh").write_text("---\nauthor: test\n---\n", encoding="utf-8")
 
         issues = check_design_frontmatter(tmp_path, ld)
         assert issues == []

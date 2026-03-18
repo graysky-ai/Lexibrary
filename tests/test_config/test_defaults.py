@@ -10,11 +10,11 @@ _DEFAULT_CONFIG = read_template("config/default_config.yaml")
 
 def test_template_is_nonempty_yaml() -> None:
     assert "llm:" in _DEFAULT_CONFIG
-    assert "daemon:" in _DEFAULT_CONFIG
+    assert "sweep:" in _DEFAULT_CONFIG
 
 
 def test_template_contains_all_sections() -> None:
-    for section in ("llm:", "token_budgets:", "mapping:", "ignore:", "daemon:"):
+    for section in ("llm:", "token_budgets:", "mapping:", "ignore:", "sweep:"):
         assert section in _DEFAULT_CONFIG
 
 
@@ -34,21 +34,20 @@ def test_template_contains_iwh_section() -> None:
     assert "enabled: true" in _DEFAULT_CONFIG
 
 
-def test_template_contains_new_daemon_fields() -> None:
-    """Template includes updated daemon fields from update-triggers change."""
+def test_template_contains_sweep_fields() -> None:
+    """Template includes sweep fields."""
     assert "sweep_interval_seconds: 3600" in _DEFAULT_CONFIG
     assert "sweep_skip_if_unchanged: true" in _DEFAULT_CONFIG
-    assert "git_suppression_seconds: 5" in _DEFAULT_CONFIG
-    assert "watchdog_enabled: false" in _DEFAULT_CONFIG
     assert "log_level: info" in _DEFAULT_CONFIG
 
 
-def test_template_no_old_enabled_field() -> None:
-    """Template SHALL NOT include the old standalone daemon enabled field."""
-    # Extract the daemon section and check there is no bare "enabled:" line
-    # (watchdog_enabled is fine, but a standalone "enabled:" is not)
-    daemon_section = _DEFAULT_CONFIG.split("daemon:")[1].split("\n# ")[0]
-    daemon_lines = [line.strip() for line in daemon_section.splitlines()]
-    assert not any(line.startswith("enabled:") for line in daemon_lines), (
-        "daemon section should not contain a standalone 'enabled:' field"
-    )
+def test_template_no_daemon_section() -> None:
+    """Template SHALL NOT include the old daemon: section."""
+    assert "daemon:" not in _DEFAULT_CONFIG
+
+
+def test_template_no_removed_daemon_fields() -> None:
+    """Template SHALL NOT include removed daemon fields."""
+    assert "debounce_seconds" not in _DEFAULT_CONFIG
+    assert "git_suppression_seconds" not in _DEFAULT_CONFIG
+    assert "watchdog_enabled" not in _DEFAULT_CONFIG

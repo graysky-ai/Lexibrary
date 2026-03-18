@@ -19,9 +19,7 @@ HOOK_MARKER = "# lexibrary:pre-commit"
 
 # The hook script appended (or written) to .git/hooks/pre-commit.
 # Runs lexictl validate in CI mode and blocks the commit on failure.
-HOOK_SCRIPT_TEMPLATE = read_template("hooks/pre-commit.sh").replace(
-    "{hook_marker}", HOOK_MARKER
-)
+HOOK_SCRIPT_TEMPLATE = read_template("hooks/pre-commit.sh").replace("{hook_marker}", HOOK_MARKER)
 
 
 @dataclass

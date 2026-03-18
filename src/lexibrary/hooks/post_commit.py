@@ -21,9 +21,7 @@ HOOK_MARKER = "# lexibrary:post-commit"
 # The hook script appended (or written) to .git/hooks/post-commit.
 # Uses git diff-tree to list changed files and passes them to lexictl
 # in the background, redirecting output to .lexibrary.log.
-HOOK_SCRIPT_TEMPLATE = read_template("hooks/post-commit.sh").replace(
-    "{hook_marker}", HOOK_MARKER
-)
+HOOK_SCRIPT_TEMPLATE = read_template("hooks/post-commit.sh").replace("{hook_marker}", HOOK_MARKER)
 
 
 @dataclass

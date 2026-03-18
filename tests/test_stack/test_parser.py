@@ -619,7 +619,8 @@ class TestParseNonCanonicalOrder:
 
 
 class TestParseScaffoldOnlyPost:
-    """Task 3.9: HTML comment placeholders are stripped -- scaffold-only post parses to empty fields."""
+    """Task 3.9: HTML comment placeholders are stripped -- scaffold-only post parses to empty
+    fields."""
 
     def test_problem_empty(self, tmp_path: Path) -> None:
         p = tmp_path / "ST-014.md"

@@ -57,7 +57,7 @@ def parse_convention_file(path: Path) -> ConventionFile | None:
         logger.debug("Failed to parse convention frontmatter in %s: %s", path, exc)
         return None
 
-    body = text[fm_match.end():]
+    body = text[fm_match.end() :]
     rule = extract_rule(body)
 
     return ConventionFile(

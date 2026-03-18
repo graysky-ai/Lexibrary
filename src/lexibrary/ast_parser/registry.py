@@ -163,9 +163,7 @@ def get_language(extension: str) -> Language | None:
     except Exception as exc:
         from lexibrary.exceptions import ParseError  # noqa: PLC0415
 
-        raise ParseError(
-            f"Failed to load grammar for {extension}: {exc}"
-        ) from exc
+        raise ParseError(f"Failed to load grammar for {extension}: {exc}") from exc
 
 
 def get_parser(extension: str) -> Parser | None:
@@ -203,9 +201,7 @@ def get_parser(extension: str) -> Parser | None:
     except Exception as exc:
         from lexibrary.exceptions import ParseError  # noqa: PLC0415
 
-        raise ParseError(
-            f"Failed to create parser for {extension}: {exc}"
-        ) from exc
+        raise ParseError(f"Failed to create parser for {extension}: {exc}") from exc
 
 
 def get_supported_extensions() -> list[str]:

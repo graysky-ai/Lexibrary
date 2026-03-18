@@ -82,9 +82,7 @@ def parse_interface(file_path: Path) -> InterfaceSkeleton | None:
     try:
         return extractor(file_path)
     except Exception as exc:
-        raise ParseError(
-            f"Failed to parse interface for {file_path}: {exc}"
-        ) from exc
+        raise ParseError(f"Failed to parse interface for {file_path}: {exc}") from exc
 
 
 def hash_interface(skeleton: InterfaceSkeleton) -> str:

@@ -214,12 +214,12 @@ def test_script_runs_in_background(tmp_path: Path) -> None:
 
 
 def test_script_redirects_to_log(tmp_path: Path) -> None:
-    """Hook script redirects output to .lexibrary/daemon.log."""
+    """Hook script redirects output to .lexibrary/lexictl.log."""
     root = _make_git_repo(tmp_path)
     install_post_commit_hook(root)
 
     content = (root / ".git" / "hooks" / "post-commit").read_text()
-    assert ".lexibrary/daemon.log" in content
+    assert ".lexibrary/lexictl.log" in content
 
 
 def test_hook_marker_present(tmp_path: Path) -> None:

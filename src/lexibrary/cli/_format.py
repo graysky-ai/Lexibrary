@@ -7,14 +7,14 @@ format with :func:`get_format` and adapt their output accordingly.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 # ---------------------------------------------------------------------------
 # Format enum
 # ---------------------------------------------------------------------------
 
 
-class OutputFormat(str, Enum):
+class OutputFormat(StrEnum):
     """Supported output formats for the ``--format`` flag."""
 
     markdown = "markdown"

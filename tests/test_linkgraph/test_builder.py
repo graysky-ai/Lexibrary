@@ -1798,9 +1798,7 @@ Running PostgreSQL 14 with pgbouncer in transaction mode on 4 worker nodes.
 
 Reduce idle connection timeout and enable connection recycling.
 """
-        stack_path = _create_stack_post(
-            tmp_path, "ST-010.md", post_with_context_attempts
-        )
+        stack_path = _create_stack_post(tmp_path, "ST-010.md", post_with_context_attempts)
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_stack_post(stack_path, "2025-07-01T12:00:00+00:00")
 

@@ -501,9 +501,7 @@ class LinkGraph:
 
     # -- convention detail lookup -------------------------------------------
 
-    def get_convention_details(
-        self, artifact_ids: list[int]
-    ) -> dict[int, tuple[str, str]]:
+    def get_convention_details(self, artifact_ids: list[int]) -> dict[int, tuple[str, str]]:
         """Return ``(directory_path, body)`` for convention artifact IDs.
 
         Performs a single batch query against the ``conventions`` table.

@@ -99,6 +99,8 @@ class TokenBudgetConfig(BaseModel):
     convention_file_tokens: int = 500
     orientation_tokens: int = 300
     lookup_total_tokens: int = 1200
+    summarize_max_tokens: int = 200
+    archivist_max_tokens: int = 5000
 
 
 class MappingConfig(BaseModel):
@@ -131,16 +133,13 @@ class IgnoreConfig(BaseModel):
     )
 
 
-class DaemonConfig(BaseModel):
-    """Daemon watch configuration."""
+class SweepConfig(BaseModel):
+    """Sweep configuration for periodic re-indexing."""
 
     model_config = ConfigDict(extra="ignore")
 
-    debounce_seconds: float = 2.0
     sweep_interval_seconds: int = 3600
     sweep_skip_if_unchanged: bool = True
-    git_suppression_seconds: int = 5
-    watchdog_enabled: bool = False
     log_level: str = "info"
 
 
@@ -231,6 +230,6 @@ class LexibraryConfig(BaseModel):
     token_budgets: TokenBudgetConfig = Field(default_factory=TokenBudgetConfig)
     mapping: MappingConfig = Field(default_factory=MappingConfig)
     ignore: IgnoreConfig = Field(default_factory=IgnoreConfig)
-    daemon: DaemonConfig = Field(default_factory=DaemonConfig)
+    sweep: SweepConfig = Field(default_factory=SweepConfig)
     crawl: CrawlConfig = Field(default_factory=CrawlConfig)
     ast: ASTConfig = Field(default_factory=ASTConfig)

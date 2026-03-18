@@ -42,10 +42,7 @@ def design_update(
     try:
         target.relative_to(scope_abs)
     except ValueError:
-        error(
-            f"{source_file} is outside the configured scope_root "
-            f"({config.scope_root})."
-        )
+        error(f"{source_file} is outside the configured scope_root ({config.scope_root}).")
         raise typer.Exit(1) from None
 
     # Compute mirror path

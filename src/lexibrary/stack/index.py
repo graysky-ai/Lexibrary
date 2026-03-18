@@ -85,9 +85,7 @@ class StackIndex:
 
     def by_resolution_type(self, resolution_type: str) -> list[StackPost]:
         """Filter posts by resolution type value."""
-        return [
-            p for p in self._posts if p.frontmatter.resolution_type == resolution_type
-        ]
+        return [p for p in self._posts if p.frontmatter.resolution_type == resolution_type]
 
     # ------------------------------------------------------------------
     # Dunder helpers

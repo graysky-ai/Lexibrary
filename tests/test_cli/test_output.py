@@ -37,9 +37,7 @@ class TestInfo:
 
 
 class TestWarn:
-    def test_prints_with_warning_prefix_to_stderr(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_prints_with_warning_prefix_to_stderr(self, capsys: pytest.CaptureFixture[str]) -> None:
         warn("something is off")
         captured = capsys.readouterr()
         assert captured.err == "Warning: something is off\n"
@@ -57,9 +55,7 @@ class TestWarn:
 
 
 class TestError:
-    def test_prints_with_error_prefix_to_stderr(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_prints_with_error_prefix_to_stderr(self, capsys: pytest.CaptureFixture[str]) -> None:
         error("something broke")
         captured = capsys.readouterr()
         assert captured.err == "Error: something broke\n"
@@ -77,9 +73,7 @@ class TestError:
 
 
 class TestHint:
-    def test_prints_with_hint_prefix_to_stderr(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_prints_with_hint_prefix_to_stderr(self, capsys: pytest.CaptureFixture[str]) -> None:
         hint("run `lexi validate`")
         captured = capsys.readouterr()
         assert captured.err == "Hint: run `lexi validate`\n"

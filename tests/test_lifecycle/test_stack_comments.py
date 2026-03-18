@@ -81,9 +81,7 @@ class TestStackCommentPath:
         """Replaces .md suffix with .comments.yaml."""
         p = Path("/project/.lexibrary/stack/ST-001-some-slug.md")
         result = stack_comment_path(p)
-        assert result == Path(
-            "/project/.lexibrary/stack/ST-001-some-slug.comments.yaml"
-        )
+        assert result == Path("/project/.lexibrary/stack/ST-001-some-slug.comments.yaml")
 
     def test_relative_path(self) -> None:
         """Works with relative paths."""

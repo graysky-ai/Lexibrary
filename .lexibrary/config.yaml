@@ -15,3 +15,15 @@ llm:
   model: gpt-5-mini
   api_key_env: OPENAI_API_KEY
   api_key_source: dotenv
+
+# Per-artifact token budgets (validation targets for generated content)
+token_budgets:
+  design_file_tokens: 400
+  design_file_abridged_tokens: 100
+  aindex_tokens: 200
+  concept_file_tokens: 400
+  convention_file_tokens: 500
+  orientation_tokens: 300
+  lookup_total_tokens: 1200
+  summarize_max_tokens: 200
+  archivist_max_tokens: 5000

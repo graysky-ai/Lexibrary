@@ -22,7 +22,6 @@ Operators use `lexictl` for maintenance tasks:
 - `lexictl status` -- View a dashboard of library health and staleness.
 - `lexictl setup` -- Install or update agent environment rules and git hooks.
 - `lexictl sweep` -- Run a library update sweep (one-shot or watch mode).
-- `lexictl daemon` -- Manage the watchdog daemon for real-time file monitoring.
 
 ### `lexi` -- For AI agents
 

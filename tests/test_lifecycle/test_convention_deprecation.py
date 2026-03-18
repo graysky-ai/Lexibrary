@@ -60,9 +60,7 @@ def _create_comment_file(convention_path: Path) -> Path:
     """Create a sibling .comments.yaml file for a convention."""
     comment_path = convention_path.with_suffix(".comments.yaml")
     comment_path.write_text(
-        "comments:\n"
-        "  - body: 'A test comment'\n"
-        "    date: '2026-01-01T00:00:00+00:00'\n",
+        "comments:\n  - body: 'A test comment'\n    date: '2026-01-01T00:00:00+00:00'\n",
         encoding="utf-8",
     )
     return comment_path
@@ -197,9 +195,7 @@ class TestHardDeleteExpiredConventions:
             "lexibrary.lifecycle.convention_deprecation._count_commits_since",
             return_value=100,
         ):
-            result = hard_delete_expired_conventions(
-                tmp_path, lexibrary_dir, ttl_commits=50
-            )
+            result = hard_delete_expired_conventions(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert convention_path in result.deleted
         assert not convention_path.exists()
@@ -219,9 +215,7 @@ class TestHardDeleteExpiredConventions:
             "lexibrary.lifecycle.convention_deprecation._count_commits_since",
             return_value=10,
         ):
-            result = hard_delete_expired_conventions(
-                tmp_path, lexibrary_dir, ttl_commits=50
-            )
+            result = hard_delete_expired_conventions(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert result.deleted == []
         assert convention_path.exists()
@@ -233,9 +227,7 @@ class TestHardDeleteExpiredConventions:
         )
         lexibrary_dir = tmp_path / ".lexibrary"
 
-        result = hard_delete_expired_conventions(
-            tmp_path, lexibrary_dir, ttl_commits=50
-        )
+        result = hard_delete_expired_conventions(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert result.deleted == []
         assert convention_path.exists()
@@ -258,9 +250,7 @@ class TestHardDeleteExpiredConventions:
             "lexibrary.lifecycle.convention_deprecation._count_commits_since",
             return_value=100,
         ):
-            result = hard_delete_expired_conventions(
-                tmp_path, lexibrary_dir, ttl_commits=50
-            )
+            result = hard_delete_expired_conventions(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert convention_path in result.deleted
         assert not convention_path.exists()
@@ -286,9 +276,7 @@ class TestHardDeleteExpiredConventions:
             "lexibrary.lifecycle.convention_deprecation._count_commits_since",
             return_value=100,
         ):
-            result = hard_delete_expired_conventions(
-                tmp_path, lexibrary_dir, ttl_commits=50
-            )
+            result = hard_delete_expired_conventions(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert convention_path in result.deleted
         assert not convention_path.exists()
@@ -299,9 +287,7 @@ class TestHardDeleteExpiredConventions:
         lexibrary_dir = tmp_path / ".lexibrary"
         lexibrary_dir.mkdir(parents=True, exist_ok=True)
 
-        result = hard_delete_expired_conventions(
-            tmp_path, lexibrary_dir, ttl_commits=50
-        )
+        result = hard_delete_expired_conventions(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert result.deleted == []
         assert result.comments_deleted == []
@@ -333,9 +319,7 @@ class TestHardDeleteExpiredConventions:
             "lexibrary.lifecycle.convention_deprecation._count_commits_since",
             side_effect=mock_count,
         ):
-            result = hard_delete_expired_conventions(
-                tmp_path, lexibrary_dir, ttl_commits=50
-            )
+            result = hard_delete_expired_conventions(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert expired_path in result.deleted
         assert not expired_path.exists()
@@ -343,14 +327,10 @@ class TestHardDeleteExpiredConventions:
 
     def test_preserves_draft_convention(self, tmp_path: Path) -> None:
         """Draft conventions are never deleted."""
-        convention_path = _create_convention_file(
-            tmp_path, "draft", title="Draft", status="draft"
-        )
+        convention_path = _create_convention_file(tmp_path, "draft", title="Draft", status="draft")
         lexibrary_dir = tmp_path / ".lexibrary"
 
-        result = hard_delete_expired_conventions(
-            tmp_path, lexibrary_dir, ttl_commits=50
-        )
+        result = hard_delete_expired_conventions(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert result.deleted == []
         assert convention_path.exists()
@@ -379,9 +359,7 @@ class TestHardDeleteExpiredConventions:
             "lexibrary.lifecycle.convention_deprecation._count_commits_since",
             return_value=100,
         ):
-            result = hard_delete_expired_conventions(
-                tmp_path, lexibrary_dir, ttl_commits=50
-            )
+            result = hard_delete_expired_conventions(tmp_path, lexibrary_dir, ttl_commits=50)
 
         assert len(result.deleted) == 2
         assert convention_a in result.deleted

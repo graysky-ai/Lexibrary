@@ -56,10 +56,7 @@ def init(
 
     # Re-init guard
     if (project_root / ".lexibrary").exists():
-        error(
-            "Project already initialised."
-            " Use `lexictl setup --update` to modify settings."
-        )
+        error("Project already initialised. Use `lexictl setup --update` to modify settings.")
         raise typer.Exit(1)
 
     # Non-TTY detection
@@ -123,11 +120,13 @@ def init(
             from lexibrary.archivist.pipeline import update_project  # noqa: PLC0415
             from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
             from lexibrary.config.loader import load_config  # noqa: PLC0415
+            from lexibrary.llm.client_registry import build_client_registry  # noqa: PLC0415
             from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
 
             config = load_config(project_root)
             rate_limiter = RateLimiter()
-            archivist = ArchivistService(rate_limiter=rate_limiter, config=config.llm)
+            registry = build_client_registry(config)
+            archivist = ArchivistService(rate_limiter=rate_limiter, client_registry=registry)
             stats = asyncio.run(update_project(project_root, config, archivist))
             info(
                 f"Update complete. "
@@ -184,6 +183,16 @@ def update(
             ),
         ),
     ] = False,
+    unlimited: Annotated[
+        bool,
+        typer.Option(
+            "--unlimited",
+            help=(
+                "Bypass the size gate so large files are sent to the LLM "
+                "instead of receiving a skeleton fallback."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Re-index changed files and regenerate design files."""
     import asyncio  # noqa: PLC0415
@@ -199,35 +208,27 @@ def update(
     )
     from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
     from lexibrary.config.loader import load_config  # noqa: PLC0415
+    from lexibrary.llm.client_registry import build_client_registry  # noqa: PLC0415
     from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
 
     # Mutual exclusivity checks — skeleton first (it subsumes the path argument)
-    if skeleton and (changed_only is not None or topology or dry_run):
+    if skeleton and (changed_only is not None or topology or dry_run or unlimited):
         error(
             "--skeleton cannot be combined with"
-            " --changed-only, --topology,"
-            " or --dry-run."
+            " --changed-only, --topology, --dry-run, or --unlimited."
         )
         raise typer.Exit(1)
 
     if skeleton and path is None:
-        error(
-            "--skeleton requires a file path argument."
-        )
+        error("--skeleton requires a file path argument.")
         raise typer.Exit(1)
 
     if path is not None and changed_only is not None:
-        error(
-            "path and --changed-only"
-            " are mutually exclusive. Use one or the other."
-        )
+        error("path and --changed-only are mutually exclusive. Use one or the other.")
         raise typer.Exit(1)
 
     if topology and (changed_only is not None or path is not None):
-        error(
-            "--topology cannot be combined with"
-            " path or --changed-only."
-        )
+        error("--topology cannot be combined with path or --changed-only.")
         raise typer.Exit(1)
 
     project_root = require_project_root()
@@ -243,10 +244,7 @@ def update(
         try:
             target.relative_to(project_root)
         except ValueError:
-            error(
-                f"Path is outside the project root: {path}\n"
-                f"Project root: {project_root}"
-            )
+            error(f"Path is outside the project root: {path}\nProject root: {project_root}")
             raise typer.Exit(1) from None
 
     # --skeleton: quick skeleton design file without LLM enrichment
@@ -268,9 +266,7 @@ def update(
 
         queue_for_enrichment(project_root, target)
 
-        info(
-            f"Skeleton generated. Change level: {result.change.value}"
-        )
+        info(f"Skeleton generated. Change level: {result.change.value}")
         return
 
     # --topology: regenerate TOPOLOGY.md only
@@ -297,9 +293,7 @@ def update(
             if target.is_file():
                 results = asyncio.run(dry_run_files([target], project_root, config))
             else:
-                results = asyncio.run(
-                    dry_run_project(project_root, config, scope_dir=target)
-                )
+                results = asyncio.run(dry_run_project(project_root, config, scope_dir=target))
         else:
             results = asyncio.run(dry_run_project(project_root, config))
 
@@ -325,14 +319,17 @@ def update(
         return
 
     rate_limiter = RateLimiter()
-    archivist = ArchivistService(rate_limiter=rate_limiter, config=config.llm)
+    registry = build_client_registry(config, unlimited=unlimited)
+    archivist = ArchivistService(rate_limiter=rate_limiter, client_registry=registry)
 
     # --changed-only: batch update specific files
     if changed_only is not None:
         resolved_paths = [p.resolve() for p in changed_only]
         info(f"Updating {len(resolved_paths)} changed file(s)...")
 
-        stats = asyncio.run(update_files(resolved_paths, project_root, config, archivist))
+        stats = asyncio.run(
+            update_files(resolved_paths, project_root, config, archivist, unlimited=unlimited)
+        )
 
         info("")
         info("Update summary:")
@@ -347,7 +344,7 @@ def update(
                 try:
                     rel = Path(failed_path).relative_to(project_root)
                 except ValueError:
-                    rel = failed_path
+                    rel = Path(failed_path)
                 error(f"    - {rel}: {reason}")
 
         if stats.error_summary.has_errors():
@@ -362,7 +359,9 @@ def update(
     # Single file update
     if target is not None and target.is_file():
         info(f"Updating design file for {path}...")
-        result = asyncio.run(update_file(target, project_root, config, archivist))
+        result = asyncio.run(
+            update_file(target, project_root, config, archivist, unlimited=unlimited)
+        )
         if result.failed:
             error(f"Failed to update design file for {path}")
             raise typer.Exit(1)
@@ -385,15 +384,22 @@ def update(
     if target is not None:
         stats = asyncio.run(
             update_directory(
-                target, project_root, config, archivist,
+                target,
+                project_root,
+                config,
+                archivist,
                 progress_callback=_progress_callback,
+                unlimited=unlimited,
             )
         )
     else:
         stats = asyncio.run(
             update_project(
-                project_root, config, archivist,
+                project_root,
+                config,
+                archivist,
                 progress_callback=_progress_callback,
+                unlimited=unlimited,
             )
         )
 
@@ -416,7 +422,7 @@ def update(
             try:
                 rel = Path(failed_path).relative_to(project_root)
             except ValueError:
-                rel = failed_path
+                rel = Path(failed_path)
             error(f"    - {rel}: {reason}")
     if stats.aindex_refreshed:
         info(f"  .aindex refreshed:   {stats.aindex_refreshed}")
@@ -446,21 +452,13 @@ def update(
         if stats.designs_unlinked:
             info(f"  Designs unlinked:    {stats.designs_unlinked}")
         if stats.designs_deleted_ttl:
-            warn(
-                f"  Designs TTL-deleted: {stats.designs_deleted_ttl}"
-            )
+            warn(f"  Designs TTL-deleted: {stats.designs_deleted_ttl}")
         if stats.concepts_deleted_ttl:
-            warn(
-                f"  Concepts TTL-deleted: {stats.concepts_deleted_ttl}"
-            )
+            warn(f"  Concepts TTL-deleted: {stats.concepts_deleted_ttl}")
         if stats.concepts_skipped_referenced:
-            info(
-                f"  Concepts skipped (referenced): {stats.concepts_skipped_referenced}"
-            )
+            info(f"  Concepts skipped (referenced): {stats.concepts_skipped_referenced}")
         if stats.conventions_deleted_ttl:
-            warn(
-                f"  Conventions TTL-deleted: {stats.conventions_deleted_ttl}"
-            )
+            warn(f"  Conventions TTL-deleted: {stats.conventions_deleted_ttl}")
 
     # Enrichment queue stats
     has_queue = (stats.queue_processed + stats.queue_failed + stats.queue_remaining) > 0
@@ -544,13 +542,11 @@ def bootstrap(
     from lexibrary.config.loader import load_config  # noqa: PLC0415
     from lexibrary.indexer.orchestrator import index_recursive  # noqa: PLC0415
     from lexibrary.lifecycle.bootstrap import bootstrap_full, bootstrap_quick  # noqa: PLC0415
+    from lexibrary.llm.client_registry import build_client_registry  # noqa: PLC0415
 
     # Mutual exclusivity
     if full and quick:
-        error(
-            "--full and --quick"
-            " are mutually exclusive."
-        )
+        error("--full and --quick are mutually exclusive.")
         raise typer.Exit(1)
 
     project_root = require_project_root()
@@ -574,10 +570,7 @@ def bootstrap(
 
     # Run recursive indexing with progress
     rel_scope = scope_dir.relative_to(project_root) if scope_dir != project_root else Path(".")
-    info(
-        f"Bootstrapping {rel_scope} in {project_root.name}"
-        f" ({mode_label} mode)..."
-    )
+    info(f"Bootstrapping {rel_scope} in {project_root.name} ({mode_label} mode)...")
 
     # Phase 1: .aindex generation
     info("")
@@ -604,9 +597,7 @@ def bootstrap(
 
     # Phase 2: Design file generation
     info("")
-    info(
-        f"Phase 2: Generating design files ({mode_label} mode)..."
-    )
+    info(f"Phase 2: Generating design files ({mode_label} mode)...")
 
     _design_file_count = 0
 
@@ -616,12 +607,14 @@ def bootstrap(
         info(f"  [{status}] {file_path.name}")
 
     if full:
+        registry = build_client_registry(config)
         design_stats = asyncio.run(
             bootstrap_full(
                 project_root,
                 config,
                 scope_override=scope,
                 progress_callback=_design_progress,
+                client_registry=registry,
             )
         )
     else:
@@ -695,21 +688,17 @@ def index(
     try:
         target.relative_to(project_root)
     except ValueError:
-        error(
-            f"Directory is outside the project root: {directory}\n"
-            f"Project root: {project_root}"
-        )
+        error(f"Directory is outside the project root: {directory}\nProject root: {project_root}")
         raise typer.Exit(1) from None
 
     config = load_config(project_root)
 
     if recursive:
+
         def _progress_callback(current: int, total: int, name: str) -> None:
             info(f"  Indexing [{current}/{total}] {name}")
 
-        stats = index_recursive(
-            target, project_root, config, progress_callback=_progress_callback
-        )
+        stats = index_recursive(target, project_root, config, progress_callback=_progress_callback)
 
         info(
             f"\nIndexing complete. "
@@ -804,14 +793,12 @@ def status(
 ) -> None:
     """Show library health and staleness summary."""
     project_root = require_project_root()
-    exit_code = _run_status(
-        project_root, path=path, quiet=quiet, cli_prefix="lexictl"
-    )
+    exit_code = _run_status(project_root, path=path, quiet=quiet, cli_prefix="lexictl")
     raise typer.Exit(exit_code)
 
 
 # ---------------------------------------------------------------------------
-# setup / sweep / daemon
+# setup / sweep
 # ---------------------------------------------------------------------------
 
 
@@ -883,10 +870,7 @@ def setup(
     environments = list(env) if env else list(config.agent_environment)
 
     if not environments:
-        warn(
-            "No agent environments configured."
-            " Run `lexictl init` to set up agent environments."
-        )
+        warn("No agent environments configured. Run `lexictl init` to set up agent environments.")
         raise typer.Exit(1)
 
     # Validate environment names before generating
@@ -917,6 +901,48 @@ def setup(
     info(f"\nSetup complete. {total_files} rule file(s) updated.")
 
 
+def _has_changes(root: Path, last_sweep: float) -> bool:
+    """Check whether any file under *root* has mtime newer than *last_sweep*.
+
+    Uses ``os.scandir()`` for a fast stat walk.  Returns ``True`` on the
+    first file found with a newer mtime (short-circuit).  Skips the
+    ``.lexibrary/`` directory to avoid self-triggered loops.
+
+    If *last_sweep* is ``0.0`` (first run), always returns ``True``.
+    """
+    import os as _os  # noqa: PLC0415
+
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    if last_sweep == 0.0:
+        return True
+
+    lexibrary_abs = (root / LEXIBRARY_DIR).resolve()
+
+    def _scan(directory: Path) -> bool:
+        try:
+            with _os.scandir(directory) as it:
+                for entry in it:
+                    entry_path = Path(entry.path).resolve()
+
+                    if entry.is_dir(follow_symlinks=False):
+                        if entry_path == lexibrary_abs:
+                            continue
+                        if _scan(entry_path):
+                            return True
+                    elif entry.is_file(follow_symlinks=False):
+                        try:
+                            if entry.stat().st_mtime > last_sweep:
+                                return True
+                        except OSError:
+                            continue
+        except OSError:
+            pass
+        return False
+
+    return _scan(root)
+
+
 @lexictl_app.command()
 def sweep(
     *,
@@ -926,102 +952,78 @@ def sweep(
     ] = False,
 ) -> None:
     """Run a library update sweep (one-shot or watch mode)."""
-    from lexibrary.daemon.service import DaemonService  # noqa: PLC0415
-
-    project_root = require_project_root()
-    svc = DaemonService(project_root)
-
-    if watch:
-        svc.run_watch()
-    else:
-        svc.run_once()
-
-
-@lexictl_app.command()
-def daemon(
-    action: Annotated[
-        str | None,
-        typer.Argument(help="Action to perform: start, stop, or status."),
-    ] = None,
-) -> None:
-    """Manage the watchdog daemon (deprecated -- prefer 'sweep')."""
-    import os  # noqa: PLC0415
+    import asyncio  # noqa: PLC0415
     import signal as _signal  # noqa: PLC0415
+    import threading  # noqa: PLC0415
+    import time  # noqa: PLC0415
 
+    from lexibrary.archivist.pipeline import update_project  # noqa: PLC0415
+    from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
     from lexibrary.config.loader import load_config  # noqa: PLC0415
-    from lexibrary.daemon.service import DaemonService  # noqa: PLC0415
+    from lexibrary.llm.client_registry import build_client_registry  # noqa: PLC0415
+    from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
 
     project_root = require_project_root()
-    resolved_action = action or "start"
-    valid_actions = ("start", "stop", "status")
+    config = load_config(project_root)
 
-    if resolved_action not in valid_actions:
-        error(
-            f"Unknown action: {resolved_action}\n"
-            f"Valid actions: {', '.join(valid_actions)}"
+    last_sweep: float = 0.0
+
+    def _run_single_sweep() -> float:
+        """Execute one update_project() call and return the current time."""
+        rate_limiter = RateLimiter()
+        registry = build_client_registry(config)
+        archivist = ArchivistService(rate_limiter=rate_limiter, client_registry=registry)
+        stats = asyncio.run(update_project(project_root, config, archivist))
+        info(
+            f"Sweep complete: {stats.files_scanned} scanned, "
+            f"{stats.files_updated} updated, "
+            f"{stats.files_created} created, "
+            f"{stats.files_unchanged} unchanged"
+            + (f", {stats.files_failed} failed" if stats.files_failed else "")
         )
-        raise typer.Exit(1)
+        return time.time()
 
-    pid_path = project_root / ".lexibrary" / "daemon.pid"
-
-    if resolved_action == "start":
-        config = load_config(project_root)
-        if not config.daemon.watchdog_enabled:
-            warn(
-                "Watchdog mode is disabled in config.\n"
-                "Use `lexictl sweep --watch` for periodic sweeps, "
-                "or set `daemon.watchdog_enabled: true` in config."
-            )
+    if not watch:
+        # One-shot mode
+        if config.sweep.sweep_skip_if_unchanged and not _has_changes(
+            project_root, last_sweep
+        ):
+            info("No changes detected -- skipping sweep.")
             return
-        svc = DaemonService(project_root)
-        svc.run_watchdog()
+        _run_single_sweep()
+        return
 
-    elif resolved_action == "stop":
-        if not pid_path.exists():
-            warn("No daemon is running (no PID file found).")
-            return
-        try:
-            pid = int(pid_path.read_text(encoding="utf-8").strip())
-        except (ValueError, OSError):
-            error("Cannot read PID file.")
-            pid_path.unlink(missing_ok=True)
-            raise typer.Exit(1) from None
+    # Watch mode: periodic sweeps with threading.Event for clean shutdown
+    shutdown_event = threading.Event()
+    interval = float(config.sweep.sweep_interval_seconds)
 
-        try:
-            os.kill(pid, _signal.SIGTERM)
-            info(f"Sent SIGTERM to daemon (PID {pid}).")
-        except ProcessLookupError:
-            warn(
-                f"Process {pid} not found -- cleaning up stale PID file."
-            )
-            pid_path.unlink(missing_ok=True)
-        except PermissionError:
-            error(f"Permission denied sending signal to PID {pid}.")
-            raise typer.Exit(1) from None
+    def _signal_handler(signum: int, frame: object) -> None:
+        shutdown_event.set()
 
-    elif resolved_action == "status":
-        if not pid_path.exists():
-            info("No daemon is running.")
-            return
-        try:
-            pid = int(pid_path.read_text(encoding="utf-8").strip())
-        except (ValueError, OSError):
-            error("Cannot read PID file.")
-            pid_path.unlink(missing_ok=True)
-            raise typer.Exit(1) from None
+    _signal.signal(_signal.SIGTERM, _signal_handler)
+    _signal.signal(_signal.SIGINT, _signal_handler)
 
-        # Check if process is still running
-        try:
-            os.kill(pid, 0)
-            info(f"Daemon is running (PID {pid}).")
-        except ProcessLookupError:
-            warn(
-                f"Stale PID file found (PID {pid} is not running). Cleaning up."
-            )
-            pid_path.unlink(missing_ok=True)
-        except PermissionError:
-            # Process exists but we can't signal it -- it's running
-            info(f"Daemon is running (PID {pid}).")
+    info(
+        f"Watching {project_root} (sweep every {interval:.0f}s). "
+        f"Press Ctrl+C to stop."
+    )
+
+    while not shutdown_event.is_set():
+        if config.sweep.sweep_skip_if_unchanged and not _has_changes(
+            project_root, last_sweep
+        ):
+            info("No changes detected -- skipping sweep.")
+        else:
+            try:
+                last_sweep = _run_single_sweep()
+            except Exception as exc:
+                error(f"Sweep failed: {exc}")
+
+        shutdown_event.wait(timeout=interval)
+
+    info("Sweep watch stopped.")
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -1064,7 +1066,6 @@ Validation & Status
 
 Background Processing
   lexictl sweep [--watch]                Run update sweep (one-shot or watch mode)
-  lexictl daemon [start|stop|status]     (deprecated -- use 'sweep')
 
 IWH Maintenance
   lexictl iwh clean [--older-than N] [--all]
@@ -1072,7 +1073,7 @@ IWH Maintenance
 
 === Agent Guidance ===
 
-Run `lexi help` to see all agent-facing commands.
+Run `lexi --help` to see all agent-facing commands.
 
 Key agent commands:
   lexi lookup <file>         Understand a file before editing it

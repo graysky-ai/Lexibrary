@@ -10,7 +10,6 @@ from lexibrary.config.schema import (
     ConventionConfig,
     ConventionDeclaration,
     CrawlConfig,
-    DaemonConfig,
     DeprecationConfig,
     IgnoreConfig,
     IWHConfig,
@@ -18,6 +17,7 @@ from lexibrary.config.schema import (
     LLMConfig,
     MappingConfig,
     StackConfig,
+    SweepConfig,
     TokenBudgetConfig,
 )
 
@@ -68,6 +68,8 @@ def test_token_budget_defaults() -> None:
     assert config.convention_file_tokens == 500
     assert config.orientation_tokens == 300
     assert config.lookup_total_tokens == 1200
+    assert config.summarize_max_tokens == 200
+    assert config.archivist_max_tokens == 5000
     assert not hasattr(config, "start_here_tokens")
 
 
@@ -121,28 +123,32 @@ def test_ignore_config_env_patterns_in_defaults() -> None:
     assert "*.env" in config.additional_patterns
 
 
-def test_daemon_config_defaults() -> None:
-    config = DaemonConfig()
-    assert config.debounce_seconds == 2.0
+def test_sweep_config_defaults() -> None:
+    config = SweepConfig()
     assert config.sweep_interval_seconds == 3600
     assert config.sweep_skip_if_unchanged is True
-    assert config.git_suppression_seconds == 5
-    assert config.watchdog_enabled is False
     assert config.log_level == "info"
 
 
-def test_daemon_config_enabled_field_removed() -> None:
-    """DaemonConfig SHALL NOT have an enabled field."""
-    config = DaemonConfig()
-    assert not hasattr(config, "enabled")
+def test_sweep_config_removed_daemon_fields() -> None:
+    """SweepConfig SHALL NOT have the removed daemon fields."""
+    config = SweepConfig()
+    assert not hasattr(config, "debounce_seconds")
+    assert not hasattr(config, "git_suppression_seconds")
+    assert not hasattr(config, "watchdog_enabled")
 
 
-def test_daemon_config_old_enabled_silently_ignored() -> None:
-    """Loading config with old enabled: true field does not raise an error."""
-    config = DaemonConfig.model_validate({"enabled": True})
-    assert not hasattr(config, "enabled")
-    # New defaults still work
-    assert config.watchdog_enabled is False
+def test_sweep_config_old_daemon_fields_silently_ignored() -> None:
+    """Loading config with old daemon fields does not raise an error."""
+    config = SweepConfig.model_validate({
+        "debounce_seconds": 5.0,
+        "git_suppression_seconds": 10,
+        "watchdog_enabled": True,
+    })
+    assert not hasattr(config, "debounce_seconds")
+    assert not hasattr(config, "git_suppression_seconds")
+    assert not hasattr(config, "watchdog_enabled")
+    # Kept defaults still work
     assert config.sweep_interval_seconds == 3600
 
 
@@ -152,14 +158,14 @@ def test_lexibrary_config_validates_all_subconfigs() -> None:
     assert isinstance(config.token_budgets, TokenBudgetConfig)
     assert isinstance(config.mapping, MappingConfig)
     assert isinstance(config.ignore, IgnoreConfig)
-    assert isinstance(config.daemon, DaemonConfig)
+    assert isinstance(config.sweep, SweepConfig)
 
 
 def test_lexibrary_config_partial_override() -> None:
     config = LexibraryConfig.model_validate({"llm": {"provider": "openai"}})
     assert config.llm.provider == "openai"
     assert config.llm.max_retries == 3
-    assert config.daemon.watchdog_enabled is False
+    assert config.sweep.sweep_interval_seconds == 3600
 
 
 def test_invalid_type_raises_validation_error() -> None:
@@ -313,9 +319,7 @@ def test_convention_config_custom_display_limit() -> None:
 
 def test_convention_config_extra_fields_ignored() -> None:
     """ConventionConfig tolerates unknown extra fields without raising."""
-    config = ConventionConfig.model_validate(
-        {"lookup_display_limit": 5, "unknown_field": "value"}
-    )
+    config = ConventionConfig.model_validate({"lookup_display_limit": 5, "unknown_field": "value"})
     assert config.lookup_display_limit == 5
     assert not hasattr(config, "unknown_field")
 
@@ -348,17 +352,13 @@ def test_convention_config_accessible_from_lexibrary_config() -> None:
 
 def test_convention_config_from_yaml() -> None:
     """conventions.lookup_display_limit can be set via top-level config."""
-    config = LexibraryConfig.model_validate(
-        {"conventions": {"lookup_display_limit": 10}}
-    )
+    config = LexibraryConfig.model_validate({"conventions": {"lookup_display_limit": 10}})
     assert config.conventions.lookup_display_limit == 10
 
 
 def test_convention_config_deprecation_confirm_from_yaml() -> None:
     """conventions.deprecation_confirm can be set via top-level config."""
-    config = LexibraryConfig.model_validate(
-        {"conventions": {"deprecation_confirm": "maintainer"}}
-    )
+    config = LexibraryConfig.model_validate({"conventions": {"deprecation_confirm": "maintainer"}})
     assert config.conventions.deprecation_confirm == "maintainer"
 
 
@@ -367,9 +367,7 @@ def test_convention_config_deprecation_confirm_from_yaml() -> None:
 
 def test_convention_declaration_full() -> None:
     """ConventionDeclaration with all fields populated."""
-    decl = ConventionDeclaration(
-        body="Use UTC everywhere", scope="project", tags=["time"]
-    )
+    decl = ConventionDeclaration(body="Use UTC everywhere", scope="project", tags=["time"])
     assert decl.body == "Use UTC everywhere"
     assert decl.scope == "project"
     assert decl.tags == ["time"]
@@ -385,9 +383,7 @@ def test_convention_declaration_minimal() -> None:
 
 def test_convention_declaration_extra_fields_ignored() -> None:
     """ConventionDeclaration tolerates unknown extra fields."""
-    decl = ConventionDeclaration.model_validate(
-        {"body": "Rule text", "unknown": "value"}
-    )
+    decl = ConventionDeclaration.model_validate({"body": "Rule text", "unknown": "value"})
     assert decl.body == "Rule text"
     assert not hasattr(decl, "unknown")
 
@@ -428,9 +424,7 @@ def test_convention_file_tokens_default() -> None:
 
 def test_convention_file_tokens_custom() -> None:
     """convention_file_tokens can be overridden from YAML."""
-    config = LexibraryConfig.model_validate(
-        {"token_budgets": {"convention_file_tokens": 800}}
-    )
+    config = LexibraryConfig.model_validate({"token_budgets": {"convention_file_tokens": 800}})
     assert config.token_budgets.convention_file_tokens == 800
 
 
@@ -442,9 +436,7 @@ def test_lookup_total_tokens_default() -> None:
 
 def test_lookup_total_tokens_custom() -> None:
     """lookup_total_tokens can be overridden from YAML."""
-    config = LexibraryConfig.model_validate(
-        {"token_budgets": {"lookup_total_tokens": 2000}}
-    )
+    config = LexibraryConfig.model_validate({"token_budgets": {"lookup_total_tokens": 2000}})
     assert config.token_budgets.lookup_total_tokens == 2000
 
 
@@ -456,10 +448,52 @@ def test_orientation_tokens_default() -> None:
 
 def test_orientation_tokens_custom() -> None:
     """orientation_tokens can be overridden from YAML."""
-    config = LexibraryConfig.model_validate(
-        {"token_budgets": {"orientation_tokens": 500}}
-    )
+    config = LexibraryConfig.model_validate({"token_budgets": {"orientation_tokens": 500}})
     assert config.token_budgets.orientation_tokens == 500
+
+
+# --- TokenBudgetConfig summarize_max_tokens tests ---
+
+
+def test_summarize_max_tokens_default() -> None:
+    """TokenBudgetConfig.summarize_max_tokens defaults to 200."""
+    config = TokenBudgetConfig()
+    assert config.summarize_max_tokens == 200
+
+
+def test_summarize_max_tokens_custom() -> None:
+    """summarize_max_tokens can be overridden from YAML."""
+    config = LexibraryConfig.model_validate({"token_budgets": {"summarize_max_tokens": 500}})
+    assert config.token_budgets.summarize_max_tokens == 500
+
+
+def test_summarize_max_tokens_absent_uses_default() -> None:
+    """Absent summarize_max_tokens uses Pydantic default when other fields are set."""
+    config = TokenBudgetConfig.model_validate({"design_file_tokens": 600})
+    assert config.summarize_max_tokens == 200
+    assert config.design_file_tokens == 600
+
+
+# --- TokenBudgetConfig archivist_max_tokens tests ---
+
+
+def test_archivist_max_tokens_default() -> None:
+    """TokenBudgetConfig.archivist_max_tokens defaults to 5000."""
+    config = TokenBudgetConfig()
+    assert config.archivist_max_tokens == 5000
+
+
+def test_archivist_max_tokens_custom() -> None:
+    """archivist_max_tokens can be overridden from YAML."""
+    config = LexibraryConfig.model_validate({"token_budgets": {"archivist_max_tokens": 8000}})
+    assert config.token_budgets.archivist_max_tokens == 8000
+
+
+def test_archivist_max_tokens_absent_uses_default() -> None:
+    """Absent archivist_max_tokens uses Pydantic default when other fields are set."""
+    config = TokenBudgetConfig.model_validate({"design_file_tokens": 600})
+    assert config.archivist_max_tokens == 5000
+    assert config.design_file_tokens == 600
 
 
 # --- Config package re-export tests ---
@@ -503,9 +537,7 @@ def test_deprecation_config_custom_annotation_threshold() -> None:
 
 def test_deprecation_config_extra_fields_ignored() -> None:
     """DeprecationConfig tolerates unknown extra fields without raising."""
-    config = DeprecationConfig.model_validate(
-        {"ttl_commits": 50, "unknown_field": "value"}
-    )
+    config = DeprecationConfig.model_validate({"ttl_commits": 50, "unknown_field": "value"})
     assert config.ttl_commits == 50
     assert not hasattr(config, "unknown_field")
 
@@ -581,17 +613,13 @@ def test_lexibrary_config_has_concepts() -> None:
 
 def test_concept_config_from_yaml() -> None:
     """concepts.deprecation_confirm can be set via top-level config (simulating YAML load)."""
-    config = LexibraryConfig.model_validate(
-        {"concepts": {"deprecation_confirm": "maintainer"}}
-    )
+    config = LexibraryConfig.model_validate({"concepts": {"deprecation_confirm": "maintainer"}})
     assert config.concepts.deprecation_confirm == "maintainer"
 
 
 def test_concept_config_from_yaml_preserves_other_defaults() -> None:
     """Setting concepts config preserves other LexibraryConfig defaults."""
-    config = LexibraryConfig.model_validate(
-        {"concepts": {"deprecation_confirm": "maintainer"}}
-    )
+    config = LexibraryConfig.model_validate({"concepts": {"deprecation_confirm": "maintainer"}})
     assert config.concepts.deprecation_confirm == "maintainer"
     # Other defaults preserved
     assert config.llm.provider == "anthropic"
@@ -643,9 +671,7 @@ def test_stack_config_invalid_staleness_confirm() -> None:
 
 def test_stack_config_extra_fields_ignored() -> None:
     """StackConfig tolerates unknown extra fields without raising."""
-    config = StackConfig.model_validate(
-        {"staleness_ttl_commits": 200, "unknown_field": "value"}
-    )
+    config = StackConfig.model_validate({"staleness_ttl_commits": 200, "unknown_field": "value"})
     assert config.staleness_ttl_commits == 200
     assert not hasattr(config, "unknown_field")
 
@@ -668,9 +694,7 @@ def test_lexibrary_config_has_stack() -> None:
 
 def test_stack_config_from_yaml() -> None:
     """stack.staleness_ttl_commits can be set via top-level config (simulating YAML load)."""
-    config = LexibraryConfig.model_validate(
-        {"stack": {"staleness_ttl_commits": 300}}
-    )
+    config = LexibraryConfig.model_validate({"stack": {"staleness_ttl_commits": 300}})
     assert config.stack.staleness_ttl_commits == 300
     # Other defaults preserved
     assert config.stack.staleness_ttl_short_commits == 100
@@ -697,9 +721,7 @@ def test_stack_config_full_override_from_yaml() -> None:
 
 def test_stack_config_from_yaml_preserves_other_defaults() -> None:
     """Setting stack config preserves other LexibraryConfig defaults."""
-    config = LexibraryConfig.model_validate(
-        {"stack": {"staleness_ttl_commits": 300}}
-    )
+    config = LexibraryConfig.model_validate({"stack": {"staleness_ttl_commits": 300}})
     assert config.stack.staleness_ttl_commits == 300
     # Other defaults preserved
     assert config.llm.provider == "anthropic"

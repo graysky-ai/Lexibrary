@@ -12,6 +12,7 @@ from pathlib import Path
 
 from lexibrary.artifacts.design_file_parser import (
     _FOOTER_RE,
+    parse_design_file_frontmatter,
     parse_design_file_metadata,
 )
 from lexibrary.utils.paths import mirror_path
@@ -26,6 +27,7 @@ class ChangeLevel(Enum):
     CONTENT_CHANGED = "content_changed"
     INTERFACE_CHANGED = "interface_changed"
     NEW_FILE = "new_file"
+    SKELETON_ONLY = "skeleton_only"
 
 
 def _compute_design_content_hash(design_file_path: Path) -> str | None:
@@ -78,6 +80,10 @@ def check_change(
 
     # Source unchanged
     if content_hash == metadata.source_hash:
+        # Check if this is a skeleton-fallback file that could be re-enriched
+        frontmatter = parse_design_file_frontmatter(design_path)
+        if frontmatter is not None and frontmatter.updated_by == "skeleton-fallback":
+            return ChangeLevel.SKELETON_ONLY
         return ChangeLevel.UNCHANGED
 
     # Source changed -- check if agent edited the design file

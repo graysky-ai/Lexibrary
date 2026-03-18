@@ -22,6 +22,10 @@
 
 ## 1. Actionable Validator Remediation
 
+> **Cross-reference:** The Curator agent's validation sweep (§2.3) will consume these actionable
+> suggestions to self-correct during automated sweeps. See
+> [curator-agent.md §2.3](curator-agent.md#23-validation-sweep).
+
 ### What It Solves
 
 Lexibrary's validator already has a `suggestion` field on `ValidationIssue` (defined in `src/lexibrary/validator/report.py:29-36`), and many checks populate it. However, existing suggestions are descriptive ("Fix YAML syntax in frontmatter block", "Update or remove the file reference") rather than prescriptive with specific commands. Harness engineering shows that linter error messages that **teach the agent how to fix the issue** turn validation into continuous education. When an agent runs `lexi validate` and gets "Run `lexi concept new ScopeRoot` to create the concept", it can self-correct in a single step.
@@ -80,6 +84,10 @@ ValidationIssue(
 ---
 
 ## 2. Convention-from-Failure Workflow
+
+> **Cross-reference:** The Curator agent proposes a speculative use case (§2.10) where it detects
+> recurring validation failure patterns and auto-proposes conventions. See
+> [curator-agent.md §2.10](curator-agent.md#210-convention-from-failure-detection-speculative).
 
 ### What It Solves
 

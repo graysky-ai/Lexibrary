@@ -60,9 +60,7 @@ def _setup_project(
     lexibrary_dir.mkdir()
 
     config = {"token_budgets": {"lookup_total_tokens": lookup_total_tokens}}
-    (lexibrary_dir / "config.yaml").write_text(
-        yaml.dump(config), encoding="utf-8"
-    )
+    (lexibrary_dir / "config.yaml").write_text(yaml.dump(config), encoding="utf-8")
 
     return project_root, lexibrary_dir
 
@@ -100,9 +98,7 @@ class TestCheckLookupTokenBudgetExceeded:
 
     def test_oversized_design_file_flagged(self, tmp_path: Path) -> None:
         """A design file exceeding lookup_total_tokens is flagged."""
-        project_root, lexibrary_dir = _setup_project(
-            tmp_path, lookup_total_tokens=100
-        )
+        project_root, lexibrary_dir = _setup_project(tmp_path, lookup_total_tokens=100)
         # 500 chars ~= 125 tokens (chars/4), exceeds budget of 100
         _write_design_file(lexibrary_dir, "src/big.py.md", size_chars=500)
 
@@ -118,9 +114,7 @@ class TestCheckLookupTokenBudgetExceeded:
 
     def test_within_budget_not_flagged(self, tmp_path: Path) -> None:
         """A design file within the lookup budget produces no issues."""
-        project_root, lexibrary_dir = _setup_project(
-            tmp_path, lookup_total_tokens=1200
-        )
+        project_root, lexibrary_dir = _setup_project(tmp_path, lookup_total_tokens=1200)
         # Small file, well within budget
         _write_design_file(
             lexibrary_dir,
@@ -141,9 +135,7 @@ class TestCheckLookupTokenBudgetExceeded:
 
     def test_multiple_files_only_oversized_flagged(self, tmp_path: Path) -> None:
         """Only design files exceeding the budget are flagged."""
-        project_root, lexibrary_dir = _setup_project(
-            tmp_path, lookup_total_tokens=100
-        )
+        project_root, lexibrary_dir = _setup_project(tmp_path, lookup_total_tokens=100)
         # One large file (500 chars ~= 125 tokens > 100)
         _write_design_file(lexibrary_dir, "src/big.py.md", size_chars=500)
         # One small file (40 chars ~= 10 tokens < 100)

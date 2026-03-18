@@ -184,53 +184,32 @@ ignore:
 
 See [Ignore Patterns](ignore-patterns.md) for the complete ignore system documentation including `.lexignore` files and pattern precedence.
 
-## `daemon` Section
+## `sweep` Section
 
-Configuration for the background daemon and sweep system.
+Configuration for the background sweep system.
 
-### `daemon.debounce_seconds`
-
-- **Type:** float
-- **Default:** `2.0`
-- **Description:** Number of seconds to wait after a file change event before triggering an update. Coalesces rapid file events (e.g., saving multiple files in quick succession) into a single update.
-
-### `daemon.sweep_interval_seconds`
+### `sweep.sweep_interval_seconds`
 
 - **Type:** integer
 - **Default:** `3600`
-- **Description:** Interval in seconds between full library sweeps. Acts as a safety net to catch any changes that the file watcher missed. Default is 1 hour.
+- **Description:** Interval in seconds between full library sweeps when using `lexictl sweep --watch`. Default is 1 hour.
 
-### `daemon.sweep_skip_if_unchanged`
+### `sweep.sweep_skip_if_unchanged`
 
 - **Type:** boolean
 - **Default:** `true`
 - **Description:** When `true`, periodic sweeps are skipped if no files have changed since the last run. Saves LLM costs when the codebase is idle.
 
-### `daemon.git_suppression_seconds`
-
-- **Type:** integer
-- **Default:** `5`
-- **Description:** Number of seconds to suppress watchdog file events after a detected git operation (e.g., `git checkout`, `git pull`). Prevents a flood of update triggers when git modifies many files at once.
-
-### `daemon.watchdog_enabled`
-
-- **Type:** boolean
-- **Default:** `false`
-- **Description:** Enable real-time file watching using the `watchdog` library. When `false` (the default), only periodic sweeps are available via `lexictl sweep --watch`. Set to `true` to enable `lexictl daemon start` for real-time monitoring.
-
-### `daemon.log_level`
+### `sweep.log_level`
 
 - **Type:** string
 - **Default:** `"info"`
-- **Description:** Log level for daemon output. Valid values: `debug`, `info`, `warning`, `error`.
+- **Description:** Log level for sweep output. Valid values: `debug`, `info`, `warning`, `error`.
 
 ```yaml
-daemon:
-  debounce_seconds: 2.0
+sweep:
   sweep_interval_seconds: 3600
   sweep_skip_if_unchanged: true
-  git_suppression_seconds: 5
-  watchdog_enabled: false
   log_level: info
 ```
 
@@ -335,12 +314,9 @@ ignore:
     - venv/
     - "*.lock"
 
-daemon:
-  debounce_seconds: 2.0
+sweep:
   sweep_interval_seconds: 3600
   sweep_skip_if_unchanged: true
-  git_suppression_seconds: 5
-  watchdog_enabled: false
   log_level: info
 
 crawl:

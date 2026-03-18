@@ -171,6 +171,11 @@ concept_file_ref, convention_concept_ref
 
 ## Opportunity 3: Explicit State Machine Documentation
 
+> **Cross-reference:** The Curator agent's Deprecation Analyst sub-agent depends on these state
+> machines to enforce valid transitions. See
+> [curator-agent.md §2.2](curator-agent.md#22-deprecation-proxy-human-in-the-loop) for how the
+> Curator uses them.
+
 ### What It Solves
 
 Artefact status values exist as Literal type enums in code, but the valid transitions between
@@ -488,7 +493,7 @@ should use this as the starting point):
 - `tests/test_config/` — 3 files (defaults, loader, schema)
 - `tests/test_conventions/` — 3 files (index, parser, serializer)
 - `tests/test_crawler/` — 3 files (change detector, discovery, file reader)
-- `tests/test_daemon/` — 6 files (debouncer, logging, scheduler, service, service rewrite, watcher)
+- `tests/test_daemon/` — removed (daemon module deleted)
 - `tests/test_hooks/` — 2 files (post-commit, pre-commit)
 - `tests/test_ignore/` — 1 file (matcher)
 - `tests/test_indexer/` — 2 files (generator, orchestrator)
@@ -589,6 +594,10 @@ Extensions, and Operational Validation.
 ---
 
 ## Opportunity 7: Failure Model Documentation
+
+> **Cross-reference:** The Curator agent has its own failure model (coordinator and sub-agent
+> failures) built on the patterns documented here. See
+> [curator-agent.md §9](curator-agent.md#9-failure-model) for Curator-specific failure handling.
 
 ### What It Solves
 
@@ -745,15 +754,12 @@ Schema: src/lexibrary/config/schema.py (LexibraryConfig model, Pydantic 2)
 | ignore.use_gitignore | bool | true |
 | ignore.additional_patterns | list[str] | [.lexibrary/, node_modules/, __pycache__/, ...] |
 
-### Daemon Settings (daemon.*)
+### Sweep Settings (sweep.*)
 | Field | Type | Default |
 |-------|------|---------|
-| daemon.debounce_seconds | float | 2.0 |
-| daemon.sweep_interval_seconds | int | 3600 |
-| daemon.sweep_skip_if_unchanged | bool | true |
-| daemon.git_suppression_seconds | int | 5 |
-| daemon.watchdog_enabled | bool | false |
-| daemon.log_level | str | "info" |
+| sweep.sweep_interval_seconds | int | 3600 |
+| sweep.sweep_skip_if_unchanged | bool | true |
+| sweep.log_level | str | "info" |
 
 ### AST Settings (ast.*)
 | Field | Type | Default |
@@ -814,6 +820,11 @@ Schema: src/lexibrary/config/schema.py (LexibraryConfig model, Pydantic 2)
 ---
 
 ## Opportunity 9: Normalisation Rules as Explicit Contracts
+
+> **Cross-reference:** The Curator agent's Consistency Checker sub-agent must understand these
+> normalisation semantics to avoid introducing identifier bugs during automated fixes. See
+> [curator-agent.md §2.6](curator-agent.md#26-cross-artifact-consistency) for how the Curator
+> uses them.
 
 ### What It Solves
 
@@ -934,7 +945,7 @@ These are admin/maintenance operations, prohibited for agent use:
 - `lexictl init` — project setup
 - `lexictl update` — regenerate artefacts
 - `lexictl setup` — install hooks, configure agent rules
-- `lexictl sweep` / `lexictl daemon` — background processing
+- `lexictl sweep` — background processing
 ```
 
 ### Complexity and Value

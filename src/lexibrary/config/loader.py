@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,16 @@ from typing import Any
 import yaml
 
 from lexibrary.config.schema import LexibraryConfig
+
+logger = logging.getLogger(__name__)
+
+# Fields that existed on the old DaemonConfig but were removed in the
+# DaemonConfig -> SweepConfig rename.
+_DAEMON_REMOVED_FIELDS = frozenset({
+    "debounce_seconds",
+    "git_suppression_seconds",
+    "watchdog_enabled",
+})
 
 # XDG base directory default
 _XDG_CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
@@ -39,6 +50,36 @@ def find_config_file(start_dir: Path | None = None) -> Path | None:
         current = current.parent
 
     return None
+
+
+def _migrate_daemon_to_sweep(data: dict[str, Any]) -> dict[str, Any]:
+    """Migrate legacy ``daemon:`` config section to ``sweep:``.
+
+    If ``data`` contains a ``daemon`` key but no ``sweep`` key, the daemon
+    section is renamed to ``sweep`` and any fields that were removed during the
+    rename (debounce_seconds, git_suppression_seconds, watchdog_enabled) are
+    dropped.  A deprecation warning is logged to help users update their config
+    files.
+
+    If both ``daemon`` and ``sweep`` exist, ``sweep`` takes precedence and the
+    ``daemon`` key is silently dropped.
+    """
+    if "daemon" not in data:
+        return data
+
+    if "sweep" not in data:
+        daemon_section = dict(data["daemon"]) if isinstance(data["daemon"], dict) else {}
+        # Drop fields that no longer exist on SweepConfig
+        for field in _DAEMON_REMOVED_FIELDS:
+            daemon_section.pop(field, None)
+        data["sweep"] = daemon_section
+        logger.warning(
+            "Config key 'daemon:' is deprecated and will be removed in a future "
+            "release. Rename it to 'sweep:' in your config file."
+        )
+
+    del data["daemon"]
+    return data
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -84,6 +125,9 @@ def load_config(
 
     # Shallow merge: project top-level keys override global
     merged = {**global_data, **project_data}
+
+    # Migrate legacy daemon: -> sweep:
+    merged = _migrate_daemon_to_sweep(merged)
 
     # Validate and return
     return LexibraryConfig.model_validate(merged)

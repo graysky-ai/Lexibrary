@@ -43,6 +43,7 @@ def fix_hash_freshness(
     """
     from lexibrary.archivist.pipeline import update_file  # noqa: PLC0415
     from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
+    from lexibrary.llm.client_registry import build_client_registry  # noqa: PLC0415
     from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
 
     source_path = project_root / issue.artifact
@@ -56,7 +57,8 @@ def fix_hash_freshness(
 
     try:
         rate_limiter = RateLimiter()
-        archivist = ArchivistService(rate_limiter=rate_limiter, config=config.llm)
+        registry = build_client_registry(config)
+        archivist = ArchivistService(rate_limiter=rate_limiter, client_registry=registry)
         result = asyncio.run(update_file(source_path, project_root, config, archivist))
         if result.failed:
             return FixResult(
@@ -107,7 +109,7 @@ def fix_orphan_artifacts(
     # Strip the designs/ prefix to recover the source-relative path
     designs_prefix = DESIGNS_DIR + "/"
     if source_rel.startswith(designs_prefix):
-        source_rel = source_rel[len(designs_prefix):]
+        source_rel = source_rel[len(designs_prefix) :]
 
     source_path = project_root / source_rel
     if source_path.exists():

@@ -10,6 +10,7 @@ import pytest
 from rich.console import Console
 
 from lexibrary.init.wizard import (
+    _DEFAULT_TOKEN_BUDGETS,
     WizardAnswers,
     _step_agent_environment,
     _step_hooks,
@@ -209,6 +210,38 @@ class TestStepIgnorePatternsDefaults:
     def test_no_project_type(self, tmp_path: Path, console: Console) -> None:
         result = _step_ignore_patterns(tmp_path, console, use_defaults=True)
         assert result == []
+
+
+class TestDefaultTokenBudgetsCompleteness:
+    """Verify _DEFAULT_TOKEN_BUDGETS contains all 9 TokenBudgetConfig fields."""
+
+    def test_all_nine_fields_present(self) -> None:
+        expected_fields = {
+            "design_file_tokens",
+            "design_file_abridged_tokens",
+            "aindex_tokens",
+            "concept_file_tokens",
+            "convention_file_tokens",
+            "orientation_tokens",
+            "lookup_total_tokens",
+            "summarize_max_tokens",
+            "archivist_max_tokens",
+        }
+        assert set(_DEFAULT_TOKEN_BUDGETS.keys()) == expected_fields
+
+    def test_field_count_is_nine(self) -> None:
+        assert len(_DEFAULT_TOKEN_BUDGETS) == 9
+
+    def test_defaults_match_schema(self) -> None:
+        """Ensure wizard defaults match TokenBudgetConfig defaults."""
+        from lexibrary.config.schema import TokenBudgetConfig
+
+        schema_defaults = TokenBudgetConfig()
+        for field_name, wizard_default in _DEFAULT_TOKEN_BUDGETS.items():
+            schema_val = getattr(schema_defaults, field_name)
+            assert wizard_default == schema_val, (
+                f"{field_name}: wizard={wizard_default}, schema={schema_val}"
+            )
 
 
 class TestStepTokenBudgetsDefaults:
@@ -652,9 +685,19 @@ class TestStepTokenBudgetsInteractive:
         assert budgets == {}
 
     def test_user_customizes_a_budget(self, console: Console) -> None:
-        # Responses for: design_file_tokens, design_file_abridged_tokens,
-        # aindex_tokens, concept_file_tokens, convention_file_tokens
-        prompt_responses = iter(["500", "100", "200", "400", "500"])
+        # Responses for all 9 fields: design_file_tokens (customized to 500),
+        # then defaults for the remaining 8 fields
+        prompt_responses = iter([
+            "500",   # design_file_tokens (custom)
+            "100",   # design_file_abridged_tokens
+            "200",   # aindex_tokens
+            "400",   # concept_file_tokens
+            "500",   # convention_file_tokens
+            "300",   # orientation_tokens
+            "1200",  # lookup_total_tokens
+            "200",   # summarize_max_tokens
+            "5000",  # archivist_max_tokens
+        ])
         with (
             patch("lexibrary.init.wizard.Confirm.ask", return_value=True),
             patch(

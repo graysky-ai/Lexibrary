@@ -9,6 +9,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from lexibrary.tokenizer.tiktoken_counter import TiktokenCounter
 
 from lexibrary.archivist.change_checker import (
     ChangeLevel,
@@ -17,6 +21,7 @@ from lexibrary.archivist.change_checker import (
 )
 from lexibrary.archivist.dependency_extractor import extract_dependencies
 from lexibrary.archivist.service import ArchivistService, DesignFileRequest
+from lexibrary.archivist.skeleton import generate_skeleton_design
 from lexibrary.archivist.topology import generate_topology
 from lexibrary.artifacts.aindex import AIndexEntry
 from lexibrary.artifacts.aindex_parser import parse_aindex
@@ -36,6 +41,7 @@ from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.ast_parser import compute_hashes, parse_interface, render_skeleton
 from lexibrary.config.schema import LexibraryConfig
 from lexibrary.errors import ErrorSummary
+from lexibrary.exceptions import ArchivistTruncationError
 from lexibrary.ignore import create_ignore_matcher
 from lexibrary.indexer.orchestrator import index_directory
 from lexibrary.lifecycle.deprecation import (
@@ -71,6 +77,7 @@ class UpdateStats:
     files_agent_updated: int = 0
     files_updated: int = 0
     files_created: int = 0
+    files_skeletons: int = 0
     files_failed: int = 0
     failed_files: list[tuple[str, str]] = field(default_factory=list)
     aindex_refreshed: int = 0
@@ -106,6 +113,7 @@ class FileResult:
     change: ChangeLevel
     aindex_refreshed: bool = False
     token_budget_exceeded: bool = False
+    skeleton: bool = False
     failed: bool = False
     failure_reason: str | None = None
 
@@ -383,14 +391,105 @@ def _extract_llm_failure_reason(error_message: str | None, rel_path: str) -> str
     return reason
 
 
+# ---------------------------------------------------------------------------
+# Size gate — prevents wasted LLM calls on oversized source files
+# ---------------------------------------------------------------------------
+
+# Files under this byte threshold skip tiktoken entirely (fast path).
+SIZE_GATE_BYTES = 12_288  # 12 KB
+
+# Source-token-to-max_tokens multiplier.  At the default
+# archivist_max_tokens=5000 the gate triggers at ~25 000 source tokens
+# (~100 KB of Python).
+GATE_MULTIPLIER = 5
+
+# Lazily initialised module-level TiktokenCounter.  The import and encoding
+# download only happen when a file actually exceeds SIZE_GATE_BYTES.
+_tiktoken: TiktokenCounter | None = None
+
+
+def _get_tiktoken() -> TiktokenCounter:
+    """Return (and cache) a module-level TiktokenCounter instance."""
+    global _tiktoken  # noqa: PLW0603
+    if _tiktoken is None:
+        from lexibrary.tokenizer.tiktoken_counter import TiktokenCounter as _Cls
+
+        _tiktoken = _Cls()
+    return _tiktoken
+
+
+def should_skip_llm(
+    source_content: str,
+    file_size_bytes: int,
+    archivist_max_tokens: int,
+) -> bool:
+    """Return *True* when the source file is too large for the LLM.
+
+    Two-tier gate:
+    1. Files smaller than ``SIZE_GATE_BYTES`` pass immediately (no tokeniser
+       cost).
+    2. Larger files are tokenised with tiktoken; the call is skipped when
+       ``source_tokens > archivist_max_tokens * GATE_MULTIPLIER``.
+    """
+    if file_size_bytes < SIZE_GATE_BYTES:
+        return False
+    source_tokens = _get_tiktoken().count(source_content)
+    return source_tokens > archivist_max_tokens * GATE_MULTIPLIER
+
+
+def _write_skeleton_fallback(
+    source_path: Path,
+    project_root: Path,
+    *,
+    summary_suffix: str = "",
+) -> FileResult:
+    """Write a skeleton design file as a fallback (size gate or truncation).
+
+    Returns a ``FileResult`` with ``skeleton=True`` and the appropriate change
+    level.  The caller is responsible for incrementing ``files_skeletons``.
+    """
+    design_path = mirror_path(project_root, source_path)
+    design_path.parent.mkdir(parents=True, exist_ok=True)
+
+    skeleton = generate_skeleton_design(
+        source_path,
+        project_root,
+        updated_by="skeleton-fallback",
+        summary_suffix=summary_suffix,
+    )
+    serialized = serialize_design_file(skeleton)
+    atomic_write(design_path, serialized)
+    logger.info("Wrote skeleton fallback: %s", design_path)
+
+    aindex_refreshed = _refresh_parent_aindex(
+        source_path, project_root, skeleton.frontmatter.description
+    )
+    return FileResult(
+        change=ChangeLevel.NEW_FILE,
+        aindex_refreshed=aindex_refreshed,
+        skeleton=True,
+    )
+
+
 async def update_file(
     source_path: Path,
     project_root: Path,
     config: LexibraryConfig,
     archivist: ArchivistService,
     available_concepts: list[str] | None = None,
+    *,
+    unlimited: bool = False,
 ) -> FileResult:
     """Generate or update the design file for a single source file.
+
+    Args:
+        source_path: Absolute path to the source file.
+        project_root: Absolute path to the project root.
+        config: Project configuration.
+        archivist: LLM service for design file generation.
+        available_concepts: Optional list of concept names for wikilink guidance.
+        unlimited: When True, bypass the size gate and re-enrich SKELETON_ONLY
+            files instead of skipping them.
 
     Returns a ``FileResult`` containing the change level and tracking flags.
     """
@@ -432,6 +531,20 @@ async def update_file(
     if change == ChangeLevel.UNCHANGED:
         return FileResult(change=change)
 
+    # 4b. SKELETON_ONLY -- skip in normal mode, proceed with unlimited
+    if change == ChangeLevel.SKELETON_ONLY:
+        if not unlimited:
+            logger.debug(
+                "Skipping skeleton-only file %s (use --unlimited to re-enrich)",
+                source_path.name,
+            )
+            return FileResult(change=ChangeLevel.UNCHANGED)
+        # unlimited=True: treat as needing generation (fall through to LLM path)
+        logger.info(
+            "Re-enriching skeleton-only file %s (unlimited mode)",
+            source_path.name,
+        )
+
     design_path = mirror_path(project_root, source_path)
     design_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -461,7 +574,8 @@ async def update_file(
             failure_reason="unresolved merge conflict markers",
         )
 
-    # 6. LLM generation: NEW_FILE, CONTENT_ONLY, CONTENT_CHANGED, INTERFACE_CHANGED
+    # 6. LLM generation: NEW_FILE, CONTENT_ONLY, CONTENT_CHANGED, INTERFACE_CHANGED,
+    #    or SKELETON_ONLY (with unlimited=True)
     rel_path = str(source_path.relative_to(project_root))
     try:
         source_content = source_path.read_text(encoding="utf-8", errors="replace")
@@ -472,6 +586,22 @@ async def update_file(
             failed=True,
             failure_reason="cannot read source file",
         )
+
+    # 6a. Size gate — skip LLM for oversized files (unless unlimited)
+    if not unlimited:
+        file_size_bytes = source_path.stat().st_size
+        archivist_max_tokens = config.token_budgets.archivist_max_tokens
+        if should_skip_llm(source_content, file_size_bytes, archivist_max_tokens):
+            logger.info(
+                "Size gate: %s is too large for LLM (%d bytes), writing skeleton fallback",
+                source_path.name,
+                file_size_bytes,
+            )
+            return _write_skeleton_fallback(
+                source_path,
+                project_root,
+                summary_suffix=" (file too large for LLM — re-run with --unlimited)",
+            )
 
     # Parse interface skeleton for the LLM prompt
     skeleton = parse_interface(source_path)
@@ -502,7 +632,18 @@ async def update_file(
         available_concepts=available_concepts,
     )
 
-    result = await archivist.generate_design_file(request)
+    try:
+        result = await archivist.generate_design_file(request)
+    except ArchivistTruncationError:
+        logger.warning(
+            "LLM output truncated for %s, writing skeleton fallback",
+            rel_path,
+        )
+        return _write_skeleton_fallback(
+            source_path,
+            project_root,
+            summary_suffix=" (LLM output truncated — re-run with --unlimited)",
+        )
 
     if result.error or result.design_file_output is None:
         logger.error(
@@ -607,6 +748,8 @@ def _accumulate_stats(
     ):
         stats.files_updated += 1
 
+    if file_result.skeleton:
+        stats.files_skeletons += 1
     if file_result.aindex_refreshed:
         stats.aindex_refreshed += 1
     if file_result.token_budget_exceeded:
@@ -682,9 +825,7 @@ def _run_deprecation_pass(
                     stats.designs_unlinked += 1
                     logger.info("Marked unlinked: %s", orphan.design_path.name)
             except Exception:
-                logger.exception(
-                    "Failed to update orphaned design: %s", orphan.design_path
-                )
+                logger.exception("Failed to update orphaned design: %s", orphan.design_path)
     except Exception as exc:
         logger.exception("Failed to detect orphaned designs")
         stats.error_summary.add("deprecation", exc)
@@ -730,10 +871,10 @@ def _run_deprecation_pass(
         )
 
         ttl_commits = config.deprecation.ttl_commits
-        result = hard_delete_expired_conventions(project_root, lexibrary_dir, ttl_commits)
-        stats.conventions_deleted_ttl += len(result.deleted)
-        stats.convention_comments_deleted += len(result.comments_deleted)
-        for d in result.deleted:
+        conv_result = hard_delete_expired_conventions(project_root, lexibrary_dir, ttl_commits)
+        stats.conventions_deleted_ttl += len(conv_result.deleted)
+        stats.convention_comments_deleted += len(conv_result.comments_deleted)
+        for d in conv_result.deleted:
             logger.info("TTL-expired convention deleted: %s", d.name)
     except Exception as exc:
         logger.exception("Failed to delete TTL-expired conventions")
@@ -782,9 +923,7 @@ async def _process_enrichment_queue(
             )
             if file_result.failed:
                 stats.queue_failed += 1
-                logger.warning(
-                    "Queue enrichment failed for %s", entry.source_path
-                )
+                logger.warning("Queue enrichment failed for %s", entry.source_path)
             else:
                 stats.queue_processed += 1
                 processed_paths.append(entry.source_path)
@@ -885,6 +1024,8 @@ async def update_files(
     config: LexibraryConfig,
     archivist: ArchivistService,
     progress_callback: ProgressCallback | None = None,
+    *,
+    unlimited: bool = False,
 ) -> UpdateStats:
     """Process a specific list of source files through the pipeline.
 
@@ -944,6 +1085,7 @@ async def update_files(
                 config,
                 archivist,
                 available_concepts=available_concepts,
+                unlimited=unlimited,
             )
         except Exception as exc:
             logger.exception("Unexpected error processing %s", source_path)
@@ -995,6 +1137,8 @@ async def update_directory(
     config: LexibraryConfig,
     archivist: ArchivistService,
     progress_callback: ProgressCallback | None = None,
+    *,
+    unlimited: bool = False,
 ) -> UpdateStats:
     """Update design files for source files within a directory subtree.
 
@@ -1029,6 +1173,7 @@ async def update_directory(
                 config,
                 archivist,
                 available_concepts=available_concepts,
+                unlimited=unlimited,
             )
         except Exception as exc:
             logger.exception("Unexpected error processing %s", source_path)
@@ -1080,6 +1225,8 @@ async def update_project(
     config: LexibraryConfig,
     archivist: ArchivistService,
     progress_callback: ProgressCallback | None = None,
+    *,
+    unlimited: bool = False,
 ) -> UpdateStats:
     """Update all design files for the project.
 
@@ -1112,6 +1259,7 @@ async def update_project(
                 config,
                 archivist,
                 available_concepts=available_concepts,
+                unlimited=unlimited,
             )
         except Exception as exc:
             logger.exception("Unexpected error processing %s", source_path)

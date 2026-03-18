@@ -31,6 +31,11 @@ token_budgets:
   design_file_abridged_tokens: 100       # Abridged design file budget
   aindex_tokens: 200                     # .aindex routing table budget
   concept_file_tokens: 400               # Concept file budget
+  convention_file_tokens: 500            # Convention file budget
+  orientation_tokens: 300                # Orientation output budget
+  lookup_total_tokens: 1200              # Total budget for lexi lookup output
+  summarize_max_tokens: 200              # Max tokens for LLM summarize responses
+  archivist_max_tokens: 5000             # Max tokens for LLM archivist responses
 
 # Mapping strategies (glob patterns → generation strategy)
 # Populated in Phase 4; empty list uses default 1:1 mapping
@@ -52,14 +57,11 @@ ignore:
     - ".env.*"
     - "*.env"
 
-# Background daemon settings
-daemon:
-  debounce_seconds: 2.0                  # Coalesce rapid file events (seconds)
+# Sweep settings (periodic re-indexing)
+sweep:
   sweep_interval_seconds: 3600           # Full re-index safety net (seconds)
   sweep_skip_if_unchanged: true          # Skip sweep if no files changed since last run
-  git_suppression_seconds: 5             # Suppress watchdog events after git operations
-  watchdog_enabled: false                # Enable real-time file watching (opt-in)
-  log_level: info                        # Daemon log level (debug, info, warning, error)
+  log_level: info                        # Sweep log level (debug, info, warning, error)
 
 # Crawl behaviour
 crawl:

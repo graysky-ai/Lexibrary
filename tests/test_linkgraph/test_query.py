@@ -635,9 +635,7 @@ class TestGetConventions:
         assert results[0].directory_path == "src/auth"
         graph.close()
 
-    def test_convention_result_extended_fields_have_defaults(
-        self, graph: LinkGraph
-    ) -> None:
+    def test_convention_result_extended_fields_have_defaults(self, graph: LinkGraph) -> None:
         """ConventionResult extended fields (source, status, priority) have SQL defaults."""
         results = graph.get_conventions(["src"])
         assert len(results) >= 1
@@ -702,10 +700,7 @@ class TestGetConventionsExtended:
             conv_insert,
             (3, ".", 2, "Deprecated convention body.", "user", "deprecated", 0),
         )
-        conn.execute(
-            conv_insert,
-            (4, ".", 3, "High priority convention.", "config", "active", 10)
-        )
+        conn.execute(conv_insert, (4, ".", 3, "High priority convention.", "config", "active", 10))
 
         # Seed schema version
         conn.execute(

@@ -40,9 +40,7 @@ class ConventionIndex:
 
     # -- Scope-aware retrieval ------------------------------------------------
 
-    def find_by_scope(
-        self, file_path: str, scope_root: str = "."
-    ) -> list[ConventionFile]:
+    def find_by_scope(self, file_path: str, scope_root: str = ".") -> list[ConventionFile]:
         """Return conventions applicable to *file_path*, ordered by specificity.
 
         The algorithm:

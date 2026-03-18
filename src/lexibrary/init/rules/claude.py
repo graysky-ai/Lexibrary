@@ -52,7 +52,6 @@ _PERMISSIONS_ALLOW: list[str] = [
     "Bash(lexi concepts *)",
     "Bash(lexi convention new *)",
     "Bash(lexi describe *)",
-    "Bash(lexi help)",
     "Bash(lexi impact *)",
     "Bash(lexi iwh *)",
     "Bash(lexi lookup *)",

@@ -52,10 +52,7 @@ def concept_new(
     if not tag:
         blank_sections.append("tags")
     if blank_sections:
-        info(
-            f"Note: The following sections are blank: "
-            f"{', '.join(blank_sections)}"
-        )
+        info(f"Note: The following sections are blank: {', '.join(blank_sections)}")
 
 
 @concept_app.command("link")
@@ -83,15 +80,10 @@ def concept_link(
     if not concept_path.exists():
         # List available slugs for helpful error
         available = (
-            sorted(p.stem for p in concepts_dir.glob("*.md"))
-            if concepts_dir.is_dir()
-            else []
+            sorted(p.stem for p in concepts_dir.glob("*.md")) if concepts_dir.is_dir() else []
         )
         if available:
-            error(
-                f"Concept not found: '{slug}'\n"
-                "Available concepts: " + ", ".join(available)
-            )
+            error(f"Concept not found: '{slug}'\nAvailable concepts: " + ", ".join(available))
         else:
             error(
                 f"Concept not found: '{slug}'\n"
@@ -124,10 +116,7 @@ def concept_link(
 
     # Check if already linked
     if concept_name in design.wikilinks:
-        warn(
-            f"Already linked: '{concept_name}' "
-            f"in {design_path.relative_to(project_root)}"
-        )
+        warn(f"Already linked: '{concept_name}' in {design_path.relative_to(project_root)}")
         return
 
     design.wikilinks.append(concept_name)
@@ -157,20 +146,14 @@ def concept_comment(
     # Validate concept file exists
     concept_path = project_root / ".lexibrary" / "concepts" / f"{slug}.md"
     if not concept_path.exists():
-        error(
-            f"Concept file not found: "
-            f"{concept_path.relative_to(project_root)}"
-        )
+        error(f"Concept file not found: {concept_path.relative_to(project_root)}")
         raise typer.Exit(1)
 
     # Append the comment
     append_concept_comment(project_root, slug, body)
 
     comment_file = concept_path.with_suffix(".comments.yaml")
-    info(
-        f"Comment added for concept {slug} "
-        f"({comment_file.relative_to(project_root)})"
-    )
+    info(f"Comment added for concept {slug} ({comment_file.relative_to(project_root)})")
 
 
 @concept_app.command("deprecate")
@@ -194,19 +177,13 @@ def concept_deprecate(
     # Validate concept file exists
     concept_path = project_root / ".lexibrary" / "concepts" / f"{slug}.md"
     if not concept_path.exists():
-        error(
-            f"Concept file not found: "
-            f"{concept_path.relative_to(project_root)}"
-        )
+        error(f"Concept file not found: {concept_path.relative_to(project_root)}")
         raise typer.Exit(1)
 
     # Parse the concept file
     concept = parse_concept_file(concept_path)
     if concept is None:
-        error(
-            f"Failed to parse concept file: "
-            f"{concept_path.relative_to(project_root)}"
-        )
+        error(f"Failed to parse concept file: {concept_path.relative_to(project_root)}")
         raise typer.Exit(1)
 
     # Already deprecated -- exit 0 with informational message

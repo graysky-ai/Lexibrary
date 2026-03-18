@@ -109,9 +109,7 @@ def _write_stack_post(lexibrary_dir: Path, filename: str, content: str) -> Path:
 class TestStackResilience:
     """One malformed Stack post should not prevent validation of other posts."""
 
-    def test_check_wikilink_resolution_skips_malformed_post(
-        self, tmp_path: Path
-    ) -> None:
+    def test_check_wikilink_resolution_skips_malformed_post(self, tmp_path: Path) -> None:
         """check_wikilink_resolution skips a malformed post and continues."""
         project_root, lexibrary_dir = _setup_minimal_project(tmp_path)
         _write_stack_post(lexibrary_dir, "ST-001-valid.md", _VALID_STACK_POST)
@@ -122,9 +120,7 @@ class TestStackResilience:
         # No assertion on issue count -- just verifying no crash
         assert isinstance(issues, list)
 
-    def test_check_file_existence_skips_malformed_post(
-        self, tmp_path: Path
-    ) -> None:
+    def test_check_file_existence_skips_malformed_post(self, tmp_path: Path) -> None:
         """check_file_existence skips a malformed post and continues."""
         project_root, lexibrary_dir = _setup_minimal_project(tmp_path)
         _write_stack_post(lexibrary_dir, "ST-001-valid.md", _VALID_STACK_POST)
@@ -133,9 +129,7 @@ class TestStackResilience:
         issues = check_file_existence(project_root, lexibrary_dir)
         assert isinstance(issues, list)
 
-    def test_check_stack_staleness_skips_malformed_post(
-        self, tmp_path: Path
-    ) -> None:
+    def test_check_stack_staleness_skips_malformed_post(self, tmp_path: Path) -> None:
         """check_stack_staleness skips a malformed post and continues."""
         project_root, lexibrary_dir = _setup_minimal_project(tmp_path)
         _write_stack_post(lexibrary_dir, "ST-001-valid.md", _VALID_STACK_POST)
@@ -144,9 +138,7 @@ class TestStackResilience:
         issues = check_stack_staleness(project_root, lexibrary_dir)
         assert isinstance(issues, list)
 
-    def test_check_resolved_post_staleness_skips_malformed_post(
-        self, tmp_path: Path
-    ) -> None:
+    def test_check_resolved_post_staleness_skips_malformed_post(self, tmp_path: Path) -> None:
         """check_resolved_post_staleness skips a malformed post and continues."""
         project_root, lexibrary_dir = _setup_minimal_project(tmp_path)
         _write_stack_post(lexibrary_dir, "ST-001-valid.md", _VALID_STACK_POST)
@@ -155,15 +147,11 @@ class TestStackResilience:
         issues = check_resolved_post_staleness(project_root, lexibrary_dir)
         assert isinstance(issues, list)
 
-    def test_check_wikilink_resolution_skips_broken_yaml(
-        self, tmp_path: Path
-    ) -> None:
+    def test_check_wikilink_resolution_skips_broken_yaml(self, tmp_path: Path) -> None:
         """A post with completely broken YAML is skipped without crashing."""
         project_root, lexibrary_dir = _setup_minimal_project(tmp_path)
         _write_stack_post(lexibrary_dir, "ST-001-valid.md", _VALID_STACK_POST)
-        _write_stack_post(
-            lexibrary_dir, "ST-003-broken.md", _MALFORMED_YAML_STACK_POST
-        )
+        _write_stack_post(lexibrary_dir, "ST-003-broken.md", _MALFORMED_YAML_STACK_POST)
 
         issues = check_wikilink_resolution(project_root, lexibrary_dir)
         assert isinstance(issues, list)
@@ -172,9 +160,7 @@ class TestStackResilience:
         """When all posts are malformed, checks return empty lists, not crash."""
         project_root, lexibrary_dir = _setup_minimal_project(tmp_path)
         _write_stack_post(lexibrary_dir, "ST-001-bad1.md", _MALFORMED_STACK_POST)
-        _write_stack_post(
-            lexibrary_dir, "ST-002-bad2.md", _MALFORMED_YAML_STACK_POST
-        )
+        _write_stack_post(lexibrary_dir, "ST-002-bad2.md", _MALFORMED_YAML_STACK_POST)
 
         assert check_stack_staleness(project_root, lexibrary_dir) == []
         assert check_resolved_post_staleness(project_root, lexibrary_dir) == []

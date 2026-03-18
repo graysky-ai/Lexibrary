@@ -59,17 +59,13 @@ class TestConventionCommentPath:
         """Works with full .lexibrary paths."""
         cp = Path(".lexibrary/conventions/error-handling.md")
         result = convention_comment_path(cp)
-        assert result == Path(
-            ".lexibrary/conventions/error-handling.comments.yaml"
-        )
+        assert result == Path(".lexibrary/conventions/error-handling.comments.yaml")
 
     def test_absolute_path(self) -> None:
         """Works with absolute paths."""
         cp = Path("/project/.lexibrary/conventions/auth-required.md")
         result = convention_comment_path(cp)
-        assert result == Path(
-            "/project/.lexibrary/conventions/auth-required.comments.yaml"
-        )
+        assert result == Path("/project/.lexibrary/conventions/auth-required.comments.yaml")
 
     def test_preserves_parent_directory(self) -> None:
         """The comment file is a sibling of the convention file."""
@@ -121,9 +117,7 @@ class TestAppendConventionComment:
         assert comments[1].body == "second"
         assert comments[2].body == "third"
 
-    def test_comment_file_is_sibling_of_convention(
-        self, tmp_path: Path
-    ) -> None:
+    def test_comment_file_is_sibling_of_convention(self, tmp_path: Path) -> None:
         """Comment file is created next to the convention file."""
         convention_path = _create_convention_file(tmp_path)
 

@@ -56,41 +56,49 @@ def _write_design_file(
         parts.append("")
 
     if include_interface_contract:
-        parts.extend([
-            "## Interface Contract",
-            "",
-            "```python",
-            "def example(): ...",
-            "```",
-            "",
-        ])
+        parts.extend(
+            [
+                "## Interface Contract",
+                "",
+                "```python",
+                "def example(): ...",
+                "```",
+                "",
+            ]
+        )
 
     if include_dependencies:
-        parts.extend([
-            "## Dependencies",
-            "",
-            "(none)",
-            "",
-        ])
+        parts.extend(
+            [
+                "## Dependencies",
+                "",
+                "(none)",
+                "",
+            ]
+        )
 
     if include_dependents:
-        parts.extend([
-            "## Dependents",
-            "",
-            "(none)",
-            "",
-        ])
+        parts.extend(
+            [
+                "## Dependents",
+                "",
+                "(none)",
+                "",
+            ]
+        )
 
     if include_footer:
-        parts.extend([
-            "<!-- lexibrary:meta",
-            f"source: {source_path}",
-            "source_hash: abc123",
-            "design_hash: def456",
-            f"generated: {now}",
-            "generator: test",
-            "-->",
-        ])
+        parts.extend(
+            [
+                "<!-- lexibrary:meta",
+                f"source: {source_path}",
+                "source_hash: abc123",
+                "design_hash: def456",
+                f"generated: {now}",
+                "generator: test",
+                "-->",
+            ]
+        )
 
     design_path.write_text("\n".join(parts) + "\n", encoding="utf-8")
     return design_path
@@ -130,19 +138,23 @@ def _write_stack_post(
     ]
 
     if include_problem:
-        parts.extend([
-            "## Problem",
-            "",
-            problem_content,
-            "",
-        ])
+        parts.extend(
+            [
+                "## Problem",
+                "",
+                problem_content,
+                "",
+            ]
+        )
 
-    parts.extend([
-        "## Findings",
-        "",
-        "No findings yet.",
-        "",
-    ])
+    parts.extend(
+        [
+            "## Findings",
+            "",
+            "No findings yet.",
+            "",
+        ]
+    )
 
     path.write_text("\n".join(parts), encoding="utf-8")
     return path
@@ -219,9 +231,7 @@ class TestCheckDesignStructure:
         lexibrary_dir = tmp_path / ".lexibrary"
         lexibrary_dir.mkdir()
 
-        _write_design_file(
-            lexibrary_dir, "src/example.py", include_interface_contract=False
-        )
+        _write_design_file(lexibrary_dir, "src/example.py", include_interface_contract=False)
 
         issues = check_design_structure(project_root, lexibrary_dir)
         ic_issues = [i for i in issues if "Interface Contract" in i.message]
@@ -242,9 +252,7 @@ class TestCheckDesignStructure:
         assert footer_issues[0].severity == "warning"
         assert footer_issues[0].check == "design_structure"
 
-    def test_multiple_missing_sections_produce_multiple_issues(
-        self, tmp_path: Path
-    ) -> None:
+    def test_multiple_missing_sections_produce_multiple_issues(self, tmp_path: Path) -> None:
         """When multiple sections are missing, each produces a separate issue."""
         project_root = tmp_path
         lexibrary_dir = tmp_path / ".lexibrary"

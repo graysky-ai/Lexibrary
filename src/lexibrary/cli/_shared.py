@@ -238,9 +238,7 @@ def _run_status(
             parts: list[str] = []
             parts.append(f"{error_count} error{'s' if error_count != 1 else ''}")
             parts.append(f"{warning_count} warning{'s' if warning_count != 1 else ''}")
-            info(
-                f"{cli_prefix}: " + ", ".join(parts) + f" \u2014 run `{cli_prefix} validate`"
-            )
+            info(f"{cli_prefix}: " + ", ".join(parts) + f" \u2014 run `{cli_prefix} validate`")
         elif error_count > 0:
             info(
                 f"{cli_prefix}: {error_count} error{'s' if error_count != 1 else ''}"

@@ -47,16 +47,25 @@ class SearchResults:
             records.append({"name": c.name, "tags": c.tags, "status": c.status})
         for cv in self.conventions:
             records.append(
-                {"title": cv.title, "scope": cv.scope, "tags": cv.tags, "status": cv.status}
+                {
+                    "title": cv.title,
+                    "scope": cv.scope,
+                    "tags": cv.tags,
+                    "status": cv.status,
+                }
             )
         for s in self.stack_posts:
             records.append(
-                {"id": s.post_id, "title": s.title, "votes": s.votes, "tags": s.tags, "status": s.status}
+                {
+                    "id": s.post_id,
+                    "title": s.title,
+                    "votes": s.votes,
+                    "tags": s.tags,
+                    "status": s.status,
+                }
             )
         for d in self.design_files:
-            records.append(
-                {"source": d.source_path, "description": d.description, "tags": d.tags}
-            )
+            records.append({"source": d.source_path, "description": d.description, "tags": d.tags})
         info(_json.dumps(records))
 
     # -- Plain (tab-separated) rendering ------------------------------------
@@ -298,9 +307,7 @@ def unified_search(
 # ---------------------------------------------------------------------------
 
 
-def _resolve_tags(
-    *, tag: str | None, tags: list[str] | None
-) -> list[str]:
+def _resolve_tags(*, tag: str | None, tags: list[str] | None) -> list[str]:
     """Merge ``tag`` (single convenience alias) and ``tags`` (multi-tag list).
 
     Returns a deduplicated list of lowercase tag strings, preserving order.
@@ -637,11 +644,9 @@ def _search_concepts(
     # Multi-tag AND: filter for extra tags
     if extra_tags:
         matches = [
-            c for c in matches
-            if all(
-                any(t.strip().lower() == et for t in c.frontmatter.tags)
-                for et in extra_tags
-            )
+            c
+            for c in matches
+            if all(any(t.strip().lower() == et for t in c.frontmatter.tags) for et in extra_tags)
         ]
 
     # Status filter
@@ -850,18 +855,15 @@ def _search_conventions(
     if tag is not None and query is not None:
         tag_lower = tag.strip().lower()
         matches = [
-            c for c in matches
-            if any(t.strip().lower() == tag_lower for t in c.frontmatter.tags)
+            c for c in matches if any(t.strip().lower() == tag_lower for t in c.frontmatter.tags)
         ]
 
     # Multi-tag AND: filter for extra tags
     if extra_tags:
         matches = [
-            c for c in matches
-            if all(
-                any(t.strip().lower() == et for t in c.frontmatter.tags)
-                for et in extra_tags
-            )
+            c
+            for c in matches
+            if all(any(t.strip().lower() == et for t in c.frontmatter.tags) for et in extra_tags)
         ]
 
     # Apply scope filter: keep conventions whose scope is "project" or

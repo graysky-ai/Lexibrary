@@ -12,14 +12,12 @@ class DesignFileFrontmatter(BaseModel):
     """Agent-editable YAML frontmatter for a design file."""
 
     description: str
-    updated_by: Literal["archivist", "agent", "bootstrap-quick", "maintainer"] = (
-        "archivist"
-    )
+    updated_by: Literal[
+        "archivist", "agent", "bootstrap-quick", "skeleton-fallback", "maintainer"
+    ] = "archivist"
     status: Literal["active", "unlinked", "deprecated"] = "active"
     deprecated_at: datetime | None = None
-    deprecated_reason: Literal["source_deleted", "source_renamed", "manual"] | None = (
-        None
-    )
+    deprecated_reason: Literal["source_deleted", "source_renamed", "manual"] | None = None
 
 
 class StalenessMetadata(BaseModel):

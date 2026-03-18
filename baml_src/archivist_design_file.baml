@@ -8,7 +8,7 @@ function ArchivistGenerateDesignFile(
   existing_design_file: string?,
   available_concepts: string[]?
 ) -> DesignFileOutput {
-  client AnthropicArchivist
+  client ConfigDriven
   prompt #"
     You are the Archivist for a software project. Your job is to produce a
     structured design file that helps future readers (human or AI) understand

@@ -351,7 +351,7 @@ Core (always available, no external dependencies):
 
 Extension (requires additional setup):
 - Archivist pipeline (requires LLM provider)
-- Daemon/watchdog (optional background process)
+- Sweep (periodic background updates via `lexictl sweep --watch`)
 - Token counting (requires tiktoken or anthropic SDK)
 - Agent rule generation (per-environment: Claude, Cursor, Codex)
 ```
