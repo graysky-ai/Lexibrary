@@ -496,6 +496,11 @@ class TestCheckFilter:
             "design_structure",
             "stack_body_sections",
             "concept_body",
+            # --- Playbook checks ---
+            "playbook_frontmatter",
+            "playbook_wikilinks",
+            "playbook_staleness",
+            "playbook_deprecated_ttl",
         }
         assert set(AVAILABLE_CHECKS.keys()) == expected
 
@@ -533,9 +538,9 @@ class TestAllChecksRegistered:
     """Verify that validate_library() includes all 27 checks and that
     link-graph checks degrade gracefully when index.db is absent."""
 
-    def test_available_checks_count_is_42(self) -> None:
-        """AVAILABLE_CHECKS should contain exactly 42 entries."""
-        assert len(AVAILABLE_CHECKS) == 42
+    def test_available_checks_count_is_46(self) -> None:
+        """AVAILABLE_CHECKS should contain exactly 46 entries."""
+        assert len(AVAILABLE_CHECKS) == 46
 
     def test_validate_library_runs_all_13_checks_without_filters(self, tmp_path: Path) -> None:
         """With no severity or check filters, all 15 checks should be invoked.

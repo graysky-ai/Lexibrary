@@ -23,10 +23,17 @@ class SearchResults:
     conventions: list[_ConventionResult] = field(default_factory=list)
     design_files: list[_DesignFileResult] = field(default_factory=list)
     stack_posts: list[_StackResult] = field(default_factory=list)
+    playbooks: list[_PlaybookResult] = field(default_factory=list)
 
     def has_results(self) -> bool:
         """Return True if any group has results."""
-        return bool(self.concepts or self.conventions or self.design_files or self.stack_posts)
+        return bool(
+            self.concepts
+            or self.conventions
+            or self.design_files
+            or self.stack_posts
+            or self.playbooks
+        )
 
     def render(self) -> None:
         """Render grouped results, respecting the global ``--format`` flag."""
@@ -66,6 +73,15 @@ class SearchResults:
             )
         for d in self.design_files:
             records.append({"source": d.source_path, "description": d.description, "tags": d.tags})
+        for pb in self.playbooks:
+            records.append(
+                {
+                    "title": pb.title,
+                    "status": pb.status,
+                    "tags": pb.tags,
+                    "overview": pb.overview,
+                }
+            )
         info(_json.dumps(records))
 
     # -- Plain (tab-separated) rendering ------------------------------------
@@ -80,6 +96,8 @@ class SearchResults:
             info(f"{s.post_id}\t{s.title}\t{s.votes}\t{', '.join(s.tags)}\t{s.status}")
         for d in self.design_files:
             info(f"{d.source_path}\t{d.description}\t{', '.join(d.tags)}")
+        for pb in self.playbooks:
+            info(f"{pb.title}\t{pb.status}\t{', '.join(pb.tags)}\t{pb.overview}")
 
     # -- Markdown rendering (original behaviour) ----------------------------
 
@@ -127,6 +145,20 @@ class SearchResults:
             ]
             info(markdown_table(["ID", "Status", "Votes", "Title", "Tags"], rows))
 
+        if self.playbooks:
+            info("")
+            info("## Playbooks\n")
+            rows = [
+                [
+                    pb.title,
+                    pb.status,
+                    pb.overview[:50] if pb.overview else "",
+                    ", ".join(pb.tags),
+                ]
+                for pb in self.playbooks
+            ]
+            info(markdown_table(["Title", "Status", "Overview", "Tags"], rows))
+
 
 @dataclass
 class _ConceptResult:
@@ -161,8 +193,16 @@ class _StackResult:
     tags: list[str]
 
 
+@dataclass
+class _PlaybookResult:
+    title: str
+    status: str
+    tags: list[str]
+    overview: str
+
+
 # Valid artifact type values for ``artifact_type`` parameter.
-VALID_ARTIFACT_TYPES = ("concept", "convention", "design", "stack")
+VALID_ARTIFACT_TYPES = ("concept", "convention", "design", "stack", "playbook")
 
 
 def unified_search(
@@ -253,6 +293,7 @@ def unified_search(
     search_conventions = artifact_type is None or artifact_type == "convention"
     search_designs = artifact_type is None or artifact_type == "design"
     search_stack = artifact_type is None or artifact_type == "stack"
+    search_playbooks = artifact_type is None or artifact_type == "playbook"
 
     if search_concepts:
         results.concepts = _search_concepts(
@@ -295,6 +336,16 @@ def unified_search(
             tag=first_tag,
             extra_tags=resolved_tags[1:] if resolved_tags else [],
             scope=scope,
+            status=status,
+            include_deprecated=include_deprecated,
+        )
+
+    if search_playbooks:
+        results.playbooks = _search_playbooks(
+            project_root,
+            query=query,
+            tag=first_tag,
+            extra_tags=resolved_tags[1:] if resolved_tags else [],
             status=status,
             include_deprecated=include_deprecated,
         )
@@ -894,4 +945,77 @@ def _search_conventions(
             rule=c.rule,
         )
         for c in matches
+    ]
+
+
+def _search_playbooks(
+    project_root: Path,
+    *,
+    query: str | None,
+    tag: str | None,
+    extra_tags: list[str],
+    status: str | None,
+    include_deprecated: bool,
+) -> list[_PlaybookResult]:
+    """Search playbooks via PlaybookIndex (file-scanning).
+
+    Follows the same pattern as ``_search_conventions``.  Supports list-all
+    (no query/tag returns all playbooks), multi-tag AND, status filtering,
+    and deprecated hiding.
+    """
+    from lexibrary.playbooks.index import PlaybookIndex  # noqa: PLC0415
+
+    playbooks_dir = project_root / ".lexibrary" / "playbooks"
+    if not playbooks_dir.is_dir():
+        return []
+
+    index = PlaybookIndex(playbooks_dir)
+    index.load()
+
+    if len(index) == 0:
+        return []
+
+    if query is not None:
+        matches = index.search(query)
+    elif tag is not None:
+        matches = index.by_tag(tag)
+    else:
+        # List-all: return all playbooks
+        matches = list(index.playbooks)
+
+    # Apply tag filter (even when query was the primary search)
+    if tag is not None and query is not None:
+        tag_lower = tag.strip().lower()
+        matches = [
+            pb
+            for pb in matches
+            if any(t.strip().lower() == tag_lower for t in pb.frontmatter.tags)
+        ]
+
+    # Multi-tag AND: filter for extra tags
+    if extra_tags:
+        matches = [
+            pb
+            for pb in matches
+            if all(
+                any(t.strip().lower() == et for t in pb.frontmatter.tags) for et in extra_tags
+            )
+        ]
+
+    # Status filter
+    if status is not None:
+        matches = [pb for pb in matches if pb.frontmatter.status == status]
+
+    # Hide deprecated by default (unless explicitly requested via status or flag)
+    if not include_deprecated and status != "deprecated":
+        matches = [pb for pb in matches if pb.frontmatter.status != "deprecated"]
+
+    return [
+        _PlaybookResult(
+            title=pb.frontmatter.title,
+            status=pb.frontmatter.status,
+            tags=list(pb.frontmatter.tags),
+            overview=pb.overview,
+        )
+        for pb in matches
     ]

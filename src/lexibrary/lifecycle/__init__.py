@@ -22,6 +22,12 @@ from lexibrary.lifecycle.design_comments import (
     read_design_comments,
 )
 from lexibrary.lifecycle.models import ArtefactComment, ArtefactCommentFile
+from lexibrary.lifecycle.playbook_comments import (
+    append_playbook_comment,
+    playbook_comment_count,
+    playbook_comment_path,
+    read_playbook_comments,
+)
 from lexibrary.lifecycle.stack_comments import (
     append_stack_comment,
     read_stack_comments,
@@ -36,6 +42,7 @@ __all__ = [
     "append_concept_comment",
     "append_convention_comment",
     "append_design_comment",
+    "append_playbook_comment",
     "append_stack_comment",
     "comment_count",
     "concept_comment_count",
@@ -44,10 +51,13 @@ __all__ = [
     "convention_comment_path",
     "design_comment_count",
     "design_comment_path",
+    "playbook_comment_count",
+    "playbook_comment_path",
     "read_comments",
     "read_concept_comments",
     "read_convention_comments",
     "read_design_comments",
+    "read_playbook_comments",
     "read_stack_comments",
     "stack_comment_count",
     "stack_comment_path",

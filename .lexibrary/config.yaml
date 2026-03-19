@@ -27,3 +27,10 @@ token_budgets:
   lookup_total_tokens: 1200
   summarize_max_tokens: 200
   archivist_max_tokens: 5000
+  playbook_tokens: 500
+
+# Playbook system settings
+playbooks:
+  lookup_display_limit: 5
+  staleness_commits: 100
+  staleness_days: 180

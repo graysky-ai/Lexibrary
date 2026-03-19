@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
@@ -20,9 +20,13 @@ from lexibrary.cli.concepts import concept_app
 from lexibrary.cli.conventions import convention_app
 from lexibrary.cli.design import design_app
 from lexibrary.cli.iwh import iwh_app
+from lexibrary.cli.playbooks import playbook_app
 from lexibrary.cli.stack import stack_app
 from lexibrary.exceptions import LexibraryNotFoundError
 from lexibrary.utils.root import find_project_root
+
+if TYPE_CHECKING:
+    from lexibrary.artifacts.playbook import PlaybookFile
 
 
 def _lexi_callback(
@@ -59,6 +63,7 @@ lexi_app.add_typer(concept_app, name="concept")
 lexi_app.add_typer(convention_app, name="convention")
 lexi_app.add_typer(iwh_app, name="iwh")
 lexi_app.add_typer(design_app, name="design")
+lexi_app.add_typer(playbook_app, name="playbook")
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +227,47 @@ def _render_iwh_peek(
     lines.append("Run `lexi iwh read <directory>` to consume this signal.")
     lines.append("")
 
+    return "\n".join(lines)
+
+
+def _render_triggered_playbooks(
+    playbooks: Sequence[PlaybookFile],
+    display_limit: int,
+) -> str:
+    """Render a 'Triggered Playbooks' section for matching playbooks.
+
+    *playbooks* should already be ordered by trigger specificity (as returned
+    by :meth:`PlaybookIndex.by_trigger_file`).  At most *display_limit*
+    entries are shown; a note is appended when more exist.
+
+    Returns an empty string if *playbooks* is empty.
+    """
+    if not playbooks:
+        return ""
+
+    shown = playbooks[:display_limit]
+    lines: list[str] = ["\n## Triggered Playbooks\n"]
+    for pb in shown:
+        overview_preview = pb.overview.replace("\n", " ").strip()
+        if len(overview_preview) > 120:
+            overview_preview = overview_preview[:117] + "..."
+        est = (
+            f" (~{pb.frontmatter.estimated_minutes} min)"
+            if pb.frontmatter.estimated_minutes
+            else ""
+        )
+        lines.append(f"- **{pb.frontmatter.title}**{est}")
+        if overview_preview:
+            lines.append(f"  {overview_preview}")
+
+    if len(playbooks) > display_limit:
+        extra = len(playbooks) - display_limit
+        lines.append(
+            f"\n*{extra} more playbook(s) matched"
+            " -- run `lexi playbook search` for full list.*"
+        )
+
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -446,6 +492,19 @@ def lookup(
             )
             if convs:
                 _render_conventions(convs, total, brief_limit, rel_target)
+        # Triggered playbooks (always shown, after conventions)
+        from lexibrary.playbooks.index import PlaybookIndex  # noqa: PLC0415
+
+        playbooks_dir = project_root / ".lexibrary" / "playbooks"
+        playbook_index = PlaybookIndex(playbooks_dir)
+        playbook_index.load()
+        triggered = playbook_index.by_trigger_file(rel_target)
+        if triggered:
+            brief_pb_limit = min(config.playbooks.lookup_display_limit, 5)
+            playbook_section = _render_triggered_playbooks(triggered, brief_pb_limit)
+            if playbook_section:
+                info(playbook_section)
+
         from lexibrary.linkgraph import open_index  # noqa: PLC0415
 
         link_graph = open_index(project_root)
@@ -491,6 +550,23 @@ def lookup(
             _render_conventions(conventions, total_count, display_limit, rel_target)
             # Estimate token cost of rendered conventions for budget tracking
             conventions_token_estimate = len(conventions) * 10  # rough estimate
+
+    # Triggered playbooks (always shown, after conventions, before supplementary)
+    from lexibrary.playbooks.index import PlaybookIndex  # noqa: PLC0415
+
+    playbook_token_estimate = 0
+    playbooks_dir = project_root / ".lexibrary" / "playbooks"
+    playbook_index = PlaybookIndex(playbooks_dir)
+    playbook_index.load()
+
+    rel_target_for_trigger = str(target.relative_to(project_root))
+    triggered_playbooks = playbook_index.by_trigger_file(rel_target_for_trigger)
+    if triggered_playbooks:
+        pb_display_limit = config.playbooks.lookup_display_limit
+        playbook_section = _render_triggered_playbooks(triggered_playbooks, pb_display_limit)
+        if playbook_section:
+            info(playbook_section)
+            playbook_token_estimate = _estimate_tokens(playbook_section)
 
     # Gather supplementary sections for token-budget-aware rendering
     # Priority: issues (2) > IWH (3) > links (4)
@@ -542,11 +618,11 @@ def lookup(
     iwh_text = _render_iwh_peek(project_root, target)
 
     # Apply token budget truncation to supplementary sections
-    # Design and conventions are always shown; remaining budget goes to
+    # Design, conventions, and playbooks are always shown; remaining budget goes to
     # issues > IWH > links in priority order
     total_budget = config.token_budgets.lookup_total_tokens
     design_tokens = _estimate_tokens(design_content)
-    used_tokens = design_tokens + conventions_token_estimate
+    used_tokens = design_tokens + conventions_token_estimate + playbook_token_estimate
 
     supplementary: list[tuple[str, str, int]] = [
         ("issues", issues_text, 2),
@@ -969,7 +1045,7 @@ def _build_orient_content(project_root: Path) -> str:
 
 
 def _collect_library_stats(project_root: Path) -> str:
-    """Collect library statistics: concept count, convention count, open stack posts.
+    """Collect library statistics: concept, convention, playbook counts, and open stack posts.
 
     Returns a formatted section string, or empty string if no stats available.
     """
@@ -989,6 +1065,12 @@ def _collect_library_stats(project_root: Path) -> str:
     if conventions_dir.is_dir():
         convention_count = len(list(conventions_dir.glob("*.md")))
 
+    # Count playbooks
+    playbooks_dir = lexibrary_root / "playbooks"
+    playbook_count = 0
+    if playbooks_dir.is_dir():
+        playbook_count = len(list(playbooks_dir.glob("*.md")))
+
     # Count open stack posts
     stack_dir = lexibrary_root / "stack"
     open_stack_count = 0
@@ -1000,10 +1082,11 @@ def _collect_library_stats(project_root: Path) -> str:
             if post is not None and post.frontmatter.status == "open":
                 open_stack_count += 1
 
-    if concept_count or convention_count or open_stack_count:
+    if concept_count or convention_count or playbook_count or open_stack_count:
         lines: list[str] = ["## Library Stats\n"]
         lines.append(f"Concepts: {concept_count}")
         lines.append(f"Conventions: {convention_count}")
+        lines.append(f"Playbooks: {playbook_count}")
         lines.append(f"Open stack posts: {open_stack_count}")
         return "\n".join(lines)
 

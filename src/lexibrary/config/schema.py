@@ -99,6 +99,7 @@ class TokenBudgetConfig(BaseModel):
     convention_file_tokens: int = 500
     orientation_tokens: int = 300
     lookup_total_tokens: int = 1200
+    playbook_tokens: int = 500
     summarize_max_tokens: int = 200
     archivist_max_tokens: int = 5000
 
@@ -201,6 +202,16 @@ class DeprecationConfig(BaseModel):
     comment_warning_threshold: int = 10
 
 
+class PlaybookConfig(BaseModel):
+    """Playbook system configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    lookup_display_limit: int = 5
+    staleness_commits: int = 100
+    staleness_days: int = 180
+
+
 class StackConfig(BaseModel):
     """Stack post staleness lifecycle configuration."""
 
@@ -223,6 +234,7 @@ class LexibraryConfig(BaseModel):
     concepts: ConceptConfig = Field(default_factory=ConceptConfig)
     conventions: ConventionConfig = Field(default_factory=ConventionConfig)
     convention_declarations: list[ConventionDeclaration] = Field(default_factory=list)
+    playbooks: PlaybookConfig = Field(default_factory=PlaybookConfig)
     iwh: IWHConfig = Field(default_factory=IWHConfig)
     deprecation: DeprecationConfig = Field(default_factory=DeprecationConfig)
     stack: StackConfig = Field(default_factory=StackConfig)

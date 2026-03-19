@@ -41,6 +41,10 @@ from lexibrary.validator.checks import (
     check_orphan_concepts,
     check_orphaned_designs,
     check_orphaned_iwh_signals,
+    check_playbook_deprecated_ttl,
+    check_playbook_frontmatter,
+    check_playbook_staleness,
+    check_playbook_wikilinks,
     check_resolved_post_staleness,
     check_stack_body_sections,
     check_stack_frontmatter,
@@ -125,6 +129,11 @@ AVAILABLE_CHECKS: dict[str, tuple[CheckFn, Severity]] = {
     "design_structure": (check_design_structure, "warning"),
     "stack_body_sections": (check_stack_body_sections, "warning"),
     "concept_body": (check_concept_body, "info"),
+    # --- Playbook checks ---
+    "playbook_frontmatter": (check_playbook_frontmatter, "error"),
+    "playbook_wikilinks": (check_playbook_wikilinks, "error"),
+    "playbook_staleness": (check_playbook_staleness, "info"),
+    "playbook_deprecated_ttl": (check_playbook_deprecated_ttl, "info"),
 }
 
 # Severity levels ordered from most to least severe.

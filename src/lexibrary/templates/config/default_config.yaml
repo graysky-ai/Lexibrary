@@ -34,6 +34,7 @@ token_budgets:
   convention_file_tokens: 500            # Convention file budget
   orientation_tokens: 300                # Orientation output budget
   lookup_total_tokens: 1200              # Total budget for lexi lookup output
+  playbook_tokens: 500                   # Playbook display budget
   summarize_max_tokens: 200              # Max tokens for LLM summarize responses
   archivist_max_tokens: 5000             # Max tokens for LLM archivist responses
 
@@ -121,6 +122,12 @@ stack:
   staleness_ttl_commits: 200             # Commits before resolved posts are flagged stale
   staleness_ttl_short_commits: 100       # Shorter TTL for wontfix/by_design/cannot_reproduce
   lookup_display_limit: 3                # Max posts shown in lexi lookup "Known Issues"
+
+# Playbook system settings
+playbooks:
+  lookup_display_limit: 5                # Max triggered playbooks shown in lookup
+  staleness_commits: 100                 # Commits since last_verified before flagging stale
+  staleness_days: 180                    # Calendar day fallback for staleness
 
 # AST-based interface extraction
 ast:

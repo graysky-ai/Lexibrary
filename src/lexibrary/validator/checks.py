@@ -6,7 +6,8 @@ Each check function follows the signature:
 Checks are grouped by severity:
 - Error-severity: wikilink_resolution, file_existence, concept_frontmatter,
     convention_frontmatter, design_frontmatter, stack_frontmatter,
-    iwh_frontmatter, duplicate_aliases, duplicate_slugs
+    iwh_frontmatter, duplicate_aliases, duplicate_slugs,
+    playbook_frontmatter, playbook_wikilinks
 - Warning-severity: hash_freshness, token_budgets, orphan_concepts,
     deprecated_concept_usage, orphaned_designs, convention_orphaned_scope,
     stack_refs_validity, design_deps_existence, aindex_entries
@@ -16,7 +17,7 @@ Checks are grouped by severity:
     comment_accumulation, deprecated_ttl, stale_concept,
     supersession_candidate, convention_stale, convention_gap,
     convention_consistent_violation, lookup_token_budget_exceeded,
-    orphaned_iwh_signals
+    orphaned_iwh_signals, playbook_staleness, playbook_deprecated_ttl
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ import contextlib
 import logging
 import re
 import sqlite3
-from datetime import UTC
+from datetime import UTC, date
 from pathlib import Path
 
 import yaml
@@ -43,6 +44,8 @@ from lexibrary.lifecycle.convention_comments import convention_comment_count
 from lexibrary.lifecycle.deprecation import _count_commits_since, check_ttl_expiry
 from lexibrary.lifecycle.design_comments import design_comment_path
 from lexibrary.linkgraph.schema import SCHEMA_VERSION, check_schema_version, set_pragmas
+from lexibrary.playbooks.index import PlaybookIndex
+from lexibrary.playbooks.parser import parse_playbook_file
 from lexibrary.stack.parser import parse_stack_post
 from lexibrary.tokenizer.approximate import ApproximateCounter
 from lexibrary.utils.hashing import hash_file
@@ -93,7 +96,13 @@ def check_wikilink_resolution(
     index = ConceptIndex.load(concepts_dir)
     stack_dir = lexibrary_dir / "stack"
     convention_dir = lexibrary_dir / "conventions"
-    resolver = WikilinkResolver(index, stack_dir=stack_dir, convention_dir=convention_dir)
+    playbook_dir = lexibrary_dir / "playbooks"
+    resolver = WikilinkResolver(
+        index,
+        stack_dir=stack_dir,
+        convention_dir=convention_dir,
+        playbook_dir=playbook_dir,
+    )
 
     # Collect wikilinks from design files
     for design_path in _iter_design_files(lexibrary_dir):
@@ -3750,5 +3759,440 @@ def check_orphaned_iwh_signals(
                     ),
                 )
             )
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Playbook checks
+# ---------------------------------------------------------------------------
+
+
+def check_playbook_frontmatter(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Validate all playbook files have mandatory frontmatter fields.
+
+    Checks that every ``.md`` file in the playbooks directory has valid YAML
+    frontmatter with ``title``, ``status`` (draft/active/deprecated),
+    ``source`` (user/agent), and parseable ``trigger_files`` globs.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of error-severity ValidationIssues for invalid frontmatter.
+    """
+    import pathspec  # noqa: PLC0415
+
+    issues: list[ValidationIssue] = []
+    playbooks_dir = lexibrary_dir / "playbooks"
+    if not playbooks_dir.is_dir():
+        return issues
+
+    valid_statuses = {"draft", "active", "deprecated"}
+    valid_sources = {"user", "agent"}
+
+    for md_path in sorted(playbooks_dir.glob("*.md")):
+        rel_path = _rel(md_path, project_root)
+
+        try:
+            text = md_path.read_text(encoding="utf-8")
+        except OSError:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="playbook_frontmatter",
+                    message="Could not read playbook file",
+                    artifact=rel_path,
+                )
+            )
+            continue
+
+        fm_match = _FRONTMATTER_RE.match(text)
+        if not fm_match:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="playbook_frontmatter",
+                    message="Missing YAML frontmatter",
+                    artifact=rel_path,
+                    suggestion=(
+                        "Add --- delimited YAML frontmatter with "
+                        "title, status, source."
+                    ),
+                )
+            )
+            continue
+
+        try:
+            data = yaml.safe_load(fm_match.group(1))
+        except yaml.YAMLError:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="playbook_frontmatter",
+                    message="Invalid YAML in frontmatter",
+                    artifact=rel_path,
+                    suggestion="Fix YAML syntax in frontmatter block.",
+                )
+            )
+            continue
+
+        if not isinstance(data, dict):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="playbook_frontmatter",
+                    message="Frontmatter is not a YAML mapping",
+                    artifact=rel_path,
+                    suggestion="Frontmatter must be a YAML key-value mapping.",
+                )
+            )
+            continue
+
+        # title -- must be present and a non-empty string
+        if "title" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="playbook_frontmatter",
+                    message="Missing mandatory field: title",
+                    artifact=rel_path,
+                    suggestion="Add a 'title' field to the frontmatter.",
+                )
+            )
+        elif not isinstance(data["title"], str) or not data["title"].strip():
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="playbook_frontmatter",
+                    message="Field 'title' must be a non-empty string",
+                    artifact=rel_path,
+                    suggestion="Add a 'title' field to the frontmatter.",
+                )
+            )
+
+        # status -- must be one of valid values
+        if "status" in data and data["status"] not in valid_statuses:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="playbook_frontmatter",
+                    message=f"Invalid status: {data['status']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"Status must be one of: {', '.join(sorted(valid_statuses))}."
+                    ),
+                )
+            )
+
+        # source -- must be one of valid values
+        if "source" in data and data["source"] not in valid_sources:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="playbook_frontmatter",
+                    message=f"Invalid source: {data['source']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"Source must be one of: {', '.join(sorted(valid_sources))}."
+                    ),
+                )
+            )
+
+        # trigger_files -- each entry must be a valid gitignore glob
+        trigger_files = data.get("trigger_files", [])
+        if isinstance(trigger_files, list):
+            for pattern in trigger_files:
+                if not isinstance(pattern, str):
+                    continue
+                try:
+                    pathspec.PathSpec.from_lines("gitignore", [pattern])
+                except Exception:
+                    issues.append(
+                        ValidationIssue(
+                            severity="error",
+                            check="playbook_frontmatter",
+                            message=(
+                                f"Invalid trigger_files glob pattern: {pattern!r}"
+                            ),
+                            artifact=rel_path,
+                            suggestion=(
+                                "Fix the glob pattern so it is parseable "
+                                "by pathspec (gitignore syntax)."
+                            ),
+                        )
+                    )
+
+    return issues
+
+
+def check_playbook_wikilinks(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Parse wikilinks in playbook bodies and verify each resolves.
+
+    Uses WikilinkResolver to check every ``[[link]]`` found in playbook
+    body text. Unresolved links produce error-severity issues with
+    suggestions from fuzzy matching.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of error-severity ValidationIssues for unresolved wikilinks.
+    """
+    issues: list[ValidationIssue] = []
+
+    playbooks_dir = lexibrary_dir / "playbooks"
+    if not playbooks_dir.is_dir():
+        return issues
+
+    # Build resolver
+    concepts_dir = lexibrary_dir / "concepts"
+    index = ConceptIndex.load(concepts_dir)
+    stack_dir = lexibrary_dir / "stack"
+    convention_dir = lexibrary_dir / "conventions"
+    resolver = WikilinkResolver(
+        index,
+        stack_dir=stack_dir,
+        convention_dir=convention_dir,
+        playbook_dir=playbooks_dir,
+    )
+
+    for md_path in sorted(playbooks_dir.glob("*.md")):
+        playbook = parse_playbook_file(md_path)
+        if playbook is None:
+            continue
+
+        # Extract wikilinks from body text
+        body_links = _WIKILINK_RE.findall(playbook.body)
+        for link_text in body_links:
+            result = resolver.resolve(link_text)
+            if isinstance(result, UnresolvedLink):
+                suggestion = ""
+                if result.suggestions:
+                    suggestion = f"Did you mean [[{result.suggestions[0]}]]?"
+                rel_path = _rel(md_path, project_root)
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        check="playbook_wikilinks",
+                        message=f"[[{link_text}]] does not resolve",
+                        artifact=rel_path,
+                        suggestion=suggestion,
+                    )
+                )
+
+    return issues
+
+
+def check_playbook_staleness(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect active playbooks that may be stale.
+
+    Flags active playbooks where:
+    - ``last_verified`` is unset (never verified)
+    - Commits since ``last_verified`` exceed ``config.playbooks.staleness_commits``
+    - Calendar days since ``last_verified`` exceed ``config.playbooks.staleness_days``
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for stale playbooks.
+    """
+    issues: list[ValidationIssue] = []
+
+    playbooks_dir = lexibrary_dir / "playbooks"
+    if not playbooks_dir.is_dir():
+        return issues
+
+    # Load config for staleness thresholds
+    try:
+        config = load_config(project_root)
+    except Exception:
+        config = None
+
+    staleness_commits = 100  # default
+    staleness_days = 180  # default
+    if config is not None:
+        staleness_commits = config.playbooks.staleness_commits
+        staleness_days = config.playbooks.staleness_days
+
+    today = date.today()
+
+    for md_path in sorted(playbooks_dir.glob("*.md")):
+        playbook = parse_playbook_file(md_path)
+        if playbook is None:
+            continue
+
+        # Only check active playbooks
+        if playbook.frontmatter.status != "active":
+            continue
+
+        rel_path = _rel(md_path, project_root)
+        last_verified = playbook.frontmatter.last_verified
+
+        if last_verified is None:
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="playbook_staleness",
+                    message=(
+                        f"Active playbook '{playbook.frontmatter.title}' "
+                        f"has never been verified"
+                    ),
+                    artifact=rel_path,
+                    suggestion=(
+                        "Run `lexi playbook verify <name>` to mark "
+                        "as recently verified."
+                    ),
+                )
+            )
+            continue
+
+        # Check commit-based staleness
+        since_iso = last_verified.isoformat()
+        commit_count = _count_commits_since(project_root, since_iso)
+        if commit_count > staleness_commits:
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="playbook_staleness",
+                    message=(
+                        f"Active playbook '{playbook.frontmatter.title}' "
+                        f"is stale: {commit_count} commits since last verified "
+                        f"(threshold: {staleness_commits})"
+                    ),
+                    artifact=rel_path,
+                    suggestion=(
+                        "Run `lexi playbook verify <name>` to re-verify, "
+                        "or update the playbook if steps have changed."
+                    ),
+                )
+            )
+
+        # Check calendar-day staleness
+        days_since = (today - last_verified).days
+        if days_since > staleness_days:
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    check="playbook_staleness",
+                    message=(
+                        f"Active playbook '{playbook.frontmatter.title}' "
+                        f"is stale: {days_since} days since last verified "
+                        f"(threshold: {staleness_days})"
+                    ),
+                    artifact=rel_path,
+                    suggestion=(
+                        "Run `lexi playbook verify <name>` to re-verify, "
+                        "or update the playbook if steps have changed."
+                    ),
+                )
+            )
+
+    return issues
+
+
+def check_playbook_deprecated_ttl(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect deprecated playbooks past the TTL window.
+
+    Flags deprecated playbooks whose ``deprecated_at`` timestamp exceeds the
+    commit-based TTL window (``config.deprecation.ttl_commits``). Also verifies
+    that ``superseded_by`` targets exist when set.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of info-severity ValidationIssues for expired deprecated playbooks.
+    """
+    issues: list[ValidationIssue] = []
+
+    playbooks_dir = lexibrary_dir / "playbooks"
+    if not playbooks_dir.is_dir():
+        return issues
+
+    # Load config for TTL
+    try:
+        config = load_config(project_root)
+    except Exception:
+        config = None
+
+    ttl_commits = 50  # default
+    if config is not None:
+        ttl_commits = config.deprecation.ttl_commits
+
+    # Build index for superseded_by resolution
+    pb_index = PlaybookIndex(playbooks_dir)
+    pb_index.load()
+
+    for md_path in sorted(playbooks_dir.glob("*.md")):
+        playbook = parse_playbook_file(md_path)
+        if playbook is None:
+            continue
+
+        if playbook.frontmatter.status != "deprecated":
+            continue
+
+        rel_path = _rel(md_path, project_root)
+
+        # Check TTL expiry
+        deprecated_at = playbook.frontmatter.deprecated_at
+        if deprecated_at is not None:
+            since_iso = deprecated_at.isoformat()
+            commit_count = _count_commits_since(project_root, since_iso)
+            if commit_count > ttl_commits:
+                issues.append(
+                    ValidationIssue(
+                        severity="info",
+                        check="playbook_deprecated_ttl",
+                        message=(
+                            f"Deprecated playbook '{playbook.frontmatter.title}' "
+                            f"has exceeded TTL ({ttl_commits} commits)"
+                        ),
+                        artifact=rel_path,
+                        suggestion=(
+                            "Consider removing this deprecated playbook "
+                            "or archiving it."
+                        ),
+                    )
+                )
+
+        # Verify superseded_by target exists
+        superseded_by = playbook.frontmatter.superseded_by
+        if superseded_by is not None:
+            target = pb_index.find(superseded_by)
+            if target is None:
+                issues.append(
+                    ValidationIssue(
+                        severity="info",
+                        check="playbook_deprecated_ttl",
+                        message=(
+                            f"Deprecated playbook '{playbook.frontmatter.title}' "
+                            f"has superseded_by='{superseded_by}' but no such "
+                            f"playbook exists"
+                        ),
+                        artifact=rel_path,
+                        suggestion=(
+                            "Fix the superseded_by slug to reference an "
+                            "existing playbook, or remove the field."
+                        ),
+                    )
+                )
 
     return issues
