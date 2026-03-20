@@ -485,11 +485,15 @@ class TestHookScriptGeneration:
         assert "PreToolUse" in content
         assert "jq" in content
 
-    def test_post_edit_emits_system_message(self, tmp_path: Path) -> None:
-        """Post-edit script emits a systemMessage reminder."""
+    def test_post_edit_uses_hook_specific_output(self, tmp_path: Path) -> None:
+        """Post-edit script uses hookSpecificOutput wrapper with additionalContext."""
         _generate_hook_scripts(tmp_path)
         content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
-        assert "systemMessage" in content
+        assert "hookSpecificOutput" in content
+        assert "hookEventName" in content
+        assert "PostToolUse" in content
+        assert "additionalContext" in content
+        assert "systemMessage" not in content
 
     def test_post_edit_excludes_non_source_paths(self, tmp_path: Path) -> None:
         """Post-edit script skips .lexibrary/, blueprints/, .claude/, .cursor/ paths."""
@@ -606,8 +610,8 @@ class TestPostEditDependentsWarning:
         assert "--depth 1" in content
         assert "--quiet" in content
 
-    def test_post_edit_appends_dependents_to_system_message(self, tmp_path: Path) -> None:
-        """Post-edit hook appends dependents list to systemMessage when present."""
+    def test_post_edit_appends_dependents_to_additional_context(self, tmp_path: Path) -> None:
+        """Post-edit hook appends dependents list to additionalContext when present."""
         _generate_hook_scripts(tmp_path)
         content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
         assert "Dependents that may need updating" in content

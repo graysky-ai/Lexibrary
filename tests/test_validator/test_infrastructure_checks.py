@@ -62,7 +62,7 @@ class TestCheckConfigValid:
         assert issues[0].severity == "error"
         assert issues[0].check == "config_valid"
         assert "not found" in issues[0].message
-        assert "lexi init" in issues[0].suggestion
+        assert "lexictl init" in issues[0].suggestion
 
     def test_invalid_yaml_reports_error(self, tmp_path: Path) -> None:
         """Unparseable YAML produces an error with YAML syntax message."""

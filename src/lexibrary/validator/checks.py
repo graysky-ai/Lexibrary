@@ -200,7 +200,10 @@ def check_file_existence(
                     check="file_existence",
                     message=f"Source file {design.source_path} does not exist",
                     artifact=rel_path,
-                    suggestion="Remove the design file or restore the source file.",
+                    suggestion=(
+                        f"Remove the design file manually, or restore the source file at "
+                        f"'{design.source_path}'."
+                    ),
                 )
             )
 
@@ -225,7 +228,10 @@ def check_file_existence(
                             check="file_existence",
                             message=f"Referenced file {file_ref} does not exist",
                             artifact=rel_path,
-                            suggestion="Update or remove the file reference.",
+                            suggestion=(
+                                f"Edit {rel_path} and remove or update the stale "
+                                f"refs.files entry '{file_ref}'."
+                            ),
                         )
                     )
 
@@ -238,7 +244,10 @@ def check_file_existence(
                             check="file_existence",
                             message=(f"Referenced design file {design_ref} does not exist"),
                             artifact=rel_path,
-                            suggestion="Update or remove the design reference.",
+                            suggestion=(
+                                f"Edit {rel_path} and remove or update the stale "
+                                f"refs.designs entry '{design_ref}'."
+                            ),
                         )
                     )
 
@@ -292,7 +301,8 @@ def check_concept_frontmatter(
                     message="Missing YAML frontmatter",
                     artifact=rel_path,
                     suggestion=(
-                        "Add --- delimited YAML frontmatter with title, aliases, tags, status."
+                        f"Edit {rel_path} and add --- delimited YAML frontmatter "
+                        f"with title, aliases, tags, status fields."
                     ),
                 )
             )
@@ -307,7 +317,7 @@ def check_concept_frontmatter(
                     check="concept_frontmatter",
                     message="Invalid YAML in frontmatter",
                     artifact=rel_path,
-                    suggestion="Fix YAML syntax in frontmatter block.",
+                    suggestion=f"Edit {rel_path} and fix the YAML syntax in the frontmatter block.",
                 )
             )
             continue
@@ -319,7 +329,10 @@ def check_concept_frontmatter(
                     check="concept_frontmatter",
                     message="Frontmatter is not a YAML mapping",
                     artifact=rel_path,
-                    suggestion="Frontmatter must be a YAML key-value mapping.",
+                    suggestion=(
+                        f"Edit {rel_path}: frontmatter must be a YAML key-value mapping "
+                        f"(e.g. 'title: My Concept')."
+                    ),
                 )
             )
             continue
@@ -334,7 +347,9 @@ def check_concept_frontmatter(
                         check="concept_frontmatter",
                         message=f"Missing mandatory field: {field_name}",
                         artifact=rel_path,
-                        suggestion=f"Add '{field_name}' to the concept frontmatter.",
+                        suggestion=(
+                            f"Edit {rel_path} and add a '{field_name}:' field to the frontmatter."
+                        ),
                     )
                 )
 
@@ -348,7 +363,10 @@ def check_concept_frontmatter(
                         check="concept_frontmatter",
                         message=f"Invalid status: {data['status']}",
                         artifact=rel_path,
-                        suggestion=(f"Status must be one of: {', '.join(sorted(valid_statuses))}."),
+                        suggestion=(
+                            f"Edit {rel_path} and set status to one of: "
+                            f"{', '.join(sorted(valid_statuses))}."
+                        ),
                     )
                 )
 
@@ -405,8 +423,8 @@ def check_convention_frontmatter(
                     message="Missing YAML frontmatter",
                     artifact=rel_path,
                     suggestion=(
-                        "Add --- delimited YAML frontmatter with "
-                        "title, status, source, scope, tags, priority."
+                        f"Edit {rel_path} and add --- delimited YAML frontmatter "
+                        f"with title, status, source, scope, tags, priority fields."
                     ),
                 )
             )
@@ -421,7 +439,7 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Invalid YAML in frontmatter",
                     artifact=rel_path,
-                    suggestion="Fix YAML syntax in frontmatter block.",
+                    suggestion=f"Edit {rel_path} and fix the YAML syntax in the frontmatter block.",
                 )
             )
             continue
@@ -433,7 +451,10 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Frontmatter is not a YAML mapping",
                     artifact=rel_path,
-                    suggestion="Frontmatter must be a YAML key-value mapping.",
+                    suggestion=(
+                        f"Edit {rel_path}: frontmatter must be a YAML key-value mapping "
+                        f"(e.g. 'title: My Convention')."
+                    ),
                 )
             )
             continue
@@ -446,7 +467,7 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Missing mandatory field: title",
                     artifact=rel_path,
-                    suggestion="Add a 'title' field to the frontmatter.",
+                    suggestion=f"Edit {rel_path} and add a 'title:' field to the frontmatter.",
                 )
             )
         elif not isinstance(data["title"], str) or not data["title"].strip():
@@ -456,7 +477,9 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Field 'title' must be a non-empty string",
                     artifact=rel_path,
-                    suggestion="Add a 'title' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and set 'title:' to a non-empty string value."
+                    ),
                 )
             )
 
@@ -468,7 +491,10 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Missing mandatory field: status",
                     artifact=rel_path,
-                    suggestion="Add a 'status' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and add 'status:' set to one of: "
+                        f"{', '.join(sorted(valid_statuses))}."
+                    ),
                 )
             )
         elif data["status"] not in valid_statuses:
@@ -478,7 +504,10 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message=f"Invalid status: {data['status']}",
                     artifact=rel_path,
-                    suggestion=(f"Status must be one of: {', '.join(sorted(valid_statuses))}."),
+                    suggestion=(
+                        f"Edit {rel_path} and set status to one of: "
+                        f"{', '.join(sorted(valid_statuses))}."
+                    ),
                 )
             )
 
@@ -490,7 +519,10 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Missing mandatory field: source",
                     artifact=rel_path,
-                    suggestion="Add a 'source' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and add 'source:' set to one of: "
+                        f"{', '.join(sorted(valid_sources))}."
+                    ),
                 )
             )
         elif data["source"] not in valid_sources:
@@ -500,7 +532,10 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message=f"Invalid source: {data['source']}",
                     artifact=rel_path,
-                    suggestion=(f"Source must be one of: {', '.join(sorted(valid_sources))}."),
+                    suggestion=(
+                        f"Edit {rel_path} and set source to one of: "
+                        f"{', '.join(sorted(valid_sources))}."
+                    ),
                 )
             )
 
@@ -512,7 +547,9 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Missing mandatory field: scope",
                     artifact=rel_path,
-                    suggestion="Add a 'scope' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and add 'scope:' set to 'project' or a directory path."
+                    ),
                 )
             )
         elif not isinstance(data["scope"], str):
@@ -522,7 +559,10 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Field 'scope' must be a string",
                     artifact=rel_path,
-                    suggestion="Add a 'scope' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and set 'scope:' to a string "
+                        f"(e.g. 'project' or 'src/lexibrary')."
+                    ),
                 )
             )
 
@@ -534,7 +574,9 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Missing mandatory field: tags",
                     artifact=rel_path,
-                    suggestion="Add a 'tags' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and add a 'tags:' list field to the frontmatter."
+                    ),
                 )
             )
         elif not isinstance(data["tags"], list):
@@ -544,7 +586,10 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Field 'tags' must be a list",
                     artifact=rel_path,
-                    suggestion="Add a 'tags' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and change 'tags:' to a YAML list "
+                        f"(e.g. '- style')."
+                    ),
                 )
             )
 
@@ -556,7 +601,9 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Missing mandatory field: priority",
                     artifact=rel_path,
-                    suggestion="Add a 'priority' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and add 'priority:' set to an integer (e.g. 50)."
+                    ),
                 )
             )
         elif not isinstance(data["priority"], int):
@@ -566,7 +613,9 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Field 'priority' must be an integer",
                     artifact=rel_path,
-                    suggestion="Add a 'priority' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and set 'priority:' to an integer value (e.g. 50)."
+                    ),
                 )
             )
 
@@ -623,7 +672,9 @@ def check_design_frontmatter(
                     message="Missing YAML frontmatter",
                     artifact=rel_path,
                     suggestion=(
-                        "Add --- delimited YAML frontmatter with description, updated_by, status."
+                        f"Run: lexi design update <source-file> to regenerate, "
+                        f"or edit {rel_path} to add --- delimited YAML frontmatter "
+                        f"with description, updated_by, status fields."
                     ),
                 )
             )
@@ -638,7 +689,7 @@ def check_design_frontmatter(
                     check="design_frontmatter",
                     message="Invalid YAML in frontmatter",
                     artifact=rel_path,
-                    suggestion="Fix YAML syntax in frontmatter block.",
+                    suggestion=f"Edit {rel_path} and fix the YAML syntax in the frontmatter block.",
                 )
             )
             continue
@@ -650,7 +701,9 @@ def check_design_frontmatter(
                     check="design_frontmatter",
                     message="Frontmatter is not a YAML mapping",
                     artifact=rel_path,
-                    suggestion="Frontmatter must be a YAML key-value mapping.",
+                    suggestion=(
+                        f"Edit {rel_path}: frontmatter must be a YAML key-value mapping."
+                    ),
                 )
             )
             continue
@@ -663,7 +716,10 @@ def check_design_frontmatter(
                     check="design_frontmatter",
                     message="Missing mandatory field: description",
                     artifact=rel_path,
-                    suggestion="Add a 'description' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and add a 'description:' field "
+                        f"summarising the file's role."
+                    ),
                 )
             )
         elif not isinstance(data["description"], str) or not data["description"].strip():
@@ -673,7 +729,10 @@ def check_design_frontmatter(
                     check="design_frontmatter",
                     message="Field 'description' must be a non-empty string",
                     artifact=rel_path,
-                    suggestion="Add a 'description' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and set 'description:' to a non-empty string "
+                        f"summarising the file's role."
+                    ),
                 )
             )
 
@@ -685,7 +744,10 @@ def check_design_frontmatter(
                     check="design_frontmatter",
                     message="Missing mandatory field: updated_by",
                     artifact=rel_path,
-                    suggestion="Add an 'updated_by' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and add 'updated_by:' set to one of: "
+                        f"{', '.join(sorted(valid_updated_by))}."
+                    ),
                 )
             )
         elif data["updated_by"] not in valid_updated_by:
@@ -696,7 +758,8 @@ def check_design_frontmatter(
                     message=f"Invalid updated_by: {data['updated_by']}",
                     artifact=rel_path,
                     suggestion=(
-                        f"updated_by must be one of: {', '.join(sorted(valid_updated_by))}."
+                        f"Edit {rel_path} and set updated_by to one of: "
+                        f"{', '.join(sorted(valid_updated_by))}."
                     ),
                 )
             )
@@ -709,7 +772,10 @@ def check_design_frontmatter(
                     check="design_frontmatter",
                     message="Missing mandatory field: status",
                     artifact=rel_path,
-                    suggestion="Add a 'status' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and add 'status:' set to one of: "
+                        f"{', '.join(sorted(valid_statuses))}."
+                    ),
                 )
             )
         elif data["status"] not in valid_statuses:
@@ -719,7 +785,10 @@ def check_design_frontmatter(
                     check="design_frontmatter",
                     message=f"Invalid status: {data['status']}",
                     artifact=rel_path,
-                    suggestion=(f"Status must be one of: {', '.join(sorted(valid_statuses))}."),
+                    suggestion=(
+                        f"Edit {rel_path} and set status to one of: "
+                        f"{', '.join(sorted(valid_statuses))}."
+                    ),
                 )
             )
 
@@ -783,8 +852,8 @@ def check_stack_frontmatter(
                     message="Missing YAML frontmatter",
                     artifact=rel_path,
                     suggestion=(
-                        "Add --- delimited YAML frontmatter with "
-                        "id, title, tags, status, created, author."
+                        f"Edit {rel_path} and add --- delimited YAML frontmatter "
+                        f"with id, title, tags, status, created, author fields."
                     ),
                 )
             )
@@ -799,7 +868,7 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Invalid YAML in frontmatter",
                     artifact=rel_path,
-                    suggestion="Fix YAML syntax in frontmatter block.",
+                    suggestion=f"Edit {rel_path} and fix the YAML syntax in the frontmatter block.",
                 )
             )
             continue
@@ -811,7 +880,9 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Frontmatter is not a YAML mapping",
                     artifact=rel_path,
-                    suggestion="Frontmatter must be a YAML key-value mapping.",
+                    suggestion=(
+                        f"Edit {rel_path}: frontmatter must be a YAML key-value mapping."
+                    ),
                 )
             )
             continue
@@ -824,7 +895,10 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Missing mandatory field: id",
                     artifact=rel_path,
-                    suggestion="Add an 'id' field in ST-NNN format to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and add 'id:' in ST-NNN format "
+                        f"(e.g. 'id: ST-042')."
+                    ),
                 )
             )
         elif not isinstance(data["id"], str) or not id_pattern.match(data["id"]):
@@ -834,7 +908,10 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message=f"Invalid id format: {data['id']}",
                     artifact=rel_path,
-                    suggestion="id must match the ST-NNN format (e.g., ST-001).",
+                    suggestion=(
+                        f"Edit {rel_path} and correct 'id:' to match ST-NNN format "
+                        f"(e.g. 'id: ST-042')."
+                    ),
                 )
             )
 
@@ -846,7 +923,7 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Missing mandatory field: title",
                     artifact=rel_path,
-                    suggestion="Add a 'title' field to the frontmatter.",
+                    suggestion=f"Edit {rel_path} and add a 'title:' field to the frontmatter.",
                 )
             )
         elif not isinstance(data["title"], str) or not data["title"].strip():
@@ -856,7 +933,9 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Field 'title' must be a non-empty string",
                     artifact=rel_path,
-                    suggestion="Add a 'title' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and set 'title:' to a non-empty string."
+                    ),
                 )
             )
 
@@ -868,7 +947,9 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Missing mandatory field: tags",
                     artifact=rel_path,
-                    suggestion=("Add a 'tags' field with at least one tag to the frontmatter."),
+                    suggestion=(
+                        f"Edit {rel_path} and add a 'tags:' list with at least one tag."
+                    ),
                 )
             )
         elif not isinstance(data["tags"], list):
@@ -878,7 +959,9 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Field 'tags' must be a list",
                     artifact=rel_path,
-                    suggestion=("Add a 'tags' field with at least one tag to the frontmatter."),
+                    suggestion=(
+                        f"Edit {rel_path} and change 'tags:' to a YAML list (e.g. '- bug')."
+                    ),
                 )
             )
         elif len(data["tags"]) < 1:
@@ -888,7 +971,7 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Field 'tags' must have at least 1 element",
                     artifact=rel_path,
-                    suggestion="Add at least one tag to the 'tags' list.",
+                    suggestion=f"Edit {rel_path} and add at least one tag to the 'tags:' list.",
                 )
             )
 
@@ -900,7 +983,10 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Missing mandatory field: status",
                     artifact=rel_path,
-                    suggestion="Add a 'status' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and add 'status:' set to one of: "
+                        f"{', '.join(sorted(valid_statuses))}."
+                    ),
                 )
             )
         elif data["status"] not in valid_statuses:
@@ -910,7 +996,10 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message=f"Invalid status: {data['status']}",
                     artifact=rel_path,
-                    suggestion=(f"Status must be one of: {', '.join(sorted(valid_statuses))}."),
+                    suggestion=(
+                        f"Edit {rel_path} and set status to one of: "
+                        f"{', '.join(sorted(valid_statuses))}."
+                    ),
                 )
             )
 
@@ -922,7 +1011,10 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Missing mandatory field: created",
                     artifact=rel_path,
-                    suggestion=("Add a 'created' field with a valid date to the frontmatter."),
+                    suggestion=(
+                        f"Edit {rel_path} and add 'created:' with a valid date "
+                        f"(YYYY-MM-DD format)."
+                    ),
                 )
             )
         else:
@@ -936,7 +1028,10 @@ def check_stack_frontmatter(
                         check="stack_frontmatter",
                         message=f"Invalid created date: {data['created']}",
                         artifact=rel_path,
-                        suggestion="created must be a valid date (YYYY-MM-DD format).",
+                        suggestion=(
+                            f"Edit {rel_path} and set 'created:' to a valid date "
+                            f"in YYYY-MM-DD format."
+                        ),
                     )
                 )
 
@@ -948,7 +1043,7 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Missing mandatory field: author",
                     artifact=rel_path,
-                    suggestion="Add an 'author' field to the frontmatter.",
+                    suggestion=f"Edit {rel_path} and add an 'author:' field to the frontmatter.",
                 )
             )
         elif not isinstance(data["author"], str) or not data["author"].strip():
@@ -958,7 +1053,9 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Field 'author' must be a non-empty string",
                     artifact=rel_path,
-                    suggestion="Add an 'author' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and set 'author:' to a non-empty string."
+                    ),
                 )
             )
 
@@ -975,7 +1072,7 @@ def check_stack_frontmatter(
                     message=f"Invalid resolution_type: {data['resolution_type']}",
                     artifact=rel_path,
                     suggestion=(
-                        "resolution_type must be one of: "
+                        f"Edit {rel_path} and set resolution_type to one of: "
                         f"{', '.join(sorted(valid_resolution_types))}."
                     ),
                 )
@@ -1039,7 +1136,11 @@ def check_iwh_frontmatter(
                     check="iwh_frontmatter",
                     message="Invalid YAML in IWH file",
                     artifact=rel_path,
-                    suggestion="Fix YAML syntax in the IWH file.",
+                    suggestion=(
+                        f"Delete and recreate via: lexi iwh write "
+                        f"{str(iwh_path.parent.relative_to(lexibrary_dir))} "
+                        f"--scope incomplete --body 'description'"
+                    ),
                 )
             )
             continue
@@ -1051,7 +1152,11 @@ def check_iwh_frontmatter(
                     check="iwh_frontmatter",
                     message="IWH file content is not a YAML mapping",
                     artifact=rel_path,
-                    suggestion="IWH file must contain a YAML key-value mapping.",
+                    suggestion=(
+                        f"Delete and recreate via: lexi iwh write "
+                        f"{str(iwh_path.parent.relative_to(lexibrary_dir))} "
+                        f"--scope incomplete --body 'description'"
+                    ),
                 )
             )
             continue
@@ -1064,7 +1169,7 @@ def check_iwh_frontmatter(
                     check="iwh_frontmatter",
                     message="Missing mandatory field: author",
                     artifact=rel_path,
-                    suggestion="Add an 'author' field to the IWH file.",
+                    suggestion=f"Edit {rel_path} and add an 'author:' field.",
                 )
             )
         elif not isinstance(data["author"], str) or not data["author"].strip():
@@ -1074,7 +1179,7 @@ def check_iwh_frontmatter(
                     check="iwh_frontmatter",
                     message="Field 'author' must be a non-empty string",
                     artifact=rel_path,
-                    suggestion="Add an 'author' field to the IWH file.",
+                    suggestion=f"Edit {rel_path} and set 'author:' to a non-empty string.",
                 )
             )
 
@@ -1086,7 +1191,10 @@ def check_iwh_frontmatter(
                     check="iwh_frontmatter",
                     message="Missing mandatory field: created",
                     artifact=rel_path,
-                    suggestion=("Add a 'created' field with an ISO 8601 datetime to the IWH file."),
+                    suggestion=(
+                        f"Edit {rel_path} and add 'created:' with an ISO 8601 datetime "
+                        f"(e.g. '2026-01-15T12:00:00Z')."
+                    ),
                 )
             )
         else:
@@ -1105,7 +1213,10 @@ def check_iwh_frontmatter(
                                 check="iwh_frontmatter",
                                 message=f"Invalid created datetime: {created_val}",
                                 artifact=rel_path,
-                                suggestion="created must be a valid ISO 8601 datetime.",
+                                suggestion=(
+                                    f"Edit {rel_path} and set 'created:' to a valid "
+                                    f"ISO 8601 datetime (e.g. '2026-01-15T12:00:00Z')."
+                                ),
                             )
                         )
                 else:
@@ -1115,7 +1226,10 @@ def check_iwh_frontmatter(
                             check="iwh_frontmatter",
                             message=f"Invalid created datetime: {data['created']}",
                             artifact=rel_path,
-                            suggestion="created must be a valid ISO 8601 datetime.",
+                            suggestion=(
+                                f"Edit {rel_path} and set 'created:' to a valid "
+                                f"ISO 8601 datetime (e.g. '2026-01-15T12:00:00Z')."
+                            ),
                         )
                     )
 
@@ -1127,7 +1241,10 @@ def check_iwh_frontmatter(
                     check="iwh_frontmatter",
                     message="Missing mandatory field: scope",
                     artifact=rel_path,
-                    suggestion="Add a 'scope' field to the IWH file.",
+                    suggestion=(
+                        f"Edit {rel_path} and add 'scope:' set to one of: "
+                        f"{', '.join(sorted(valid_scopes))}."
+                    ),
                 )
             )
         elif data["scope"] not in valid_scopes:
@@ -1137,7 +1254,10 @@ def check_iwh_frontmatter(
                     check="iwh_frontmatter",
                     message=f"Invalid scope: {data['scope']}",
                     artifact=rel_path,
-                    suggestion=(f"scope must be one of: {', '.join(sorted(valid_scopes))}."),
+                    suggestion=(
+                        f"Edit {rel_path} and set scope to one of: "
+                        f"{', '.join(sorted(valid_scopes))}."
+                    ),
                 )
             )
 
@@ -1181,7 +1301,9 @@ def check_config_valid(
                 check="config_valid",
                 message="Config file not found",
                 artifact=artifact,
-                suggestion="Run `lexi init` to create the config file.",
+                suggestion=(
+                    "Run: lexictl init to initialise the library and create config.yaml."
+                ),
             )
         )
         return issues
@@ -1209,7 +1331,7 @@ def check_config_valid(
                 check="config_valid",
                 message=f"Invalid YAML syntax: {exc}",
                 artifact=artifact,
-                suggestion="Fix the YAML syntax in config.yaml.",
+                suggestion=f"Edit {artifact} and fix the YAML syntax error reported above.",
             )
         )
         return issues
@@ -1223,7 +1345,10 @@ def check_config_valid(
                 check="config_valid",
                 message="Config file is not a YAML mapping",
                 artifact=artifact,
-                suggestion="Config file must contain a YAML key-value mapping.",
+                suggestion=(
+                    f"Edit {artifact}: the file must contain a YAML key-value mapping "
+                    f"(not a list or scalar)."
+                ),
             )
         )
         return issues
@@ -1291,7 +1416,10 @@ def check_lexignore_syntax(
                     check="lexignore_syntax",
                     message=f"Invalid gitignore pattern on line {line_no}: {line!r}",
                     artifact=".lexignore",
-                    suggestion="Fix or remove the invalid pattern.",
+                    suggestion=(
+                        f"Edit .lexignore line {line_no} and fix or remove the "
+                        f"invalid pattern {line!r}."
+                    ),
                 )
             )
 
@@ -1428,7 +1556,10 @@ def check_hash_freshness(
                         f"vs current {current_hash[:12]}...)"
                     ),
                     artifact=rel_design,
-                    suggestion="Run `lexictl update` to regenerate the design file.",
+                    suggestion=(
+                        f"Run: lexi design update {metadata.source} "
+                        f"to refresh the design file."
+                    ),
                 )
             )
 
@@ -1468,7 +1599,10 @@ def check_token_budgets(
                             f"Over budget: {tokens} tokens (limit {budgets.design_file_tokens})"
                         ),
                         artifact=rel_path,
-                        suggestion="Trim content to stay within the token budget.",
+                        suggestion=(
+                            "Trim the design file body, or increase "
+                            "token_budgets.design_file_tokens in .lexibrary/config.yaml."
+                        ),
                     )
                 )
 
@@ -1489,7 +1623,10 @@ def check_token_budgets(
                             f"Over budget: {tokens} tokens (limit {budgets.concept_file_tokens})"
                         ),
                         artifact=rel_path,
-                        suggestion="Trim content to stay within the token budget.",
+                        suggestion=(
+                            "Trim the concept body, or increase "
+                            "token_budgets.concept_file_tokens in .lexibrary/config.yaml."
+                        ),
                     )
                 )
 
@@ -1506,7 +1643,10 @@ def check_token_budgets(
                     check="token_budgets",
                     message=(f"Over budget: {tokens} tokens (limit {budgets.aindex_tokens})"),
                     artifact=rel_path,
-                    suggestion="Trim content to stay within the token budget.",
+                    suggestion=(
+                        "Regenerate the .aindex via lexictl update, or increase "
+                        "token_budgets.aindex_tokens in .lexibrary/config.yaml."
+                    ),
                 )
             )
 
@@ -1581,6 +1721,14 @@ def check_orphan_concepts(
 
         is_referenced = any(s in referenced for s in searchable)
         if not is_referenced:
+            concept_slug = next(
+                (
+                    p.stem
+                    for p in concepts_dir.glob("*.md")
+                    if p.stem.lower() == concept.frontmatter.title.lower().replace(" ", "-")
+                ),
+                concept.frontmatter.title,
+            )
             issues.append(
                 ValidationIssue(
                     severity="warning",
@@ -1588,8 +1736,9 @@ def check_orphan_concepts(
                     message="Concept has no inbound wikilink references.",
                     artifact=f"concepts/{concept.frontmatter.title}",
                     suggestion=(
-                        "Add [[" + concept.frontmatter.title + "]] references "
-                        "in relevant design files or remove the concept."
+                        f"Add [[{concept.frontmatter.title}]] to a relevant design file via: "
+                        f"lexi concept link {concept_slug} <source-file>. "
+                        f"Or deprecate it: lexi concept deprecate {concept_slug}"
                     ),
                 )
             )
@@ -1716,7 +1865,10 @@ def check_forward_dependencies(
                         check="forward_dependencies",
                         message=f"Dependency target does not exist: {dep_stripped}",
                         artifact=str(design_path.relative_to(project_root)),
-                        suggestion=f"Remove or update the dependency on '{dep_stripped}'",
+                        suggestion=(
+                            f"Edit the design file and remove or correct the dependency "
+                            f"on '{dep_stripped}'."
+                        ),
                     )
                 )
 
@@ -1796,7 +1948,11 @@ def check_stack_staleness(
                         f"with stale design files: {', '.join(stale_files)}"
                     ),
                     artifact=post_rel,
-                    suggestion="Verify the solution still applies after recent source changes",
+                    suggestion=(
+                        "Run: lexi lookup <stale-file> to review, then "
+                        "run: lexi stack comment <id> --body 'Verified still applies' "
+                        "or run: lexi stack mark-outdated <id> if no longer relevant."
+                    ),
                 )
             )
 
@@ -1988,7 +2144,9 @@ def check_aindex_coverage(
                     check="aindex_coverage",
                     message=f"Directory not indexed: {dir_rel}",
                     artifact=dir_rel,
-                    suggestion="Run 'lexictl index' to generate .aindex files",
+                    suggestion=(
+                        f"Run: lexictl update to index the directory '{dir_rel}'."
+                    ),
                 )
             )
 
@@ -2090,7 +2248,7 @@ def check_bidirectional_deps(
                     ),
                     artifact=rel_design,
                     suggestion=(
-                        "The link graph index may be stale; run `lexictl update` to rebuild."
+                        "The link graph index may be stale; run: lexictl update to rebuild."
                     ),
                 )
             )
@@ -2106,7 +2264,11 @@ def check_bidirectional_deps(
                         f"but is not listed in the design file dependencies"
                     ),
                     artifact=rel_design,
-                    suggestion="Update the design file or rebuild the index.",
+                    suggestion=(
+                        f"Run: lexi design update {source_path} to regenerate "
+                        f"the design file with current import data, or run "
+                        f"lexictl update to rebuild the index."
+                    ),
                 )
             )
 
@@ -2184,7 +2346,9 @@ def check_dangling_links(
                         f"Link graph references {kind} file that no longer exists: {artifact_path}"
                     ),
                     artifact=artifact_path,
-                    suggestion="Rebuild the index with `lexictl update` to remove stale entries.",
+                    suggestion=(
+                "Run: lexictl update to rebuild the index and remove stale entries."
+            ),
                 )
             )
 
@@ -2236,8 +2400,8 @@ def find_orphaned_aindex(
                     ),
                     artifact=rel_aindex,
                     suggestion=(
-                        "Run `lexictl validate --fix` to remove orphaned .aindex files, "
-                        "or delete manually."
+                        f"Run: lexictl update to remove this orphaned .aindex file, "
+                        f"or delete it manually: {rel_aindex}"
                     ),
                 )
             )
@@ -2293,7 +2457,8 @@ def find_orphaned_iwh(
                     ),
                     artifact=rel_iwh,
                     suggestion=(
-                        "Run `lexictl update` or `lexictl iwh clean` to remove orphaned .iwh files."
+                        f"Run: lexictl update to remove this orphaned .iwh file, "
+                        f"or delete it manually: {rel_iwh}"
                     ),
                 )
             )
@@ -2369,7 +2534,9 @@ def check_orphan_artifacts(
                     check="orphan_artifacts",
                     message=(f"Index contains {kind} artifact for deleted file: {artifact_path}"),
                     artifact=artifact_path,
-                    suggestion="Run `lexictl update` to rebuild the index.",
+                    suggestion=(
+                        "Run: lexictl update to rebuild the index and prune stale entries."
+                    ),
                 )
             )
 
@@ -2421,8 +2588,8 @@ def check_orphaned_designs(
                     message=(f"Design file references missing source: {source_rel}"),
                     artifact=rel_design,
                     suggestion=(
-                        "Run `lexictl update` to trigger deprecation workflow, "
-                        "or `lexictl validate --fix` to apply deprecation."
+                        f"Run: lexictl update to trigger the deprecation workflow for "
+                        f"'{source_rel}' and mark the design file as deprecated."
                     ),
                 )
             )
@@ -2471,8 +2638,9 @@ def check_comment_accumulation(
                     message=(f"Design file has {count} comments (threshold: {threshold})"),
                     artifact=rel_design,
                     suggestion=(
-                        "Run the maintainer-agent to incorporate or prune "
-                        "accumulated comments, or manually review."
+                        f"Run: lexi design comment {rel_design.replace('designs/', '', 1)} "
+                        f"--body 'Summary of changes' to add context, or manually review "
+                        f"and prune {rel_design}."
                     ),
                 )
             )
@@ -2525,8 +2693,8 @@ def check_deprecated_ttl(
                     message=(f"Deprecated design file has exceeded TTL ({ttl_commits} commits)"),
                     artifact=rel_design,
                     suggestion=(
-                        "Run `lexictl update` to hard-delete expired files, "
-                        "or `lexictl validate --fix` to remove."
+                        f"Run: lexictl update to hard-delete the expired deprecated "
+                        f"design file '{rel_design}'."
                     ),
                 )
             )
@@ -2588,8 +2756,10 @@ def check_stale_concepts(
                     message=(f"Active concept references missing file(s): {missing_str}"),
                     artifact=f"concepts/{concept.frontmatter.title}",
                     suggestion=(
-                        "Review the concept and update linked file references, "
-                        "or deprecate the concept if it is no longer relevant."
+                        f"Review and update the linked file references in "
+                        f"concepts/{concept.frontmatter.title}.md, or deprecate: "
+                        f"lexi concept deprecate "
+                        f"{concept.frontmatter.title.lower().replace(' ', '-')}"
                     ),
                 )
             )
@@ -2675,9 +2845,8 @@ def check_supersession_candidates(
                         ),
                         artifact=f"concepts/{owner_a}",
                         suggestion=(
-                            "Review whether one concept should supersede "
-                            "the other.  Use `lexi concept deprecate` to "
-                            "mark the redundant concept."
+                            "Review whether one should supersede the other, then run: "
+                            "lexi concept deprecate <slug> --superseded-by <other-slug>"
                         ),
                     )
                 )
@@ -2740,8 +2909,8 @@ def check_convention_orphaned_scope(
                     message=(f"Convention scope directory '{scope}' does not exist"),
                     artifact=rel_convention,
                     suggestion=(
-                        "Update the convention's scope to a valid directory, "
-                        "or deprecate the convention if the scope was removed."
+                        f"Update the scope in {rel_convention}, or deprecate the convention: "
+                        f"lexi convention deprecate {md_path.stem}"
                     ),
                 )
             )
@@ -2815,9 +2984,8 @@ def check_convention_stale(
                     ),
                     artifact=rel_convention,
                     suggestion=(
-                        "Review whether this convention is still relevant, "
-                        "or deprecate it if the scope directory is no longer "
-                        "in active use."
+                        f"Review whether this convention is still relevant, or deprecate it: "
+                        f"lexi convention deprecate {md_path.stem}"
                     ),
                 )
             )
@@ -2902,8 +3070,8 @@ def check_convention_gap(
                     ),
                     artifact=rel_dir,
                     suggestion=(
-                        "Consider adding a convention for this directory to "
-                        "document coding standards and patterns."
+                        f"Run: lexi convention new --scope {rel_dir} "
+                        f"--body 'Describe the coding standard for this directory.'"
                     ),
                 )
             )
@@ -2960,9 +3128,9 @@ def check_convention_consistent_violation(
                     ),
                     artifact=rel_convention,
                     suggestion=(
-                        "Review the convention comments to determine if the "
-                        "rule needs revision, better communication, or "
-                        "deprecation."
+                        f"Review comments in {rel_convention} to determine if the rule needs "
+                        f"revision, then either update it in place or deprecate: "
+                        f"lexi convention deprecate {md_path.stem}"
                     ),
                 )
             )
@@ -3029,7 +3197,10 @@ def check_duplicate_aliases(
                         f"across files: {', '.join(sorted(set(files)))}"
                     ),
                     artifact=f"concepts/{file_stem}.md",
-                    suggestion="Remove or rename the duplicate alias.",
+                    suggestion=(
+                        f"Edit {f'concepts/{file_stem}.md'} and remove or rename the "
+                        f"duplicate alias/title '{original_name}'."
+                    ),
                 )
             )
 
@@ -3084,7 +3255,9 @@ def check_duplicate_slugs(
                         f"Slug '{slug}' is used by multiple files: {', '.join(sorted(sources))}"
                     ),
                     artifact=source,
-                    suggestion="Rename one of the files to use a unique slug.",
+                    suggestion=(
+                        f"Rename one of {', '.join(sorted(sources))} to use a unique slug."
+                    ),
                 )
             )
 
@@ -3141,7 +3314,10 @@ def check_stack_refs_validity(
                             check="stack_refs_validity",
                             message=f"refs.files entry does not exist: {file_ref}",
                             artifact=rel_post,
-                            suggestion="Update or remove the stale file reference.",
+                            suggestion=(
+                            f"Edit {rel_post} and remove or update the stale "
+                            f"refs.files entry '{file_ref}'."
+                        ),
                         )
                     )
 
@@ -3154,7 +3330,10 @@ def check_stack_refs_validity(
                             check="stack_refs_validity",
                             message=f"refs.designs entry does not exist: {design_ref}",
                             artifact=rel_post,
-                            suggestion="Update or remove the stale design reference.",
+                            suggestion=(
+                            f"Edit {rel_post} and remove or update the stale "
+                            f"refs.designs entry '{design_ref}'."
+                        ),
                         )
                     )
 
@@ -3202,7 +3381,8 @@ def check_design_deps_existence(
                         message=(f"Dependency '{dep_stripped}' has no design file"),
                         artifact=rel_design,
                         suggestion=(
-                            f"Remove the dependency or create a design file for '{dep_stripped}'."
+                            f"Remove '{dep_stripped}' from the Dependencies section of "
+                            f"{rel_design}, or create the missing design file."
                         ),
                     )
                 )
@@ -3221,7 +3401,8 @@ def check_design_deps_existence(
                         message=(f"Dependent '{dep_stripped}' has no design file"),
                         artifact=rel_design,
                         suggestion=(
-                            f"Remove the dependent or create a design file for '{dep_stripped}'."
+                            f"Remove '{dep_stripped}' from the Dependents section of "
+                            f"{rel_design}, or create the missing design file."
                         ),
                     )
                 )
@@ -3275,7 +3456,10 @@ def check_aindex_entries(
                                 f"in {aindex.directory_path}"
                             ),
                             artifact=rel_aindex,
-                            suggestion="Remove the stale entry or restore the directory.",
+                            suggestion=(
+                            f"Run: lexictl update to rebuild .aindex files, or delete "
+                            f"the stale entry '{entry.name}' from {rel_aindex} manually."
+                        ),
                         )
                     )
             else:
@@ -3289,7 +3473,10 @@ def check_aindex_entries(
                                 f"in {aindex.directory_path}"
                             ),
                             artifact=rel_aindex,
-                            suggestion="Remove the stale entry or restore the file.",
+                            suggestion=(
+                            f"Run: lexictl update to rebuild .aindex files, or delete "
+                            f"the stale entry '{entry.name}' from {rel_aindex} manually."
+                        ),
                         )
                     )
 
@@ -3364,13 +3551,19 @@ def check_design_structure(
         # Check for H1 heading
         has_h1 = any(line.strip().startswith("# ") for line in body_lines)
         if not has_h1:
+            # Derive the source file path from the design file path for the suggestion
+            design_rel = str(design_path.relative_to(lexibrary_dir / DESIGNS_DIR))
+            source_from_design = design_rel[:-3] if design_rel.endswith(".md") else design_rel
             issues.append(
                 ValidationIssue(
                     severity="warning",
                     check="design_structure",
                     message="Missing H1 heading (source path)",
                     artifact=rel_path,
-                    suggestion="Regenerate the design file to include an H1 heading.",
+                    suggestion=(
+                        f"Run: lexi design update {source_from_design} "
+                        f"to regenerate the design file with all required sections."
+                    ),
                 )
             )
 
@@ -3384,25 +3577,35 @@ def check_design_structure(
 
         for section in required_sections:
             if section not in found_sections:
+                design_rel = str(design_path.relative_to(lexibrary_dir / DESIGNS_DIR))
+                source_from_design = design_rel[:-3] if design_rel.endswith(".md") else design_rel
                 issues.append(
                     ValidationIssue(
                         severity="warning",
                         check="design_structure",
                         message=f"Missing '## {section}' section",
                         artifact=rel_path,
-                        suggestion=("Regenerate the design file to include all required sections."),
+                        suggestion=(
+                            f"Run: lexi design update {source_from_design} "
+                            f"to regenerate the design file with all required sections."
+                        ),
                     )
                 )
 
         # Check for metadata footer
         if not _META_FOOTER_RE.search(text):
+            design_rel = str(design_path.relative_to(lexibrary_dir / DESIGNS_DIR))
+            source_from_design = design_rel[:-3] if design_rel.endswith(".md") else design_rel
             issues.append(
                 ValidationIssue(
                     severity="warning",
                     check="design_structure",
                     message="Missing metadata footer (<!-- lexibrary:meta ... -->)",
                     artifact=rel_path,
-                    suggestion="Regenerate the design file to include the metadata footer.",
+                    suggestion=(
+                        f"Run: lexi design update {source_from_design} "
+                        f"to regenerate the design file with the metadata footer."
+                    ),
                 )
             )
 
@@ -3479,7 +3682,10 @@ def check_stack_body_sections(
                     check="stack_body_sections",
                     message="Missing '## Problem' section",
                     artifact=rel_path,
-                    suggestion="Add a '## Problem' section describing the issue.",
+                    suggestion=(
+                        f"Edit {rel_path} and add a '## Problem' section "
+                        f"describing the issue."
+                    ),
                 )
             )
         elif not "".join(problem_content).strip():
@@ -3490,7 +3696,10 @@ def check_stack_body_sections(
                     check="stack_body_sections",
                     message="Empty '## Problem' section",
                     artifact=rel_path,
-                    suggestion="Add a problem description to the '## Problem' section.",
+                    suggestion=(
+                        f"Edit {rel_path} and add a problem description "
+                        f"under the '## Problem' section."
+                    ),
                 )
             )
 
@@ -3550,7 +3759,9 @@ def check_concept_body(
                     check="concept_body",
                     message="Concept has empty body",
                     artifact=rel_path,
-                    suggestion="Add a summary or description after the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and add a summary or description after the frontmatter."
+                    ),
                 )
             )
 
@@ -3673,8 +3884,8 @@ def check_lookup_token_budget_exceeded(
                     ),
                     artifact=rel_path,
                     suggestion=(
-                        "Trim the design file or increase "
-                        "token_budgets.lookup_total_tokens in config.yaml."
+                        f"Trim the design file body in {rel_path}, or increase "
+                        f"token_budgets.lookup_total_tokens in .lexibrary/config.yaml."
                     ),
                 )
             )
@@ -3754,8 +3965,8 @@ def check_orphaned_iwh_signals(
                     message=(f"IWH signal expired: {int(age_hours)}h old (TTL is {ttl_hours}h)"),
                     artifact=rel_path,
                     suggestion=(
-                        "Consume the signal with `lexi iwh read` or "
-                        "clean up with `lexictl iwh clean`."
+                        f"Run: lexi iwh read {str(iwh_file.parent.relative_to(lexibrary_dir))} "
+                        f"to consume the signal, or delete the file manually: {rel_path}"
                     ),
                 )
             )
@@ -3820,8 +4031,8 @@ def check_playbook_frontmatter(
                     message="Missing YAML frontmatter",
                     artifact=rel_path,
                     suggestion=(
-                        "Add --- delimited YAML frontmatter with "
-                        "title, status, source."
+                        f"Edit {rel_path} and add --- delimited YAML frontmatter "
+                        f"with title, status, source fields."
                     ),
                 )
             )
@@ -3836,7 +4047,7 @@ def check_playbook_frontmatter(
                     check="playbook_frontmatter",
                     message="Invalid YAML in frontmatter",
                     artifact=rel_path,
-                    suggestion="Fix YAML syntax in frontmatter block.",
+                    suggestion=f"Edit {rel_path} and fix the YAML syntax in the frontmatter block.",
                 )
             )
             continue
@@ -3848,7 +4059,9 @@ def check_playbook_frontmatter(
                     check="playbook_frontmatter",
                     message="Frontmatter is not a YAML mapping",
                     artifact=rel_path,
-                    suggestion="Frontmatter must be a YAML key-value mapping.",
+                    suggestion=(
+                        f"Edit {rel_path}: frontmatter must be a YAML key-value mapping."
+                    ),
                 )
             )
             continue
@@ -3861,7 +4074,7 @@ def check_playbook_frontmatter(
                     check="playbook_frontmatter",
                     message="Missing mandatory field: title",
                     artifact=rel_path,
-                    suggestion="Add a 'title' field to the frontmatter.",
+                    suggestion=f"Edit {rel_path} and add a 'title:' field to the frontmatter.",
                 )
             )
         elif not isinstance(data["title"], str) or not data["title"].strip():
@@ -3871,7 +4084,9 @@ def check_playbook_frontmatter(
                     check="playbook_frontmatter",
                     message="Field 'title' must be a non-empty string",
                     artifact=rel_path,
-                    suggestion="Add a 'title' field to the frontmatter.",
+                    suggestion=(
+                        f"Edit {rel_path} and set 'title:' to a non-empty string."
+                    ),
                 )
             )
 
@@ -3884,7 +4099,8 @@ def check_playbook_frontmatter(
                     message=f"Invalid status: {data['status']}",
                     artifact=rel_path,
                     suggestion=(
-                        f"Status must be one of: {', '.join(sorted(valid_statuses))}."
+                        f"Edit {rel_path} and set status to one of: "
+                        f"{', '.join(sorted(valid_statuses))}."
                     ),
                 )
             )
@@ -3898,7 +4114,8 @@ def check_playbook_frontmatter(
                     message=f"Invalid source: {data['source']}",
                     artifact=rel_path,
                     suggestion=(
-                        f"Source must be one of: {', '.join(sorted(valid_sources))}."
+                        f"Edit {rel_path} and set source to one of: "
+                        f"{', '.join(sorted(valid_sources))}."
                     ),
                 )
             )
@@ -3921,8 +4138,8 @@ def check_playbook_frontmatter(
                             ),
                             artifact=rel_path,
                             suggestion=(
-                                "Fix the glob pattern so it is parseable "
-                                "by pathspec (gitignore syntax)."
+                                f"Edit {rel_path} and fix the trigger_files pattern "
+                                f"{pattern!r} to use valid gitignore syntax."
                             ),
                         )
                     )
@@ -4167,8 +4384,7 @@ def check_playbook_deprecated_ttl(
                         ),
                         artifact=rel_path,
                         suggestion=(
-                            "Consider removing this deprecated playbook "
-                            "or archiving it."
+                            f"Delete or archive the deprecated playbook file: {rel_path}"
                         ),
                     )
                 )
@@ -4189,8 +4405,8 @@ def check_playbook_deprecated_ttl(
                         ),
                         artifact=rel_path,
                         suggestion=(
-                            "Fix the superseded_by slug to reference an "
-                            "existing playbook, or remove the field."
+                            f"Edit {rel_path} and correct the superseded_by value to "
+                            f"reference an existing playbook slug, or remove the field."
                         ),
                     )
                 )

@@ -326,7 +326,7 @@ class TestCheckCommentAccumulation:
         assert issue.check == "comment_accumulation"
         assert "12 comments" in issue.message
         assert "threshold: 10" in issue.message
-        assert "maintainer-agent" in issue.suggestion
+        assert "lexi design comment" in issue.suggestion
 
     def test_exact_threshold_no_issue(self, tmp_path: Path) -> None:
         """No issue when comment count equals threshold (must exceed)."""

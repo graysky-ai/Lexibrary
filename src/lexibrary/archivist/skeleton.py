@@ -11,7 +11,6 @@ import ast
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-
 from typing import Literal
 
 from lexibrary.archivist.dependency_extractor import extract_dependencies

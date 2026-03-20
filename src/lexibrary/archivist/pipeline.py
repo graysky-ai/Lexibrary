@@ -1193,13 +1193,6 @@ async def update_directory(
         if progress_callback is not None:
             progress_callback(source_path, file_result.change)
 
-    try:
-        generate_topology(project_root)
-    except Exception as exc:
-        logger.exception("Failed to generate TOPOLOGY.md")
-        stats.topology_failed = True
-        stats.error_summary.add("archivist", exc, path="TOPOLOGY.md")
-
     if _has_meaningful_changes(stats) and changed_file_paths:
         affected_dirs = sorted({p.parent for p in changed_file_paths})
         try:
@@ -1208,6 +1201,13 @@ async def update_directory(
         except Exception as exc:
             logger.exception("Failed to re-index directories after update_directory")
             stats.error_summary.add("archivist", exc)
+
+    try:
+        generate_topology(project_root)
+    except Exception as exc:
+        logger.exception("Failed to generate TOPOLOGY.md")
+        stats.topology_failed = True
+        stats.error_summary.add("archivist", exc, path="TOPOLOGY.md")
 
     try:
         build_index(project_root)
@@ -1280,16 +1280,9 @@ async def update_project(
         if progress_callback is not None:
             progress_callback(source_path, file_result.change)
 
-    # Step 5: Generate TOPOLOGY.md after processing all files
-    try:
-        generate_topology(project_root)
-    except Exception as exc:
-        logger.exception("Failed to generate TOPOLOGY.md")
-        stats.topology_failed = True
-        stats.error_summary.add("archivist", exc, path="TOPOLOGY.md")
-
-    # Step 6: Re-index directories containing changed files (D-2, D-3).
+    # Step 5: Re-index directories containing changed files (D-2, D-3).
     # Skipped when no files were actually created, updated, or failed (4.3).
+    # Must run before topology generation so TOPOLOGY.md reflects fresh .aindex data.
     if _has_meaningful_changes(stats) and changed_file_paths:
         affected_dirs = sorted({p.parent for p in changed_file_paths})
         try:
@@ -1298,6 +1291,14 @@ async def update_project(
         except Exception as exc:
             logger.exception("Failed to re-index directories after update_project")
             stats.error_summary.add("archivist", exc)
+
+    # Step 6: Generate TOPOLOGY.md after re-indexing so it reads fresh .aindex data.
+    try:
+        generate_topology(project_root)
+    except Exception as exc:
+        logger.exception("Failed to generate TOPOLOGY.md")
+        stats.topology_failed = True
+        stats.error_summary.add("archivist", exc, path="TOPOLOGY.md")
 
     # Step 7: Deprecation lifecycle post-pass — detect orphans, apply
     # deprecation/unlinked status, handle renames, and delete TTL-expired files.

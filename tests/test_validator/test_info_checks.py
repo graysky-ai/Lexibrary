@@ -363,7 +363,7 @@ class TestCheckStackStaleness:
         assert issue.check == "stack_staleness"
         assert "Event handling patterns" in issue.message
         assert "src/events.py" in issue.message
-        assert "Verify" in issue.suggestion
+        assert "lexi stack" in issue.suggestion
 
     def test_no_stack_posts(self, tmp_path: Path) -> None:
         """If no stack directory exists, no issues."""
@@ -485,7 +485,7 @@ class TestCheckAindexCoverage:
         assert issue.severity == "info"
         assert issue.check == "aindex_coverage"
         assert "not indexed" in issue.message
-        assert "lexictl index" in issue.suggestion
+        assert "lexictl update" in issue.suggestion
 
     def test_hidden_dirs_skipped(self, tmp_path: Path) -> None:
         """Hidden directories (starting with .) are not checked."""

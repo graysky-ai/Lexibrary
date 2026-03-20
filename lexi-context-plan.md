@@ -168,12 +168,12 @@ exist, no stack posts reference this file, etc.). This keeps the output clean.
 
 Sections are sorted by priority. The allocator walks the sorted list:
 
-1. **Guaranteed sections** (priority 0-1): always included in full. These
-   are the design summary and conventions — they're the minimum viable context.
-   If they exceed the budget alone, the output is just these sections plus a
-   truncation warning.
+1. **Guaranteed sections** (priority 0-3): always included in full. These
+   are identity, IWH signals (if present), interface contract, and conventions
+   — the minimum viable context. If they exceed the budget alone, the output
+   is just these sections plus a truncation warning.
 
-2. **Best-effort sections** (priority 2+): included in full if budget allows.
+2. **Best-effort sections** (priority 4+): included in full if budget allows.
    If a section doesn't fit in full, it's truncated to the remaining budget.
    If nothing remains, it's omitted and its `drilldown_hint` is included in
    the footer.
@@ -185,7 +185,7 @@ Sections are sorted by priority. The allocator walks the sorted list:
 def allocate_budget(
     sections: list[ContextSection],
     total_budget: int,
-    guaranteed_priority: int = 1,
+    guaranteed_priority: int = 3,
 ) -> tuple[list[ContextSection], list[str]]:
     """Return (included_sections, omitted_hints)."""
 ```
@@ -219,7 +219,7 @@ LLM-based design file generation, and enrichment queuing.
 Source: design file frontmatter `description` field.
 
 If no design file exists, falls back to the `.aindex` entry description.
-If neither exists: `"No design file or index entry. Run lexictl update to generate."`
+If neither exists: `"No design file or index entry. Stop and ask your user to run lexictl update."`
 
 For a directory:
 ```
@@ -240,7 +240,35 @@ Source: `.aindex` file parsed via `parse_aindex()`.
 
 ---
 
-### Priority 1: Interface Contract
+### Priority 1: IWH Signals
+
+**Guaranteed if signals exist. IWH signals are time-sensitive inter-agent
+handoff information — an agent must see in-progress work before reading the
+interface contract, so it doesn't duplicate or conflict with incomplete work.**
+
+```
+## IWH Signal
+
+- Scope: incomplete
+- Author: claude-opus-4-6
+- Created: 2026-03-17T14:30:00
+- Body: Refactoring update_file() to add skeleton fallback. The skeleton
+  write path is implemented but the check_change() extension for
+  SKELETON_ONLY is not yet done. See max-token-fix.md Phase 3.
+
+Run `lexi iwh read src/lexibrary/archivist` to consume this signal.
+```
+
+Source: `read_iwh()` from `lexibrary.iwh.reader`.
+
+Checks both `designs/<rel_path>` and legacy `<rel_path>` mirror locations
+(same logic as `_render_iwh_peek` in `lexi_app.py`).
+
+**Estimated cost**: 50-150 tokens (body is truncated to 200 chars in preview).
+
+---
+
+### Priority 2: Interface Contract
 
 **Always included for file scope. Omitted for directory scope.**
 
@@ -269,7 +297,7 @@ Source: design file `interface_contract` section.
 
 ---
 
-### Priority 2: Applicable Conventions
+### Priority 3: Applicable Conventions
 
 **Always included (guaranteed). Truncated only if budget is critically low.**
 
@@ -287,33 +315,6 @@ Source: `ConventionIndex.find_by_scope_limited()` — same as `lookup`.
 Display limit: `config.conventions.lookup_display_limit` (default 5).
 
 **Estimated cost**: 50-200 tokens (depends on convention count and body length).
-
----
-
-### Priority 3: IWH Signals
-
-**Included if any exist for the target path. High priority because IWH signals
-are time-sensitive inter-agent handoff information.**
-
-```
-## IWH Signal
-
-- Scope: incomplete
-- Author: claude-opus-4-6
-- Created: 2026-03-17T14:30:00
-- Body: Refactoring update_file() to add skeleton fallback. The skeleton
-  write path is implemented but the check_change() extension for
-  SKELETON_ONLY is not yet done. See max-token-fix.md Phase 3.
-
-Run `lexi iwh read src/lexibrary/archivist` to consume this signal.
-```
-
-Source: `read_iwh()` from `lexibrary.iwh.reader`.
-
-Checks both `designs/<rel_path>` and legacy `<rel_path>` mirror locations
-(same logic as `_render_iwh_peek` in `lexi_app.py`).
-
-**Estimated cost**: 50-150 tokens (body is truncated to 200 chars in preview).
 
 ---
 
@@ -465,12 +466,13 @@ class ContextConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     default_budget: int = 6000
+    guaranteed_priority_count: int = 4  # identity, iwh, interface, conventions
     priorities: list[str] = Field(
         default_factory=lambda: [
             "identity",       # 0 — always included
-            "interface",      # 1 — always included
-            "conventions",    # 2 — always included
-            "iwh",            # 3
+            "iwh",            # 1 — guaranteed if signals exist
+            "interface",      # 2 — always included for file scope
+            "conventions",    # 3 — always included
             "stack",          # 4
             "dependencies",   # 5
             "dependents",     # 6
@@ -481,8 +483,11 @@ class ContextConfig(BaseModel):
 
 The `priorities` list determines section ordering. Sections not listed are
 excluded. Reordering the list changes which sections get budget preference.
-The first N entries (up to `guaranteed_priority_count`, default 3) are
-guaranteed inclusion.
+The first N entries (up to `guaranteed_priority_count`, default 4) are
+guaranteed inclusion. Note: `guaranteed_priority_count` maps to the
+`guaranteed_priority` threshold in `allocate_budget()` as `count - 1`
+(i.e., 4 entries → threshold 3, meaning sections with priority ≤ 3 are
+guaranteed).
 
 In `LexibraryConfig`:
 
@@ -495,11 +500,12 @@ In `config.yaml`:
 ```yaml
 context:
   default_budget: 6000
+  guaranteed_priority_count: 4
   priorities:
     - identity
+    - iwh
     - interface
     - conventions
-    - iwh
     - stack
     - dependencies
     - dependents
@@ -516,6 +522,7 @@ context:
 src/lexibrary/context/
     __init__.py          — Public API: assemble_context()
     assembler.py         — Assembly pipeline: gather, budget, render
+    budget.py            — Token estimation + budget allocation (extracted from lexi_app.py)
     gatherers.py         — One function per section type
     models.py            — ContextSection, ContextResult dataclasses
 ```
@@ -554,16 +561,26 @@ The `budget=0` default means "use `config.context.default_budget`".
 ### Phase 1: Core assembler with file scope
 
 **Deliverables:**
+- Extract `_estimate_tokens()` and `_truncate_lookup_sections()` from
+  `lexi_app.py` into `context/budget.py` (shared utility, used by both
+  `lookup` and `context`)
 - `context/models.py` — `ContextSection`, `ContextResult` dataclasses
-- `context/gatherers.py` — gatherers for: identity, interface, conventions,
-  IWH, stack posts
+- `context/gatherers.py` — gatherers for: identity, IWH, interface,
+  conventions, stack posts, dependencies
 - `context/assembler.py` — `assemble_context()` with budget allocation
 - CLI command in `lexi_app.py`
 - Config addition: `ContextConfig` in `schema.py`
+- Update CLAUDE.md agent rules to replace `lexi lookup` with `lexi context`
+  for the pre-edit workflow
 
-**Scope:** File target only. No directory scope. No dependency/dependent
-summaries. No concept resolution. This delivers the core value: one command
-replaces orient + lookup + search for the common case.
+**Note on dependencies:** `gather_dependencies()` is included in Phase 1
+because it reads design file frontmatter only — no link graph required. This
+delivers richer context (dependency summaries) without any additional
+infrastructure dependency beyond Phase 1's other gatherers.
+
+**Scope:** File target only. No directory scope. No dependent summaries.
+No concept resolution. This delivers the core value: one command replaces
+orient + lookup + search for the common case.
 
 **What it replaces:** An agent that previously did:
 ```
@@ -582,37 +599,64 @@ lexi context src/foo.py
 - Budget truncation tests (verify output stays within budget)
 - CLI test (invoke via `CliRunner`, verify exit code and output structure)
 
-### Phase 2: Dependency and dependent summaries
+### Phase 2: JSON output format
 
 **Deliverables:**
-- `gather_dependencies()` — reads each dependency's design file frontmatter
+- `--format json` CLI flag wired into `lexi context`
+- Structured JSON output (Option B — ordered sections array):
+  ```json
+  {
+    "target": "...",
+    "budget": {"used": N, "total": N},
+    "sections": [{"name": "...", "priority": N, "content": "...", "tokens": N}],
+    "omitted": [{"name": "...", "drilldown": "lexi ..."}]
+  }
+  ```
+
+**Why Phase 2:** Promoted from Phase 5 to enable structured assertions in
+integration tests from Phase 3 onwards. Asserting on JSON fields is cleaner
+than parsing markdown output in tests.
+
+### Phase 3: Dependent summaries
+
+**Deliverables:**
 - `gather_dependents()` — queries link graph for `ast_import` reverse deps
 - Wire into assembler priority chain
 
-**Dependency:** Requires link graph to be populated (from `lexictl update`).
-Graceful degradation: if link graph doesn't exist, these sections return
-`None` and are silently omitted.
+**Dependency:** Requires link graph to be populated. Graceful degradation:
+if link graph doesn't exist, this section returns `None` and is silently
+omitted.
 
-### Phase 3: Directory scope
+**Note:** `gather_dependencies()` was moved to Phase 1 — it requires only
+design file frontmatter reads, not the link graph.
+
+### Phase 4: Directory scope
 
 **Deliverables:**
 - Scope resolution for directory paths
-- `.aindex` parsing for billboard + child list
-- Aggregate IWH signal detection (walk subdirectories)
-- Shared convention gathering (scoped to directory, not file)
+- `.aindex` parsing for billboard + child list (always shown in full —
+  not subject to budget truncation, as the children list is the core
+  value of directory scope context)
+- Aggregate IWH signal detection: peek format (scope + truncated body +
+  drill-down hint), consistent with `lexi orient`. Shows each signal as a
+  one-liner rather than full body, since multiple signals across many files
+  could otherwise dominate the budget.
+- Shared convention gathering: same `find_by_scope_limited()` logic as
+  file scope (conventions at this directory level or broader, including
+  project-wide conventions)
 
-### Phase 4: Concept resolution
+**Guaranteed sections for directory scope:** Identity (billboard + children)
+and Conventions are always included. IWH is guaranteed if signals exist.
+Interface gatherer returns `None` for directory targets — this naturally
+frees budget for best-effort sections (stack, dependents) without any
+special-casing.
+
+### Phase 5: Concept resolution
 
 **Deliverables:**
 - `gather_concepts()` — resolves wikilinks from design file to concept
   artifacts, extracts summaries
 - Requires link graph `resolve_alias()` and concept file parser
-
-### Phase 5: JSON output format
-
-**Deliverables:**
-- Structured JSON output matching the `ContextResult` dataclass
-- Useful for programmatic consumers, hook scripts, or test assertions
 
 ---
 
@@ -679,14 +723,13 @@ function. The implementation is primarily wiring, not invention.
 | Dependencies | `parse_design_file()` → `.dependencies` | `artifacts/design_file_parser.py` |
 | Dependents | `reverse_deps(link_type="ast_import")` | `linkgraph/query.py` |
 | Concepts | `resolve_alias()` | `linkgraph/query.py` |
-| Token estimation | `_estimate_tokens()` | `cli/lexi_app.py` (move to shared util) |
-| Budget truncation | `_truncate_lookup_sections()` | `cli/lexi_app.py` (generalize) |
+| Token estimation | `_estimate_tokens()` | `cli/lexi_app.py` → `context/budget.py` |
+| Budget truncation | `_truncate_lookup_sections()` | `cli/lexi_app.py` → `context/budget.py` |
 | `.aindex` parsing | `parse_aindex()` | `artifacts/aindex_parser.py` |
 
-The `_estimate_tokens()` and `_truncate_lookup_sections()` functions should
-be extracted from `lexi_app.py` into a shared utility (e.g.
-`context/budget.py` or `utils/tokens.py`) since they'll be used by both
-`lookup` and `context`.
+The `_estimate_tokens()` and `_truncate_lookup_sections()` functions will be
+extracted from `lexi_app.py` into `context/budget.py` as part of Phase 1.
+Both `lookup` and `context` will import from this shared module.
 
 ---
 
@@ -699,8 +742,8 @@ a crash here blocks all downstream work.
 |---|---|
 | No `.lexibrary/` directory | Error message + exit 1 (same as `lookup`) |
 | Path outside `scope_root` | Error message + exit 1 (same as `lookup`) |
-| No design file for target | Fallback to `.aindex` entry description. If neither exists, show path + "No design file. Run `lexictl update`." Continue with other sections. |
-| No link graph (index.db missing) | Skip sections that need it (stack, dependents, concepts). Include a note: "Link graph unavailable — run `lexictl update` to populate." |
+| No design file for target | Fallback to `.aindex` entry description. If neither exists, show path + "No design file — stop and ask your user to run `lexictl update`." Continue with other sections. |
+| No link graph (index.db missing) | Skip sections that need it (stack, dependents, concepts). Stop and surface: "Link graph unavailable — ask your user to run `lexictl update` to populate the index." |
 | No conventions directory | Skip conventions section silently. |
 | No IWH signals | Skip IWH section silently. |
 | Design file for a dependency is missing | Show dependency path without summary. |
@@ -746,6 +789,473 @@ for each dependency (N file reads). With 10+ dependencies this could reach
 
 ---
 
+## Harness Integration
+
+`lexi context` is not just a new CLI command — it replaces `lexi lookup` as
+the primary pre-edit command across the entire agent harness. Every artifact
+that currently teaches agents "run `lexi lookup` before editing" must be
+reworked to teach "run `lexi context` before editing" instead.
+
+The `lexi lookup` CLI command continues to exist for backward compatibility
+and ad-hoc use, but it loses its dedicated skill, its pre-edit hook role,
+and its prominence in agent instructions.
+
+### Decision Record
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Pre-edit hook | Switch to `lexi context --budget 1200` | Same token footprint, smarter prioritization. Avoids mixed signals (rules say context, hook injects lookup). |
+| `/lexi-lookup` skill | Remove; replaced by `/lexi-context` | Two skills for overlapping purposes adds confusion. `lexi lookup` CLI still works but is no longer promoted. |
+| `lexi lookup` CLI command | Retained, no code changes | Backward compat. Useful for scripts or agents in non-Lexibrary environments. |
+
+### Phasing
+
+Harness integration is part of **Phase 1**. The CLI command and the harness
+that teaches agents to use it must ship together. Delivering the command
+without the harness creates a state where rules and hooks contradict each
+other — agents would see `lexi lookup` in rules and hooks while `lexi context`
+sits undiscoverable.
+
+The existing Phase 1 deliverable "Update CLAUDE.md agent rules" expands to
+cover everything in this section.
+
+---
+
+### H1: Pre-edit Hook
+
+**File:** `src/lexibrary/templates/claude/hooks/lexi-pre-edit.sh`
+
+**Change:** Replace `lexi lookup "$FILE_PATH"` with
+`lexi context "$FILE_PATH" --budget 1200`. Update the comment header to
+reference `lexi context`.
+
+```bash
+# Current (line 27):
+LOOKUP_OUTPUT=$(lexi lookup "$FILE_PATH" 2>/dev/null || true)
+
+# New:
+CONTEXT_OUTPUT=$(lexi context "$FILE_PATH" --budget 1200 2>/dev/null || true)
+```
+
+This keeps the same token footprint (~1200 tokens) as the current lookup
+hook, but uses context's priority-based assembly to pick the most valuable
+sections for that budget. The agent gets better information at no extra
+cost.
+
+**Post-edit hook** (`lexi-post-edit.sh`): no changes. It uses `lexi impact`
+for dependents, which serves a different purpose (post-edit blast radius
+warning). Context is pre-edit.
+
+---
+
+### H2: New `/lexi-context` Skill
+
+**Add:** `src/lexibrary/templates/rules/skills/context.md`
+
+This replaces the `/lexi-lookup` skill as the agent's primary pre-edit
+command. Content:
+
+```markdown
+# /lexi-context — Pre-Edit Context Bundle
+
+Use this **before editing any source file** to get a token-budgeted context
+bundle with design summary, conventions, known issues, dependency context,
+and IWH signals — all in one call.
+
+## When to use
+
+- Before editing a file — the primary pre-edit command
+- Before planning changes to a module — look up the directory for a broad view
+- When you need full working context, not just a quick file description
+
+## File context
+
+Run `lexi context <file>` to get:
+
+- **Identity** — file description and role
+- **IWH signals** — any in-progress work signals (guaranteed if present)
+- **Interface contract** — public API surface
+- **Conventions** — applicable coding standards
+- **Known issues** — open Stack posts referencing this file
+- **Dependencies** — with one-line summaries from their design files
+- **Dependents** — files that import this one (blast radius)
+- **Concepts** — domain vocabulary terms referenced by this file
+
+## Directory context
+
+Run `lexi context <directory>` to get:
+
+- **Billboard** — directory description and file listing
+- **Conventions** — scoped coding standards
+- **IWH signals** — any signals under this directory tree
+
+## Budget control
+
+The output is token-budgeted (default 6000 tokens). Override with `--budget`:
+
+    lexi context src/foo.py --budget 8000
+
+The footer shows what was omitted and the exact commands to drill down.
+
+## Quick alternative
+
+For a lightweight role check without full context, use `lexi lookup <file>`.
+```
+
+---
+
+### H3: Remove `/lexi-lookup` Skill
+
+**Remove from generation:** The `/lexi-lookup` skill is no longer generated
+as a `.claude/commands/lexi-lookup.md` command file. The template file
+(`src/lexibrary/templates/rules/skills/lookup.md`) remains on disk for
+reference but is no longer wired into the rule generator.
+
+Agents will still be able to run `lexi lookup` via the CLI — they just won't
+have a dedicated skill teaching them to use it as the pre-edit command.
+The new `/lexi-context` skill mentions `lexi lookup` as a lighter alternative
+in its footer.
+
+---
+
+### H4: Core Rules Template
+
+**File:** `src/lexibrary/templates/rules/core_rules.md`
+
+**Change:** The "Before Editing Files" section switches from lookup to
+context:
+
+```markdown
+# Current:
+## Before Editing Files
+
+- Run `lexi lookup <file>` before editing any source file to understand
+  its role, dependencies, and conventions.
+
+# New:
+## Before Editing Files
+
+- Run `lexi context <file>` before editing any source file to get a
+  token-budgeted context bundle with design summary, conventions, known
+  issues, and dependency context.
+```
+
+This change propagates automatically to:
+- **CLAUDE.md** — via marker-based section replacement (`<!-- lexibrary:start -->`)
+- **AGENTS.md** — same markers, plus the skill blocks are regenerated
+
+No manual edits to CLAUDE.md or AGENTS.md needed — `lexictl setup`
+regenerates them from the templates.
+
+---
+
+### H5: `/lexi-search` Skill Cross-Reference
+
+**File:** `src/lexibrary/templates/rules/skills/search.md`
+
+**Change:** Line 22 currently says:
+
+```
+Follow up with `lexi lookup <file>` on specific files of interest.
+```
+
+Update to:
+
+```
+Follow up with `lexi context <file>` on specific files of interest.
+```
+
+---
+
+### H6: Subagent Templates
+
+All four subagents reference `lexi lookup` in their research workflows.
+Each must be updated to use `lexi context` as the primary pre-edit command.
+
+#### Code agent
+
+**File:** `src/lexibrary/templates/claude/agents/code.md`
+
+Changes:
+- **Research Workflow** (lines 30-37): Step 2 changes from
+  `lexi lookup <file>` to `lexi context <file>`. Description updates from
+  "design context, conventions, and known issues" to "full working context
+  including design, conventions, known issues, dependencies, and dependents".
+  Steps 4 (`lexi concepts`) and 5 (`lexi impact`) gain a note that context
+  includes referenced concepts and basic dependents — these become optional
+  drill-down commands for when the context bundle's summary isn't enough.
+- **Before Every Edit** (lines 46-48): `lexi lookup <file>` →
+  `lexi context <file>`. Remove "The pre-edit hook runs this automatically" —
+  reword to note the hook injects a budget-constrained context bundle
+  automatically, but manual invocation gets the full 6000-token bundle.
+
+#### Plan agent
+
+**File:** `src/lexibrary/templates/claude/agents/plan.md`
+
+Changes:
+- **Research Workflow** step 3 (line 29): `lexi lookup <file>` →
+  `lexi context <file>` with updated description.
+- Step 5 (`lexi concepts`): add note that context includes referenced
+  concepts; use standalone `lexi concepts` only for broad concept
+  exploration not tied to a specific file.
+- Step 6 (line 32): Currently says "Read tool — deep read of files where
+  lexi context is insufficient". This wording already uses "lexi context"
+  by coincidence (referring to the lexi *information* being insufficient).
+  Reword to avoid ambiguity: "Read tool — when you need the full source
+  code, not just the design summary".
+
+#### Explore agent
+
+**File:** `src/lexibrary/templates/claude/agents/explore.md`
+
+Changes:
+- **Required workflow** step 4 (line 31): `lexi lookup <file>` →
+  `lexi context <file>`.
+- **Available commands** list (line 40): replace the lookup entry with
+  a context entry: `lexi context <file>` — full working context for a
+  file (design, conventions, issues, dependencies).
+- Keep the secondary mentions of `lexi conventions <path>` (step 6, line 42)
+  — conventions standalone is still useful for exploring a directory's rules
+  without a specific file target.
+
+#### Lexi Research agent
+
+**File:** `src/lexibrary/templates/claude/agents/lexi-research.md`
+
+Changes:
+- **Step 4** (line 37): `lexi lookup <file>` → `lexi context <file>` for
+  file context retrieval. Context provides richer output (dependencies,
+  dependents, concepts) which improves the research report quality.
+
+---
+
+### H7: Cursor Editing Rules
+
+**File:** `src/lexibrary/templates/cursor/editing-rules.md`
+
+**Change:**
+
+```markdown
+# Current:
+## Before Editing
+
+- Run `lexi lookup <file>` before editing any source file to understand
+  its role, dependencies, and conventions.
+- Read the corresponding design file in `.lexibrary/designs/` if one exists.
+
+# New:
+## Before Editing
+
+- Run `lexi context <file>` before editing any source file to get
+  design summary, conventions, known issues, and dependency context.
+```
+
+The "Read the corresponding design file" line is removed — context already
+includes the design file content (identity + interface contract sections).
+
+---
+
+### H8: Rule Generator — `base.py`
+
+**File:** `src/lexibrary/init/rules/base.py`
+
+Changes:
+- **Add** `get_context_skill_content()` function that reads
+  `rules/skills/context.md`.
+- **Update** module docstring to list the context skill.
+- **Keep** `get_lookup_skill_content()` — it's still importable for
+  environments that haven't migrated. But update its docstring to note
+  that `lexi context` is the primary pre-edit skill.
+
+---
+
+### H9: Rule Generator — `claude.py`
+
+**File:** `src/lexibrary/init/rules/claude.py`
+
+Changes:
+- **Import** `get_context_skill_content` from base.
+- **Stop generating** `.claude/commands/lexi-lookup.md`.
+- **Start generating** `.claude/commands/lexi-context.md`.
+- **Update** module docstring (line 14: remove lookup, add context).
+- **Update** the AGENTS.md skill block assembly: include the `/lexi-context`
+  block, exclude the `/lexi-lookup` block.
+- **Update** settings.json permissions if any reference the lookup command
+  file path.
+
+---
+
+### H10: Default Config Template
+
+**File:** `src/lexibrary/templates/config/default_config.yaml`
+
+**Add** after the `token_budgets` section:
+
+```yaml
+# Context assembly settings (lexi context)
+context:
+  default_budget: 6000                   # Token budget for lexi context output
+  guaranteed_priority_count: 4           # Sections 0..N-1 are always included
+  priorities:                            # Section ordering (first = highest priority)
+    - identity                           # 0 — always included
+    - iwh                                # 1 — guaranteed if signals exist
+    - interface                          # 2 — always included for file scope
+    - conventions                        # 3 — always included
+    - stack                              # 4
+    - dependencies                       # 5
+    - dependents                         # 6
+    - concepts                           # 7
+```
+
+---
+
+### H11: Documentation
+
+The docs layer has extensive references to `lexi lookup` as the pre-edit
+command. These fall into three categories:
+
+#### Category A: Agent-facing workflow docs (must change)
+
+These docs teach agents what to do. Every "run `lexi lookup` before editing"
+becomes "run `lexi context` before editing".
+
+| File | Nature of change |
+|---|---|
+| `docs/agent/lookup-workflow.md` | **Major rewrite.** Rename to `context-workflow.md`. Restructure around the context bundle sections, budget control, and drill-down commands. Keep a brief mention of `lexi lookup` as the lightweight alternative. |
+| `docs/agent/quick-reference.md` | Update the quick-ref table and examples: `lexi lookup` row becomes `lexi context` row. Add `lexi lookup` as a secondary entry ("quick role check"). |
+| `docs/agent/lexi-reference.md` | Add `lexi context` command entry (usage, flags, examples, "when to use"). Reposition `lexi lookup` entry — remove "Always run before editing" guidance, replace with "Quick role check; prefer `lexi context` for full pre-edit context." |
+| `docs/agent/orientation.md` | Line 70: `lexi lookup <file>` → `lexi context <file>`. Update the cross-reference from `lookup-workflow.md` to `context-workflow.md`. |
+| `docs/agent/search.md` | Line 71: table reference to `lexi lookup` → `lexi context`. |
+| `docs/agent/concepts.md` | Line 97: "When another agent runs `lexi lookup`" → "When another agent runs `lexi context`" (concepts appear in context's concepts section). |
+| `docs/agent/prohibited-commands.md` | Line 71: "Use `lexi lookup` for design files" → "Use `lexi context` for design files". |
+| `docs/agent/README.md` | Lines 61, 78: update agent command list and "fewer mistakes" description to reference context. |
+
+#### Category B: User/operator-facing docs (update primary references)
+
+These docs explain how the system works to project maintainers. References
+to `lexi lookup` as a feature should be preserved where they describe what
+lookup *does*, but primary workflow references should mention context.
+
+| File | Nature of change |
+|---|---|
+| `docs/user/how-it-works.md` | Lines 30, 127, 136: update the agent command list and collaboration model to show `lexi context` as the primary pre-edit command. Keep `lexi lookup` in the `lexi` command list (it still exists). |
+| `docs/user/conventions-concepts-exploration.md` | Multiple references to "`lexi lookup` as primary delivery point" for conventions and concepts. These should note that `lexi context` is now the primary delivery mechanism (it includes both conventions and concepts sections). `lexi lookup` remains as a secondary path. |
+| `docs/user/link-graph.md` | References to "Reverse Dependencies in `lexi lookup`" — add note that `lexi context` also surfaces these (via the dependents section). |
+| `docs/user/concepts-wiki.md` | Line 148: add note that context also surfaces wikilinks/concepts. |
+| `docs/user/library-structure.md` | Lines 83, 96, 176: update primary references from lookup to context. |
+| `docs/user/upgrading.md` | Line 127: add context fallback behavior alongside lookup. |
+| `docs/user/troubleshooting.md` | Line 449: add context alongside lookup in symptom description. |
+
+#### Category C: Index and README
+
+| File | Nature of change |
+|---|---|
+| `README.md` | Command table: add `lexi context` entry. Agent workflow: replace step 3 `lexi lookup` with `lexi context`. Quick start: replace `lexi lookup` example with `lexi context`. |
+| `docs/README.md` | Line 90: update lookup-workflow link to context-workflow. |
+
+---
+
+### H12: Tests
+
+#### Rule generation tests
+
+**File:** `tests/test_init/test_rules/test_claude.py`
+
+Changes:
+- Remove assertions for `lexi-lookup.md` in `.claude/commands/` (lines
+  59, 217-225, 930).
+- Add assertions for `lexi-context.md` in `.claude/commands/`.
+- Update command file count assertions if any exist.
+- Update content assertions that check for "lexi lookup" in generated
+  CLAUDE.md / AGENTS.md content — these should now assert "lexi context".
+
+**File:** `tests/test_init/test_rules/test_integration.py`
+
+Changes:
+- Lines 90-94, 162-163, 219-220: update assertions that check for
+  `lexi-lookup.md` and `lexi-search.md` command files. The search file
+  stays; lookup file becomes context file.
+
+**File:** `tests/test_init/test_rules/test_codex.py`
+
+- Check if any assertions reference "/lexi-lookup" — update if so.
+  Current grep shows only "/lexi-orient" references, so likely no changes.
+
+**File:** `tests/test_init/test_rules/test_generic.py`
+
+- Same check as codex — likely no changes needed (only "/lexi-orient"
+  assertions found).
+
+#### Context command tests (already in Phase 1)
+
+The Phase 1 test plan already covers unit tests for gatherers, integration
+tests for `assemble_context()`, budget tests, and CLI tests. No additions
+needed here — the harness tests above are separate from the command tests.
+
+---
+
+### H13: Dogfood Deployment
+
+After all code changes land, the Lexibrary dogfood instance in this repo
+needs regeneration:
+
+```bash
+lexictl setup    # Regenerates CLAUDE.md markers, AGENTS.md, .claude/ files
+```
+
+This is a deployment step, not a code change. It regenerates:
+- `.claude/commands/lexi-context.md` (new)
+- `.claude/commands/lexi-lookup.md` (deleted)
+- `.claude/hooks/lexi-pre-edit.sh` (updated)
+- `CLAUDE.md` marker section (updated)
+- `AGENTS.md` marker section + skill blocks (updated)
+
+---
+
+### Harness Integration Checklist
+
+Summary of all files touched, grouped by type:
+
+| Category | Files | Action |
+|---|---|---|
+| **Hook templates** | `templates/claude/hooks/lexi-pre-edit.sh` | Edit: lookup → context |
+| **Skill templates** | `templates/rules/skills/context.md` | **New file** |
+| | `templates/rules/skills/lookup.md` | Kept on disk, removed from generation |
+| | `templates/rules/skills/search.md` | Edit: cross-ref lookup → context |
+| **Agent rules** | `templates/rules/core_rules.md` | Edit: lookup → context |
+| **Subagent templates** | `templates/claude/agents/code.md` | Edit: lookup → context, simplify research workflow |
+| | `templates/claude/agents/plan.md` | Edit: lookup → context |
+| | `templates/claude/agents/explore.md` | Edit: lookup → context |
+| | `templates/claude/agents/lexi-research.md` | Edit: lookup → context |
+| **Cursor rules** | `templates/cursor/editing-rules.md` | Edit: lookup → context |
+| **Rule generators** | `init/rules/base.py` | Add `get_context_skill_content()` |
+| | `init/rules/claude.py` | Replace lookup command with context command |
+| **Config** | `templates/config/default_config.yaml` | Add `context:` section |
+| **Agent docs** | `docs/agent/lookup-workflow.md` | Rename + major rewrite → `context-workflow.md` |
+| | `docs/agent/quick-reference.md` | Edit: primary command → context |
+| | `docs/agent/lexi-reference.md` | Add context entry, reposition lookup |
+| | `docs/agent/orientation.md` | Edit: cross-ref |
+| | `docs/agent/search.md` | Edit: cross-ref |
+| | `docs/agent/concepts.md` | Edit: delivery point |
+| | `docs/agent/prohibited-commands.md` | Edit: cross-ref |
+| | `docs/agent/README.md` | Edit: command list |
+| **User docs** | `docs/user/how-it-works.md` | Edit: primary references |
+| | `docs/user/conventions-concepts-exploration.md` | Edit: delivery point references |
+| | `docs/user/link-graph.md` | Edit: add context alongside lookup |
+| | `docs/user/concepts-wiki.md` | Edit: add context reference |
+| | `docs/user/library-structure.md` | Edit: primary references |
+| | `docs/user/upgrading.md` | Edit: add context fallback |
+| | `docs/user/troubleshooting.md` | Edit: add context alongside lookup |
+| **Project docs** | `README.md` | Edit: command table, workflow, quick start |
+| | `docs/README.md` | Edit: index link |
+| **Tests** | `tests/test_init/test_rules/test_claude.py` | Edit: lookup → context assertions |
+| | `tests/test_init/test_rules/test_integration.py` | Edit: command file assertions |
+
+**Total: ~30 files touched** (1 new, ~29 edited, 0 deleted).
+
+---
+
 ## Open Questions
 
 ### Q1: Should `lexi context` accept multiple file paths?
@@ -763,7 +1273,7 @@ Use case: agent is about to edit 3 files in the same package. Could call
 **Recommendation**: defer to Phase 3 or later. File and directory scope cover
 95% of use cases.
 
-### Q2: Should guaranteed sections (priority 0-2) be truly un-truncatable?
+### Q2: Should guaranteed sections (priority 0-3) be truly un-truncatable?
 
 If a file has a 2000-token interface contract and the budget is 3000, the
 interface alone consumes 67% of the budget. Should the interface be truncated
@@ -845,17 +1355,10 @@ Option B — ordered array preserving priority:
 **Recommendation**: Option B. Preserves the priority ordering that is
 central to the design. Consumers can filter or reorder as needed.
 
-### Q6: Should `_estimate_tokens()` and `_truncate_lookup_sections()` be extracted now or during implementation?
+### Q6: ~~Should `_estimate_tokens()` and `_truncate_lookup_sections()` be extracted now or during implementation?~~
 
-These functions in `lexi_app.py` are currently private and tightly coupled
-to the lookup command. `context` needs the same logic.
-
-- Option A: extract to `utils/tokens.py` as a prerequisite PR.
-- Option B: extract as part of the `context` implementation.
-
-**Recommendation**: Option A — small, clean refactor. Separates concerns and
-makes the `context` PR smaller and more reviewable. Also benefits any other
-future consumer of token estimation.
+**Resolved:** Extraction is absorbed into Phase 1. Both functions move to
+`context/budget.py`. No separate prerequisite PR needed.
 
 ### Q7: What happens when conventions and config change mid-session?
 

@@ -5,6 +5,9 @@
 # skeleton generation is not possible.
 # After skeleton/reminder logic, runs `lexi impact` to warn about
 # downstream dependents that may need updating.
+#
+# Output uses the hookSpecificOutput wrapper required by Claude Code:
+#   {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": "..."}}
 
 set -euo pipefail
 
@@ -44,16 +47,18 @@ if [ -z "$PROJECT_DIR" ]; then
     done
 fi
 
-# Accumulate the system message in BASE_MSG, emit once at the end.
+# Accumulate the additionalContext message in BASE_MSG, emit once at the end.
 BASE_MSG=""
 
 # If no project root found, just emit a reminder and exit
 if [ -z "$PROJECT_DIR" ] || [ ! -d "$PROJECT_DIR/.lexibrary" ]; then
     BASE_MSG="Remember to update the corresponding design file after editing source files. Set updated_by: agent in the frontmatter."
-    python3 -c "
-import json, sys
-json.dump({'systemMessage': sys.argv[1]}, sys.stdout)
-" "$BASE_MSG"
+    jq -n --arg ctx "$BASE_MSG" '{
+      "hookSpecificOutput": {
+        "hookEventName": "PostToolUse",
+        "additionalContext": $ctx
+      }
+    }'
     exit 0
 fi
 
@@ -101,16 +106,18 @@ if command -v lexi >/dev/null 2>&1; then
     DEPENDENTS=$(cd "$PROJECT_DIR" && lexi impact "$FILE_PATH" --depth 1 --quiet 2>/dev/null || true)
 fi
 
-# Append dependents list to systemMessage if non-empty
+# Append dependents list to additionalContext if non-empty
 if [ -n "$DEPENDENTS" ]; then
     DEPENDENTS_WARNING="Dependents that may need updating: $DEPENDENTS"
     BASE_MSG="$BASE_MSG $DEPENDENTS_WARNING"
 fi
 
-# Emit the final combined systemMessage
-python3 -c "
-import json, sys
-json.dump({'systemMessage': sys.argv[1]}, sys.stdout)
-" "$BASE_MSG"
+# Emit the final combined additionalContext
+jq -n --arg ctx "$BASE_MSG" '{
+  "hookSpecificOutput": {
+    "hookEventName": "PostToolUse",
+    "additionalContext": $ctx
+  }
+}'
 
 exit 0

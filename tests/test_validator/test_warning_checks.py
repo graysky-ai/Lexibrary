@@ -194,7 +194,7 @@ class TestCheckHashFreshness:
         assert issue.severity == "warning"
         assert issue.check == "hash_freshness"
         assert "stale" in issue.message.lower()
-        assert "lexictl update" in issue.suggestion.lower()
+        assert "lexi design update" in issue.suggestion
 
     def test_missing_source_skipped(self, tmp_path: Path) -> None:
         """When source file doesn't exist, hash freshness is not checked."""

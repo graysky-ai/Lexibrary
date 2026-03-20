@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 import pathspec
+import pytest
 
+from lexibrary.artifacts.aindex import AIndexEntry, AIndexFile
 from lexibrary.artifacts.aindex_serializer import serialize_aindex
+from lexibrary.artifacts.design_file import StalenessMetadata
 from lexibrary.ignore.matcher import IgnoreMatcher
-from lexibrary.indexer.generator import generate_aindex
+from lexibrary.indexer.generator import (
+    _extension_based_summary,
+    _extract_role_fragment,
+    _generate_billboard,
+    _get_dir_description,
+    _is_structural_description,
+    _synthesize_summary,
+    generate_aindex,
+)
 
 _BINARY_EXTS: set[str] = {".png", ".jpg", ".gif", ".pdf", ".exe", ".zip"}
 
@@ -71,7 +84,8 @@ class TestGenerateAIndexFiles:
         (src / "foo.py").write_text("x\n", encoding="utf-8")
         (src / "bar.py").write_text("y\n", encoding="utf-8")
         result = generate_aindex(src, tmp_path, _matcher(tmp_path), _BINARY_EXTS)
-        assert result.billboard == "Directory containing Python source files."
+        # Tier 2: extension-based summary (no rich descriptions)
+        assert result.billboard == "2 Python files"
 
     def test_mixed_language_billboard(self, tmp_path: Path) -> None:
         src = tmp_path / "src"
@@ -79,7 +93,8 @@ class TestGenerateAIndexFiles:
         (src / "app.py").write_text("x\n", encoding="utf-8")
         (src / "index.js").write_text("y\n", encoding="utf-8")
         result = generate_aindex(src, tmp_path, _matcher(tmp_path), _BINARY_EXTS)
-        assert result.billboard.startswith("Mixed-language directory (")
+        # Tier 2: mixed extension-based summary
+        assert result.billboard.startswith("Mixed:")
         assert "Python" in result.billboard
         assert "JavaScript" in result.billboard
 
@@ -88,7 +103,8 @@ class TestGenerateAIndexFiles:
         src.mkdir()
         (src / "logo.png").write_bytes(b"\x89PNG")
         result = generate_aindex(src, tmp_path, _matcher(tmp_path), _BINARY_EXTS)
-        assert result.billboard == "Directory containing binary and data files."
+        # Tier 3: count fallback (no recognized language extensions)
+        assert result.billboard == "1 files"
 
 
 class TestGenerateAIndexDirectories:
@@ -138,7 +154,8 @@ class TestGenerateAIndexDirectories:
 
         result = generate_aindex(src, tmp_path, _matcher(tmp_path), _BINARY_EXTS)
         entry = next(e for e in result.entries if e.name == "utils")
-        assert entry.description == "Contains 2 files, 1 subdirectories"
+        # Non-structural billboard "Utils." is used as directory description
+        assert entry.description == "Utils."
 
     def test_subdir_with_files_only_aindex_omits_subdir_count(self, tmp_path: Path) -> None:
         from datetime import datetime
@@ -171,7 +188,8 @@ class TestGenerateAIndexDirectories:
 
         result = generate_aindex(src, tmp_path, _matcher(tmp_path), _BINARY_EXTS)
         entry = next(e for e in result.entries if e.name == "utils")
-        assert entry.description == "Contains 1 files"
+        # Non-structural billboard "Utils." is used as directory description
+        assert entry.description == "Utils."
 
 
 class TestGenerateAIndexIgnored:
@@ -353,3 +371,349 @@ class TestGenerateAIndexFrontmatterDescription:
         undocumented = next(e for e in result.entries if e.name == "undocumented.py")
         assert documented.description == "Well-documented module"
         assert undocumented.description == "Python source (2 lines)"
+
+
+# ---------------------------------------------------------------------------
+# Task 3.1 — TestIsStructuralDescription
+# ---------------------------------------------------------------------------
+
+
+class TestIsStructuralDescription:
+    """Tests for _is_structural_description."""
+
+    @pytest.mark.parametrize(
+        "desc",
+        [
+            "Python source (42 lines)",
+            "Binary file (.png)",
+            "Unknown file type",
+            "Contains 5 files",
+            "Contains 3 files, 2 subdirectories",
+            "Contains 7 items",
+            "Empty directory.",
+            "Directory containing Python files.",
+            "Mixed-language directory (Python, JavaScript).",
+            "10 Python files",
+            "Mixed: 5 Python, 3 JavaScript",
+            "4 files",
+            "3 subdirectories",
+            "2 files, 1 subdirectories",
+            "8 entries",
+        ],
+    )
+    def test_known_structural_patterns_match(self, desc: str) -> None:
+        assert _is_structural_description(desc) is True
+
+    @pytest.mark.parametrize(
+        "desc",
+        [
+            "Provides CLI entry point for the application",
+            "Coordinates authentication and session management",
+            "Data model for user accounts",
+            "Utils.",
+            "Helper functions for string manipulation",
+        ],
+    )
+    def test_rich_descriptions_do_not_match(self, desc: str) -> None:
+        assert _is_structural_description(desc) is False
+
+    def test_empty_string_does_not_match(self) -> None:
+        assert _is_structural_description("") is False
+
+    def test_prefix_text_with_structural_suffix_still_matches(self) -> None:
+        # Pattern "^.+ source (\d+ lines)$" uses .+ so any prefix is valid
+        assert _is_structural_description("Not Python source (42 lines)") is True
+
+    def test_completely_unrelated_text_does_not_match(self) -> None:
+        assert _is_structural_description("Handles user authentication") is False
+
+    def test_whitespace_only_does_not_match(self) -> None:
+        assert _is_structural_description("   ") is False
+
+
+# ---------------------------------------------------------------------------
+# Task 3.2 — TestExtractRoleFragment
+# ---------------------------------------------------------------------------
+
+
+class TestExtractRoleFragment:
+    """Tests for _extract_role_fragment."""
+
+    @pytest.mark.parametrize(
+        ("input_desc", "expected_prefix_stripped"),
+        [
+            ("Provides the main entry point", True),
+            ("Provide a caching layer", True),
+            ("Acts as a router for HTTP requests", True),
+            ("Act as the central coordinator", True),
+            ("Defines the data schema for users", True),
+            ("Define a mapping between types", True),
+            ("Generates reports from raw data", True),
+            ("Generate the output artifacts", True),
+            ("Coordinates the build pipeline", True),
+            ("Coordinate all background tasks", True),
+        ],
+    )
+    def test_prefix_stripping_for_each_verb_form(
+        self, input_desc: str, expected_prefix_stripped: bool
+    ) -> None:
+        result = _extract_role_fragment(input_desc)
+        # After stripping, the result should not start with the verb
+        first_word = input_desc.split()[0]
+        if expected_prefix_stripped:
+            assert not result.lower().startswith(first_word.lower())
+
+    def test_truncation_at_clause_marker(self) -> None:
+        desc = "main entry point that handles all incoming requests"
+        result = _extract_role_fragment(desc)
+        assert "that handles" not in result
+        assert "main entry point" in result
+
+    def test_eight_word_cap(self) -> None:
+        desc = "one two three four five six seven eight nine ten eleven"
+        result = _extract_role_fragment(desc)
+        assert len(result.split()) <= 8
+
+    def test_short_description_passes_through_unchanged(self) -> None:
+        desc = "CLI entry point"
+        result = _extract_role_fragment(desc)
+        assert result == "CLI entry point"
+
+    def test_clause_marker_ignored_when_before_10_chars(self) -> None:
+        # "that" appears before 10 chars into the fragment
+        desc = "A tool that builds"
+        result = _extract_role_fragment(desc)
+        # Should NOT truncate because "that" is at position 7 (< 10)
+        assert result == "A tool that builds"
+
+
+# ---------------------------------------------------------------------------
+# Task 3.3 — TestSynthesizeSummary
+# ---------------------------------------------------------------------------
+
+
+class TestSynthesizeSummary:
+    """Tests for _synthesize_summary."""
+
+    def test_single_description_returned_as_is(self) -> None:
+        result = _synthesize_summary(["CLI entry point"])
+        assert result == "CLI entry point"
+
+    def test_two_descriptions_joined_with_semicolon(self) -> None:
+        result = _synthesize_summary(["CLI entry point", "configuration loader"])
+        assert result == "CLI entry point; configuration loader"
+
+    def test_three_descriptions_joined_directly(self) -> None:
+        descs = ["CLI entry point", "configuration loader", "logging setup"]
+        result = _synthesize_summary(descs)
+        assert result == "CLI entry point; configuration loader; logging setup"
+
+    def test_more_than_three_uses_scoring(self) -> None:
+        descs = [
+            "Provides the main CLI entry point",
+            "Defines configuration schema validation",
+            "Generates log output formatting",
+            "Coordinates plugin loading mechanisms",
+            "Defines authentication token validation",
+        ]
+        result = _synthesize_summary(descs)
+        # Result should contain at most 3 semicolon-joined fragments
+        assert result.count(";") <= 2
+
+    def test_overlap_dedup_works(self) -> None:
+        # Descriptions with highly overlapping keywords should be deduped.
+        # Keywords must have >50% overlap to trigger dedup.
+        descs = [
+            "schema validation config processing handler",
+            "schema validation config processing checker",
+            "schema validation config processing verifier",
+            "logging output formatter pipeline",
+        ]
+        result = _synthesize_summary(descs)
+        # With >50% keyword overlap, only one of the schema variants selected
+        assert result.count("schema validation") <= 1
+
+    def test_result_at_most_80_chars(self) -> None:
+        descs = [
+            "a very long description about the comprehensive configuration management system",
+            "another lengthy description covering the full authentication framework lifecycle",
+            "yet more text describing the extensive and detailed database migration tooling",
+        ]
+        result = _synthesize_summary(descs)
+        assert len(result) <= 80
+
+    def test_empty_list_returns_empty(self) -> None:
+        result = _synthesize_summary([])
+        assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# Task 3.4 — TestGenerateBillboard (updated)
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateBillboard:
+    """Tests for _generate_billboard with three-tier fallback."""
+
+    def test_tier1_rich_descriptions(self) -> None:
+        entries = [
+            AIndexEntry(name="main.py", entry_type="file", description="CLI entry point"),
+            AIndexEntry(name="config.py", entry_type="file", description="Configuration loader"),
+        ]
+        result = _generate_billboard(entries)
+        assert "CLI entry point" in result
+        assert "Configuration loader" in result
+
+    def test_tier2_structural_only_uses_extension_summary(self) -> None:
+        entries = [
+            AIndexEntry(name="foo.py", entry_type="file", description="Python source (10 lines)"),
+            AIndexEntry(name="bar.py", entry_type="file", description="Python source (20 lines)"),
+        ]
+        result = _generate_billboard(entries)
+        assert result == "2 Python files"
+
+    def test_tier3_count_fallback(self) -> None:
+        entries = [
+            AIndexEntry(name="data.xyz", entry_type="file", description="Unknown file type"),
+        ]
+        result = _generate_billboard(entries)
+        assert result == "1 files"
+
+    def test_mixed_only_rich_used(self) -> None:
+        entries = [
+            AIndexEntry(name="main.py", entry_type="file", description="CLI entry point"),
+            AIndexEntry(name="utils.py", entry_type="file", description="Python source (5 lines)"),
+        ]
+        result = _generate_billboard(entries)
+        # Only the rich description should be used for Tier 1
+        assert "CLI entry point" in result
+        assert "Python source" not in result
+
+    def test_empty_entries_returns_empty_directory(self) -> None:
+        result = _generate_billboard([])
+        assert result == "Empty directory."
+
+    def test_dirs_only_count_fallback(self) -> None:
+        entries = [
+            AIndexEntry(name="sub1", entry_type="dir", description="Contains 3 items"),
+            AIndexEntry(name="sub2", entry_type="dir", description="Contains 5 items"),
+        ]
+        result = _generate_billboard(entries)
+        assert result == "2 subdirectories"
+
+    def test_files_and_dirs_count_fallback(self) -> None:
+        entries = [
+            AIndexEntry(name="data.xyz", entry_type="file", description="Unknown file type"),
+            AIndexEntry(name="sub", entry_type="dir", description="Contains 1 items"),
+        ]
+        result = _generate_billboard(entries)
+        assert result == "1 files, 1 subdirectories"
+
+
+# ---------------------------------------------------------------------------
+# Task 3.5 — TestExtensionBasedSummary
+# ---------------------------------------------------------------------------
+
+
+class TestExtensionBasedSummary:
+    """Tests for _extension_based_summary."""
+
+    def test_single_language(self) -> None:
+        extensions = Counter({".py": 5})
+        result = _extension_based_summary(extensions, 5)
+        assert result == "5 Python files"
+
+    def test_multiple_languages(self) -> None:
+        extensions = Counter({".py": 3, ".js": 2, ".ts": 1})
+        result = _extension_based_summary(extensions, 6)
+        assert result.startswith("Mixed:")
+        assert "Python" in result
+        assert "JavaScript" in result
+
+    def test_no_recognized_extensions(self) -> None:
+        extensions = Counter({".xyz": 3, ".abc": 2})
+        result = _extension_based_summary(extensions, 5)
+        assert result == "5 entries"
+
+
+# ---------------------------------------------------------------------------
+# Task 3.6 — TestGetDirDescription
+# ---------------------------------------------------------------------------
+
+
+class TestGetDirDescription:
+    """Tests for _get_dir_description."""
+
+    def _make_child_aindex(
+        self, tmp_path: Path, rel_dir: str, billboard: str, entries: list[AIndexEntry]
+    ) -> None:
+        """Helper to create a child .aindex file in the mirror tree."""
+        meta = StalenessMetadata(
+            source=rel_dir,
+            source_hash="abc",
+            generated=datetime(2026, 1, 1),
+            generator="lexibrary-v2",
+        )
+        model = AIndexFile(
+            directory_path=rel_dir,
+            billboard=billboard,
+            entries=entries,
+            metadata=meta,
+        )
+        mirror_dir = tmp_path / ".lexibrary" / "designs" / rel_dir
+        mirror_dir.mkdir(parents=True, exist_ok=True)
+        (mirror_dir / ".aindex").write_text(
+            serialize_aindex(model), encoding="utf-8"
+        )
+
+    def test_uses_child_billboard_when_non_structural(self, tmp_path: Path) -> None:
+        subdir = tmp_path / "src" / "utils"
+        subdir.mkdir(parents=True)
+        self._make_child_aindex(
+            tmp_path,
+            "src/utils",
+            "Helper functions for path manipulation",
+            [AIndexEntry(name="paths.py", entry_type="file", description="Path utilities")],
+        )
+        result = _get_dir_description(subdir, tmp_path)
+        assert result == "Helper functions for path manipulation"
+
+    def test_falls_back_to_counts_when_structural(self, tmp_path: Path) -> None:
+        subdir = tmp_path / "src" / "core"
+        subdir.mkdir(parents=True)
+        self._make_child_aindex(
+            tmp_path,
+            "src/core",
+            "3 Python files",  # structural billboard
+            [
+                AIndexEntry(name="a.py", entry_type="file", description="Python source (10 lines)"),
+                AIndexEntry(name="b.py", entry_type="file", description="Python source (20 lines)"),
+                AIndexEntry(name="c.py", entry_type="file", description="Python source (30 lines)"),
+            ],
+        )
+        result = _get_dir_description(subdir, tmp_path)
+        assert result == "Contains 3 files"
+
+    def test_falls_back_to_counts_with_subdirs(self, tmp_path: Path) -> None:
+        subdir = tmp_path / "src" / "mixed"
+        subdir.mkdir(parents=True)
+        self._make_child_aindex(
+            tmp_path,
+            "src/mixed",
+            "2 Python files",  # structural
+            [
+                AIndexEntry(name="a.py", entry_type="file", description="Python source (10 lines)"),
+                AIndexEntry(name="sub", entry_type="dir", description="Contains 1 items"),
+            ],
+        )
+        result = _get_dir_description(subdir, tmp_path)
+        assert result == "Contains 1 files, 1 subdirectories"
+
+    def test_falls_back_to_filesystem_count_when_no_child_aindex(self, tmp_path: Path) -> None:
+        subdir = tmp_path / "src" / "noindex"
+        subdir.mkdir(parents=True)
+        (subdir / "file1.py").write_text("x\n", encoding="utf-8")
+        (subdir / "file2.py").write_text("y\n", encoding="utf-8")
+        (subdir / "file3.py").write_text("z\n", encoding="utf-8")
+        result = _get_dir_description(subdir, tmp_path)
+        assert result == "Contains 3 items"

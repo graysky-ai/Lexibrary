@@ -11,6 +11,7 @@ from lexibrary.archivist.topology import (
     _build_procedural_topology,
     _collect_aindex_data,
     _compute_depth,
+    _generate_header,
     generate_topology,
 )
 from lexibrary.artifacts.aindex import AIndexEntry, AIndexFile
@@ -144,6 +145,495 @@ class TestCollectAindexData:
         (bad_dir / ".aindex").write_text("not a valid aindex file\n", encoding="utf-8")
         result = _collect_aindex_data(tmp_path)
         assert result == []
+
+    def test_key_entries_populated_for_landmark_entries(self, tmp_path: Path) -> None:
+        """key_entries should contain entries matching landmark keywords."""
+        (tmp_path / LEXIBRARY_DIR).mkdir()
+        entries = [
+            AIndexEntry(name="main.py", entry_type="file", description="Application entry point"),
+            AIndexEntry(name="utils.py", entry_type="file", description="Utility helpers"),
+            AIndexEntry(name="pyproject.toml", entry_type="file", description="Build metadata"),
+        ]
+        _write_aindex(tmp_path, "src", "Source code", entries=entries)
+        result = _collect_aindex_data(tmp_path)
+        assert len(result) == 1
+        key_names = [e.name for e in result[0].key_entries]
+        # main.py matches "entry point", pyproject.toml matches config filename
+        assert "main.py" in key_names
+        assert "pyproject.toml" in key_names
+        # utils.py does not match any landmark keyword
+        assert "utils.py" not in key_names
+
+    def test_key_entries_empty_when_no_landmarks(self, tmp_path: Path) -> None:
+        """key_entries should be empty when no entries match landmark keywords."""
+        (tmp_path / LEXIBRARY_DIR).mkdir()
+        entries = [
+            AIndexEntry(
+                name="helpers.py", entry_type="file", description="Shared helper functions",
+            ),
+            AIndexEntry(
+                name="models.py", entry_type="file", description="Data model definitions",
+            ),
+        ]
+        _write_aindex(tmp_path, "src", "Source code", entries=entries)
+        result = _collect_aindex_data(tmp_path)
+        assert len(result) == 1
+        assert result[0].key_entries == []
+
+
+# ---------------------------------------------------------------------------
+# _generate_header
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateHeader:
+    """Verify project header generation from landmark data."""
+
+    def test_empty_infos_returns_empty_string(self, tmp_path: Path) -> None:
+        result = _generate_header([], tmp_path)
+        assert result == ""
+
+    def test_entry_point_from_description(self, tmp_path: Path) -> None:
+        """Header should include Entry: path when description has entry-point keyword."""
+        from lexibrary.archivist.topology import _DirInfo
+
+        project_name = tmp_path.name
+        infos = [
+            _DirInfo(
+                rel_path=f"{project_name}/src",
+                billboard="Source code",
+                child_entry_count=2,
+                key_entries=[
+                    AIndexEntry(
+                        name="cli.py",
+                        entry_type="file",
+                        description="Application entry point",
+                    ),
+                ],
+            ),
+        ]
+        result = _generate_header(infos, tmp_path)
+        assert "Entry: src/cli.py" in result
+
+    def test_test_root_from_dir_name(self, tmp_path: Path) -> None:
+        """Header should include Tests: path when dir name is a test directory."""
+        from lexibrary.archivist.topology import _DirInfo
+
+        project_name = tmp_path.name
+        infos = [
+            _DirInfo(
+                rel_path=f"{project_name}/tests",
+                billboard="Test suite",
+                child_entry_count=5,
+            ),
+        ]
+        result = _generate_header(infos, tmp_path)
+        assert "Tests: tests/" in result
+
+    def test_config_file_by_name(self, tmp_path: Path) -> None:
+        """Header should include Config: filename for known config files."""
+        from lexibrary.archivist.topology import _DirInfo
+
+        project_name = tmp_path.name
+        infos = [
+            _DirInfo(
+                rel_path=project_name,
+                billboard="Root",
+                child_entry_count=3,
+                key_entries=[
+                    AIndexEntry(
+                        name="pyproject.toml",
+                        entry_type="file",
+                        description="Build metadata",
+                    ),
+                ],
+            ),
+        ]
+        result = _generate_header(infos, tmp_path)
+        assert "Config: pyproject.toml" in result
+
+    def test_minimal_header_no_landmarks(self, tmp_path: Path) -> None:
+        """When no landmarks are detected, only line 1 (name + language) appears."""
+        from lexibrary.archivist.topology import _DirInfo
+
+        project_name = tmp_path.name
+        infos = [
+            _DirInfo(
+                rel_path=project_name,
+                billboard="Root",
+                child_entry_count=1,
+            ),
+        ]
+        result = _generate_header(infos, tmp_path)
+        # Should contain the project name
+        assert f"**{project_name}**" in result
+        # Should be a single line (no landmarks line)
+        assert "\n" not in result
+
+    def test_multiple_entry_points_picks_first(self, tmp_path: Path) -> None:
+        """When multiple entry points exist, only the first is reported."""
+        from lexibrary.archivist.topology import _DirInfo
+
+        project_name = tmp_path.name
+        infos = [
+            _DirInfo(
+                rel_path=f"{project_name}/src",
+                billboard="Source",
+                child_entry_count=2,
+                key_entries=[
+                    AIndexEntry(
+                        name="app.py",
+                        entry_type="file",
+                        description="Main entry point",
+                    ),
+                ],
+            ),
+            _DirInfo(
+                rel_path=f"{project_name}/src/alt",
+                billboard="Alt source",
+                child_entry_count=1,
+                key_entries=[
+                    AIndexEntry(
+                        name="alt_main.py",
+                        entry_type="file",
+                        description="Alternative entry point",
+                    ),
+                ],
+            ),
+        ]
+        result = _generate_header(infos, tmp_path)
+        assert "Entry: src/app.py" in result
+        assert "alt_main.py" not in result
+
+    def test_dominant_language_from_key_entries(self, tmp_path: Path) -> None:
+        """Header should detect dominant language from file extensions in key_entries."""
+        from lexibrary.archivist.topology import _DirInfo
+
+        project_name = tmp_path.name
+        infos = [
+            _DirInfo(
+                rel_path=project_name,
+                billboard="Root",
+                child_entry_count=3,
+                key_entries=[
+                    AIndexEntry(
+                        name="main.py",
+                        entry_type="file",
+                        description="Application entry point",
+                    ),
+                    AIndexEntry(
+                        name="pyproject.toml",
+                        entry_type="file",
+                        description="Project configuration",
+                    ),
+                ],
+            ),
+        ]
+        result = _generate_header(infos, tmp_path)
+        assert "Python" in result
+
+    def test_dominant_source_dir_shown(self, tmp_path: Path) -> None:
+        """Header should include dominant source dir when detected at depth 1."""
+        from lexibrary.archivist.topology import _DirInfo
+
+        project_name = tmp_path.name
+        infos = [
+            _DirInfo(
+                rel_path=project_name,
+                billboard="Root",
+                child_entry_count=1,
+            ),
+            _DirInfo(
+                rel_path=f"{project_name}/src",
+                billboard="Source code",
+                child_entry_count=5,
+            ),
+        ]
+        result = _generate_header(infos, tmp_path)
+        assert "(src/)" in result
+
+
+# ---------------------------------------------------------------------------
+# Collapse annotations
+# ---------------------------------------------------------------------------
+
+
+class TestCollapseAnnotation:
+    """Verify hidden children annotation in tree output."""
+
+    @pytest.fixture()
+    def medium_project_with_children(self, tmp_path: Path) -> Path:
+        """Create a medium project where depth-3 children are hidden."""
+        (tmp_path / LEXIBRARY_DIR).mkdir()
+        project_name = tmp_path.name
+
+        # Build 15 directories to trigger medium threshold (depth <= 2)
+        dirs_at_depth_1_2 = [
+            (project_name, "Root"),
+            (f"{project_name}/src", "Source"),
+            (f"{project_name}/docs", "Docs"),
+            (f"{project_name}/tools", "Tools"),
+            (f"{project_name}/scripts", "Scripts"),
+            (f"{project_name}/src/core", "Core logic"),
+            (f"{project_name}/src/api", "API layer"),
+            (f"{project_name}/src/utils", "Utilities"),
+            (f"{project_name}/src/models", "Models"),
+            (f"{project_name}/src/services", "Services"),
+            (f"{project_name}/src/middleware", "Middleware"),
+        ]
+        for rel_path, billboard in dirs_at_depth_1_2:
+            _write_aindex(tmp_path, rel_path, billboard)
+
+        # Add depth-3 hidden children under src/core
+        hidden_children = ["handlers", "schemas", "validators"]
+        for child in hidden_children:
+            _write_aindex(
+                tmp_path,
+                f"{project_name}/src/core/{child}",
+                f"{child.capitalize()} module",
+            )
+
+        # Rewrite src/core with child_dir_names
+        core_entries = [
+            AIndexEntry(name=child, entry_type="dir", description=f"{child.capitalize()} module")
+            for child in hidden_children
+        ] + [
+            AIndexEntry(name="base.py", entry_type="file", description="Core base"),
+        ]
+        _write_aindex(
+            tmp_path,
+            f"{project_name}/src/core",
+            "Core logic",
+            entries=core_entries,
+        )
+
+        return tmp_path
+
+    def test_names_shown_up_to_4(self, medium_project_with_children: Path) -> None:
+        result = _build_procedural_topology(medium_project_with_children)
+        core_line = [line for line in result.splitlines() if "Core logic" in line][0]
+        # 3 hidden children, all names shown
+        assert "3 subdirs:" in core_line
+        assert "handlers" in core_line
+        assert "schemas" in core_line
+        assert "validators" in core_line
+
+    def test_ellipsis_when_more_than_4_hidden(self, tmp_path: Path) -> None:
+        """When >4 children are hidden, show first 4 + ellipsis."""
+        (tmp_path / LEXIBRARY_DIR).mkdir()
+        project_name = tmp_path.name
+
+        # Build enough dirs to trigger medium threshold
+        base_dirs = [
+            (project_name, "Root"),
+            (f"{project_name}/src", "Source"),
+            (f"{project_name}/docs", "Docs"),
+            (f"{project_name}/tools", "Tools"),
+            (f"{project_name}/scripts", "Scripts"),
+            (f"{project_name}/config", "Config"),
+            (f"{project_name}/src/core", "Core"),
+            (f"{project_name}/src/api", "API"),
+            (f"{project_name}/src/utils", "Utils"),
+            (f"{project_name}/src/models", "Models"),
+            (f"{project_name}/src/services", "Services"),
+        ]
+        for rel_path, billboard in base_dirs:
+            _write_aindex(tmp_path, rel_path, billboard)
+
+        # 5 hidden children under src/core (more than 4)
+        hidden = ["alpha", "beta", "gamma", "delta", "epsilon"]
+        for child in hidden:
+            _write_aindex(tmp_path, f"{project_name}/src/core/{child}", f"{child} mod")
+
+        core_entries = [
+            AIndexEntry(name=child, entry_type="dir", description=f"{child} mod")
+            for child in hidden
+        ]
+        _write_aindex(tmp_path, f"{project_name}/src/core", "Core", entries=core_entries)
+
+        result = _build_procedural_topology(tmp_path)
+        core_line = [
+            line for line in result.splitlines()
+            if "Core" in line and "subdirs" in line
+        ][0]
+        assert "5 subdirs:" in core_line
+        assert "..." in core_line
+
+    def test_greater_than_marker_present(self, medium_project_with_children: Path) -> None:
+        result = _build_procedural_topology(medium_project_with_children)
+        core_line = [line for line in result.splitlines() if "Core logic" in line][0]
+        assert core_line.rstrip().endswith(">")
+
+    def test_no_annotation_when_zero_hidden(self, tmp_path: Path) -> None:
+        """No collapse annotation when all children are visible."""
+        (tmp_path / LEXIBRARY_DIR).mkdir()
+        project_name = tmp_path.name
+
+        # Small project -- all dirs visible
+        _write_aindex(tmp_path, project_name, "Root")
+        entries = [
+            AIndexEntry(name="sub", entry_type="dir", description="Sub module"),
+        ]
+        _write_aindex(tmp_path, project_name, "Root", entries=entries)
+        _write_aindex(tmp_path, f"{project_name}/sub", "Sub module")
+
+        result = _build_procedural_topology(tmp_path)
+        root_line = [line for line in result.splitlines() if "Root" in line][0]
+        assert "subdirs" not in root_line
+        assert ">" not in root_line
+
+    def test_names_sorted_alphabetically(self, medium_project_with_children: Path) -> None:
+        result = _build_procedural_topology(medium_project_with_children)
+        core_line = [line for line in result.splitlines() if "Core logic" in line][0]
+        # Names should be alphabetically sorted: handlers, schemas, validators
+        handler_pos = core_line.index("handlers")
+        schema_pos = core_line.index("schemas")
+        validator_pos = core_line.index("validators")
+        assert handler_pos < schema_pos < validator_pos
+
+
+# ---------------------------------------------------------------------------
+# Importance-weighted depth
+# ---------------------------------------------------------------------------
+
+
+class TestImportanceWeightedDepth:
+    """Verify landmark ancestors get +1 depth bonus."""
+
+    def test_landmark_ancestor_shown_at_depth_plus_1(self, tmp_path: Path) -> None:
+        """A directory on the path to a landmark should be visible at depth+1."""
+        (tmp_path / LEXIBRARY_DIR).mkdir()
+        project_name = tmp_path.name
+
+        # Build a medium project (>10 dirs, depth limit = 2)
+        dirs = [
+            (project_name, "Root"),
+            (f"{project_name}/src", "Source"),
+            (f"{project_name}/docs", "Docs"),
+            (f"{project_name}/tools", "Tools"),
+            (f"{project_name}/scripts", "Scripts"),
+            (f"{project_name}/config", "Config"),
+            (f"{project_name}/src/core", "Core"),
+            (f"{project_name}/src/api", "API"),
+            (f"{project_name}/src/utils", "Utils"),
+            (f"{project_name}/src/models", "Models"),
+            (f"{project_name}/src/services", "Services"),
+        ]
+        for rel_path, billboard in dirs:
+            _write_aindex(tmp_path, rel_path, billboard)
+
+        # Add a landmark (entry point) at depth 3: src/core/app
+        landmark_entries = [
+            AIndexEntry(
+                name="main.py",
+                entry_type="file",
+                description="Application entry point",
+            ),
+        ]
+        _write_aindex(
+            tmp_path,
+            f"{project_name}/src/core/app",
+            "App module",
+            entries=landmark_entries,
+        )
+
+        result = _build_procedural_topology(tmp_path)
+        # src/core/app is at depth 3; base limit is 2; but it's a landmark
+        # so it gets +1 bonus -> visible at effective depth 3
+        assert "App module" in result
+
+    def test_non_landmark_at_depth_plus_1_hidden(self, tmp_path: Path) -> None:
+        """A non-landmark directory at depth 3 should be hidden in medium projects."""
+        (tmp_path / LEXIBRARY_DIR).mkdir()
+        project_name = tmp_path.name
+
+        dirs = [
+            (project_name, "Root"),
+            (f"{project_name}/src", "Source"),
+            (f"{project_name}/docs", "Docs"),
+            (f"{project_name}/tools", "Tools"),
+            (f"{project_name}/scripts", "Scripts"),
+            (f"{project_name}/config", "Config"),
+            (f"{project_name}/src/core", "Core"),
+            (f"{project_name}/src/api", "API"),
+            (f"{project_name}/src/utils", "Utils"),
+            (f"{project_name}/src/models", "Models"),
+            (f"{project_name}/src/services", "Services"),
+        ]
+        for rel_path, billboard in dirs:
+            _write_aindex(tmp_path, rel_path, billboard)
+
+        # Add non-landmark dir at depth 3
+        _write_aindex(
+            tmp_path,
+            f"{project_name}/src/core/helpers",
+            "Generic helpers",
+        )
+
+        result = _build_procedural_topology(tmp_path)
+        # Depth 3, not a landmark, not a hotspot -> hidden
+        assert "Generic helpers" not in result
+
+
+# ---------------------------------------------------------------------------
+# Format improvements — blank lines
+# ---------------------------------------------------------------------------
+
+
+class TestFormatImprovements:
+    """Verify blank lines between depth-1 sections."""
+
+    def test_blank_lines_between_depth_1_sections(self, tmp_path: Path) -> None:
+        (tmp_path / LEXIBRARY_DIR).mkdir()
+        project_name = tmp_path.name
+
+        _write_aindex(tmp_path, project_name, "Root")
+        _write_aindex(tmp_path, f"{project_name}/src", "Source code")
+        _write_aindex(tmp_path, f"{project_name}/src/auth", "Auth module")
+        _write_aindex(tmp_path, f"{project_name}/tests", "Test suite")
+        _write_aindex(tmp_path, f"{project_name}/docs", "Documentation")
+
+        result = _build_procedural_topology(tmp_path)
+        lines = result.splitlines()
+
+        # Find the depth-1 section lines
+        depth1_indices = [
+            i for i, line in enumerate(lines)
+            if line.startswith("  ") and not line.startswith("    ")
+        ]
+        # There should be blank lines between depth-1 sections
+        # (each depth-1 after the first should be preceded by a blank line)
+        for idx in depth1_indices[1:]:
+            assert lines[idx - 1] == "", (
+                f"Expected blank line before depth-1 section at line {idx}: {lines[idx]}"
+            )
+
+    def test_no_blank_lines_within_nested_sections(self, tmp_path: Path) -> None:
+        (tmp_path / LEXIBRARY_DIR).mkdir()
+        project_name = tmp_path.name
+
+        _write_aindex(tmp_path, project_name, "Root")
+        _write_aindex(tmp_path, f"{project_name}/src", "Source code")
+        _write_aindex(tmp_path, f"{project_name}/src/auth", "Auth module")
+        _write_aindex(tmp_path, f"{project_name}/src/utils", "Utilities")
+
+        result = _build_procedural_topology(tmp_path)
+        lines = result.splitlines()
+
+        # Find the src/ section and its children
+        src_idx = next(i for i, line in enumerate(lines) if "Source code" in line)
+        # Lines immediately after src/ should be its children (depth 2), no blank lines
+        for i in range(src_idx + 1, len(lines)):
+            if lines[i].startswith("    "):
+                # This is a depth-2 child -- the line before it should NOT be blank
+                # (unless it's the first child right after src/)
+                if i == src_idx + 1:
+                    continue
+                assert lines[i - 1] != "" or lines[i - 1].startswith("    "), (
+                    f"Unexpected blank line within nested section at line {i}"
+                )
+            else:
+                break
 
 
 # ---------------------------------------------------------------------------
@@ -430,9 +920,12 @@ class TestGenerateTopology:
         lines = content.splitlines()
         assert lines[0] == "# Project Topology"
         assert lines[1] == ""
-        assert lines[2] == "```"
+        # Header is present when .aindex data exists
+        assert lines[2].startswith(f"**{project_name}**")
+        assert lines[3] == ""
+        assert lines[4] == "```"
         # The tree content
-        assert "Root" in lines[3]
+        assert "Root" in lines[5]
         # Closing fence
         assert "```" in content.split("Root", 1)[1]
 
@@ -466,3 +959,37 @@ class TestGenerateTopology:
 
         result = generate_topology(tmp_path)
         assert result == tmp_path / LEXIBRARY_DIR / "TOPOLOGY.md"
+
+    def test_header_present_before_tree(self, tmp_path: Path) -> None:
+        """When .aindex data exists, header should appear before the code fence."""
+        (tmp_path / LEXIBRARY_DIR).mkdir()
+        project_name = tmp_path.name
+        _write_aindex(tmp_path, project_name, "Root")
+        _write_aindex(tmp_path, f"{project_name}/src", "Source code")
+
+        result_path = generate_topology(tmp_path)
+        content = result_path.read_text(encoding="utf-8")
+        lines = content.splitlines()
+
+        # Line 0: heading, Line 1: blank, Line 2: header starts with **ProjectName**
+        assert lines[0] == "# Project Topology"
+        assert lines[1] == ""
+        assert lines[2].startswith(f"**{project_name}**")
+        # Then blank line, then code fence
+        fence_idx = next(i for i, line in enumerate(lines) if line == "```")
+        assert fence_idx > 2
+
+    def test_header_absent_when_no_aindex_data(self, tmp_path: Path) -> None:
+        """When no .aindex data exists, header should not appear."""
+        (tmp_path / LEXIBRARY_DIR).mkdir()
+
+        result_path = generate_topology(tmp_path)
+        content = result_path.read_text(encoding="utf-8")
+        lines = content.splitlines()
+
+        # Line 0: heading, Line 1: blank, Line 2: code fence (no header)
+        assert lines[0] == "# Project Topology"
+        assert lines[1] == ""
+        assert lines[2] == "```"
+        # No ** bold markers in the content (no header)
+        assert "**" not in content
