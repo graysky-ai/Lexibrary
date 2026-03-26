@@ -26,6 +26,7 @@ Registered via `[project.scripts]` in `pyproject.toml`. Both entry points are re
 | Type checker | `mypy` (strict mode) |
 | Linter / formatter | `ruff` (line-length 100, target py311) |
 | Test runner | `pytest` (testpaths: `tests/`, pythonpath: `src/`) |
+| LLM integration | `baml-py` 0.218.1, prompt definitions in `baml_src/` |
 
 ## Directory Tree
 
@@ -36,31 +37,36 @@ Lexibrarian/
     agent/                   -- Agent-facing docs: CLI reference, workflows, prohibited commands
     user/                    -- User-facing docs: getting-started, configuration, troubleshooting
   src/
-    lexibrary/               -- Main package: errors, exceptions, search, package metadata
-      archivist/             -- Design-file generation pipeline, LLM service, skeleton fallback, topology
-      artifacts/             -- Pydantic models for all artifact types: aindex, design, concept, convention, playbook
-      ast_parser/            -- Tree-sitter extractors (Python/JS/TS), interface skeleton models, registry
-      cli/                   -- CLI commands for both lexi and lexictl, output helpers, shared utilities
-      config/                -- YAML config loader, Pydantic schema, two-tier (global + project) config
-      conventions/           -- Convention file index, parser, serializer
-      crawler/               -- Bottom-up directory crawler, change detector, file reader, LLM summarizer
-      daemon/                -- Filesystem watcher, debouncer, scheduler for background re-indexing
+    lexibrary/               -- Main package: error aggregation; package metadata; exception hierarchy
+      archivist/             -- Non-LLM skeleton generator; archivist facade; deterministic topology generator from .aindex summaries
+      artifacts/             -- Pydantic models for convention frontmatter; design-file schemas; atomic file writer
+      ast_parser/            -- Tree-sitter extractors (Python/JS/TS); interface skeleton serializer; canonical schemas
+      cli/                   -- Agent-facing CLI (lexi); maintainer CLI (lexictl); concept management commands
+      config/                -- Config namespace re-exports; two-tier YAML config loader; Pydantic v2 config schema
+      conventions/           -- Convention subsystem API; markdown serializer; scope-aware convention index
+      crawler/               -- Bottom-up crawl engine with LLM summarization; safe text extraction; directory discovery with ignore filtering
       hooks/                 -- Git hook installers (pre-commit, post-commit)
-      ignore/                -- Gitignore + lexignore pattern matching, unified IgnoreMatcher
-      indexer/               -- .aindex artifact generator and orchestrator
-      init/                  -- Project scaffolder, wizard, environment detection
-        rules/               -- Agent-rule generators per environment (Claude, Cursor, Codex, generic)
-      iwh/                   -- I Was Here signal system: model, parser, reader, writer, cleanup
-      lifecycle/             -- Design bootstrap, deprecation/rename tracking, comment system, enrichment queue
-      linkgraph/             -- SQLite link-graph: schema, builder, query API, health checks
-      llm/                   -- LLM client factory, BAML adapter, rate limiter
-      playbooks/             -- Playbook index, parser, serializer, template
-      stack/                 -- Stack Q&A posts: index, models, mutations, parser, serializer
-      templates/             -- Bundled templates for config, rules, hooks, scaffolder, agent prompts
-      tokenizer/             -- Token counting: tiktoken, Anthropic API, approximate (chars/4)
-      utils/                 -- Atomic writes, hashing, path mapping, locks, language detection, logging
-      validator/             -- Library health checks, auto-fixes, validation report models
-      wiki/                  -- Concept files: index, parser, serializer, wikilink resolver
+      ignore/                -- Ignore matcher factory; unified matcher; small adapter
+      indexer/               -- Package init; in-memory AIndexFile builder; end-to-end .aindex orchestrator
+      init/                  -- Environment/metadata auto-detection; interactive 9-step wizard; scaffolding helper
+        rules/               -- Marker-delimited section utilities; Markdown template loader; environment-specific rule generators
+      iwh/                   -- IWH signal cleanup; signal writer; Pydantic schema for .iwh files
+      lifecycle/             -- Concept deprecation/deletion; enrichment queue; batch design-file bootstrap
+      linkgraph/             -- SQLite link-graph: health metadata; read-only query API; schema/DDL management
+      llm/                   -- Async BAML adapter; client-registry factory; async rate limiter
+      playbooks/             -- Playbook parser; in-memory index with trigger-glob matching; public API re-exports
+      stack/                 -- Stack post template generator; Pydantic models; public API re-exports
+      templates/             -- Template loader utility
+        claude/agents/       -- Agent workflow templates; reusable prompt templates
+        claude/hooks/        -- Post-edit hook; PreToolUse hook
+        config/              -- Default project config template (created by lexictl init)
+          skills/            -- Skill templates: lexi-concepts, lexi-lookup, lexi-orient, lexi-search, lexi-stack, topology-builder
+        hooks/               -- Git post-commit hook template; pre-commit validation hook template
+        scaffolder/          -- Comment header template; .lexignore header template
+      tokenizer/             -- Token counter factory; API re-exports; chars/4 heuristic fallback
+      utils/                 -- Source-to-designs path mapping; language detection; merge-conflict detection
+      validator/             -- Validation check coordinator; result models; individual check functions
+      wiki/                  -- Wikilink resolver; concept file creator; concept serializer
   tests/                     -- Mirror of src/ layout, plus fixtures in tests/fixtures/sample_project/
 ```
 
@@ -160,7 +166,7 @@ Tests mirror the source layout under `tests/`. Each `tests/test_<subpackage>/` d
 | `tests/test_validator/` | `src/lexibrary/validator/` |
 | `tests/test_wiki/` | `src/lexibrary/wiki/` |
 
-Top-level test files: `tests/test_errors.py`, `tests/test_exceptions.py`, `tests/test_search.py`, `tests/test_playbook_cli.py`, `tests/test_playbook_search.py`, `tests/test_playbook_validation.py`, `tests/test_skills_mirror.py`.
+Top-level test files: `tests/test_errors.py`, `tests/test_exceptions.py`, `tests/test_search.py`, `tests/test_playbook_cli.py`, `tests/test_playbook_index.py`, `tests/test_playbook_model.py`, `tests/test_playbook_parser.py`, `tests/test_playbook_search.py`, `tests/test_playbook_serializer.py`, `tests/test_playbook_validation.py`, `tests/test_skills_mirror.py`.
 
 Test fixtures live in `tests/fixtures/sample_project/`. Shared helpers are in `tests/conftest.py`.
 

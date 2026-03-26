@@ -64,11 +64,41 @@ Use this table to determine which raw sections to read and what to produce.
 | `config` | Project Config | Extract language, build system, tooling into config table |
 | `stats` | (no output section) | Use for cross-checking completeness; do not emit a stats section |
 
+## Pre-flight Checks
+
+Run these checks **before** starting synthesis. If any check fails, stop and
+ask the user to run the indicated command. Do not proceed with stale data.
+
+### 1. raw-topology.md exists
+
+```bash
+test -f .lexibrary/tmp/raw-topology.md && echo "OK" || echo "MISSING"
+```
+
+If missing, ask the user to run `lexictl update`.
+
+### 2. .aindex freshness
+
+```bash
+find src/ -name "*.py" -newer .lexibrary/designs/src/.aindex | head -1
+```
+
+If this produces any output, at least one source file is newer than the
+index. Ask the user to run `lexictl index`.
+
+### 3. raw-topology.md freshness
+
+```bash
+find .lexibrary/designs/src/ -name ".aindex" -newer .lexibrary/tmp/raw-topology.md | head -1
+```
+
+If this produces any output, the index has been rebuilt since the last
+`lexictl update`. Ask the user to run `lexictl update`.
+
 ## Workflow
 
 1. **Read raw topology.** Open `.lexibrary/tmp/raw-topology.md`. Use section
-   markers to locate each block. If the file does not exist or is empty,
-   stop and report that `lexictl update` must be run first.
+   markers to locate each block.
 
 2. **Read template.** Open `assets/topology_template.md` (relative to this
    skill directory) for the required section structure. If the file does not
