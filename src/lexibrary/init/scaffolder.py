@@ -19,7 +19,7 @@ LEXIBRARY_DIR = ".lexibrary"
 # Patterns for generated artifacts that should be gitignored.
 # The link graph index.db needs an explicit entry (it's inside .lexibrary/
 # but called out for clarity).
-_GENERATED_GITIGNORE_PATTERNS = [".lexibrary/index.db"]
+_GENERATED_GITIGNORE_PATTERNS = [".lexibrary/index.db", ".lexibrary/tmp/"]
 
 LEXIGNORE_HEADER = read_template("scaffolder/lexignore_header.txt")
 
@@ -99,9 +99,9 @@ def _generate_config_yaml(answers: WizardAnswers) -> str:
 def _ensure_generated_files_gitignored(project_root: Path) -> bool:
     """Ensure generated artifacts are listed in ``.gitignore``.
 
-    Appends ``.lexibrary/index.db`` to the project's ``.gitignore`` if
-    it is not already present.  Creates the ``.gitignore`` file if it
-    does not exist.
+    Appends ``.lexibrary/index.db`` and ``.lexibrary/tmp/`` to the
+    project's ``.gitignore`` if not already present.  Creates the
+    ``.gitignore`` file if it does not exist.
 
     Args:
         project_root: Root directory of the project.

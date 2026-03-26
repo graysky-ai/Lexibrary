@@ -987,9 +987,7 @@ def _search_playbooks(
     if tag is not None and query is not None:
         tag_lower = tag.strip().lower()
         matches = [
-            pb
-            for pb in matches
-            if any(t.strip().lower() == tag_lower for t in pb.frontmatter.tags)
+            pb for pb in matches if any(t.strip().lower() == tag_lower for t in pb.frontmatter.tags)
         ]
 
     # Multi-tag AND: filter for extra tags
@@ -997,9 +995,7 @@ def _search_playbooks(
         matches = [
             pb
             for pb in matches
-            if all(
-                any(t.strip().lower() == et for t in pb.frontmatter.tags) for et in extra_tags
-            )
+            if all(any(t.strip().lower() == et for t in pb.frontmatter.tags) for et in extra_tags)
         ]
 
     # Status filter

@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 
-from lexibrary.cli._output import error, info, warn
+from lexibrary.cli._output import error, hint, info, warn
 from lexibrary.cli._shared import (
     _run_status,
     _run_validate,
@@ -269,15 +269,16 @@ def update(
         info(f"Skeleton generated. Change level: {result.change.value}")
         return
 
-    # --topology: regenerate TOPOLOGY.md only
+    # --topology: regenerate raw topology only
     if topology:
-        from lexibrary.archivist.topology import generate_topology  # noqa: PLC0415
+        from lexibrary.archivist.topology import generate_raw_topology  # noqa: PLC0415
 
         try:
-            generate_topology(project_root)
-            info("TOPOLOGY.md generated.")
+            generate_raw_topology(project_root)
+            info("Raw topology written to .lexibrary/tmp/raw-topology.md")
+            hint("Run /topology-builder to generate TOPOLOGY.md")
         except Exception as exc:
-            error(f"Failed to generate TOPOLOGY.md: {exc}")
+            error(f"Failed to generate raw topology: {exc}")
             raise typer.Exit(1) from None
         return
 
@@ -645,6 +646,18 @@ def bootstrap(
     if has_errors:
         raise typer.Exit(1)
 
+    # Phase 3: Generate raw topology
+    info("")
+    info("Phase 3: Generating raw topology...")
+    try:
+        from lexibrary.archivist.topology import generate_raw_topology  # noqa: PLC0415
+
+        generate_raw_topology(project_root)
+        info("  Raw topology written to .lexibrary/tmp/raw-topology.md")
+        hint("  Run /topology-builder to generate TOPOLOGY.md")
+    except Exception as exc:
+        warn(f"  Raw topology generation failed (non-fatal): {exc}")
+
     info("")
     info("Bootstrap complete.")
 
@@ -985,9 +998,7 @@ def sweep(
 
     if not watch:
         # One-shot mode
-        if config.sweep.sweep_skip_if_unchanged and not _has_changes(
-            project_root, last_sweep
-        ):
+        if config.sweep.sweep_skip_if_unchanged and not _has_changes(project_root, last_sweep):
             info("No changes detected -- skipping sweep.")
             return
         _run_single_sweep()
@@ -1003,15 +1014,10 @@ def sweep(
     _signal.signal(_signal.SIGTERM, _signal_handler)
     _signal.signal(_signal.SIGINT, _signal_handler)
 
-    info(
-        f"Watching {project_root} (sweep every {interval:.0f}s). "
-        f"Press Ctrl+C to stop."
-    )
+    info(f"Watching {project_root} (sweep every {interval:.0f}s). Press Ctrl+C to stop.")
 
     while not shutdown_event.is_set():
-        if config.sweep.sweep_skip_if_unchanged and not _has_changes(
-            project_root, last_sweep
-        ):
+        if config.sweep.sweep_skip_if_unchanged and not _has_changes(project_root, last_sweep):
             info("No changes detected -- skipping sweep.")
         else:
             try:
@@ -1022,8 +1028,6 @@ def sweep(
         shutdown_event.wait(timeout=interval)
 
     info("Sweep watch stopped.")
-
-
 
 
 # ---------------------------------------------------------------------------

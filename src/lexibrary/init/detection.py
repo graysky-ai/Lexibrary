@@ -63,7 +63,7 @@ _AGENT_RULES_FILES: dict[str, list[str]] = {
 # Directories that each environment's rule generator will create.
 # Used by the wizard to warn the user when base directories are missing.
 _AGENT_REQUIRED_DIRS: dict[str, list[str]] = {
-    "claude": [".claude/", ".claude/commands/"],
+    "claude": [".claude/", ".claude/skills/"],
     "cursor": [".cursor/", ".cursor/rules/", ".cursor/skills/"],
     "codex": [],  # codex only writes AGENTS.md at root
 }

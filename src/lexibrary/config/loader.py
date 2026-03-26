@@ -15,11 +15,13 @@ logger = logging.getLogger(__name__)
 
 # Fields that existed on the old DaemonConfig but were removed in the
 # DaemonConfig -> SweepConfig rename.
-_DAEMON_REMOVED_FIELDS = frozenset({
-    "debounce_seconds",
-    "git_suppression_seconds",
-    "watchdog_enabled",
-})
+_DAEMON_REMOVED_FIELDS = frozenset(
+    {
+        "debounce_seconds",
+        "git_suppression_seconds",
+        "watchdog_enabled",
+    }
+)
 
 # XDG base directory default
 _XDG_CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))

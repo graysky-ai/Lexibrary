@@ -1220,8 +1220,11 @@ class TestSweepCommand:
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
 
         mock_stats = MagicMock(
-            files_scanned=5, files_updated=1, files_created=0,
-            files_unchanged=4, files_failed=0,
+            files_scanned=5,
+            files_updated=1,
+            files_created=0,
+            files_unchanged=4,
+            files_failed=0,
         )
         with patch(
             "lexibrary.archivist.pipeline.update_project",
@@ -1259,8 +1262,11 @@ class TestSweepCommand:
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
 
         mock_stats = MagicMock(
-            files_scanned=5, files_updated=1, files_created=0,
-            files_unchanged=4, files_failed=0,
+            files_scanned=5,
+            files_updated=1,
+            files_created=0,
+            files_unchanged=4,
+            files_failed=0,
         )
 
         call_count = 0
@@ -1628,6 +1634,34 @@ class TestLexictlBootstrapCommand:
         # lib should NOT be indexed (outside scope_root from config)
         assert not (project / ".lexibrary" / "designs" / "lib" / ".aindex").exists()
 
+    def test_bootstrap_generates_raw_topology(self, tmp_path: Path) -> None:
+        """Bootstrap generates raw topology as Phase 3."""
+        project = _setup_project(tmp_path)
+        result = self._invoke(project, ["bootstrap"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Phase 3: Generating raw topology" in output
+        assert "Raw topology written to .lexibrary/tmp/raw-topology.md" in output
+        assert "Run /topology-builder to generate TOPOLOGY.md" in output
+        # The raw topology file should exist
+        assert (project / ".lexibrary" / "tmp" / "raw-topology.md").exists()
+
+    def test_bootstrap_topology_failure_is_non_fatal(self, tmp_path: Path) -> None:
+        """Bootstrap continues even if raw topology generation fails."""
+        from unittest.mock import patch  # noqa: PLC0415
+
+        project = _setup_project(tmp_path)
+
+        with patch(
+            "lexibrary.archivist.topology.generate_raw_topology",
+            side_effect=OSError("disk full"),
+        ):
+            result = self._invoke(project, ["bootstrap"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Raw topology generation failed (non-fatal)" in output
+        assert "Bootstrap complete" in output
+
 
 # ---------------------------------------------------------------------------
 # IWH clean
@@ -1826,20 +1860,21 @@ class TestUpdateTopology:
             os.chdir(old_cwd)
 
     def test_topology_regenerates(self, tmp_path: Path) -> None:
-        """--topology calls generate_topology and shows success."""
+        """--topology calls generate_raw_topology and shows success."""
         project = _setup_archivist_project(tmp_path)
 
-        mock_generate = MagicMock(return_value=project / ".lexibrary" / "TOPOLOGY.md")
+        mock_generate = MagicMock(return_value=project / ".lexibrary" / "tmp" / "raw-topology.md")
 
         with patch(
-            "lexibrary.archivist.topology.generate_topology",
+            "lexibrary.archivist.topology.generate_raw_topology",
             mock_generate,
         ):
             result = self._invoke(project, ["update", "--topology"])
 
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
-        assert "TOPOLOGY.md generated" in output
+        assert "Raw topology written to .lexibrary/tmp/raw-topology.md" in output
+        assert "Run /topology-builder to generate TOPOLOGY.md" in output
         mock_generate.assert_called_once()
 
     def test_topology_mutual_exclusivity_with_changed_only(self, tmp_path: Path) -> None:
@@ -2478,9 +2513,7 @@ class TestUpdateUnlimited:
         """--unlimited and --skeleton cannot be used together."""
         project = _setup_archivist_project(tmp_path)
 
-        result = self._invoke(
-            project, ["update", "--unlimited", "--skeleton", "src/main.py"]
-        )
+        result = self._invoke(project, ["update", "--unlimited", "--skeleton", "src/main.py"])
 
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "--skeleton cannot be combined" in result.output  # type: ignore[union-attr]

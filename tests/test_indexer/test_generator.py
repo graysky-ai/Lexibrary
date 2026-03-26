@@ -14,13 +14,15 @@ from lexibrary.artifacts.aindex_serializer import serialize_aindex
 from lexibrary.artifacts.design_file import StalenessMetadata
 from lexibrary.ignore.matcher import IgnoreMatcher
 from lexibrary.indexer.generator import (
+    _TRAILING_STRIP,
+    _candidate_fragments,
     _extension_based_summary,
     _extract_role_fragment,
     _generate_billboard,
     _get_dir_description,
-    _is_structural_description,
     _synthesize_summary,
     generate_aindex,
+    is_structural_description,
 )
 
 _BINARY_EXTS: set[str] = {".png", ".jpg", ".gif", ".pdf", ".exe", ".zip"}
@@ -402,7 +404,7 @@ class TestIsStructuralDescription:
         ],
     )
     def test_known_structural_patterns_match(self, desc: str) -> None:
-        assert _is_structural_description(desc) is True
+        assert is_structural_description(desc) is True
 
     @pytest.mark.parametrize(
         "desc",
@@ -415,20 +417,20 @@ class TestIsStructuralDescription:
         ],
     )
     def test_rich_descriptions_do_not_match(self, desc: str) -> None:
-        assert _is_structural_description(desc) is False
+        assert is_structural_description(desc) is False
 
     def test_empty_string_does_not_match(self) -> None:
-        assert _is_structural_description("") is False
+        assert is_structural_description("") is False
 
     def test_prefix_text_with_structural_suffix_still_matches(self) -> None:
         # Pattern "^.+ source (\d+ lines)$" uses .+ so any prefix is valid
-        assert _is_structural_description("Not Python source (42 lines)") is True
+        assert is_structural_description("Not Python source (42 lines)") is True
 
     def test_completely_unrelated_text_does_not_match(self) -> None:
-        assert _is_structural_description("Handles user authentication") is False
+        assert is_structural_description("Handles user authentication") is False
 
     def test_whitespace_only_does_not_match(self) -> None:
-        assert _is_structural_description("   ") is False
+        assert is_structural_description("   ") is False
 
 
 # ---------------------------------------------------------------------------
@@ -469,10 +471,11 @@ class TestExtractRoleFragment:
         assert "that handles" not in result
         assert "main entry point" in result
 
-    def test_eight_word_cap(self) -> None:
+    def test_no_word_cap(self) -> None:
+        """Verify descriptions longer than 8 words are preserved in full."""
         desc = "one two three four five six seven eight nine ten eleven"
         result = _extract_role_fragment(desc)
-        assert len(result.split()) <= 8
+        assert result == desc
 
     def test_short_description_passes_through_unchanged(self) -> None:
         desc = "CLI entry point"
@@ -533,15 +536,6 @@ class TestSynthesizeSummary:
         # With >50% keyword overlap, only one of the schema variants selected
         assert result.count("schema validation") <= 1
 
-    def test_result_at_most_80_chars(self) -> None:
-        descs = [
-            "a very long description about the comprehensive configuration management system",
-            "another lengthy description covering the full authentication framework lifecycle",
-            "yet more text describing the extensive and detailed database migration tooling",
-        ]
-        result = _synthesize_summary(descs)
-        assert len(result) <= 80
-
     def test_empty_list_returns_empty(self) -> None:
         result = _synthesize_summary([])
         assert result == ""
@@ -575,9 +569,10 @@ class TestGenerateBillboard:
     def test_tier3_count_fallback(self) -> None:
         entries = [
             AIndexEntry(name="data.xyz", entry_type="file", description="Unknown file type"),
+            AIndexEntry(name="data2.xyz", entry_type="file", description="Unknown file type"),
         ]
         result = _generate_billboard(entries)
-        assert result == "1 files"
+        assert result == "2 files"
 
     def test_mixed_only_rich_used(self) -> None:
         entries = [
@@ -662,9 +657,7 @@ class TestGetDirDescription:
         )
         mirror_dir = tmp_path / ".lexibrary" / "designs" / rel_dir
         mirror_dir.mkdir(parents=True, exist_ok=True)
-        (mirror_dir / ".aindex").write_text(
-            serialize_aindex(model), encoding="utf-8"
-        )
+        (mirror_dir / ".aindex").write_text(serialize_aindex(model), encoding="utf-8")
 
     def test_uses_child_billboard_when_non_structural(self, tmp_path: Path) -> None:
         subdir = tmp_path / "src" / "utils"
@@ -717,3 +710,164 @@ class TestGetDirDescription:
         (subdir / "file3.py").write_text("z\n", encoding="utf-8")
         result = _get_dir_description(subdir, tmp_path)
         assert result == "Contains 3 items"
+
+
+# ---------------------------------------------------------------------------
+# A1 — TestCandidateFragments / TestSynthesizeSummaryPreSplit
+# ---------------------------------------------------------------------------
+
+
+class TestCandidateFragments:
+    """Tests for _candidate_fragments pre-split helper."""
+
+    def test_semicolon_description_split_into_parts(self) -> None:
+        result = _candidate_fragments(["configuration schema; two-tier loader; public namespace"])
+        assert result == ["configuration schema", "two-tier loader", "public namespace"]
+
+    def test_non_semicolon_description_passed_through(self) -> None:
+        result = _candidate_fragments(["CLI entry point for the application"])
+        assert result == ["CLI entry point for the application"]
+
+    def test_multiple_descriptions_expanded(self) -> None:
+        result = _candidate_fragments(["schema; loader", "single clause"])
+        assert result == ["schema", "loader", "single clause"]
+
+    def test_empty_parts_after_split_are_dropped(self) -> None:
+        # Leading/trailing semicolons should not produce empty strings
+        result = _candidate_fragments(["; schema; "])
+        assert result == ["schema"]
+
+
+class TestSynthesizeSummaryPreSplit:
+    """Tests for A1 pre-split behaviour in _synthesize_summary."""
+
+    def test_semicolon_embedded_description_produces_clean_fragments(self) -> None:
+        result = _synthesize_summary(["configuration schema; two-tier loader; public namespace"])
+        assert "configuration schema" in result
+        assert not result.endswith(";")
+        assert not result.startswith(";")
+
+    def test_no_trailing_semicolon_when_fragments_truncate(self) -> None:
+        # Regression for the exact bug: "...configuration system; discovery and"
+        result = _synthesize_summary(
+            [
+                "stable public namespace for the project's configuration system;"
+                " discovery and two-tier loading",
+            ]
+        )
+        assert not result.endswith(";")
+
+    def test_pre_split_does_not_duplicate_non_semicolon_descriptions(self) -> None:
+        result = _synthesize_summary(["authentication pipeline"])
+        assert result == "authentication pipeline"
+
+
+# ---------------------------------------------------------------------------
+# A2 — singular/plural in _extension_based_summary
+# ---------------------------------------------------------------------------
+
+
+class TestExtensionBasedSummarySingular:
+    """Tests for A2 singular/plural fix."""
+
+    def test_single_language_one_file_uses_singular(self) -> None:
+        result = _extension_based_summary(Counter({".py": 1}), 1)
+        assert result == "1 Python file"
+
+    def test_single_language_two_files_uses_plural(self) -> None:
+        result = _extension_based_summary(Counter({".py": 2}), 2)
+        assert result == "2 Python files"
+
+
+# ---------------------------------------------------------------------------
+# A3 — extended _LEADING_VERB_RE new verb forms
+# ---------------------------------------------------------------------------
+
+
+class TestExtractRoleFragmentNewVerbs:
+    """Tests for A3 extended verb stripping."""
+
+    @pytest.mark.parametrize(
+        "input_desc",
+        [
+            "Initializes the lexibrary package",
+            "Ensures the project mirrors are fresh",
+            "Manages lifecycle transitions",
+            "Handles watchdog file events",
+            "Implements the rate-limiting protocol",
+            "Exposes the public search API",
+            "Writes the .aindex artifact",
+            "Registers all plugin hooks",
+            "Maintains an in-memory search index",
+            "Builds the dependency graph",
+            "Reads the design-file frontmatter",
+            "Wraps the BAML client calls",
+        ],
+    )
+    def test_new_verb_stripped(self, input_desc: str) -> None:
+        result = _extract_role_fragment(input_desc)
+        first_word = input_desc.split()[0]
+        assert not result.lower().startswith(first_word.lower())
+
+    def test_noun_at_line_start_not_stripped(self) -> None:
+        # "Configuration" is not a verb pattern — should pass through unchanged
+        result = _extract_role_fragment("Configuration schema for two-tier loading")
+        assert result.startswith("Configuration")
+
+    def test_extended_filler_stripped_after_verb(self) -> None:
+        # "Manages and coordinates" → strip "Manages and " → "coordinates..."
+        result = _extract_role_fragment("Manages and coordinates background tasks")
+        assert not result.lower().startswith("manages")
+
+
+# ---------------------------------------------------------------------------
+# A4 — trailing functional word strip in _extract_role_fragment
+# ---------------------------------------------------------------------------
+
+
+class TestExtractRoleFragmentTrailingStrip:
+    """Tests for A4 trailing preposition/article stripping."""
+
+    def test_trailing_article_stripped(self) -> None:
+        # Trailing functional word "a" is stripped from the end of the fragment
+        result = _extract_role_fragment("logic to determine how a")
+        assert result.split()[-1].lower() not in _TRAILING_STRIP
+
+    def test_trailing_preposition_stripped(self) -> None:
+        # Trailing preposition "of" is stripped from the end of the fragment
+        desc = "one two three four five six seven of"
+        result = _extract_role_fragment(desc)
+        assert result.split()[-1].lower() not in _TRAILING_STRIP
+
+    def test_trailing_conjunction_stripped(self) -> None:
+        desc = "one two three four five six seven and conjunctions"
+        result = _extract_role_fragment(desc)
+        assert result.split()[-1].lower() not in _TRAILING_STRIP
+
+    def test_meaningful_last_word_preserved(self) -> None:
+        # "validation" is not a functional word; full string should be kept
+        result = _extract_role_fragment("authentication pipeline and token validation")
+        assert result.endswith("validation")
+
+    def test_trailing_strip_on_empty_after_strip_returns_empty(self) -> None:
+        # All words are filler — result should be empty, not crash
+        result = _extract_role_fragment("the a an to by for of")
+        assert result == ""
+
+    def test_no_word_cap_preserves_full_description(self) -> None:
+        """Verify long descriptions are preserved without truncation."""
+        desc = "one two three four five six seven eight nine ten"
+        result = _extract_role_fragment(desc)
+        assert result == desc
+        assert result.split()[-1].lower() not in _TRAILING_STRIP
+
+    def test_uncapped_billboard_fragment_realistic(self) -> None:
+        """Realistic billboard-length fragment is preserved in full (no word cap)."""
+        desc = (
+            "lightweight, structured way to capture, aggregate, "
+            "and print errors encountered during pipeline runs"
+        )
+        result = _extract_role_fragment(desc)
+        # All words preserved (well above the old 8-word cap)
+        assert len(result.split()) > 8
+        assert "pipeline runs" in result

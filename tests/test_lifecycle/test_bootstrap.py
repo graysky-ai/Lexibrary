@@ -482,9 +482,7 @@ class TestBootstrapFull:
 
             mock_update.return_value = FileResult(change=ChangeLevel.NEW_FILE)
 
-            stats = await bootstrap_full(
-                project, config, client_registry=ClientRegistry()
-            )
+            stats = await bootstrap_full(project, config, client_registry=ClientRegistry())
 
         assert stats.files_scanned == 1
         assert stats.files_created == 1
@@ -510,9 +508,7 @@ class TestBootstrapFull:
                 FileResult(change=ChangeLevel.NEW_FILE),
             ]
 
-            stats = await bootstrap_full(
-                project, config, client_registry=ClientRegistry()
-            )
+            stats = await bootstrap_full(project, config, client_registry=ClientRegistry())
 
         assert stats.files_failed == 1
         assert stats.files_created == 1
@@ -560,9 +556,7 @@ class TestBootstrapFull:
 
             mock_update.return_value = FileResult(change=ChangeLevel.UNCHANGED)
 
-            stats = await bootstrap_full(
-                project, config, client_registry=ClientRegistry()
-            )
+            stats = await bootstrap_full(project, config, client_registry=ClientRegistry())
 
         assert stats.files_skipped == 1
         assert stats.files_created == 0

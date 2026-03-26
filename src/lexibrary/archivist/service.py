@@ -95,9 +95,7 @@ class ArchivistService:
             )
         except BamlClientError as exc:
             if _TRUNCATION_PATTERN.search(str(exc)):
-                msg = (
-                    f"LLM output truncated for {request.source_path}: {exc}"
-                )
+                msg = f"LLM output truncated for {request.source_path}: {exc}"
                 logger.warning(msg)
                 raise ArchivistTruncationError(msg) from exc
             # Non-truncation BAML client errors fall through to generic handler

@@ -17,6 +17,7 @@ from lexibrary.config.schema import (
     SweepConfig,
     TokenBudgetConfig,
     TokenizerConfig,
+    TopologyConfig,
 )
 
 __all__ = [
@@ -35,4 +36,5 @@ __all__ = [
     "SweepConfig",
     "TokenBudgetConfig",
     "TokenizerConfig",
+    "TopologyConfig",
 ]

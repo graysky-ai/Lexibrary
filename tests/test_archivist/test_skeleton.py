@@ -15,9 +15,7 @@ from lexibrary.artifacts.design_file import DesignFile
 # ---------------------------------------------------------------------------
 
 
-def _make_source_file(
-    tmp_path: Path, rel: str, content: str = "print('hello')"
-) -> Path:
+def _make_source_file(tmp_path: Path, rel: str, content: str = "print('hello')") -> Path:
     """Create a source file at the given relative path."""
     source = tmp_path / rel
     source.parent.mkdir(parents=True, exist_ok=True)
@@ -92,9 +90,7 @@ class TestGenerateSkeletonDesign:
 
     def test_custom_updated_by(self, tmp_path: Path) -> None:
         source = _make_source_file(tmp_path, "src/example.py", "x = 1\n")
-        result = generate_skeleton_design(
-            source, tmp_path, updated_by="bootstrap-quick"
-        )
+        result = generate_skeleton_design(source, tmp_path, updated_by="bootstrap-quick")
         assert result.frontmatter.updated_by == "bootstrap-quick"
 
     def test_source_path_is_relative(self, tmp_path: Path) -> None:
@@ -131,9 +127,7 @@ class TestGenerateSkeletonDesign:
     def test_summary_suffix_appended(self, tmp_path: Path) -> None:
         source = _make_source_file(tmp_path, "src/example.py", "x = 1\n")
         suffix = " -- source too large (~5000 tokens)"
-        result = generate_skeleton_design(
-            source, tmp_path, summary_suffix=suffix
-        )
+        result = generate_skeleton_design(source, tmp_path, summary_suffix=suffix)
         assert result.summary.endswith(suffix)
         # Description in frontmatter should NOT have the suffix
         assert not result.frontmatter.description.endswith(suffix)
@@ -149,11 +143,7 @@ class TestGenerateSkeletonDesign:
         assert result.summary == result.frontmatter.description
 
     def test_dependencies_extracted(self, tmp_path: Path) -> None:
-        content = (
-            "from __future__ import annotations\n\n"
-            "from pathlib import Path\n\n"
-            "x = 1\n"
-        )
+        content = "from __future__ import annotations\n\nfrom pathlib import Path\n\nx = 1\n"
         source = _make_source_file(tmp_path, "src/example.py", content)
         result = generate_skeleton_design(source, tmp_path)
         # dependencies is a list (may be empty if no local deps found)

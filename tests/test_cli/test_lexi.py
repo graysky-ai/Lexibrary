@@ -5428,6 +5428,103 @@ class TestLookupTruncationFooter:
         assert len({"issues", "iwh", "links"} - included) > 0
 
 
+# ---------------------------------------------------------------------------
+# Orient topology staleness tests (task 7.6)
+# ---------------------------------------------------------------------------
+
+
+class TestOrientTopologyStaleness:
+    """Test _check_topology_staleness warnings in orient."""
+
+    def test_warn_when_raw_newer_than_topology(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Orient warns when raw topology is newer than TOPOLOGY.md."""
+        import time  # noqa: PLC0415
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary").mkdir()
+
+        # Create TOPOLOGY.md first (older)
+        topology = tmp_path / ".lexibrary" / "TOPOLOGY.md"
+        topology.write_text("# Project Topology\n\nOld content.\n", encoding="utf-8")
+
+        # Small delay to ensure different mtime
+        time.sleep(0.05)
+
+        # Create raw topology (newer)
+        tmp_dir = tmp_path / ".lexibrary" / "tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        raw = tmp_dir / "raw-topology.md"
+        raw.write_text("# Project Topology\n\nNew content.\n", encoding="utf-8")
+
+        result = runner.invoke(lexi_app, ["orient"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "Raw topology is newer than TOPOLOGY.md" in result.output
+        assert "/topology-builder" in result.output
+
+    def test_warn_when_topology_md_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Orient warns when raw topology exists but TOPOLOGY.md is missing."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary").mkdir()
+
+        # Create raw topology but no TOPOLOGY.md
+        tmp_dir = tmp_path / ".lexibrary" / "tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        raw = tmp_dir / "raw-topology.md"
+        raw.write_text("# Project Topology\n\nContent.\n", encoding="utf-8")
+
+        result = runner.invoke(lexi_app, ["orient"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "Raw topology exists but TOPOLOGY.md is missing" in result.output
+        assert "/topology-builder" in result.output
+
+    def test_no_warn_when_topology_current(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No staleness warning when TOPOLOGY.md is newer than raw."""
+        import time  # noqa: PLC0415
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary").mkdir()
+
+        # Create raw topology first (older)
+        tmp_dir = tmp_path / ".lexibrary" / "tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        raw = tmp_dir / "raw-topology.md"
+        raw.write_text("# Raw\n", encoding="utf-8")
+
+        # Small delay
+        time.sleep(0.05)
+
+        # Create TOPOLOGY.md (newer)
+        topology = tmp_path / ".lexibrary" / "TOPOLOGY.md"
+        topology.write_text("# Project Topology\n\nUp to date.\n", encoding="utf-8")
+
+        result = runner.invoke(lexi_app, ["orient"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "Raw topology is newer" not in result.output
+        assert "TOPOLOGY.md is missing" not in result.output
+
+    def test_no_warn_when_raw_absent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No staleness warning when raw topology does not exist."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".lexibrary").mkdir()
+
+        # Only TOPOLOGY.md, no raw
+        topology = tmp_path / ".lexibrary" / "TOPOLOGY.md"
+        topology.write_text("# Project Topology\n\nContent.\n", encoding="utf-8")
+
+        result = runner.invoke(lexi_app, ["orient"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "Raw topology is newer" not in result.output
+        assert "TOPOLOGY.md is missing" not in result.output
+
+
 class TestOrientTruncationFooter:
     """Tests for orient truncation footer (task 8.3)."""
 

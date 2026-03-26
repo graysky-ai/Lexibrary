@@ -70,12 +70,12 @@ class TestFullFlowPerEnvironment:
     """Each supported environment produces the correct files via generate_rules()."""
 
     def test_claude_full_flow(self, tmp_path: Path) -> None:
-        """Claude generates CLAUDE.md, settings.json, hooks, and command files."""
+        """Claude generates CLAUDE.md, settings.json, hooks, and skill files."""
         results = generate_rules(tmp_path, ["claude"])
 
         assert "claude" in results
         paths = results["claude"]
-        assert len(paths) == 13
+        assert len(paths) == 15
 
         # CLAUDE.md
         claude_md = tmp_path / "CLAUDE.md"
@@ -86,12 +86,12 @@ class TestFullFlowPerEnvironment:
         assert "lexi orient" in content
         assert "lexi lookup" in content
 
-        # Command files
-        orient = tmp_path / ".claude" / "commands" / "lexi-orient.md"
+        # Skill files
+        orient = tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md"
         assert orient.exists()
         assert "lexi orient" in orient.read_text(encoding="utf-8")
 
-        search = tmp_path / ".claude" / "commands" / "lexi-search.md"
+        search = tmp_path / ".claude" / "skills" / "lexi-search" / "SKILL.md"
         assert search.exists()
         assert "lexi search" in search.read_text(encoding="utf-8")
 
@@ -159,8 +159,8 @@ class TestMultiEnvironment:
 
         # Verify all expected files exist
         assert (tmp_path / "CLAUDE.md").exists()
-        assert (tmp_path / ".claude" / "commands" / "lexi-orient.md").exists()
-        assert (tmp_path / ".claude" / "commands" / "lexi-search.md").exists()
+        assert (tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md").exists()
+        assert (tmp_path / ".claude" / "skills" / "lexi-search" / "SKILL.md").exists()
         assert (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").exists()
         assert (tmp_path / ".cursor" / "skills" / "lexi.md").exists()
         assert (tmp_path / "AGENTS.md").exists()
@@ -181,7 +181,7 @@ class TestMultiEnvironment:
         assert "lexi orient" in claude_content
         assert "lexi orient" in agents_content
 
-        # AGENTS.md has embedded skills; CLAUDE.md does not (uses separate command files)
+        # AGENTS.md has embedded skills; CLAUDE.md does not (uses separate skill files)
         assert "lexi orient" in agents_content
         assert "lexi search" in agents_content
 
@@ -216,8 +216,8 @@ class TestSetupUpdateRefresh:
 
         # Rules created
         assert (project / "CLAUDE.md").exists()
-        assert (project / ".claude" / "commands" / "lexi-orient.md").exists()
-        assert (project / ".claude" / "commands" / "lexi-search.md").exists()
+        assert (project / ".claude" / "skills" / "lexi-orient" / "SKILL.md").exists()
+        assert (project / ".claude" / "skills" / "lexi-search" / "SKILL.md").exists()
 
         # Gitignore updated
         gitignore = project / ".gitignore"

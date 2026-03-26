@@ -202,6 +202,14 @@ class DeprecationConfig(BaseModel):
     comment_warning_threshold: int = 10
 
 
+class TopologyConfig(BaseModel):
+    """Topology generation configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    detail_dirs: list[str] = Field(default_factory=list)
+
+
 class PlaybookConfig(BaseModel):
     """Playbook system configuration."""
 
@@ -235,6 +243,7 @@ class LexibraryConfig(BaseModel):
     conventions: ConventionConfig = Field(default_factory=ConventionConfig)
     convention_declarations: list[ConventionDeclaration] = Field(default_factory=list)
     playbooks: PlaybookConfig = Field(default_factory=PlaybookConfig)
+    topology: TopologyConfig = Field(default_factory=TopologyConfig)
     iwh: IWHConfig = Field(default_factory=IWHConfig)
     deprecation: DeprecationConfig = Field(default_factory=DeprecationConfig)
     stack: StackConfig = Field(default_factory=StackConfig)

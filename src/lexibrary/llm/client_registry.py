@@ -58,10 +58,7 @@ def build_client_registry(
     provider = config.llm.provider
     if provider not in _SUPPORTED_PROVIDERS:
         supported = ", ".join(sorted(_SUPPORTED_PROVIDERS))
-        msg = (
-            f"Unsupported LLM provider {provider!r}. "
-            f"Supported providers: {supported}"
-        )
+        msg = f"Unsupported LLM provider {provider!r}. Supported providers: {supported}"
         raise ConfigError(msg)
 
     api_key = os.environ.get(config.llm.api_key_env, "")

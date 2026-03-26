@@ -160,7 +160,7 @@ class TestStepAgentEnvironmentDefaults:
     def test_detected_with_missing_subdirs_auto_accepts(
         self, tmp_path: Path, console: Console
     ) -> None:
-        """Defaults mode: .claude/ exists (detected) but commands/ missing — auto-accepts."""
+        """Defaults mode: .claude/ exists (detected) but skills/ missing — auto-accepts."""
         (tmp_path / ".claude").mkdir()
         # .claude/commands/ doesn't exist yet — defaults mode should still proceed
         result = _step_agent_environment(tmp_path, console, use_defaults=True)
@@ -301,7 +301,7 @@ class TestStepScopeRootInteractive:
 class TestStepAgentEnvironmentInteractive:
     def test_user_selects_existing_env(self, tmp_path: Path, console: Console) -> None:
         """Selecting envs whose directories exist skips the create prompt."""
-        (tmp_path / ".claude" / "commands").mkdir(parents=True)
+        (tmp_path / ".claude" / "skills").mkdir(parents=True)
         (tmp_path / ".cursor" / "rules").mkdir(parents=True)
         (tmp_path / ".cursor" / "skills").mkdir(parents=True)
         with patch(
@@ -323,7 +323,7 @@ class TestStepAgentEnvironmentInteractive:
     def test_non_tty_falls_back_to_detected(self, tmp_path: Path, console: Console) -> None:
         """Non-TTY (questionary returns None) falls back to detected envs."""
         # Create .claude/ with full directory structure so no missing-dir prompt
-        (tmp_path / ".claude" / "commands").mkdir(parents=True)
+        (tmp_path / ".claude" / "skills").mkdir(parents=True)
         with patch(
             "lexibrary.init.wizard.questionary.checkbox",
             return_value=_MockQuestionaryResult(None),
@@ -357,7 +357,7 @@ class TestStepAgentEnvironmentInteractive:
 
     def test_missing_dirs_partial_decline(self, tmp_path: Path, console: Console) -> None:
         """One env has dirs, one doesn't — declining removes only the missing one."""
-        (tmp_path / ".claude" / "commands").mkdir(parents=True)
+        (tmp_path / ".claude" / "skills").mkdir(parents=True)
         with (
             patch(
                 "lexibrary.init.wizard.questionary.checkbox",
@@ -687,17 +687,19 @@ class TestStepTokenBudgetsInteractive:
     def test_user_customizes_a_budget(self, console: Console) -> None:
         # Responses for all 9 fields: design_file_tokens (customized to 500),
         # then defaults for the remaining 8 fields
-        prompt_responses = iter([
-            "500",   # design_file_tokens (custom)
-            "100",   # design_file_abridged_tokens
-            "200",   # aindex_tokens
-            "400",   # concept_file_tokens
-            "500",   # convention_file_tokens
-            "300",   # orientation_tokens
-            "1200",  # lookup_total_tokens
-            "200",   # summarize_max_tokens
-            "5000",  # archivist_max_tokens
-        ])
+        prompt_responses = iter(
+            [
+                "500",  # design_file_tokens (custom)
+                "100",  # design_file_abridged_tokens
+                "200",  # aindex_tokens
+                "400",  # concept_file_tokens
+                "500",  # convention_file_tokens
+                "300",  # orientation_tokens
+                "1200",  # lookup_total_tokens
+                "200",  # summarize_max_tokens
+                "5000",  # archivist_max_tokens
+            ]
+        )
         with (
             patch("lexibrary.init.wizard.Confirm.ask", return_value=True),
             patch(

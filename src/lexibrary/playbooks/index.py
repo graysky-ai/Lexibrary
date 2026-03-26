@@ -114,9 +114,7 @@ class PlaybookIndex:
         for pb in self.playbooks:
             if not pb.frontmatter.trigger_files:
                 continue
-            best_specificity = _best_matching_specificity(
-                pb.frontmatter.trigger_files, norm_path
-            )
+            best_specificity = _best_matching_specificity(pb.frontmatter.trigger_files, norm_path)
             if best_specificity >= 0:
                 scored.append((best_specificity, pb.frontmatter.title, pb))
 
@@ -133,8 +131,7 @@ class PlaybookIndex:
 
     def __iter__(self) -> None:
         raise TypeError(
-            "PlaybookIndex is not iterable. Use .playbooks, .names(), "
-            "or query methods instead."
+            "PlaybookIndex is not iterable. Use .playbooks, .names(), or query methods instead."
         )
 
 

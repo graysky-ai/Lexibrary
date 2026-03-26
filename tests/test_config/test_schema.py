@@ -19,6 +19,7 @@ from lexibrary.config.schema import (
     StackConfig,
     SweepConfig,
     TokenBudgetConfig,
+    TopologyConfig,
 )
 
 
@@ -140,11 +141,13 @@ def test_sweep_config_removed_daemon_fields() -> None:
 
 def test_sweep_config_old_daemon_fields_silently_ignored() -> None:
     """Loading config with old daemon fields does not raise an error."""
-    config = SweepConfig.model_validate({
-        "debounce_seconds": 5.0,
-        "git_suppression_seconds": 10,
-        "watchdog_enabled": True,
-    })
+    config = SweepConfig.model_validate(
+        {
+            "debounce_seconds": 5.0,
+            "git_suppression_seconds": 10,
+            "watchdog_enabled": True,
+        }
+    )
     assert not hasattr(config, "debounce_seconds")
     assert not hasattr(config, "git_suppression_seconds")
     assert not hasattr(config, "watchdog_enabled")
@@ -733,3 +736,59 @@ def test_stack_config_importable_from_package() -> None:
     from lexibrary.config import StackConfig as PackageStackConfig
 
     assert PackageStackConfig is StackConfig
+
+
+# --- TopologyConfig tests ---
+
+
+def test_topology_config_defaults() -> None:
+    """TopologyConfig() defaults to detail_dirs=[]."""
+    config = TopologyConfig()
+    assert config.detail_dirs == []
+
+
+def test_topology_config_custom_detail_dirs() -> None:
+    """TopologyConfig accepts custom detail_dirs from YAML."""
+    config = TopologyConfig.model_validate({"detail_dirs": ["baml_src/", "docs/agent/"]})
+    assert config.detail_dirs == ["baml_src/", "docs/agent/"]
+
+
+def test_topology_config_extra_fields_ignored() -> None:
+    """TopologyConfig tolerates unknown extra fields without raising."""
+    config = TopologyConfig.model_validate({"detail_dirs": [], "unknown_field": "value"})
+    assert config.detail_dirs == []
+    assert not hasattr(config, "unknown_field")
+
+
+def test_lexibrary_config_has_topology() -> None:
+    """LexibraryConfig includes TopologyConfig sub-model with default values."""
+    config = LexibraryConfig()
+    assert isinstance(config.topology, TopologyConfig)
+    assert config.topology.detail_dirs == []
+
+
+def test_topology_config_from_yaml() -> None:
+    """topology.detail_dirs can be set via top-level config (simulating YAML load)."""
+    config = LexibraryConfig.model_validate(
+        {"topology": {"detail_dirs": ["baml_src/", "docs/"]}}
+    )
+    assert config.topology.detail_dirs == ["baml_src/", "docs/"]
+    # Other defaults preserved
+    assert config.llm.provider == "anthropic"
+
+
+def test_topology_config_from_yaml_preserves_other_defaults() -> None:
+    """Setting topology config preserves other LexibraryConfig defaults."""
+    config = LexibraryConfig.model_validate(
+        {"topology": {"detail_dirs": ["src/"]}}
+    )
+    assert config.topology.detail_dirs == ["src/"]
+    assert config.deprecation.ttl_commits == 50
+    assert config.sweep.sweep_interval_seconds == 3600
+
+
+def test_topology_config_importable_from_package() -> None:
+    """TopologyConfig is re-exported from lexibrary.config."""
+    from lexibrary.config import TopologyConfig as PackageTopologyConfig
+
+    assert PackageTopologyConfig is TopologyConfig

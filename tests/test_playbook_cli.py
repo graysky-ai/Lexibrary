@@ -88,9 +88,7 @@ Old deprecated playbook.
 class TestPlaybookNew:
     """Tests for `lexi playbook new`."""
 
-    def test_new_creates_playbook(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_new_creates_playbook(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
 
@@ -107,9 +105,7 @@ class TestPlaybookNew:
         assert "title: Version Bump" in content
         assert "status: draft" in content
 
-    def test_new_with_all_options(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_new_with_all_options(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
 
@@ -141,9 +137,7 @@ class TestPlaybookNew:
         assert "versioning" in content
         assert "estimated_minutes: 15" in content
 
-    def test_new_creates_directory(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_new_creates_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
         # Ensure playbooks dir doesn't exist yet
@@ -173,9 +167,7 @@ class TestPlaybookNew:
 class TestPlaybookApprove:
     """Tests for `lexi playbook approve`."""
 
-    def test_approve_draft_to_active(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_approve_draft_to_active(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
         _write_playbook(tmp_path, "version-bump", DRAFT_PLAYBOOK)
@@ -211,9 +203,7 @@ class TestPlaybookApprove:
         result = runner.invoke(lexi_app, ["playbook", "approve", "old-process"])
         assert result.exit_code == 1
 
-    def test_approve_not_found(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_approve_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
 
@@ -248,9 +238,7 @@ class TestPlaybookVerify:
         today = date.today().isoformat()
         assert today in content
 
-    def test_verify_not_found(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_verify_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
 
@@ -267,9 +255,7 @@ class TestPlaybookVerify:
 class TestPlaybookDeprecate:
     """Tests for `lexi playbook deprecate`."""
 
-    def test_deprecate_sets_status(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deprecate_sets_status(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
         _write_playbook(tmp_path, "version-bump", DRAFT_PLAYBOOK)
@@ -320,9 +306,7 @@ class TestPlaybookDeprecate:
         assert result.exit_code == 1
         assert "deprecated" in result.output.lower()
 
-    def test_deprecate_not_found(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deprecate_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
 
@@ -343,9 +327,7 @@ class TestPlaybookComment:
     These tests will pass once that module is implemented.
     """
 
-    def test_comment_appends(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_comment_appends(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
         _write_playbook(tmp_path, "version-bump", DRAFT_PLAYBOOK)
@@ -358,14 +340,10 @@ class TestPlaybookComment:
         assert "Comment added" in result.output
 
         # Verify comment file was created
-        comment_path = (
-            tmp_path / ".lexibrary" / "playbooks" / "version-bump.comments.yaml"
-        )
+        comment_path = tmp_path / ".lexibrary" / "playbooks" / "version-bump.comments.yaml"
         assert comment_path.exists()
 
-    def test_comment_not_found(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_comment_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _setup_project(tmp_path)
         monkeypatch.chdir(tmp_path)
 

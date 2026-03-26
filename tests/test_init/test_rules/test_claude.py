@@ -44,7 +44,7 @@ class TestCreateFromScratch:
     def test_returns_all_created_paths(self, tmp_path: Path) -> None:
         """Return value includes all generated files."""
         result = generate_claude_rules(tmp_path)
-        assert len(result) == 13
+        assert len(result) == 15
         filenames = [p.name for p in result]
         assert "CLAUDE.md" in filenames
         assert "settings.json" in filenames
@@ -54,11 +54,13 @@ class TestCreateFromScratch:
         assert "plan.md" in filenames
         assert "code.md" in filenames
         assert "lexi-research.md" in filenames
-        assert "lexi-orient.md" in filenames
-        assert "lexi-search.md" in filenames
-        assert "lexi-lookup.md" in filenames
-        assert "lexi-concepts.md" in filenames
-        assert "lexi-stack.md" in filenames
+        # Skill files are in per-skill subdirs; check by parent directory names
+        skill_parents = {p.parent.name for p in result if p.name == "SKILL.md"}
+        assert "lexi-orient" in skill_parents
+        assert "lexi-search" in skill_parents
+        assert "lexi-lookup" in skill_parents
+        assert "lexi-concepts" in skill_parents
+        assert "lexi-stack" in skill_parents
 
 
 # ---------------------------------------------------------------------------
@@ -155,50 +157,50 @@ class TestUpdateExistingSection:
 
 
 # ---------------------------------------------------------------------------
-# Command files
+# Skill files
 # ---------------------------------------------------------------------------
 
 
-class TestCommandFiles:
-    """Command files are created in .claude/commands/."""
+class TestSkillFiles:
+    """Skill files are created in .claude/skills/."""
 
-    def test_creates_orient_command(self, tmp_path: Path) -> None:
-        """lexi-orient.md is created in .claude/commands/."""
+    def test_creates_orient_skill(self, tmp_path: Path) -> None:
+        """lexi-orient/SKILL.md is created in .claude/skills/."""
         generate_claude_rules(tmp_path)
-        orient = tmp_path / ".claude" / "commands" / "lexi-orient.md"
+        orient = tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md"
         assert orient.exists()
 
     def test_orient_contains_lexi_orient(self, tmp_path: Path) -> None:
-        """Orient command references lexi orient."""
+        """Orient skill references lexi orient."""
         generate_claude_rules(tmp_path)
-        orient = tmp_path / ".claude" / "commands" / "lexi-orient.md"
+        orient = tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md"
         content = orient.read_text(encoding="utf-8")
         assert "lexi orient" in content
 
     def test_orient_contains_library_stats(self, tmp_path: Path) -> None:
-        """Orient command mentions library stats."""
+        """Orient skill mentions library stats."""
         generate_claude_rules(tmp_path)
-        orient = tmp_path / ".claude" / "commands" / "lexi-orient.md"
+        orient = tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md"
         content = orient.read_text(encoding="utf-8")
         lower = content.lower()
         assert "stats" in lower or "count" in lower or "topology" in lower
 
-    def test_creates_search_command(self, tmp_path: Path) -> None:
-        """lexi-search.md is created in .claude/commands/."""
+    def test_creates_search_skill(self, tmp_path: Path) -> None:
+        """lexi-search/SKILL.md is created in .claude/skills/."""
         generate_claude_rules(tmp_path)
-        search = tmp_path / ".claude" / "commands" / "lexi-search.md"
+        search = tmp_path / ".claude" / "skills" / "lexi-search" / "SKILL.md"
         assert search.exists()
 
     def test_search_contains_lexi_search(self, tmp_path: Path) -> None:
-        """Search command references lexi search."""
+        """Search skill references lexi search."""
         generate_claude_rules(tmp_path)
-        search = tmp_path / ".claude" / "commands" / "lexi-search.md"
+        search = tmp_path / ".claude" / "skills" / "lexi-search" / "SKILL.md"
         content = search.read_text(encoding="utf-8")
         assert "lexi search" in content
 
-    def test_command_files_overwritten_on_update(self, tmp_path: Path) -> None:
-        """Command files are overwritten when regenerated."""
-        orient = tmp_path / ".claude" / "commands" / "lexi-orient.md"
+    def test_skill_files_overwritten_on_update(self, tmp_path: Path) -> None:
+        """Skill files are overwritten when regenerated."""
+        orient = tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md"
         orient.parent.mkdir(parents=True, exist_ok=True)
         orient.write_text("old orient content", encoding="utf-8")
 
@@ -208,34 +210,182 @@ class TestCommandFiles:
         assert "old orient content" not in content
         assert "lexi orient" in content
 
-    def test_creates_commands_directory(self, tmp_path: Path) -> None:
-        """The .claude/commands/ directory is created if it does not exist."""
+    def test_creates_skills_directory(self, tmp_path: Path) -> None:
+        """The .claude/skills/ directory is created if it does not exist."""
         generate_claude_rules(tmp_path)
-        assert (tmp_path / ".claude" / "commands").is_dir()
+        assert (tmp_path / ".claude" / "skills").is_dir()
 
-    def test_creates_lookup_command(self, tmp_path: Path) -> None:
-        """lexi-lookup.md is created in .claude/commands/."""
+    def test_creates_lookup_skill(self, tmp_path: Path) -> None:
+        """lexi-lookup/SKILL.md is created in .claude/skills/."""
         generate_claude_rules(tmp_path)
-        lookup = tmp_path / ".claude" / "commands" / "lexi-lookup.md"
+        lookup = tmp_path / ".claude" / "skills" / "lexi-lookup" / "SKILL.md"
         assert lookup.exists()
         content = lookup.read_text(encoding="utf-8")
         assert "lexi lookup" in content
 
-    def test_creates_concepts_command(self, tmp_path: Path) -> None:
-        """lexi-concepts.md is created in .claude/commands/."""
+    def test_creates_concepts_skill(self, tmp_path: Path) -> None:
+        """lexi-concepts/SKILL.md is created in .claude/skills/."""
         generate_claude_rules(tmp_path)
-        concepts = tmp_path / ".claude" / "commands" / "lexi-concepts.md"
+        concepts = tmp_path / ".claude" / "skills" / "lexi-concepts" / "SKILL.md"
         assert concepts.exists()
         content = concepts.read_text(encoding="utf-8")
         assert "lexi concepts" in content
 
-    def test_creates_stack_command(self, tmp_path: Path) -> None:
-        """lexi-stack.md is created in .claude/commands/."""
+    def test_creates_stack_skill(self, tmp_path: Path) -> None:
+        """lexi-stack/SKILL.md is created in .claude/skills/."""
         generate_claude_rules(tmp_path)
-        stack = tmp_path / ".claude" / "commands" / "lexi-stack.md"
+        stack = tmp_path / ".claude" / "skills" / "lexi-stack" / "SKILL.md"
         assert stack.exists()
         content = stack.read_text(encoding="utf-8")
         assert "lexi stack" in content
+
+    def test_skill_has_valid_frontmatter(self, tmp_path: Path) -> None:
+        """Each skill file starts with YAML frontmatter with name and description fields."""
+        import yaml
+
+        generate_claude_rules(tmp_path)
+        orient = tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md"
+        content = orient.read_text(encoding="utf-8")
+        assert content.startswith("---"), "Skill file must start with YAML frontmatter"
+        # Extract content between the two --- delimiters
+        end = content.index("---", 3)
+        fm_text = content[3:end].strip()
+        frontmatter = yaml.safe_load(fm_text)
+        assert frontmatter["name"] == "lexi-orient"
+        assert frontmatter["description"]
+
+    def test_cleans_up_stale_command_files(self, tmp_path: Path) -> None:
+        """Stale lexi-orient.md command file is removed during generation."""
+        commands_dir = tmp_path / ".claude" / "commands"
+        commands_dir.mkdir(parents=True, exist_ok=True)
+        stale = commands_dir / "lexi-orient.md"
+        stale.write_text("old command content", encoding="utf-8")
+        assert stale.exists()
+
+        generate_claude_rules(tmp_path)
+
+        assert not stale.exists()
+
+    def test_preserves_non_lexi_commands(self, tmp_path: Path) -> None:
+        """Non-lexi command files in .claude/commands/ are preserved during generation."""
+        commands_dir = tmp_path / ".claude" / "commands"
+        commands_dir.mkdir(parents=True, exist_ok=True)
+        user_cmd = commands_dir / "action.md"
+        user_cmd.write_text("# My custom action", encoding="utf-8")
+
+        generate_claude_rules(tmp_path)
+
+        assert user_cmd.exists()
+
+
+# ---------------------------------------------------------------------------
+# Topology-builder skill deployment
+# ---------------------------------------------------------------------------
+
+
+class TestTopologyBuilderSkillDeployment:
+    """Test topology-builder skill directory deployment."""
+
+    def test_creates_topology_builder_skill_md(self, tmp_path: Path) -> None:
+        """topology-builder/SKILL.md is created in .claude/skills/."""
+        generate_claude_rules(tmp_path)
+        skill = tmp_path / ".claude" / "skills" / "topology-builder" / "SKILL.md"
+        assert skill.exists()
+
+    def test_creates_topology_builder_assets(self, tmp_path: Path) -> None:
+        """topology-builder/assets/topology_template.md is created."""
+        generate_claude_rules(tmp_path)
+        template = (
+            tmp_path / ".claude" / "skills" / "topology-builder" / "assets" / "topology_template.md"
+        )
+        assert template.exists()
+
+    def test_topology_builder_has_frontmatter(self, tmp_path: Path) -> None:
+        """topology-builder/SKILL.md starts with YAML frontmatter."""
+        import yaml  # noqa: PLC0415
+
+        generate_claude_rules(tmp_path)
+        skill = tmp_path / ".claude" / "skills" / "topology-builder" / "SKILL.md"
+        content = skill.read_text(encoding="utf-8")
+        assert content.startswith("---"), "SKILL.md must start with YAML frontmatter"
+        end = content.index("---", 3)
+        fm_text = content[3:end].strip()
+        frontmatter = yaml.safe_load(fm_text)
+        assert "name" in frontmatter
+        assert "description" in frontmatter
+
+    def test_topology_builder_in_return_paths(self, tmp_path: Path) -> None:
+        """Return value includes topology-builder files."""
+        result = generate_claude_rules(tmp_path)
+        skill_parents = {p.parent.name for p in result if p.name == "SKILL.md"}
+        assert "topology-builder" in skill_parents
+        template_names = {p.name for p in result}
+        assert "topology_template.md" in template_names
+
+    def test_topology_builder_skill_overwritten_on_update(self, tmp_path: Path) -> None:
+        """topology-builder files are overwritten when regenerated."""
+        skill = tmp_path / ".claude" / "skills" / "topology-builder" / "SKILL.md"
+        skill.parent.mkdir(parents=True, exist_ok=True)
+        skill.write_text("old topology skill content", encoding="utf-8")
+
+        generate_claude_rules(tmp_path)
+
+        content = skill.read_text(encoding="utf-8")
+        assert "old topology skill content" not in content
+
+
+# ---------------------------------------------------------------------------
+# Folder convention migration — all five lexi skills use per-skill subdirs
+# ---------------------------------------------------------------------------
+
+
+class TestFolderConventionMigration:
+    """Verify all five lexi skills use the <name>/SKILL.md folder convention."""
+
+    _LEXI_SKILLS = ["lexi-orient", "lexi-search", "lexi-lookup", "lexi-concepts", "lexi-stack"]
+
+    def test_all_lexi_skills_in_subdirs(self, tmp_path: Path) -> None:
+        """Each lexi skill is deployed as <name>/SKILL.md in .claude/skills/."""
+        generate_claude_rules(tmp_path)
+        for skill_name in self._LEXI_SKILLS:
+            skill_path = tmp_path / ".claude" / "skills" / skill_name / "SKILL.md"
+            assert skill_path.exists(), f"{skill_name}/SKILL.md not found"
+
+    def test_no_flat_skill_files(self, tmp_path: Path) -> None:
+        """No flat .md skill files should exist directly in .claude/skills/."""
+        generate_claude_rules(tmp_path)
+        skills_dir = tmp_path / ".claude" / "skills"
+        flat_md_files = list(skills_dir.glob("*.md"))
+        assert flat_md_files == [], f"Unexpected flat skill files: {flat_md_files}"
+
+    def test_each_skill_has_valid_frontmatter(self, tmp_path: Path) -> None:
+        """Each lexi skill SKILL.md has name and description in frontmatter."""
+        import yaml  # noqa: PLC0415
+
+        generate_claude_rules(tmp_path)
+        for skill_name in self._LEXI_SKILLS:
+            skill_path = tmp_path / ".claude" / "skills" / skill_name / "SKILL.md"
+            content = skill_path.read_text(encoding="utf-8")
+            assert content.startswith("---"), f"{skill_name} missing frontmatter"
+            end = content.index("---", 3)
+            fm = yaml.safe_load(content[3:end].strip())
+            assert fm["name"] == skill_name, f"{skill_name} has wrong name: {fm.get('name')}"
+            assert fm.get("description"), f"{skill_name} missing description"
+
+
+# ---------------------------------------------------------------------------
+# Gitignore patterns include .lexibrary/tmp/
+# ---------------------------------------------------------------------------
+
+
+class TestGitignorePatterns:
+    """.lexibrary/tmp/ is included in generated .gitignore patterns."""
+
+    def test_tmp_pattern_in_generated_patterns(self) -> None:
+        """_GENERATED_GITIGNORE_PATTERNS includes .lexibrary/tmp/."""
+        from lexibrary.init.scaffolder import _GENERATED_GITIGNORE_PATTERNS  # noqa: PLC0415
+
+        assert ".lexibrary/tmp/" in _GENERATED_GITIGNORE_PATTERNS
 
 
 # ---------------------------------------------------------------------------
@@ -925,20 +1075,20 @@ class TestIntegrationFullGeneration:
             tmp_path / ".claude" / "agents" / "plan.md",
             tmp_path / ".claude" / "agents" / "code.md",
             tmp_path / ".claude" / "agents" / "lexi-research.md",
-            tmp_path / ".claude" / "commands" / "lexi-orient.md",
-            tmp_path / ".claude" / "commands" / "lexi-search.md",
-            tmp_path / ".claude" / "commands" / "lexi-lookup.md",
-            tmp_path / ".claude" / "commands" / "lexi-concepts.md",
-            tmp_path / ".claude" / "commands" / "lexi-stack.md",
+            tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md",
+            tmp_path / ".claude" / "skills" / "lexi-search" / "SKILL.md",
+            tmp_path / ".claude" / "skills" / "lexi-lookup" / "SKILL.md",
+            tmp_path / ".claude" / "skills" / "lexi-concepts" / "SKILL.md",
+            tmp_path / ".claude" / "skills" / "lexi-stack" / "SKILL.md",
         ]
 
         for expected in expected_files:
             assert expected.exists(), f"Missing expected file: {expected}"
 
     def test_returned_paths_match_expected_count(self, tmp_path: Path) -> None:
-        """generate_claude_rules() returns exactly 13 paths."""
+        """generate_claude_rules() returns exactly 15 paths."""
         result = generate_claude_rules(tmp_path)
-        assert len(result) == 13
+        assert len(result) == 15
 
     def test_returned_paths_all_exist_on_disk(self, tmp_path: Path) -> None:
         """Every path in the returned list points to an existing file."""
@@ -1026,7 +1176,7 @@ class TestIntegrationFullGeneration:
         assert (tmp_path / ".claude").is_dir()
         assert (tmp_path / ".claude" / "hooks").is_dir()
         assert (tmp_path / ".claude" / "agents").is_dir()
-        assert (tmp_path / ".claude" / "commands").is_dir()
+        assert (tmp_path / ".claude" / "skills").is_dir()
 
 
 # ---------------------------------------------------------------------------

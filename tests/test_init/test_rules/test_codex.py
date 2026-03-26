@@ -31,7 +31,7 @@ class TestCreateFromScratch:
         """Created AGENTS.md contains core Lexibrary rules."""
         generate_codex_rules(tmp_path)
         content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-        assert "/lexi-orient" in content
+        assert "lexi orient" in content
         assert "lexi lookup" in content
 
     def test_agents_md_has_orient_content(self, tmp_path: Path) -> None:
@@ -121,7 +121,7 @@ class TestUpdateExistingSection:
 
         content = agents_md.read_text(encoding="utf-8")
         assert "outdated lexibrary rules" not in content
-        assert "/lexi-orient" in content
+        assert "lexi orient" in content
 
     def test_preserves_surrounding_content(self, tmp_path: Path) -> None:
         """Content before and after the marker block is preserved."""

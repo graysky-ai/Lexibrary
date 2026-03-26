@@ -263,8 +263,7 @@ def _render_triggered_playbooks(
     if len(playbooks) > display_limit:
         extra = len(playbooks) - display_limit
         lines.append(
-            f"\n*{extra} more playbook(s) matched"
-            " -- run `lexi playbook search` for full list.*"
+            f"\n*{extra} more playbook(s) matched -- run `lexi playbook search` for full list.*"
         )
 
     lines.append("")
@@ -932,7 +931,7 @@ def search(
 
 # Approximate token budget for orient output.
 # 1 token ~= 4 characters for English text.
-_ORIENT_TOKEN_BUDGET = 2000
+_ORIENT_TOKEN_BUDGET = 4000
 _CHARS_PER_TOKEN = 4
 _ORIENT_CHAR_BUDGET = _ORIENT_TOKEN_BUDGET * _CHARS_PER_TOKEN
 
@@ -1122,6 +1121,36 @@ def _collect_iwh_peek(project_root: Path) -> str:
     return "\n".join(lines)
 
 
+def _check_topology_staleness(project_root: Path) -> None:
+    """Emit a warning if raw topology is newer than TOPOLOGY.md or TOPOLOGY.md is missing.
+
+    Checks the modification time of ``.lexibrary/tmp/raw-topology.md`` against
+    ``.lexibrary/TOPOLOGY.md``.  If the raw file does not exist, no warning is
+    emitted.
+    """
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    lexibrary_root = project_root / LEXIBRARY_DIR
+    raw_path = lexibrary_root / "tmp" / "raw-topology.md"
+    topology_path = lexibrary_root / "TOPOLOGY.md"
+
+    if not raw_path.is_file():
+        return
+
+    if not topology_path.is_file():
+        warn(
+            "Raw topology exists but TOPOLOGY.md is missing. "
+            "Run /topology-builder to generate it."
+        )
+        return
+
+    if raw_path.stat().st_mtime > topology_path.stat().st_mtime:
+        warn(
+            "Raw topology is newer than TOPOLOGY.md. "
+            "Run /topology-builder to refresh."
+        )
+
+
 @lexi_app.command("orient")
 def orient() -> None:
     """Return project orientation: topology, file descriptions, library stats, and IWH signals."""
@@ -1130,6 +1159,8 @@ def orient() -> None:
     except LexibraryNotFoundError:
         info("No .lexibrary/ directory found. Nothing to orient.")
         return
+
+    _check_topology_staleness(project_root)
 
     output = _build_orient_content(project_root)
     if output:

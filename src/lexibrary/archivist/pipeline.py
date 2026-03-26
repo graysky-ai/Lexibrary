@@ -22,7 +22,7 @@ from lexibrary.archivist.change_checker import (
 from lexibrary.archivist.dependency_extractor import extract_dependencies
 from lexibrary.archivist.service import ArchivistService, DesignFileRequest
 from lexibrary.archivist.skeleton import generate_skeleton_design
-from lexibrary.archivist.topology import generate_topology
+from lexibrary.archivist.topology import generate_raw_topology
 from lexibrary.artifacts.aindex import AIndexEntry
 from lexibrary.artifacts.aindex_parser import parse_aindex
 from lexibrary.artifacts.aindex_serializer import serialize_aindex
@@ -1203,11 +1203,13 @@ async def update_directory(
             stats.error_summary.add("archivist", exc)
 
     try:
-        generate_topology(project_root)
+        generate_raw_topology(project_root)
+        logger.info("Raw topology written to .lexibrary/tmp/raw-topology.md")
+        logger.info("Run /topology-builder to generate TOPOLOGY.md")
     except Exception as exc:
-        logger.exception("Failed to generate TOPOLOGY.md")
+        logger.exception("Failed to generate raw topology")
         stats.topology_failed = True
-        stats.error_summary.add("archivist", exc, path="TOPOLOGY.md")
+        stats.error_summary.add("archivist", exc, path="tmp/raw-topology.md")
 
     try:
         build_index(project_root)
@@ -1282,7 +1284,7 @@ async def update_project(
 
     # Step 5: Re-index directories containing changed files (D-2, D-3).
     # Skipped when no files were actually created, updated, or failed (4.3).
-    # Must run before topology generation so TOPOLOGY.md reflects fresh .aindex data.
+    # Must run before topology generation so raw-topology.md reflects fresh .aindex data.
     if _has_meaningful_changes(stats) and changed_file_paths:
         affected_dirs = sorted({p.parent for p in changed_file_paths})
         try:
@@ -1292,13 +1294,15 @@ async def update_project(
             logger.exception("Failed to re-index directories after update_project")
             stats.error_summary.add("archivist", exc)
 
-    # Step 6: Generate TOPOLOGY.md after re-indexing so it reads fresh .aindex data.
+    # Step 6: Generate raw topology after re-indexing so it reads fresh .aindex data.
     try:
-        generate_topology(project_root)
+        generate_raw_topology(project_root)
+        logger.info("Raw topology written to .lexibrary/tmp/raw-topology.md")
+        logger.info("Run /topology-builder to generate TOPOLOGY.md")
     except Exception as exc:
-        logger.exception("Failed to generate TOPOLOGY.md")
+        logger.exception("Failed to generate raw topology")
         stats.topology_failed = True
-        stats.error_summary.add("archivist", exc, path="TOPOLOGY.md")
+        stats.error_summary.add("archivist", exc, path="tmp/raw-topology.md")
 
     # Step 7: Deprecation lifecycle post-pass — detect orphans, apply
     # deprecation/unlinked status, handle renames, and delete TTL-expired files.

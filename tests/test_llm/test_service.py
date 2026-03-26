@@ -116,8 +116,9 @@ async def test_summarize_file_error_raises(service: LLMService) -> None:
     mock_client.SummarizeFile = AsyncMock(side_effect=RuntimeError("API error"))
     request = FileSummaryRequest(path=Path("src/broken.py"), content="bad", language="Python")
 
-    with patch.object(service, "_get_baml_client", return_value=mock_client), pytest.raises(
-        LLMServiceError, match="API error"
+    with (
+        patch.object(service, "_get_baml_client", return_value=mock_client),
+        pytest.raises(LLMServiceError, match="API error"),
     ):
         await service.summarize_file(request)
 
@@ -164,8 +165,9 @@ async def test_summarize_files_batch_error_raises(service: LLMService) -> None:
         FileSummaryRequest(path=Path("b.py"), content="# b", language="Python"),
     ]
 
-    with patch.object(service, "_get_baml_client", return_value=mock_client), pytest.raises(
-        LLMServiceError, match="API error"
+    with (
+        patch.object(service, "_get_baml_client", return_value=mock_client),
+        pytest.raises(LLMServiceError, match="API error"),
     ):
         await service.summarize_files_batch(requests)
 
@@ -203,7 +205,8 @@ async def test_summarize_directory_error_raises(service: LLMService) -> None:
         subdir_list="",
     )
 
-    with patch.object(service, "_get_baml_client", return_value=mock_client), pytest.raises(
-        LLMServiceError, match="API error"
+    with (
+        patch.object(service, "_get_baml_client", return_value=mock_client),
+        pytest.raises(LLMServiceError, match="API error"),
     ):
         await service.summarize_directory(request)

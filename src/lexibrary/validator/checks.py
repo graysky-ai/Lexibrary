@@ -477,9 +477,7 @@ def check_convention_frontmatter(
                     check="convention_frontmatter",
                     message="Field 'title' must be a non-empty string",
                     artifact=rel_path,
-                    suggestion=(
-                        f"Edit {rel_path} and set 'title:' to a non-empty string value."
-                    ),
+                    suggestion=(f"Edit {rel_path} and set 'title:' to a non-empty string value."),
                 )
             )
 
@@ -587,8 +585,7 @@ def check_convention_frontmatter(
                     message="Field 'tags' must be a list",
                     artifact=rel_path,
                     suggestion=(
-                        f"Edit {rel_path} and change 'tags:' to a YAML list "
-                        f"(e.g. '- style')."
+                        f"Edit {rel_path} and change 'tags:' to a YAML list (e.g. '- style')."
                     ),
                 )
             )
@@ -701,9 +698,7 @@ def check_design_frontmatter(
                     check="design_frontmatter",
                     message="Frontmatter is not a YAML mapping",
                     artifact=rel_path,
-                    suggestion=(
-                        f"Edit {rel_path}: frontmatter must be a YAML key-value mapping."
-                    ),
+                    suggestion=(f"Edit {rel_path}: frontmatter must be a YAML key-value mapping."),
                 )
             )
             continue
@@ -880,9 +875,7 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Frontmatter is not a YAML mapping",
                     artifact=rel_path,
-                    suggestion=(
-                        f"Edit {rel_path}: frontmatter must be a YAML key-value mapping."
-                    ),
+                    suggestion=(f"Edit {rel_path}: frontmatter must be a YAML key-value mapping."),
                 )
             )
             continue
@@ -896,8 +889,7 @@ def check_stack_frontmatter(
                     message="Missing mandatory field: id",
                     artifact=rel_path,
                     suggestion=(
-                        f"Edit {rel_path} and add 'id:' in ST-NNN format "
-                        f"(e.g. 'id: ST-042')."
+                        f"Edit {rel_path} and add 'id:' in ST-NNN format (e.g. 'id: ST-042')."
                     ),
                 )
             )
@@ -933,9 +925,7 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Field 'title' must be a non-empty string",
                     artifact=rel_path,
-                    suggestion=(
-                        f"Edit {rel_path} and set 'title:' to a non-empty string."
-                    ),
+                    suggestion=(f"Edit {rel_path} and set 'title:' to a non-empty string."),
                 )
             )
 
@@ -947,9 +937,7 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Missing mandatory field: tags",
                     artifact=rel_path,
-                    suggestion=(
-                        f"Edit {rel_path} and add a 'tags:' list with at least one tag."
-                    ),
+                    suggestion=(f"Edit {rel_path} and add a 'tags:' list with at least one tag."),
                 )
             )
         elif not isinstance(data["tags"], list):
@@ -1012,8 +1000,7 @@ def check_stack_frontmatter(
                     message="Missing mandatory field: created",
                     artifact=rel_path,
                     suggestion=(
-                        f"Edit {rel_path} and add 'created:' with a valid date "
-                        f"(YYYY-MM-DD format)."
+                        f"Edit {rel_path} and add 'created:' with a valid date (YYYY-MM-DD format)."
                     ),
                 )
             )
@@ -1053,9 +1040,7 @@ def check_stack_frontmatter(
                     check="stack_frontmatter",
                     message="Field 'author' must be a non-empty string",
                     artifact=rel_path,
-                    suggestion=(
-                        f"Edit {rel_path} and set 'author:' to a non-empty string."
-                    ),
+                    suggestion=(f"Edit {rel_path} and set 'author:' to a non-empty string."),
                 )
             )
 
@@ -1301,9 +1286,7 @@ def check_config_valid(
                 check="config_valid",
                 message="Config file not found",
                 artifact=artifact,
-                suggestion=(
-                    "Run: lexictl init to initialise the library and create config.yaml."
-                ),
+                suggestion=("Run: lexictl init to initialise the library and create config.yaml."),
             )
         )
         return issues
@@ -1557,8 +1540,7 @@ def check_hash_freshness(
                     ),
                     artifact=rel_design,
                     suggestion=(
-                        f"Run: lexi design update {metadata.source} "
-                        f"to refresh the design file."
+                        f"Run: lexi design update {metadata.source} to refresh the design file."
                     ),
                 )
             )
@@ -2144,9 +2126,7 @@ def check_aindex_coverage(
                     check="aindex_coverage",
                     message=f"Directory not indexed: {dir_rel}",
                     artifact=dir_rel,
-                    suggestion=(
-                        f"Run: lexictl update to index the directory '{dir_rel}'."
-                    ),
+                    suggestion=(f"Run: lexictl update to index the directory '{dir_rel}'."),
                 )
             )
 
@@ -2347,8 +2327,8 @@ def check_dangling_links(
                     ),
                     artifact=artifact_path,
                     suggestion=(
-                "Run: lexictl update to rebuild the index and remove stale entries."
-            ),
+                        "Run: lexictl update to rebuild the index and remove stale entries."
+                    ),
                 )
             )
 
@@ -3315,9 +3295,9 @@ def check_stack_refs_validity(
                             message=f"refs.files entry does not exist: {file_ref}",
                             artifact=rel_post,
                             suggestion=(
-                            f"Edit {rel_post} and remove or update the stale "
-                            f"refs.files entry '{file_ref}'."
-                        ),
+                                f"Edit {rel_post} and remove or update the stale "
+                                f"refs.files entry '{file_ref}'."
+                            ),
                         )
                     )
 
@@ -3331,9 +3311,9 @@ def check_stack_refs_validity(
                             message=f"refs.designs entry does not exist: {design_ref}",
                             artifact=rel_post,
                             suggestion=(
-                            f"Edit {rel_post} and remove or update the stale "
-                            f"refs.designs entry '{design_ref}'."
-                        ),
+                                f"Edit {rel_post} and remove or update the stale "
+                                f"refs.designs entry '{design_ref}'."
+                            ),
                         )
                     )
 
@@ -3457,9 +3437,9 @@ def check_aindex_entries(
                             ),
                             artifact=rel_aindex,
                             suggestion=(
-                            f"Run: lexictl update to rebuild .aindex files, or delete "
-                            f"the stale entry '{entry.name}' from {rel_aindex} manually."
-                        ),
+                                f"Run: lexictl update to rebuild .aindex files, or delete "
+                                f"the stale entry '{entry.name}' from {rel_aindex} manually."
+                            ),
                         )
                     )
             else:
@@ -3474,9 +3454,9 @@ def check_aindex_entries(
                             ),
                             artifact=rel_aindex,
                             suggestion=(
-                            f"Run: lexictl update to rebuild .aindex files, or delete "
-                            f"the stale entry '{entry.name}' from {rel_aindex} manually."
-                        ),
+                                f"Run: lexictl update to rebuild .aindex files, or delete "
+                                f"the stale entry '{entry.name}' from {rel_aindex} manually."
+                            ),
                         )
                     )
 
@@ -3683,8 +3663,7 @@ def check_stack_body_sections(
                     message="Missing '## Problem' section",
                     artifact=rel_path,
                     suggestion=(
-                        f"Edit {rel_path} and add a '## Problem' section "
-                        f"describing the issue."
+                        f"Edit {rel_path} and add a '## Problem' section describing the issue."
                     ),
                 )
             )
@@ -4059,9 +4038,7 @@ def check_playbook_frontmatter(
                     check="playbook_frontmatter",
                     message="Frontmatter is not a YAML mapping",
                     artifact=rel_path,
-                    suggestion=(
-                        f"Edit {rel_path}: frontmatter must be a YAML key-value mapping."
-                    ),
+                    suggestion=(f"Edit {rel_path}: frontmatter must be a YAML key-value mapping."),
                 )
             )
             continue
@@ -4084,9 +4061,7 @@ def check_playbook_frontmatter(
                     check="playbook_frontmatter",
                     message="Field 'title' must be a non-empty string",
                     artifact=rel_path,
-                    suggestion=(
-                        f"Edit {rel_path} and set 'title:' to a non-empty string."
-                    ),
+                    suggestion=(f"Edit {rel_path} and set 'title:' to a non-empty string."),
                 )
             )
 
@@ -4133,9 +4108,7 @@ def check_playbook_frontmatter(
                         ValidationIssue(
                             severity="error",
                             check="playbook_frontmatter",
-                            message=(
-                                f"Invalid trigger_files glob pattern: {pattern!r}"
-                            ),
+                            message=(f"Invalid trigger_files glob pattern: {pattern!r}"),
                             artifact=rel_path,
                             suggestion=(
                                 f"Edit {rel_path} and fix the trigger_files pattern "
@@ -4265,14 +4238,10 @@ def check_playbook_staleness(
                     severity="info",
                     check="playbook_staleness",
                     message=(
-                        f"Active playbook '{playbook.frontmatter.title}' "
-                        f"has never been verified"
+                        f"Active playbook '{playbook.frontmatter.title}' has never been verified"
                     ),
                     artifact=rel_path,
-                    suggestion=(
-                        "Run `lexi playbook verify <name>` to mark "
-                        "as recently verified."
-                    ),
+                    suggestion=("Run `lexi playbook verify <name>` to mark as recently verified."),
                 )
             )
             continue
@@ -4383,9 +4352,7 @@ def check_playbook_deprecated_ttl(
                             f"has exceeded TTL ({ttl_commits} commits)"
                         ),
                         artifact=rel_path,
-                        suggestion=(
-                            f"Delete or archive the deprecated playbook file: {rel_path}"
-                        ),
+                        suggestion=(f"Delete or archive the deprecated playbook file: {rel_path}"),
                     )
                 )
 

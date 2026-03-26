@@ -136,8 +136,9 @@ def test_render_markdown_playbooks() -> None:
     )
 
     buf = StringIO()
-    with patch("lexibrary.search.get_format") as mock_fmt, patch(
-        "lexibrary.search.info", side_effect=lambda msg: buf.write(msg + "\n")
+    with (
+        patch("lexibrary.search.get_format") as mock_fmt,
+        patch("lexibrary.search.info", side_effect=lambda msg: buf.write(msg + "\n")),
     ):
         from lexibrary.cli._format import OutputFormat
 
@@ -168,8 +169,9 @@ def test_render_json_playbooks() -> None:
     )
 
     buf = StringIO()
-    with patch("lexibrary.search.get_format") as mock_fmt, patch(
-        "lexibrary.search.info", side_effect=lambda msg: buf.write(msg + "\n")
+    with (
+        patch("lexibrary.search.get_format") as mock_fmt,
+        patch("lexibrary.search.info", side_effect=lambda msg: buf.write(msg + "\n")),
     ):
         from lexibrary.cli._format import OutputFormat
 
@@ -200,8 +202,9 @@ def test_render_plain_playbooks() -> None:
     )
 
     buf = StringIO()
-    with patch("lexibrary.search.get_format") as mock_fmt, patch(
-        "lexibrary.search.info", side_effect=lambda msg: buf.write(msg + "\n")
+    with (
+        patch("lexibrary.search.get_format") as mock_fmt,
+        patch("lexibrary.search.info", side_effect=lambda msg: buf.write(msg + "\n")),
     ):
         from lexibrary.cli._format import OutputFormat
 

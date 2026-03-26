@@ -301,8 +301,8 @@ class TestGetLookupSkillContent:
         """Lookup skill documents directory lookup mode."""
         result = get_lookup_skill_content()
         assert "<directory>" in result or "directory" in result.lower()
-        # Should have a distinct directory section
-        assert "Directory lookup" in result
+        # Should document directory lookup in the steps
+        assert "directory lookup" in result.lower()
 
     def test_mentions_conventions(self) -> None:
         """Lookup skill documents conventions section."""

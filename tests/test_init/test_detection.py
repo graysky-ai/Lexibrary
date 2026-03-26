@@ -303,19 +303,19 @@ class TestCheckMissingAgentDirs:
         result = check_missing_agent_dirs(tmp_path, ["claude"])
         assert "claude" in result
         assert ".claude/" in result["claude"]
-        assert ".claude/commands/" in result["claude"]
+        assert ".claude/skills/" in result["claude"]
 
     def test_claude_dirs_exist(self, tmp_path: Path) -> None:
-        (tmp_path / ".claude" / "commands").mkdir(parents=True)
+        (tmp_path / ".claude" / "skills").mkdir(parents=True)
         result = check_missing_agent_dirs(tmp_path, ["claude"])
         assert result == {}
 
     def test_claude_partial_dirs(self, tmp_path: Path) -> None:
-        """Base .claude/ exists but commands/ subdir is missing."""
+        """Base .claude/ exists but skills/ subdir is missing."""
         (tmp_path / ".claude").mkdir()
         result = check_missing_agent_dirs(tmp_path, ["claude"])
         assert "claude" in result
-        assert ".claude/commands/" in result["claude"]
+        assert ".claude/skills/" in result["claude"]
         assert ".claude/" not in result["claude"]
 
     def test_cursor_dirs_missing(self, tmp_path: Path) -> None:
@@ -334,7 +334,7 @@ class TestCheckMissingAgentDirs:
         assert result == {}
 
     def test_multiple_envs_mixed(self, tmp_path: Path) -> None:
-        (tmp_path / ".claude" / "commands").mkdir(parents=True)
+        (tmp_path / ".claude" / "skills").mkdir(parents=True)
         result = check_missing_agent_dirs(tmp_path, ["claude", "cursor"])
         assert "claude" not in result
         assert "cursor" in result

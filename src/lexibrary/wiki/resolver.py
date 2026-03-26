@@ -278,9 +278,7 @@ class WikilinkResolver:
 
         # Fuzzy suggestions
         all_pb_names = self._all_playbook_names_and_aliases()
-        close = get_close_matches(
-            needle, [n.lower() for n in all_pb_names], n=3, cutoff=0.6
-        )
+        close = get_close_matches(needle, [n.lower() for n in all_pb_names], n=3, cutoff=0.6)
         if close:
             lower_to_orig = {n.lower(): n for n in all_pb_names}
             suggestions = [lower_to_orig.get(c, c) for c in close]

@@ -36,9 +36,7 @@ def test_load_config_global_only(tmp_path: Path) -> None:
 def test_load_config_project_only(tmp_path: Path) -> None:
     """load_config loads values from project config when no global config."""
     (tmp_path / ".lexibrary").mkdir()
-    (tmp_path / ".lexibrary" / "config.yaml").write_text(
-        "sweep:\n  sweep_interval_seconds: 7200\n"
-    )
+    (tmp_path / ".lexibrary" / "config.yaml").write_text("sweep:\n  sweep_interval_seconds: 7200\n")
 
     config = load_config(
         project_root=tmp_path,
@@ -163,8 +161,7 @@ def test_load_config_sweep_takes_precedence_over_daemon(tmp_path: Path) -> None:
     """When both daemon: and sweep: exist, sweep: wins."""
     (tmp_path / ".lexibrary").mkdir()
     (tmp_path / ".lexibrary" / "config.yaml").write_text(
-        "daemon:\n  sweep_interval_seconds: 1800\n"
-        "sweep:\n  sweep_interval_seconds: 7200\n"
+        "daemon:\n  sweep_interval_seconds: 1800\nsweep:\n  sweep_interval_seconds: 7200\n"
     )
 
     config = load_config(

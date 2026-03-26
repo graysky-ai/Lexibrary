@@ -9,16 +9,18 @@ Generates:
 - ``.claude/agents/plan.md`` -- custom Plan agent with Lexibrary-first research
 - ``.claude/agents/code.md`` -- custom Code agent with knowledge capture obligations
 - ``.claude/agents/lexi-research.md`` -- deep research subagent for debugging
-- ``.claude/commands/lexi-orient.md`` -- orient session-start command
-- ``.claude/commands/lexi-search.md`` -- cross-artifact search command
-- ``.claude/commands/lexi-lookup.md`` -- file lookup command
-- ``.claude/commands/lexi-concepts.md`` -- concept search command
-- ``.claude/commands/lexi-stack.md`` -- Stack Q&A command
+- ``.claude/skills/lexi-orient/SKILL.md`` -- orient session-start skill
+- ``.claude/skills/lexi-search/SKILL.md`` -- cross-artifact search skill
+- ``.claude/skills/lexi-lookup/SKILL.md`` -- file lookup skill
+- ``.claude/skills/lexi-concepts/SKILL.md`` -- concept search skill
+- ``.claude/skills/lexi-stack/SKILL.md`` -- Stack Q&A skill
+- ``.claude/skills/topology-builder/SKILL.md`` -- topology synthesis skill
+- ``.claude/skills/topology-builder/assets/topology_template.md`` -- output template
 
 The ``CLAUDE.md`` file uses marker-based section management so that
 user-authored content outside the markers is preserved across updates.
 ``settings.json`` uses additive merge to preserve user customizations.
-Command files, hook scripts, and agent files are standalone and overwritten
+Skill files, hook scripts, and agent files are standalone and overwritten
 on each generation.
 """
 
@@ -28,14 +30,7 @@ import json
 import stat
 from pathlib import Path
 
-from lexibrary.init.rules.base import (
-    get_concepts_skill_content,
-    get_core_rules,
-    get_lookup_skill_content,
-    get_orient_skill_content,
-    get_search_skill_content,
-    get_stack_skill_content,
-)
+from lexibrary.init.rules.base import get_core_rules
 from lexibrary.init.rules.markers import (
     append_lexibrary_section,
     has_lexibrary_section,
@@ -64,6 +59,18 @@ _PERMISSIONS_ALLOW: list[str] = [
 
 _PERMISSIONS_DENY: list[str] = [
     "Bash(lexictl *)",
+]
+
+# ---------------------------------------------------------------------------
+# Stale command files to clean up (migrated to skills)
+# ---------------------------------------------------------------------------
+
+_STALE_COMMAND_FILES: list[str] = [
+    "lexi-orient.md",
+    "lexi-search.md",
+    "lexi-lookup.md",
+    "lexi-concepts.md",
+    "lexi-stack.md",
 ]
 
 # ---------------------------------------------------------------------------
@@ -294,6 +301,48 @@ def _generate_agent_files(project_root: Path) -> list[Path]:
 
 
 # ---------------------------------------------------------------------------
+# Topology-builder skill deployment
+# ---------------------------------------------------------------------------
+
+
+def _deploy_topology_builder_skill(project_root: Path) -> list[Path]:
+    """Deploy the topology-builder skill directory to ``.claude/skills/topology-builder/``.
+
+    Creates the AgentSkills.io directory structure with:
+    - ``SKILL.md`` -- skill instructions with frontmatter
+    - ``assets/topology_template.md`` -- output structure template
+
+    The skill reads ``.lexibrary/tmp/raw-topology.md`` at invocation time
+    and synthesises ``.lexibrary/TOPOLOGY.md`` using the template.
+
+    Args:
+        project_root: Absolute path to the project root directory.
+
+    Returns:
+        List of absolute paths to the created skill files.
+    """
+    skill_dir = project_root / ".claude" / "skills" / "topology-builder"
+    assets_dir = skill_dir / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+
+    created: list[Path] = []
+
+    skill_file = skill_dir / "SKILL.md"
+    content = read_template("rules/skills/topology-builder/SKILL.md").strip()
+    skill_file.write_text(content + "\n", encoding="utf-8")
+    created.append(skill_file)
+
+    template_file = assets_dir / "topology_template.md"
+    template_content = read_template(
+        "rules/skills/topology-builder/assets/topology_template.md"
+    ).strip()
+    template_file.write_text(template_content + "\n", encoding="utf-8")
+    created.append(template_file)
+
+    return created
+
+
+# ---------------------------------------------------------------------------
 # Main generation function
 # ---------------------------------------------------------------------------
 
@@ -312,14 +361,17 @@ def generate_claude_rules(project_root: Path) -> list[Path]:
     6.  ``.claude/agents/plan.md`` -- custom Plan agent definition.
     7.  ``.claude/agents/code.md`` -- custom Code agent definition.
     8.  ``.claude/agents/lexi-research.md`` -- deep research subagent.
-    9.  ``.claude/commands/lexi-orient.md`` -- orient skill command file.
-    10. ``.claude/commands/lexi-search.md`` -- search skill command file.
-    11. ``.claude/commands/lexi-lookup.md`` -- lookup skill command file.
-    12. ``.claude/commands/lexi-concepts.md`` -- concepts skill command file.
-    13. ``.claude/commands/lexi-stack.md`` -- stack skill command file.
+    9.  ``.claude/skills/lexi-orient/SKILL.md`` -- orient skill (Open Skill format).
+    10. ``.claude/skills/lexi-search/SKILL.md`` -- search skill.
+    11. ``.claude/skills/lexi-lookup/SKILL.md`` -- lookup skill.
+    12. ``.claude/skills/lexi-concepts/SKILL.md`` -- concepts skill.
+    13. ``.claude/skills/lexi-stack/SKILL.md`` -- Stack Q&A skill.
+    14. ``.claude/skills/topology-builder/SKILL.md`` -- topology synthesis skill.
+    15. ``.claude/skills/topology-builder/assets/topology_template.md`` -- output template.
 
-    Also removes the deprecated ``lexi-explore-context.sh`` hook script
-    if it exists from a prior installation.
+    Also removes deprecated files from prior installations:
+    - ``lexi-explore-context.sh`` hook script
+    - ``lexi-*.md`` command files (migrated to skills)
 
     Args:
         project_root: Absolute path to the project root directory.
@@ -357,28 +409,36 @@ def generate_claude_rules(project_root: Path) -> list[Path]:
     agent_paths = _generate_agent_files(project_root)
     created.extend(agent_paths)
 
-    # --- .claude/commands/ ---
+    # --- .claude/skills/ ---
+    skills_dir = project_root / ".claude" / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+
+    _LEXI_SKILLS = [
+        "lexi-orient",
+        "lexi-search",
+        "lexi-lookup",
+        "lexi-concepts",
+        "lexi-stack",
+    ]
+
+    for skill_name in _LEXI_SKILLS:
+        content = read_template(f"rules/skills/{skill_name}/SKILL.md").strip()
+        skill_dir = skills_dir / skill_name
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        skill_file = skill_dir / "SKILL.md"
+        skill_file.write_text(content + "\n", encoding="utf-8")
+        created.append(skill_file)
+
+    # --- .claude/skills/topology-builder/ (SKILL.md + assets/) ---
+    topology_skill_paths = _deploy_topology_builder_skill(project_root)
+    created.extend(topology_skill_paths)
+
+    # --- Clean up stale command files from prior installations ---
     commands_dir = project_root / ".claude" / "commands"
-    commands_dir.mkdir(parents=True, exist_ok=True)
-
-    orient_file = commands_dir / "lexi-orient.md"
-    orient_file.write_text(get_orient_skill_content(), encoding="utf-8")
-    created.append(orient_file)
-
-    search_file = commands_dir / "lexi-search.md"
-    search_file.write_text(get_search_skill_content(), encoding="utf-8")
-    created.append(search_file)
-
-    lookup_file = commands_dir / "lexi-lookup.md"
-    lookup_file.write_text(get_lookup_skill_content(), encoding="utf-8")
-    created.append(lookup_file)
-
-    concepts_file = commands_dir / "lexi-concepts.md"
-    concepts_file.write_text(get_concepts_skill_content(), encoding="utf-8")
-    created.append(concepts_file)
-
-    stack_file = commands_dir / "lexi-stack.md"
-    stack_file.write_text(get_stack_skill_content(), encoding="utf-8")
-    created.append(stack_file)
+    if commands_dir.is_dir():
+        for filename in _STALE_COMMAND_FILES:
+            stale = commands_dir / filename
+            if stale.exists():
+                stale.unlink()
 
     return created

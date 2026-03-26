@@ -54,7 +54,7 @@ def get_orient_skill_content() -> str:
     Returns:
         Multiline string with orient skill instructions.
     """
-    return read_template("rules/skills/orient.md").strip()
+    return read_template("rules/skills/lexi-orient/SKILL.md").strip()
 
 
 def get_search_skill_content() -> str:
@@ -67,7 +67,7 @@ def get_search_skill_content() -> str:
     Returns:
         Multiline string with search skill instructions.
     """
-    return read_template("rules/skills/search.md").strip()
+    return read_template("rules/skills/lexi-search/SKILL.md").strip()
 
 
 def get_lookup_skill_content() -> str:
@@ -81,7 +81,7 @@ def get_lookup_skill_content() -> str:
     Returns:
         Multiline string with lookup skill instructions.
     """
-    return read_template("rules/skills/lookup.md").strip()
+    return read_template("rules/skills/lexi-lookup/SKILL.md").strip()
 
 
 def get_concepts_skill_content() -> str:
@@ -94,7 +94,7 @@ def get_concepts_skill_content() -> str:
     Returns:
         Multiline string with concepts skill instructions.
     """
-    return read_template("rules/skills/concepts.md").strip()
+    return read_template("rules/skills/lexi-concepts/SKILL.md").strip()
 
 
 def get_stack_skill_content() -> str:
@@ -108,4 +108,4 @@ def get_stack_skill_content() -> str:
     Returns:
         Multiline string with stack skill instructions.
     """
-    return read_template("rules/skills/stack.md").strip()
+    return read_template("rules/skills/lexi-stack/SKILL.md").strip()

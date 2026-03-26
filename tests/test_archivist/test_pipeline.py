@@ -190,6 +190,10 @@ class TestUpdateStats:
         assert stats.aindex_refreshed == 0
         assert stats.token_budget_warnings == 0
 
+    def test_topology_failed_defaults_false(self) -> None:
+        stats = UpdateStats()
+        assert stats.topology_failed is False
+
     def test_linkgraph_fields_default_values(self) -> None:
         stats = UpdateStats()
         assert stats.linkgraph_built is False
@@ -2400,9 +2404,7 @@ class TestPipelineIntegrationSizeGate:
             "lexibrary.archivist.pipeline.should_skip_llm",
             side_effect=AssertionError("should_skip_llm should not be called"),
         ):
-            result = await update_file(
-                source, tmp_path, config, archivist, unlimited=True
-            )
+            result = await update_file(source, tmp_path, config, archivist, unlimited=True)
 
         assert not result.failed
         assert not result.skeleton
@@ -2494,9 +2496,7 @@ class TestPipelineIntegrationSkeletonOnly:
 
         # unlimited bypasses size gate too, so mock it out
         with patch("lexibrary.archivist.pipeline.should_skip_llm", return_value=False):
-            result = await update_file(
-                source, tmp_path, config, archivist, unlimited=True
-            )
+            result = await update_file(source, tmp_path, config, archivist, unlimited=True)
 
         # LLM was called to re-enrich the skeleton
         archivist.generate_design_file.assert_awaited_once()
@@ -2539,9 +2539,7 @@ class TestPipelineIntegrationSkeletonStats:
     async def test_skeleton_counter_tracked(self, tmp_path: Path) -> None:
         """Skeleton fallbacks increment files_skeletons in UpdateStats."""
         stats = UpdateStats()
-        skeleton_result = FileResult(
-            change=ChangeLevel.NEW_FILE, skeleton=True
-        )
+        skeleton_result = FileResult(change=ChangeLevel.NEW_FILE, skeleton=True)
         _accumulate_stats(stats, skeleton_result)
 
         assert stats.files_skeletons == 1
@@ -2556,3 +2554,107 @@ class TestPipelineIntegrationSkeletonStats:
 
         assert stats.files_skeletons == 0
         assert stats.files_created == 1
+
+
+# ---------------------------------------------------------------------------
+# Pipeline topology integration — 2-step raw topology generation
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineTopologyIntegration:
+    """Pipeline calls generate_raw_topology and logs skill hint."""
+
+    @pytest.mark.asyncio()
+    async def test_update_project_calls_generate_raw_topology(self, tmp_path: Path) -> None:
+        """update_project invokes generate_raw_topology after processing."""
+        _make_source_file(tmp_path, "src/a.py", "# a")
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        mock_generate = MagicMock(return_value=tmp_path / ".lexibrary" / "tmp" / "raw-topology.md")
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.UNCHANGED)
+
+        with (
+            patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file),
+            patch("lexibrary.archivist.pipeline.reindex_directories", return_value=0),
+            patch("lexibrary.archivist.pipeline.generate_raw_topology", mock_generate),
+        ):
+            await update_project(tmp_path, config, archivist)
+
+        mock_generate.assert_called_once_with(tmp_path)
+
+    @pytest.mark.asyncio()
+    async def test_update_project_logs_topology_hint(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """update_project logs raw topology path and skill hint."""
+        import logging  # noqa: PLC0415
+
+        _make_source_file(tmp_path, "src/a.py", "# a")
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.UNCHANGED)
+
+        with (
+            patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file),
+            patch("lexibrary.archivist.pipeline.reindex_directories", return_value=0),
+            patch(
+                "lexibrary.archivist.pipeline.generate_raw_topology",
+                return_value=tmp_path / ".lexibrary" / "tmp" / "raw-topology.md",
+            ),
+            caplog.at_level(logging.INFO, logger="lexibrary.archivist.pipeline"),
+        ):
+            await update_project(tmp_path, config, archivist)
+
+        assert any(
+            "Raw topology written to .lexibrary/tmp/raw-topology.md" in r.message
+            for r in caplog.records
+        )
+        assert any(
+            "Run /topology-builder to generate TOPOLOGY.md" in r.message
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio()
+    async def test_topology_failure_sets_flag(self, tmp_path: Path) -> None:
+        """topology_failed flag is set when generate_raw_topology raises."""
+        _make_source_file(tmp_path, "src/a.py", "# a")
+        config = _make_config(scope_root="src")
+        archivist = _mock_archivist()
+
+        async def fake_update_file(
+            source_path: Path,
+            project_root: Path,
+            cfg: LexibraryConfig,
+            svc: ArchivistService,
+            **kwargs: object,
+        ) -> FileResult:
+            return FileResult(change=ChangeLevel.UNCHANGED)
+
+        with (
+            patch("lexibrary.archivist.pipeline.update_file", side_effect=fake_update_file),
+            patch("lexibrary.archivist.pipeline.reindex_directories", return_value=0),
+            patch(
+                "lexibrary.archivist.pipeline.generate_raw_topology",
+                side_effect=OSError("disk full"),
+            ),
+        ):
+            stats = await update_project(tmp_path, config, archivist)
+
+        assert stats.topology_failed is True

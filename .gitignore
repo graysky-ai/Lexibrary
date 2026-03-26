@@ -11,6 +11,7 @@ BLUEPRINT_INSTRUCTIONS.md
 .lexibrary/**/*.md
 .lexibrary/**/.aindex
 !.lexibrary/config.yaml
+!.lexibrary/TOPOLOGY.md
 .lexibrary/index.db
 _experiment/
 

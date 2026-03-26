@@ -9,9 +9,7 @@ import typer
 from lexibrary.cli._output import error, hint, info
 from lexibrary.cli._shared import require_project_root
 
-playbook_app = typer.Typer(
-    help="Playbook lifecycle management commands.", rich_markup_mode=None
-)
+playbook_app = typer.Typer(help="Playbook lifecycle management commands.", rich_markup_mode=None)
 
 
 # ---------------------------------------------------------------------------
@@ -249,9 +247,7 @@ def playbook_deprecate(
     if reason is not None:
         deprecation_note = f"\n\n> **Deprecated:** {reason}\n"
         pb.body = (
-            pb.body.rstrip("\n") + deprecation_note
-            if pb.body
-            else deprecation_note.lstrip("\n")
+            pb.body.rstrip("\n") + deprecation_note if pb.body else deprecation_note.lstrip("\n")
         )
 
     content = serialize_playbook_file(pb)

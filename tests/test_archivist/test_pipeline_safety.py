@@ -626,7 +626,7 @@ class TestUpdateFiles:
                 "lexibrary.archivist.pipeline.update_file",
                 side_effect=fake_update_file,
             ),
-            patch("lexibrary.archivist.pipeline.generate_topology") as mock_topology,
+            patch("lexibrary.archivist.pipeline.generate_raw_topology") as mock_topology,
         ):
             await update_files([source], tmp_path, config, archivist)
 

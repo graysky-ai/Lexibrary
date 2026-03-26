@@ -223,9 +223,7 @@ class TestCheckPlaybookFrontmatter:
         "pathspec.PathSpec.from_lines",
         side_effect=ValueError("bad pattern"),
     )
-    def test_invalid_trigger_glob(
-        self, mock_pathspec: object, tmp_path: Path
-    ) -> None:
+    def test_invalid_trigger_glob(self, mock_pathspec: object, tmp_path: Path) -> None:
         """Playbook with unparseable trigger_files glob produces error."""
         project_root = tmp_path
         ld = tmp_path / ".lexibrary"
@@ -339,8 +337,7 @@ class TestCheckPlaybookWikilinks:
             ld / "playbooks",
             "no-links",
             raw_content=(
-                "---\ntitle: No Links\nstatus: draft\n---\n\n"
-                "Just plain text, no links.\n"
+                "---\ntitle: No Links\nstatus: draft\n---\n\nJust plain text, no links.\n"
             ),
         )
 
@@ -430,9 +427,7 @@ class TestCheckPlaybookStaleness:
         assert day_issues[0].severity == "info"
 
     @patch("lexibrary.validator.checks._count_commits_since", return_value=5)
-    def test_recently_verified_not_flagged(
-        self, mock_commits: object, tmp_path: Path
-    ) -> None:
+    def test_recently_verified_not_flagged(self, mock_commits: object, tmp_path: Path) -> None:
         """Recently verified active playbook produces no issues."""
         project_root = tmp_path
         ld = tmp_path / ".lexibrary"
@@ -478,9 +473,7 @@ class TestCheckPlaybookDeprecatedTtl:
         assert issues == []
 
     @patch("lexibrary.validator.checks._count_commits_since", return_value=100)
-    def test_expired_deprecated_playbook(
-        self, mock_commits: object, tmp_path: Path
-    ) -> None:
+    def test_expired_deprecated_playbook(self, mock_commits: object, tmp_path: Path) -> None:
         """Deprecated playbook past TTL is flagged."""
         project_root = tmp_path
         ld = tmp_path / ".lexibrary"
@@ -498,9 +491,7 @@ class TestCheckPlaybookDeprecatedTtl:
         assert ttl_issues[0].check == "playbook_deprecated_ttl"
 
     @patch("lexibrary.validator.checks._count_commits_since", return_value=5)
-    def test_deprecated_within_ttl(
-        self, mock_commits: object, tmp_path: Path
-    ) -> None:
+    def test_deprecated_within_ttl(self, mock_commits: object, tmp_path: Path) -> None:
         """Recently deprecated playbook within TTL produces no TTL issues."""
         project_root = tmp_path
         ld = tmp_path / ".lexibrary"
@@ -533,9 +524,7 @@ class TestCheckPlaybookDeprecatedTtl:
         assert "no such playbook exists" in superseded_issues[0].message
 
     @patch("lexibrary.validator.checks._count_commits_since", return_value=5)
-    def test_valid_superseded_by(
-        self, mock_commits: object, tmp_path: Path
-    ) -> None:
+    def test_valid_superseded_by(self, mock_commits: object, tmp_path: Path) -> None:
         """Deprecated playbook with valid superseded_by produces no superseded issues."""
         project_root = tmp_path
         ld = tmp_path / ".lexibrary"
