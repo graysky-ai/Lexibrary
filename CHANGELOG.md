@@ -2,6 +2,26 @@
 
 All notable changes to Lexibrary are documented in this file.
 
+## [0.3.0] - 2026-03-27
+
+### Added
+- **Topology generation** — Agent-navigable `TOPOLOGY.md` produced from raw topology data, with directory trees, billboard summaries, and navigation prose
+- **Topology builder skill** — New skill with template for structured topology generation
+- **Skills restructure** — Skills migrated from flat `.md` files to structured `SKILL.md` directories (`lexi-concepts`, `lexi-lookup`, `lexi-orient`, `lexi-search`, `lexi-stack`)
+- **Skills mirror test** — Ensures skill templates stay in sync with registered skills
+- **Context allocation config** — New `context_allocation` config field for controlling token budget distribution
+
+### Changed
+- **Topology engine** — Major overhaul of `archivist/topology.py` with improved structure and generation pipeline
+- **Index generator** — Refactored context allocation logic in `indexer/generator.py` for better token budget handling
+- **Validator** — Significant refactoring of validation checks for improved reliability
+- **Claude rules generator** — Updated rule generation to reference new skill directory structure
+- **Pipeline** — Refined archivist pipeline flow and service integration
+
+### Removed
+- Obsolete plan files (`topology-update-plan.md`, `lexi-context-plan.md`)
+- Legacy flat skill templates (`concepts.md`, `lookup.md`, `orient.md`, `search.md`, `stack.md`)
+
 ## [0.2.0] - 2026-02-27
 
 ### Added
