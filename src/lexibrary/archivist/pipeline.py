@@ -38,6 +38,7 @@ from lexibrary.artifacts.design_file_parser import (
     parse_design_file_metadata,
 )
 from lexibrary.artifacts.design_file_serializer import serialize_design_file
+from lexibrary.artifacts.ids import next_design_id
 from lexibrary.ast_parser import compute_hashes, parse_interface, render_skeleton
 from lexibrary.config.schema import LexibraryConfig
 from lexibrary.errors import ErrorSummary
@@ -57,7 +58,7 @@ from lexibrary.linkgraph.builder import build_index
 from lexibrary.utils.atomic import atomic_write
 from lexibrary.utils.conflict import has_conflict_markers
 from lexibrary.utils.languages import detect_language
-from lexibrary.utils.paths import LEXIBRARY_DIR, aindex_path, mirror_path
+from lexibrary.utils.paths import DESIGNS_DIR, LEXIBRARY_DIR, aindex_path, mirror_path
 from lexibrary.wiki.index import ConceptIndex
 
 logger = logging.getLogger(__name__)
@@ -670,10 +671,15 @@ async def update_file(
     deps = extract_dependencies(source_path, project_root)
     description = output.summary or f"Design file for {source_path.name}"
 
+    # Assign DS-NNN ID post-LLM-generation (LLM never produces IDs)
+    designs_dir = project_root / LEXIBRARY_DIR / DESIGNS_DIR
+    design_id = next_design_id(designs_dir)
+
     design_file = DesignFile(
         source_path=rel_path,
         frontmatter=DesignFileFrontmatter(
             description=description,
+            id=design_id,
             updated_by="archivist",
         ),
         summary=description,

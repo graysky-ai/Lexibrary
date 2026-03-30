@@ -8,7 +8,6 @@ from pathlib import Path
 
 import yaml
 
-from lexibrary.exceptions import ConfigError
 from lexibrary.stack.models import (
     StackFinding,
     StackPost,
@@ -51,8 +50,8 @@ def parse_stack_post(path: Path) -> StackPost | None:
         if not isinstance(data, dict):
             return None
         frontmatter = StackPostFrontmatter(**data)
-    except (yaml.YAMLError, TypeError, ValueError) as exc:
-        raise ConfigError(f"Failed to parse Stack post frontmatter in {path}: {exc}") from exc
+    except (yaml.YAMLError, TypeError, ValueError):
+        return None
 
     raw_body = text[fm_match.end() :]
     problem, context, evidence, attempts = _extract_body_sections(raw_body)

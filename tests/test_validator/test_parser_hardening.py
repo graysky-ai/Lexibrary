@@ -178,6 +178,7 @@ class TestConventionDatetimeCoercion:
         """An ISO 8601 string is coerced to a datetime object."""
         fm = ConventionFileFrontmatter(
             title="Old rule",
+            id="CV-001",
             status="deprecated",
             deprecated_at="2026-03-04T10:00:00",
         )
@@ -189,6 +190,7 @@ class TestConventionDatetimeCoercion:
         dt = datetime(2026, 6, 15, 12, 30, 0)
         fm = ConventionFileFrontmatter(
             title="Old rule",
+            id="CV-001",
             status="deprecated",
             deprecated_at=dt,
         )
@@ -196,7 +198,7 @@ class TestConventionDatetimeCoercion:
 
     def test_deprecated_at_none_by_default(self) -> None:
         """When not set, deprecated_at is None."""
-        fm = ConventionFileFrontmatter(title="Active rule")
+        fm = ConventionFileFrontmatter(title="Active rule", id="CV-001")
         assert fm.deprecated_at is None
 
 
@@ -264,6 +266,7 @@ class TestConventionSerializerDatetimeRoundTrip:
         original = ConventionFile(
             frontmatter=ConventionFileFrontmatter(
                 title="Deprecated convention",
+                id="CV-001",
                 status="deprecated",
                 deprecated_at=dt,
             ),
@@ -282,7 +285,7 @@ class TestConventionSerializerDatetimeRoundTrip:
     def test_deprecated_at_none_not_in_yaml(self, tmp_path: Path) -> None:
         """When deprecated_at is None, the key does not appear in YAML."""
         original = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="Active", status="active"),
+            frontmatter=ConventionFileFrontmatter(title="Active", id="CV-001", status="active"),
             body="\nActive convention.\n",
         )
 

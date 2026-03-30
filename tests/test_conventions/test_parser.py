@@ -10,6 +10,7 @@ from lexibrary.conventions.parser import parse_convention_file
 VALID_CONVENTION = """\
 ---
 title: Future annotations import
+id: CV-003
 scope: project
 tags:
   - python
@@ -27,6 +28,7 @@ of type hints, improving both consistency and performance.
 MINIMAL_CONVENTION = """\
 ---
 title: Use UTC everywhere
+id: CN-001
 ---
 All timestamps must use UTC.
 """
@@ -34,6 +36,7 @@ All timestamps must use UTC.
 CONVENTION_WITH_ALIASES = """\
 ---
 title: Auth decorator required
+id: CV-002
 scope: src/auth
 tags:
   - security
@@ -50,6 +53,7 @@ All endpoints must use the auth decorator.
 DEPRECATED_CONVENTION = """\
 ---
 title: Old logging rule
+id: CV-001
 scope: project
 tags:
   - logging
@@ -145,7 +149,8 @@ class TestParseConventionFileMinimal:
 class TestParseConventionFileRuleExtraction:
     def test_rule_from_multiline_first_paragraph(self, tmp_path: Path) -> None:
         text = (
-            "---\ntitle: Test\n---\nFirst line of rule.\nSecond line of rule.\n\nRationale below.\n"
+            "---\ntitle: Test\nid: CN-001\n---\n"
+            "First line of rule.\nSecond line of rule.\n\nRationale below.\n"
         )
         path = tmp_path / "test.md"
         path.write_text(text)
@@ -154,7 +159,7 @@ class TestParseConventionFileRuleExtraction:
         assert result.rule == "First line of rule.\nSecond line of rule."
 
     def test_empty_body_produces_empty_rule(self, tmp_path: Path) -> None:
-        text = "---\ntitle: Empty\n---\n"
+        text = "---\ntitle: Empty\nid: CN-002\n---\n"
         path = tmp_path / "empty.md"
         path.write_text(text)
         result = parse_convention_file(path)
@@ -162,7 +167,7 @@ class TestParseConventionFileRuleExtraction:
         assert result.rule == ""
 
     def test_body_with_only_whitespace(self, tmp_path: Path) -> None:
-        text = "---\ntitle: Whitespace\n---\n\n  \n\n"
+        text = "---\ntitle: Whitespace\nid: CN-003\n---\n\n  \n\n"
         path = tmp_path / "ws.md"
         path.write_text(text)
         result = parse_convention_file(path)
@@ -187,12 +192,12 @@ class TestParseConventionFileEdgeCases:
 
     def test_invalid_frontmatter_bad_status(self, tmp_path: Path) -> None:
         path = tmp_path / "bad.md"
-        path.write_text("---\ntitle: Test\nstatus: archived\n---\nBody.\n")
+        path.write_text("---\ntitle: Test\nid: CN-004\nstatus: archived\n---\nBody.\n")
         assert parse_convention_file(path) is None
 
     def test_invalid_frontmatter_bad_source(self, tmp_path: Path) -> None:
         path = tmp_path / "bad.md"
-        path.write_text("---\ntitle: Test\nsource: llm\n---\nBody.\n")
+        path.write_text("---\ntitle: Test\nid: CN-005\nsource: llm\n---\nBody.\n")
         assert parse_convention_file(path) is None
 
     def test_invalid_yaml(self, tmp_path: Path) -> None:
@@ -207,7 +212,7 @@ class TestParseConventionFileEdgeCases:
 
     def test_directory_scoped_convention(self, tmp_path: Path) -> None:
         text = (
-            "---\ntitle: Auth conventions\nscope: src/auth\n---\n"
+            "---\ntitle: Auth conventions\nid: CV-001\nscope: src/auth\n---\n"
             "All auth modules must validate tokens.\n"
         )
         path = tmp_path / "auth-conventions.md"

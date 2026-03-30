@@ -769,9 +769,7 @@ def test_lexibrary_config_has_topology() -> None:
 
 def test_topology_config_from_yaml() -> None:
     """topology.detail_dirs can be set via top-level config (simulating YAML load)."""
-    config = LexibraryConfig.model_validate(
-        {"topology": {"detail_dirs": ["baml_src/", "docs/"]}}
-    )
+    config = LexibraryConfig.model_validate({"topology": {"detail_dirs": ["baml_src/", "docs/"]}})
     assert config.topology.detail_dirs == ["baml_src/", "docs/"]
     # Other defaults preserved
     assert config.llm.provider == "anthropic"
@@ -779,9 +777,7 @@ def test_topology_config_from_yaml() -> None:
 
 def test_topology_config_from_yaml_preserves_other_defaults() -> None:
     """Setting topology config preserves other LexibraryConfig defaults."""
-    config = LexibraryConfig.model_validate(
-        {"topology": {"detail_dirs": ["src/"]}}
-    )
+    config = LexibraryConfig.model_validate({"topology": {"detail_dirs": ["src/"]}})
     assert config.topology.detail_dirs == ["src/"]
     assert config.deprecation.ttl_commits == 50
     assert config.sweep.sweep_interval_seconds == 3600

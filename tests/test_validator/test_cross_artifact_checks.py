@@ -43,6 +43,7 @@ def _write_concept_file(
 
     content = f"""---
 title: {title}
+id: CN-001
 aliases: {aliases_yaml}
 tags: {tags_yaml}
 status: {status}
@@ -67,6 +68,7 @@ def _write_convention_file(
 
     content = f"""---
 title: {title}
+id: CV-001
 scope: project
 tags: [general]
 status: active
@@ -140,6 +142,7 @@ def _write_design_file(
     now = datetime.now().isoformat()
     content = f"""---
 description: Test design file
+id: DS-001
 updated_by: archivist
 ---
 
@@ -375,7 +378,7 @@ class TestCheckDuplicateSlugs:
         issues = check_duplicate_slugs(project_root, lexibrary_dir)
         assert len(issues) == 2
         assert all(i.check == "duplicate_slugs" for i in issues)
-        assert all(i.severity == "error" for i in issues)
+        assert all(i.severity == "warning" for i in issues)
         artifacts = {i.artifact for i in issues}
         assert "concepts/my-thing.md" in artifacts
         assert "conventions/my-thing.md" in artifacts

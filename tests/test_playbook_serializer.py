@@ -18,6 +18,7 @@ class TestRoundTrip:
         original = PlaybookFile(
             frontmatter=PlaybookFileFrontmatter(
                 title="DB Migration",
+                id="PB-001",
                 trigger_files=["alembic/**", "migrations/*.py"],
                 tags=["database", "migration"],
                 status="active",
@@ -45,7 +46,7 @@ class TestRoundTrip:
     def test_round_trip_minimal(self, tmp_path: Path) -> None:
         """Minimal playbook (only required title) round-trips cleanly."""
         original = PlaybookFile(
-            frontmatter=PlaybookFileFrontmatter(title="Minimal"),
+            frontmatter=PlaybookFileFrontmatter(title="Minimal", id="PB-001"),
             body="Overview text.\n",
         )
         serialized = serialize_playbook_file(original)
@@ -67,6 +68,7 @@ class TestOptionalFieldOmission:
         playbook = PlaybookFile(
             frontmatter=PlaybookFileFrontmatter(
                 title="Test",
+                id="PB-001",
                 estimated_minutes=None,
                 superseded_by=None,
                 deprecated_at=None,
@@ -80,7 +82,7 @@ class TestOptionalFieldOmission:
 
     def test_empty_aliases_omitted(self) -> None:
         playbook = PlaybookFile(
-            frontmatter=PlaybookFileFrontmatter(title="Test", aliases=[]),
+            frontmatter=PlaybookFileFrontmatter(title="Test", id="PB-001", aliases=[]),
             body="Body.\n",
         )
         result = serialize_playbook_file(playbook)
@@ -90,6 +92,7 @@ class TestOptionalFieldOmission:
         playbook = PlaybookFile(
             frontmatter=PlaybookFileFrontmatter(
                 title="Test",
+                id="PB-001",
                 estimated_minutes=30,
                 superseded_by="new-playbook",
                 aliases=["alt-name"],
@@ -110,6 +113,7 @@ class TestDateFormat:
         playbook = PlaybookFile(
             frontmatter=PlaybookFileFrontmatter(
                 title="Test",
+                id="PB-001",
                 last_verified=date(2025, 6, 15),
             ),
             body="Body.\n",
@@ -121,6 +125,7 @@ class TestDateFormat:
         playbook = PlaybookFile(
             frontmatter=PlaybookFileFrontmatter(
                 title="Test",
+                id="PB-001",
                 deprecated_at=datetime(2025, 6, 15, 12, 0, 0),
             ),
             body="Body.\n",
@@ -138,6 +143,7 @@ class TestFlowList:
         playbook = PlaybookFile(
             frontmatter=PlaybookFileFrontmatter(
                 title="Test",
+                id="PB-001",
                 trigger_files=["pyproject.toml", "setup.cfg"],
             ),
             body="Body.\n",
@@ -147,7 +153,7 @@ class TestFlowList:
 
     def test_empty_trigger_files_flow(self) -> None:
         playbook = PlaybookFile(
-            frontmatter=PlaybookFileFrontmatter(title="Test"),
+            frontmatter=PlaybookFileFrontmatter(title="Test", id="PB-001"),
             body="Body.\n",
         )
         result = serialize_playbook_file(playbook)
@@ -157,6 +163,7 @@ class TestFlowList:
         playbook = PlaybookFile(
             frontmatter=PlaybookFileFrontmatter(
                 title="Test",
+                id="PB-001",
                 tags=["database", "migration"],
             ),
             body="Body.\n",
@@ -171,7 +178,7 @@ class TestFlowList:
 class TestYamlComment:
     def test_title_comment_present(self) -> None:
         playbook = PlaybookFile(
-            frontmatter=PlaybookFileFrontmatter(title="Test"),
+            frontmatter=PlaybookFileFrontmatter(title="Test", id="PB-001"),
             body="Body.\n",
         )
         result = serialize_playbook_file(playbook)
@@ -179,7 +186,7 @@ class TestYamlComment:
 
     def test_comment_above_title(self) -> None:
         playbook = PlaybookFile(
-            frontmatter=PlaybookFileFrontmatter(title="Test"),
+            frontmatter=PlaybookFileFrontmatter(title="Test", id="PB-001"),
             body="Body.\n",
         )
         result = serialize_playbook_file(playbook)
@@ -199,7 +206,7 @@ class TestYamlComment:
     def test_comment_preserved_through_round_trip(self, tmp_path: Path) -> None:
         """Serialized output includes the tooltip comment; re-parsing still works."""
         playbook = PlaybookFile(
-            frontmatter=PlaybookFileFrontmatter(title="Release Checklist"),
+            frontmatter=PlaybookFileFrontmatter(title="Release Checklist", id="PB-001"),
             body="Follow these steps.\n",
         )
         serialized = serialize_playbook_file(playbook)

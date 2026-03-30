@@ -24,7 +24,7 @@ def _meta(**overrides: object) -> StalenessMetadata:
 
 
 def _frontmatter(**overrides: object) -> DesignFileFrontmatter:
-    base: dict = {"description": "CLI entry point for the lexi command."}
+    base: dict = {"description": "CLI entry point for the lexi command.", "id": "DS-001"}
     base.update(overrides)
     return DesignFileFrontmatter(**base)
 

@@ -38,21 +38,21 @@ class TestRenderConceptTemplate:
 
 class TestConceptFilePath:
     def test_simple_name(self) -> None:
-        result = concept_file_path("JWT Auth", Path(".lexibrary/concepts"))
-        assert result == Path(".lexibrary/concepts/JwtAuth.md")
+        result = concept_file_path("CN-001", "JWT Auth", Path(".lexibrary/concepts"))
+        assert result == Path(".lexibrary/concepts/CN-001-jwt-auth.md")
 
     def test_special_characters_stripped(self) -> None:
-        result = concept_file_path("Rate Limiting (API)", Path(".lexibrary/concepts"))
-        assert result == Path(".lexibrary/concepts/RateLimitingApi.md")
+        result = concept_file_path("CN-001", "Rate Limiting (API)", Path(".lexibrary/concepts"))
+        assert result == Path(".lexibrary/concepts/CN-001-rate-limiting-api.md")
 
     def test_single_word(self) -> None:
-        result = concept_file_path("Auth", Path(".lexibrary/concepts"))
-        assert result == Path(".lexibrary/concepts/Auth.md")
+        result = concept_file_path("CN-001", "Auth", Path(".lexibrary/concepts"))
+        assert result == Path(".lexibrary/concepts/CN-001-auth.md")
 
     def test_hyphenated_name(self) -> None:
-        result = concept_file_path("rate-limiting", Path(".lexibrary/concepts"))
-        assert result == Path(".lexibrary/concepts/RateLimiting.md")
+        result = concept_file_path("CN-001", "rate-limiting", Path(".lexibrary/concepts"))
+        assert result == Path(".lexibrary/concepts/CN-001-rate-limiting.md")
 
     def test_custom_directory(self) -> None:
-        result = concept_file_path("Test", Path("/custom/dir"))
-        assert result == Path("/custom/dir/Test.md")
+        result = concept_file_path("CN-001", "Test", Path("/custom/dir"))
+        assert result == Path("/custom/dir/CN-001-test.md")

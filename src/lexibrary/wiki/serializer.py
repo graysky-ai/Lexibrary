@@ -18,6 +18,7 @@ def serialize_concept_file(concept: ConceptFile) -> str:
     """
     fm_data: dict[str, object] = {
         "title": concept.frontmatter.title,
+        "id": concept.frontmatter.id,
         "aliases": concept.frontmatter.aliases,
         "tags": concept.frontmatter.tags,
         "status": concept.frontmatter.status,

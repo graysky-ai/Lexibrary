@@ -14,6 +14,7 @@ class TestSerializeConceptFile:
         cf = ConceptFile(
             frontmatter=ConceptFileFrontmatter(
                 title="JWT Auth",
+                id="CN-001",
                 aliases=["JSON Web Token"],
                 tags=["auth", "security"],
                 status="active",
@@ -29,7 +30,7 @@ class TestSerializeConceptFile:
 
     def test_empty_aliases_and_tags(self) -> None:
         cf = ConceptFile(
-            frontmatter=ConceptFileFrontmatter(title="Minimal"),
+            frontmatter=ConceptFileFrontmatter(title="Minimal", id="CN-001"),
             body="Body.\n",
         )
         result = serialize_concept_file(cf)
@@ -40,6 +41,7 @@ class TestSerializeConceptFile:
         cf = ConceptFile(
             frontmatter=ConceptFileFrontmatter(
                 title="Old",
+                id="CN-001",
                 status="deprecated",
                 superseded_by="NewConcept",
             ),
@@ -50,7 +52,7 @@ class TestSerializeConceptFile:
 
     def test_superseded_by_omitted_when_none(self) -> None:
         cf = ConceptFile(
-            frontmatter=ConceptFileFrontmatter(title="Active"),
+            frontmatter=ConceptFileFrontmatter(title="Active", id="CN-001"),
             body="Active concept.\n",
         )
         result = serialize_concept_file(cf)
@@ -59,7 +61,7 @@ class TestSerializeConceptFile:
     def test_body_preserved_exactly(self) -> None:
         body = "See [[JWT Auth]] and `src/foo/bar.py`.\n\n## Decision Log\n\n- Did a thing\n"
         cf = ConceptFile(
-            frontmatter=ConceptFileFrontmatter(title="Test"),
+            frontmatter=ConceptFileFrontmatter(title="Test", id="CN-001"),
             body=body,
         )
         result = serialize_concept_file(cf)
@@ -67,7 +69,7 @@ class TestSerializeConceptFile:
 
     def test_trailing_newline(self) -> None:
         cf = ConceptFile(
-            frontmatter=ConceptFileFrontmatter(title="T"),
+            frontmatter=ConceptFileFrontmatter(title="T", id="CN-001"),
             body="No trailing newline",
         )
         result = serialize_concept_file(cf)
@@ -79,6 +81,7 @@ class TestRoundTrip:
         original = ConceptFile(
             frontmatter=ConceptFileFrontmatter(
                 title="Round Trip",
+                id="CN-001",
                 aliases=["RT", "Roundtrip"],
                 tags=["test", "roundtrip"],
                 status="active",
@@ -104,7 +107,7 @@ class TestRoundTrip:
 
     def test_round_trip_minimal(self, tmp_path: Path) -> None:
         original = ConceptFile(
-            frontmatter=ConceptFileFrontmatter(title="Minimal"),
+            frontmatter=ConceptFileFrontmatter(title="Minimal", id="CN-001"),
             body="\nJust a body.\n",
         )
         serialized = serialize_concept_file(original)

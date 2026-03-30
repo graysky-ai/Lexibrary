@@ -264,6 +264,7 @@ def _create_design_file(tmp_path: Path, rel_source: str, description: str) -> No
     frontmatter = (
         "---\n"
         f"description: {description}\n"
+        "id: DS-001\n"
         "updated_by: archivist\n"
         "---\n"
         "\n"

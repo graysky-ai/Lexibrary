@@ -201,7 +201,7 @@ class TestRecoveryHints:
         concepts_dir = project / ".lexibrary" / "concepts"
         concepts_dir.mkdir(parents=True, exist_ok=True)
         (concepts_dir / "test-concept.md").write_text(
-            "---\ntitle: Test Concept\nstatus: active\ntags: []\n---\n\nA concept.\n"
+            "---\ntitle: Test Concept\nid: CN-001\nstatus: active\ntags: []\n---\n\nA concept.\n"
         )
         monkeypatch.chdir(project)
         result = runner.invoke(lexi_app, ["concept", "link", "test-concept", "nonexistent.py"])

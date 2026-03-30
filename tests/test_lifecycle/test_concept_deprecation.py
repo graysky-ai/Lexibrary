@@ -24,6 +24,15 @@ from lexibrary.lifecycle.concept_deprecation import (
 # ---------------------------------------------------------------------------
 
 
+_concept_id_counter = 0
+
+
+def _next_concept_id() -> str:
+    global _concept_id_counter
+    _concept_id_counter += 1
+    return f"CN-{_concept_id_counter:03d}"
+
+
 def _create_concept_file(
     project_root: Path,
     slug: str,
@@ -45,6 +54,7 @@ def _create_concept_file(
     lines = [
         "---",
         f"title: {title}",
+        f"id: {_next_concept_id()}",
         f"aliases: [{alias_str}]",
         "tags: []",
         f"status: {status}",
@@ -97,6 +107,7 @@ def _create_design_file_with_wikilinks(
         source_path=source_rel,
         frontmatter=DesignFileFrontmatter(
             description=f"Design for {source_rel}",
+            id="DS-001",
             updated_by="archivist",
             status=status,
         ),

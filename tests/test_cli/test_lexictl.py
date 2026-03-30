@@ -126,6 +126,7 @@ def _create_design_file(tmp_path: Path, source_rel: str, source_content: str) ->
     now = datetime.now().isoformat()
     design_content = f"""---
 description: Design file for {source_rel}
+id: DS-001
 updated_by: archivist
 status: active
 ---
@@ -180,6 +181,7 @@ def _create_concept_file(
 
     fm_data: dict[str, object] = {
         "title": name,
+        "id": "CN-001",
         "aliases": resolved_aliases,
         "tags": resolved_tags,
         "status": status,
@@ -446,6 +448,7 @@ def _setup_validate_project(tmp_path: Path) -> Path:
     design_dir.mkdir(parents=True, exist_ok=True)
     design_content = f"""---
 description: Main module
+id: DS-001
 updated_by: archivist
 status: active
 ---
@@ -490,7 +493,7 @@ def _setup_validate_project_with_errors(tmp_path: Path) -> Path:
     concepts_dir = project / ".lexibrary" / "concepts"
     concepts_dir.mkdir(parents=True, exist_ok=True)
     (concepts_dir / "BrokenConcept.md").write_text(
-        "---\ntitle: Broken\n---\n\nMissing aliases, tags, status.\n",
+        "---\ntitle: Broken\nid: CN-001\n---\n\nMissing aliases, tags, status.\n",
         encoding="utf-8",
     )
     return project

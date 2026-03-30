@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from lexibrary.artifacts.slugs import concept_slug, slugify
+from lexibrary.artifacts.concept import concept_slug
+from lexibrary.artifacts.slugs import slugify
 
 # ---------------------------------------------------------------------------
 # slugify

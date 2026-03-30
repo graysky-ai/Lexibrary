@@ -34,7 +34,7 @@ def _create_convention_file(
 
     convention_path = conventions_dir / f"{slug}.md"
     convention_path.write_text(
-        f"---\ntitle: {title}\nstatus: {status}\nscope: []\ntags: []\n---\n\n"
+        f"---\ntitle: {title}\nid: CV-001\nstatus: {status}\nscope: []\ntags: []\n---\n\n"
         f"Test convention body.\n",
         encoding="utf-8",
     )

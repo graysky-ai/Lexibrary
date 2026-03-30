@@ -1,6 +1,6 @@
 """Wikilink resolver — maps ``[[wikilinks]]`` to artifacts.
 
-Supports concepts, conventions, stack posts, and playbooks.
+Supports concepts, conventions, stack posts, playbooks, and designs.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from lexibrary.artifacts.concept import ConceptFile
 from lexibrary.artifacts.convention import ConventionFile
+from lexibrary.artifacts.ids import parse_artifact_id
 from lexibrary.conventions.index import ConventionIndex
 from lexibrary.wiki.index import ConceptIndex
 
@@ -20,17 +21,26 @@ if TYPE_CHECKING:
     from lexibrary.playbooks.index import PlaybookIndex
 
 _BRACKET_RE = re.compile(r"^\[\[(.+?)\]\]$")
-_STACK_RE = re.compile(r"^ST-\d{3,}$", re.IGNORECASE)
+_ARTIFACT_ID_RE = re.compile(r"^[A-Z]{2}-\d{3,}$", re.IGNORECASE)
 _PLAYBOOK_PREFIX_RE = re.compile(r"^playbook:\s*(.+)$", re.IGNORECASE)
+
+# Maps artifact prefix to (kind name, directory basename under .lexibrary/)
+_PREFIX_TO_DIR: dict[str, tuple[str, str]] = {
+    "CN": ("concept", "concepts"),
+    "CV": ("convention", "conventions"),
+    "PB": ("playbook", "playbooks"),
+    "ST": ("stack", "stack"),
+    "DS": ("design", "designs"),
+}
 
 
 @dataclass(frozen=True)
 class ResolvedLink:
-    """A wikilink resolved to a concept, convention, stack post, or playbook."""
+    """A wikilink resolved to a concept, convention, stack post, playbook, or design."""
 
     raw: str
     name: str
-    kind: str  # "concept", "stack", "alias", "convention", or "playbook"
+    kind: str  # "concept", "stack", "alias", "convention", "playbook", or "design"
     path: Path | None = None
 
 
@@ -43,22 +53,24 @@ class UnresolvedLink:
 
 
 class WikilinkResolver:
-    """Resolves wikilink references against concepts, conventions, stack posts, and playbooks.
+    """Resolves wikilink references against concepts, conventions, stack posts,
+    playbooks, and designs.
 
     Resolution chain (first match wins):
 
     1. Strip ``[[`` / ``]]`` brackets if present.
     2. If the text has a ``playbook:`` prefix, resolve against playbooks only
        (title match, alias fallback, fuzzy suggestions).
-    3. If the text matches ``ST-NNN`` stack pattern, scan *stack_dir* for
-       a matching ``ST-NNN-*.md`` file and resolve as stack post.
-    4. Convention exact title match (case-insensitive) — convention-first.
+    3. If the text matches an artifact ID pattern (``CN-NNN``, ``CV-NNN``,
+       ``PB-NNN``, ``DS-NNN``, ``ST-NNN``), resolve by scanning the
+       appropriate artifact directory for a matching file.
+    4. Convention exact title match (case-insensitive) -- convention-first.
     5. Convention alias match (case-insensitive).
     6. Exact concept name match (case-insensitive).
     7. Concept alias match (case-insensitive).
     8. Fuzzy match via :func:`difflib.get_close_matches` across all
        concept, convention, and playbook names/aliases.
-    9. Unresolved — attach up to 3 suggestions from fuzzy matching.
+    9. Unresolved -- attach up to 3 suggestions from fuzzy matching.
     """
 
     def __init__(
@@ -67,11 +79,25 @@ class WikilinkResolver:
         stack_dir: Path | None = None,
         convention_dir: Path | None = None,
         playbook_dir: Path | None = None,
+        designs_dir: Path | None = None,
     ) -> None:
         self._index = index
         self._stack_dir = stack_dir
+        self._designs_dir = designs_dir
         self._convention_index: ConventionIndex | None = None
         self._playbook_index: PlaybookIndex | None = None
+
+        # Build a lookup from prefix to directory for ID-based resolution
+        self._prefix_dirs: dict[str, Path] = {}
+        if stack_dir is not None:
+            self._prefix_dirs["ST"] = stack_dir
+        if convention_dir is not None:
+            self._prefix_dirs["CV"] = convention_dir
+        if playbook_dir is not None:
+            self._prefix_dirs["PB"] = playbook_dir
+        if designs_dir is not None:
+            self._prefix_dirs["DS"] = designs_dir
+        # CN is resolved via the ConceptIndex, not directory scanning
 
         if convention_dir is not None and convention_dir.is_dir():
             self._convention_index = ConventionIndex(convention_dir)
@@ -95,19 +121,9 @@ class WikilinkResolver:
         if playbook_match is not None:
             return self._resolve_playbook(raw, playbook_match.group(1).strip())
 
-        # Stack post pattern (ST-001, ST-042, etc.)
-        if _STACK_RE.match(stripped):
-            stack_id = stripped.upper()
-            path = self._find_stack_file(stack_id)
-            if path is not None:
-                return ResolvedLink(
-                    raw=raw,
-                    name=stack_id,
-                    kind="stack",
-                    path=path,
-                )
-            # Stack ID pattern matched but no file found — unresolved
-            return UnresolvedLink(raw=raw)
+        # Universal artifact ID pattern (CN-001, CV-002, PB-003, DS-042, ST-001)
+        if _ARTIFACT_ID_RE.match(stripped):
+            return self._resolve_by_id(raw, stripped.upper())
 
         # Convention exact title match (convention-first)
         conv = self._find_convention_exact(stripped)
@@ -188,14 +204,93 @@ class WikilinkResolver:
                 unresolved.append(result)
         return resolved, unresolved
 
-    def _find_stack_file(self, stack_id: str) -> Path | None:
-        """Find a stack post file matching the given ID via glob."""
-        if self._stack_dir is None or not self._stack_dir.is_dir():
-            return None
-        pattern = f"{stack_id}-*.md"
-        matches = list(self._stack_dir.glob(pattern))
+    def _resolve_by_id(self, raw: str, artifact_id: str) -> ResolvedLink | UnresolvedLink:
+        """Resolve an artifact ID (``XX-NNN``) to a concrete artifact.
+
+        Dispatches to the appropriate resolution strategy based on prefix:
+        - **CN**: Delegates to :meth:`ConceptIndex.find_by_id`.
+        - **DS**: Scans design file frontmatter for a matching ``id:`` field.
+        - **ST/CV/PB**: Scans the artifact directory for a file whose name
+          starts with the ID.
+
+        Returns :class:`UnresolvedLink` when the prefix is unrecognised or
+        no matching artifact exists.
+        """
+        parsed = parse_artifact_id(artifact_id)
+        if parsed is None:
+            return UnresolvedLink(raw=raw)
+        prefix, _ = parsed
+
+        # Resolve prefix to kind name
+        dir_info = _PREFIX_TO_DIR.get(prefix)
+        if dir_info is None:
+            return UnresolvedLink(raw=raw)
+        kind, _ = dir_info
+
+        # Concepts: delegate to ConceptIndex.find_by_id
+        if prefix == "CN":
+            concept = self._index.find_by_id(artifact_id)
+            if concept is not None:
+                return ResolvedLink(
+                    raw=raw,
+                    name=artifact_id,
+                    kind="concept",
+                    path=concept.file_path,
+                )
+            return UnresolvedLink(raw=raw)
+
+        # Designs: scan frontmatter for matching id field
+        if prefix == "DS":
+            path = self._find_design_by_id(artifact_id)
+            if path is not None:
+                return ResolvedLink(
+                    raw=raw,
+                    name=artifact_id,
+                    kind="design",
+                    path=path,
+                )
+            return UnresolvedLink(raw=raw)
+
+        # ST, CV, PB: filename-prefix scan in the appropriate directory
+        directory = self._prefix_dirs.get(prefix)
+        if directory is None or not directory.is_dir():
+            return UnresolvedLink(raw=raw)
+
+        pattern = f"{artifact_id}-*.md"
+        matches = list(directory.glob(pattern))
         if matches:
-            return matches[0]
+            return ResolvedLink(
+                raw=raw,
+                name=artifact_id,
+                kind=kind,
+                path=matches[0],
+            )
+        return UnresolvedLink(raw=raw)
+
+    def _find_design_by_id(self, design_id: str) -> Path | None:
+        """Scan design file frontmatter for a matching ``id:`` field.
+
+        Design files keep source-mirror paths (no ID in filename), so the
+        ID is extracted from YAML frontmatter.
+        """
+        if self._designs_dir is None or not self._designs_dir.is_dir():
+            return None
+        from lexibrary.artifacts.ids import _FRONTMATTER_ID_RE  # noqa: PLC0415
+
+        for md_file in self._designs_dir.rglob("*.md"):
+            try:
+                text = md_file.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            lines = text.split("\n")
+            if not lines or lines[0].rstrip() != "---":
+                continue
+            for line in lines[1:]:
+                if line.rstrip() == "---":
+                    break
+                m = _FRONTMATTER_ID_RE.match(line)
+                if m and m.group(1).upper() == design_id.upper():
+                    return md_file
         return None
 
     def _find_convention_exact(self, name: str) -> ConventionFile | None:

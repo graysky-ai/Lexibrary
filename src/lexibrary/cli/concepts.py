@@ -26,6 +26,8 @@ def concept_new(
     ] = None,
 ) -> None:
     """Create a concept file from template and return the file path."""
+    from lexibrary.artifacts.ids import next_artifact_id  # noqa: PLC0415
+    from lexibrary.artifacts.title_check import find_title_matches  # noqa: PLC0415
     from lexibrary.wiki.template import (  # noqa: PLC0415
         concept_file_path,
         render_concept_template,
@@ -35,13 +37,27 @@ def concept_new(
     concepts_dir = project_root / ".lexibrary" / "concepts"
     concepts_dir.mkdir(parents=True, exist_ok=True)
 
-    target = concept_file_path(name, concepts_dir)
+    # Title collision detection
+    title_result = find_title_matches(name, "concept", project_root)
+    if title_result.has_same_type:
+        match = title_result.same_type[0]
+        rel = match.file_path.relative_to(project_root)
+        error(f"A concept with this title already exists: {rel}")
+        hint("Edit the existing concept instead of creating a duplicate.")
+        raise typer.Exit(1)
+    if title_result.has_cross_type:
+        for match in title_result.cross_type:
+            rel = match.file_path.relative_to(project_root)
+            warn(f"Related {match.kind} with same title exists: {rel}")
+
+    concept_id = next_artifact_id("CN", concepts_dir, "CN-*-*.md")
+    target = concept_file_path(concept_id, name, concepts_dir)
 
     if target.exists():
         error(f"Concept file already exists: {target.relative_to(project_root)}")
         raise typer.Exit(1)
 
-    content = render_concept_template(name, tags=tag)
+    content = render_concept_template(name, tags=tag, concept_id=concept_id)
     target.write_text(content, encoding="utf-8")
 
     slug = target.stem

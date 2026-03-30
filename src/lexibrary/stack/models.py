@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -59,3 +60,9 @@ class StackPost(BaseModel):
     attempts: list[str] = []
     findings: list[StackFinding] = []
     raw_body: str = ""
+    file_path: Path | None = None
+
+    @property
+    def name(self) -> str:
+        """Return the Stack post title from frontmatter."""
+        return self.frontmatter.title

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
 from lexibrary.config.schema import LexibraryConfig
 
@@ -110,7 +111,8 @@ def load_config(
         Validated LexibraryConfig instance.
 
     Raises:
-        pydantic.ValidationError: If merged config contains invalid values.
+        ValueError: If merged config contains invalid values. The message
+            includes which config file(s) were loaded and which fields failed.
     """
     global_path = global_config_path if global_config_path is not None else GLOBAL_CONFIG_PATH
     project_path = project_root / ".lexibrary" / "config.yaml" if project_root else None
@@ -132,4 +134,20 @@ def load_config(
     merged = _migrate_daemon_to_sweep(merged)
 
     # Validate and return
-    return LexibraryConfig.model_validate(merged)
+    try:
+        return LexibraryConfig.model_validate(merged)
+    except ValidationError as exc:
+        # Build a list of source files so the user knows where to look.
+        sources: list[str] = []
+        if global_path.exists():
+            sources.append(f"global ({global_path})")
+        if project_path is not None and project_path.exists():
+            sources.append(f"project ({project_path})")
+        source_label = ", ".join(sources) if sources else "merged config"
+
+        # Summarise each Pydantic error with field path and message.
+        details = "; ".join(
+            f"{' -> '.join(str(p) for p in err['loc'])}: {err['msg']}" for err in exc.errors()
+        )
+
+        raise ValueError(f"Invalid configuration in {source_label}: {details}") from exc

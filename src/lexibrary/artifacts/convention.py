@@ -15,6 +15,7 @@ class ConventionFileFrontmatter(BaseModel):
     """Validated YAML frontmatter for a convention file."""
 
     title: str
+    id: str
     scope: str = "project"
     tags: list[str] = []
     status: Literal["draft", "active", "deprecated"] = "draft"
@@ -54,20 +55,12 @@ def convention_slug(title: str) -> str:
     return slugify(title)
 
 
-def convention_file_path(title: str, conventions_dir: Path) -> Path:
-    """Return a unique file path for a convention in the given directory.
+def convention_file_path(convention_id: str, title: str, conventions_dir: Path) -> Path:
+    """Return the file path for a convention with an ID-prefixed filename.
 
-    Returns ``conventions_dir / "<slug>.md"``, appending a numeric suffix
-    (``-2``, ``-3``, ...) if the path already exists on disk.
+    Returns ``conventions_dir / "<convention_id>-<slug>.md"`` (e.g.
+    ``CV-001-use-utc-everywhere.md``).  No collision suffix is needed
+    because IDs are unique by construction.
     """
     slug = convention_slug(title)
-    path = conventions_dir / f"{slug}.md"
-    if not path.exists():
-        return path
-
-    counter = 2
-    while True:
-        candidate = conventions_dir / f"{slug}-{counter}.md"
-        if not candidate.exists():
-            return candidate
-        counter += 1
+    return conventions_dir / f"{convention_id}-{slug}.md"

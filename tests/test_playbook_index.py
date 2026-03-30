@@ -23,6 +23,7 @@ def _write_playbook(directory: Path, filename: str, content: str) -> Path:
 VERSION_BUMP = """\
 ---
 title: Version Bump
+id: PB-001
 trigger_files:
   - pyproject.toml
 tags:
@@ -40,6 +41,7 @@ Follow semantic versioning rules for the bump.
 DB_MIGRATION = """\
 ---
 title: DB Migration
+id: PB-002
 trigger_files:
   - "migrations/*.sql"
 tags:
@@ -60,6 +62,7 @@ Always back up the database before running migrations.
 DEPLOY_CHECKLIST = """\
 ---
 title: Deploy Checklist
+id: PB-003
 trigger_files:
   - "**/*.toml"
 tags:
@@ -76,6 +79,7 @@ Ensure all tests pass before deploying.
 DEPRECATED_PLAYBOOK = """\
 ---
 title: Old Release Process
+id: PB-004
 trigger_files:
   - setup.py
 tags:
@@ -89,6 +93,7 @@ Legacy release process. Use Version Bump instead.
 NO_TRIGGERS = """\
 ---
 title: Code Review Guidelines
+id: CN-001
 tags:
   - process
   - quality
@@ -103,6 +108,7 @@ Check for correctness, readability, and maintainability.
 SRC_SPECIFIC = """\
 ---
 title: Python Source Update
+id: PB-005
 trigger_files:
   - "src/lexibrary/config.py"
 tags:
@@ -116,6 +122,7 @@ Steps for updating the config module.
 BROAD_PYTHON = """\
 ---
 title: Python File Changed
+id: PB-006
 trigger_files:
   - "**/*.py"
 tags:

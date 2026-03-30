@@ -207,6 +207,7 @@ class IndexBuilder:
         status: str | None,
         last_hash: str | None,
         created_at: str | None,
+        artifact_code: str | None = None,
     ) -> int:
         """Insert a row into ``artifacts`` and return the new row id.
 
@@ -216,7 +217,7 @@ class IndexBuilder:
             Project-relative path (or synthetic path for conventions).
         kind:
             One of ``'source'``, ``'design'``, ``'concept'``, ``'stack'``,
-            ``'convention'``.
+            ``'convention'``, ``'playbook'``.
         title:
             Human-readable title (may be ``None``).
         status:
@@ -225,6 +226,10 @@ class IndexBuilder:
             SHA-256 hash of the source file (may be ``None``).
         created_at:
             ISO 8601 creation timestamp (may be ``None``).
+        artifact_code:
+            Unique artifact ID code (e.g. ``'CN-001'``, ``'ST-042'``).
+            May be ``None`` for artifacts that lack an ID (source files,
+            stubs, or pre-migration artifacts).
 
         Returns
         -------
@@ -232,9 +237,10 @@ class IndexBuilder:
             The ``id`` of the newly inserted artifact row.
         """
         cursor = self.conn.execute(
-            "INSERT INTO artifacts (path, kind, title, status, last_hash, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (path, kind, title, status, last_hash, created_at),
+            "INSERT INTO artifacts "
+            "(path, kind, title, status, last_hash, created_at, artifact_code) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (path, kind, title, status, last_hash, created_at, artifact_code),
         )
         return cursor.lastrowid  # type: ignore[return-value]
 
@@ -262,6 +268,7 @@ class IndexBuilder:
         path: str,
         kind: str,
         title: str | None = None,
+        artifact_code: str | None = None,
     ) -> int:
         """Return an existing artifact ``id`` or insert a stub and return it.
 
@@ -277,6 +284,8 @@ class IndexBuilder:
             Artifact kind (used only when inserting a new stub).
         title:
             Optional title for the stub artifact.
+        artifact_code:
+            Optional artifact ID code (e.g. ``'CN-001'``).
 
         Returns
         -------
@@ -293,6 +302,7 @@ class IndexBuilder:
             status=None,
             last_hash=None,
             created_at=None,
+            artifact_code=artifact_code,
         )
 
     # -- link / tag / FTS insertion helpers ---------------------------------
@@ -436,13 +446,21 @@ class IndexBuilder:
         #    artifacts (created by design file wikilinks) are reused rather
         #    than duplicated.
         concept_id = self._get_or_create_artifact(
-            concept_relpath, "concept", title=concept_file.frontmatter.title
+            concept_relpath,
+            "concept",
+            title=concept_file.frontmatter.title,
+            artifact_code=concept_file.frontmatter.id,
         )
-        # Update the artifact with full details (title, status) in case
-        # it was originally inserted as a stub.
+        # Update the artifact with full details (title, status, artifact_code)
+        # in case it was originally inserted as a stub.
         self.conn.execute(
-            "UPDATE artifacts SET title = ?, status = ? WHERE id = ?",
-            (concept_file.frontmatter.title, concept_file.frontmatter.status, concept_id),
+            "UPDATE artifacts SET title = ?, status = ?, artifact_code = ? WHERE id = ?",
+            (
+                concept_file.frontmatter.title,
+                concept_file.frontmatter.status,
+                concept_file.frontmatter.id,
+                concept_id,
+            ),
         )
 
         # 2. Aliases
@@ -766,6 +784,7 @@ class IndexBuilder:
             status=None,
             last_hash=None,
             created_at=None,
+            artifact_code=design_file.frontmatter.id,
         )
 
         # 3. design_source link
@@ -860,13 +879,21 @@ class IndexBuilder:
         #    artifacts (created by design file stack refs) are reused rather
         #    than duplicated.
         stack_id = self._get_or_create_artifact(
-            stack_relpath, "stack", title=stack_post.frontmatter.title
+            stack_relpath,
+            "stack",
+            title=stack_post.frontmatter.title,
+            artifact_code=stack_post.frontmatter.id,
         )
-        # Update the artifact with full details (title, status) in case
-        # it was originally inserted as a stub.
+        # Update the artifact with full details (title, status, artifact_code)
+        # in case it was originally inserted as a stub.
         self.conn.execute(
-            "UPDATE artifacts SET title = ?, status = ? WHERE id = ?",
-            (stack_post.frontmatter.title, stack_post.frontmatter.status, stack_id),
+            "UPDATE artifacts SET title = ?, status = ?, artifact_code = ? WHERE id = ?",
+            (
+                stack_post.frontmatter.title,
+                stack_post.frontmatter.status,
+                stack_post.frontmatter.id,
+                stack_id,
+            ),
         )
 
         # 2. stack_file_ref links from Stack post to referenced source files
@@ -982,13 +1009,21 @@ class IndexBuilder:
         #    artifacts (created by design file wikilinks that resolved to
         #    conventions) are reused rather than duplicated.
         conv_id = self._get_or_create_artifact(
-            conv_relpath, "convention", title=conv_file.frontmatter.title
+            conv_relpath,
+            "convention",
+            title=conv_file.frontmatter.title,
+            artifact_code=conv_file.frontmatter.id,
         )
-        # Update the artifact with full details (title, status) in case
-        # it was originally inserted as a stub.
+        # Update the artifact with full details (title, status, artifact_code)
+        # in case it was originally inserted as a stub.
         self.conn.execute(
-            "UPDATE artifacts SET title = ?, status = ? WHERE id = ?",
-            (conv_file.frontmatter.title, conv_file.frontmatter.status, conv_id),
+            "UPDATE artifacts SET title = ?, status = ?, artifact_code = ? WHERE id = ?",
+            (
+                conv_file.frontmatter.title,
+                conv_file.frontmatter.status,
+                conv_file.frontmatter.id,
+                conv_id,
+            ),
         )
 
         # 2. Conventions table row with extended metadata
@@ -1432,7 +1467,10 @@ class IndexBuilder:
 
         # Get or create the concept artifact
         concept_id = self._get_or_create_artifact(
-            concept_relpath, "concept", title=concept_file.frontmatter.title
+            concept_relpath,
+            "concept",
+            title=concept_file.frontmatter.title,
+            artifact_code=concept_file.frontmatter.id,
         )
 
         # Delete outbound data
@@ -1440,8 +1478,13 @@ class IndexBuilder:
 
         # Update artifact with full details
         self.conn.execute(
-            "UPDATE artifacts SET title = ?, status = ? WHERE id = ?",
-            (concept_file.frontmatter.title, concept_file.frontmatter.status, concept_id),
+            "UPDATE artifacts SET title = ?, status = ?, artifact_code = ? WHERE id = ?",
+            (
+                concept_file.frontmatter.title,
+                concept_file.frontmatter.status,
+                concept_file.frontmatter.id,
+                concept_id,
+            ),
         )
 
         # Re-insert aliases
@@ -1519,7 +1562,10 @@ class IndexBuilder:
 
         # Get or create the Stack artifact
         stack_id = self._get_or_create_artifact(
-            stack_relpath, "stack", title=stack_post.frontmatter.title
+            stack_relpath,
+            "stack",
+            title=stack_post.frontmatter.title,
+            artifact_code=stack_post.frontmatter.id,
         )
 
         # Delete outbound data
@@ -1527,8 +1573,13 @@ class IndexBuilder:
 
         # Update artifact with full details
         self.conn.execute(
-            "UPDATE artifacts SET title = ?, status = ? WHERE id = ?",
-            (stack_post.frontmatter.title, stack_post.frontmatter.status, stack_id),
+            "UPDATE artifacts SET title = ?, status = ?, artifact_code = ? WHERE id = ?",
+            (
+                stack_post.frontmatter.title,
+                stack_post.frontmatter.status,
+                stack_post.frontmatter.id,
+                stack_id,
+            ),
         )
 
         # Re-insert stack_file_ref links
@@ -1608,15 +1659,19 @@ class IndexBuilder:
         source_relpath = self._design_path_to_source_relpath(file_path)
 
         # Get or create the design artifact
-        design_id = self._get_or_create_artifact(design_relpath, "design")
+        design_id = self._get_or_create_artifact(
+            design_relpath,
+            "design",
+            artifact_code=design_file.frontmatter.id,
+        )
 
         # Delete outbound data for the design artifact
         self._delete_artifact_outbound(design_id)
 
-        # Update design artifact title
+        # Update design artifact title and artifact_code
         self.conn.execute(
-            "UPDATE artifacts SET title = ? WHERE id = ?",
-            (design_file.frontmatter.description, design_id),
+            "UPDATE artifacts SET title = ?, artifact_code = ? WHERE id = ?",
+            (design_file.frontmatter.description, design_file.frontmatter.id, design_id),
         )
 
         # Get or create the source artifact and update its hash
@@ -1718,8 +1773,13 @@ class IndexBuilder:
             self._delete_artifact_outbound(existing_id)
             # Update the existing artifact row
             self.conn.execute(
-                "UPDATE artifacts SET title = ?, status = ? WHERE id = ?",
-                (conv_file.frontmatter.title, conv_file.frontmatter.status, existing_id),
+                "UPDATE artifacts SET title = ?, status = ?, artifact_code = ? WHERE id = ?",
+                (
+                    conv_file.frontmatter.title,
+                    conv_file.frontmatter.status,
+                    conv_file.frontmatter.id,
+                    existing_id,
+                ),
             )
             conv_id = existing_id
         else:
@@ -1731,6 +1791,7 @@ class IndexBuilder:
                 status=conv_file.frontmatter.status,
                 last_hash=None,
                 created_at=None,
+                artifact_code=conv_file.frontmatter.id,
             )
 
         # Compute ordinal: count existing conventions for this directory_path

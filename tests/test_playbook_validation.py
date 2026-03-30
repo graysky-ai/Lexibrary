@@ -23,6 +23,15 @@ from lexibrary.validator.checks import (
 # ---------------------------------------------------------------------------
 
 
+_playbook_id_counter = 0
+
+
+def _next_playbook_id() -> str:
+    global _playbook_id_counter
+    _playbook_id_counter += 1
+    return f"PB-{_playbook_id_counter:03d}"
+
+
 def _write_playbook(
     playbooks_dir: Path,
     name: str,
@@ -36,6 +45,7 @@ def _write_playbook(
     last_verified: str | None = None,
     deprecated_at: str | None = None,
     superseded_by: str | None = None,
+    pb_id: str | None = None,
 ) -> Path:
     """Write a playbook file; use raw_content for custom frontmatter."""
     playbooks_dir.mkdir(parents=True, exist_ok=True)
@@ -43,9 +53,11 @@ def _write_playbook(
     if raw_content is not None:
         path.write_text(raw_content, encoding="utf-8")
     else:
+        artifact_id = pb_id if pb_id is not None else _next_playbook_id()
         lines = [
             "---",
             f"title: {title}",
+            f"id: {artifact_id}",
             f"status: {status}",
             f"source: {source}",
             f"trigger_files: {trigger_files}",
@@ -67,13 +79,24 @@ def _write_playbook(
     return path
 
 
+_concept_id_counter = 0
+
+
+def _next_concept_id() -> str:
+    global _concept_id_counter
+    _concept_id_counter += 1
+    return f"CN-{_concept_id_counter:03d}"
+
+
 def _write_concept(concepts_dir: Path, name: str, title: str) -> Path:
     """Write a concept file for wikilink resolution tests."""
     concepts_dir.mkdir(parents=True, exist_ok=True)
     path = concepts_dir / f"{name}.md"
+    concept_id = _next_concept_id()
     path.write_text(
         f"""---
 title: {title}
+id: {concept_id}
 status: active
 aliases: []
 tags: []
@@ -136,7 +159,7 @@ class TestCheckPlaybookFrontmatter:
         _write_playbook(
             ld / "playbooks",
             "bad-yaml",
-            raw_content="---\ntitle: [unterminated\n---\n",
+            raw_content="---\ntitle: [unterminated\nid: CN-001\n---\n",
         )
 
         issues = check_playbook_frontmatter(project_root, ld)
@@ -166,7 +189,7 @@ class TestCheckPlaybookFrontmatter:
         _write_playbook(
             ld / "playbooks",
             "no-title",
-            raw_content="---\nstatus: draft\nsource: user\n---\nBody.\n",
+            raw_content="---\nid: PB-001\nstatus: draft\nsource: user\n---\nBody.\n",
         )
 
         issues = check_playbook_frontmatter(project_root, ld)
@@ -181,7 +204,7 @@ class TestCheckPlaybookFrontmatter:
         _write_playbook(
             ld / "playbooks",
             "empty-title",
-            raw_content='---\ntitle: ""\nstatus: draft\n---\nBody.\n',
+            raw_content='---\ntitle: ""\nid: PB-002\nstatus: draft\n---\nBody.\n',
         )
 
         issues = check_playbook_frontmatter(project_root, ld)
@@ -196,7 +219,7 @@ class TestCheckPlaybookFrontmatter:
         _write_playbook(
             ld / "playbooks",
             "bad-status",
-            raw_content="---\ntitle: Bad Status\nstatus: archived\n---\nBody.\n",
+            raw_content="---\ntitle: Bad Status\nid: PB-003\nstatus: archived\n---\nBody.\n",
         )
 
         issues = check_playbook_frontmatter(project_root, ld)
@@ -211,7 +234,7 @@ class TestCheckPlaybookFrontmatter:
         _write_playbook(
             ld / "playbooks",
             "bad-source",
-            raw_content="---\ntitle: Bad Source\nsource: system\n---\nBody.\n",
+            raw_content="---\ntitle: Bad Source\nid: PB-004\nsource: system\n---\nBody.\n",
         )
 
         issues = check_playbook_frontmatter(project_root, ld)
@@ -299,7 +322,7 @@ class TestCheckPlaybookWikilinks:
             ld / "playbooks",
             "linked-playbook",
             raw_content=(
-                "---\ntitle: Linked Playbook\nstatus: draft\n---\n\n"
+                "---\ntitle: Linked Playbook\nid: PB-005\nstatus: draft\n---\n\n"
                 "Follow the [[My Concept]] guidelines.\n"
             ),
         )
@@ -317,7 +340,7 @@ class TestCheckPlaybookWikilinks:
             ld / "playbooks",
             "broken-link",
             raw_content=(
-                "---\ntitle: Broken Link\nstatus: draft\n---\n\n"
+                "---\ntitle: Broken Link\nid: PB-006\nstatus: draft\n---\n\n"
                 "Follow the [[convention: Nonexistent]] instructions.\n"
             ),
         )
@@ -337,7 +360,8 @@ class TestCheckPlaybookWikilinks:
             ld / "playbooks",
             "no-links",
             raw_content=(
-                "---\ntitle: No Links\nstatus: draft\n---\n\nJust plain text, no links.\n"
+                "---\ntitle: No Links\nid: PB-007\nstatus: draft\n---\n\n"
+                "Just plain text, no links.\n"
             ),
         )
 

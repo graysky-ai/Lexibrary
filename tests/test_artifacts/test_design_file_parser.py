@@ -13,6 +13,7 @@ from lexibrary.artifacts.design_file_parser import (
 _FULL_DESIGN_FILE = """\
 ---
 description: CLI entry point for the lexi command.
+id: DS-011
 updated_by: archivist
 ---
 
@@ -44,6 +45,7 @@ generator: lexibrary-v2
 _FULL_WITH_OPTIONAL = """\
 ---
 description: Full design file with all sections.
+id: DS-010
 updated_by: agent
 ---
 
@@ -96,6 +98,7 @@ generator: lexibrary-v2
 _NO_FOOTER = """\
 ---
 description: A file without footer.
+id: DS-009
 updated_by: archivist
 ---
 
@@ -119,6 +122,7 @@ pass
 _CORRUPT_FOOTER = """\
 ---
 description: Corrupt footer file.
+id: DS-008
 updated_by: archivist
 ---
 
@@ -200,7 +204,7 @@ class TestParseDesignFileFrontmatter:
         assert fm.updated_by == "agent"
 
     def test_updated_by_defaults_to_archivist(self, tmp_path: Path) -> None:
-        content = "---\ndescription: No updated_by field.\n---\n\n# src/x.py\n"
+        content = "---\ndescription: No updated_by field.\nid: DS-099\n---\n\n# src/x.py\n"
         f = tmp_path / "design.md"
         f.write_text(content)
         fm = parse_design_file_frontmatter(f)
@@ -268,6 +272,7 @@ class TestParseDesignFileFrontmatterStatus:
     _DEPRECATED_FRONTMATTER = """\
 ---
 description: A deprecated file.
+id: DS-007
 updated_by: archivist
 status: deprecated
 deprecated_at: '2026-03-01T14:30:00'
@@ -302,6 +307,7 @@ generator: lexibrary-v2
     _UNLINKED_FRONTMATTER = """\
 ---
 description: An unlinked file.
+id: DS-006
 updated_by: archivist
 status: unlinked
 ---
@@ -422,6 +428,7 @@ class TestParseDesignFileLegacyBackwardCompat:
     _MINIMAL_LEGACY = """\
 ---
 description: Minimal legacy.
+id: DS-099
 ---
 
 # src/x.py
@@ -467,6 +474,7 @@ class TestParseDesignFileWikilinkBrackets:
     _BRACKETED_WIKILINKS = """\
 ---
 description: File with bracketed wikilinks.
+id: DS-005
 updated_by: archivist
 ---
 
@@ -503,6 +511,7 @@ generator: lexibrary-v2
     _UNBRACKETED_WIKILINKS = """\
 ---
 description: File with unbracketed wikilinks (legacy format).
+id: DS-004
 updated_by: archivist
 ---
 
@@ -539,6 +548,7 @@ generator: lexibrary-v2
     _MIXED_WIKILINKS = """\
 ---
 description: File with mixed bracketed and unbracketed wikilinks.
+id: DS-003
 updated_by: archivist
 ---
 
@@ -612,6 +622,7 @@ class TestParseDesignFileStackRefs:
     _WITH_STACK_SECTION = """\
 ---
 description: File with Stack section.
+id: DS-002
 updated_by: archivist
 ---
 
@@ -648,6 +659,7 @@ generator: lexibrary-v2
     _WITH_GUARDRAILS_SECTION = """\
 ---
 description: Legacy file with Guardrails section.
+id: DS-001
 updated_by: archivist
 ---
 

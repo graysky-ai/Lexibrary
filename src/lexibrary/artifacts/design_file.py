@@ -12,6 +12,7 @@ class DesignFileFrontmatter(BaseModel):
     """Agent-editable YAML frontmatter for a design file."""
 
     description: str
+    id: str
     updated_by: Literal[
         "archivist", "agent", "bootstrap-quick", "skeleton-fallback", "maintainer"
     ] = "archivist"

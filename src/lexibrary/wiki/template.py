@@ -2,14 +2,30 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import yaml
 
+from lexibrary.artifacts.slugs import slugify
 
-def render_concept_template(name: str, tags: list[str] | None = None) -> str:
+
+def render_concept_template(
+    name: str,
+    tags: list[str] | None = None,
+    *,
+    concept_id: str | None = None,
+) -> str:
     """Render a new concept file template with placeholder sections.
+
+    Parameters
+    ----------
+    name:
+        The concept title.
+    tags:
+        Optional list of tags.
+    concept_id:
+        Optional artifact ID (e.g. ``"CN-001"``).  When provided the
+        ``id`` field is included in the YAML frontmatter.
 
     Returns a markdown string with YAML frontmatter and body scaffolding.
     """
@@ -20,6 +36,8 @@ def render_concept_template(name: str, tags: list[str] | None = None) -> str:
         "tags": resolved_tags,
         "status": "active",
     }
+    if concept_id is not None:
+        fm_data["id"] = concept_id
     fm_str = yaml.dump(fm_data, default_flow_style=False, sort_keys=False).rstrip("\n")
 
     body = (
@@ -38,13 +56,13 @@ def render_concept_template(name: str, tags: list[str] | None = None) -> str:
     return body
 
 
-def concept_file_path(name: str, concepts_dir: Path) -> Path:
-    """Derive a PascalCase file path for a concept name.
+def concept_file_path(concept_id: str, name: str, concepts_dir: Path) -> Path:
+    """Derive an ID-prefixed kebab-case file path for a concept name.
 
-    Removes spaces and special characters, capitalizes word boundaries,
-    and appends ``.md``.
+    Uses the canonical :func:`~lexibrary.artifacts.slugs.slugify` to produce
+    a kebab-case slug, then returns
+    ``concepts_dir / "<concept_id>-<slug>.md"`` (e.g.
+    ``CN-005-error-handling.md``).
     """
-    # Split on non-alphanumeric characters to get words
-    words = re.split(r"[^a-zA-Z0-9]+", name)
-    pascal = "".join(w.capitalize() for w in words if w)
-    return concepts_dir / f"{pascal}.md"
+    slug = slugify(name)
+    return concepts_dir / f"{concept_id}-{slug}.md"

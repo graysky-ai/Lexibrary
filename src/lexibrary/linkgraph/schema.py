@@ -17,7 +17,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 """Schema version. Mismatch on open triggers a full rebuild."""
 
 
@@ -45,18 +45,20 @@ CREATE TABLE IF NOT EXISTS meta (
 
 _CREATE_ARTIFACTS = """\
 CREATE TABLE IF NOT EXISTS artifacts (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    path       TEXT    NOT NULL UNIQUE,
-    kind       TEXT    NOT NULL CHECK (kind IN (
-                   'source', 'design', 'concept', 'stack', 'convention'
-               )),
-    title      TEXT,
-    status     TEXT    CHECK (status IS NULL OR status IN (
-                   'active', 'deprecated', 'draft',
-                   'open', 'resolved', 'outdated', 'duplicate'
-               )),
-    last_hash  TEXT,
-    created_at TEXT
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    path          TEXT    NOT NULL UNIQUE,
+    kind          TEXT    NOT NULL CHECK (kind IN (
+                      'source', 'design', 'concept', 'stack', 'convention',
+                      'playbook'
+                  )),
+    title         TEXT,
+    status        TEXT    CHECK (status IS NULL OR status IN (
+                      'active', 'deprecated', 'draft',
+                      'open', 'resolved', 'outdated', 'duplicate'
+                  )),
+    last_hash     TEXT,
+    created_at    TEXT,
+    artifact_code TEXT    UNIQUE
 );
 """
 
@@ -152,6 +154,10 @@ _INDEXES = [
     (
         "CREATE INDEX IF NOT EXISTS idx_artifacts_status"
         " ON artifacts(status) WHERE status IS NOT NULL;"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_artifacts_code"
+        " ON artifacts(artifact_code) WHERE artifact_code IS NOT NULL;"
     ),
     # links
     "CREATE INDEX IF NOT EXISTS idx_links_source      ON links(source_id);",

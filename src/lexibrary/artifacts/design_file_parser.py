@@ -84,6 +84,7 @@ def parse_design_file_frontmatter(path: Path) -> DesignFileFrontmatter | None:
                 deprecated_at = datetime.fromisoformat(deprecated_at_raw)
         return DesignFileFrontmatter(
             description=data["description"],
+            id=data["id"],
             updated_by=data.get("updated_by", "archivist"),
             status=data.get("status", "active"),
             deprecated_at=deprecated_at,
@@ -124,6 +125,7 @@ def parse_design_file(path: Path) -> DesignFile | None:
                 deprecated_at = datetime.fromisoformat(deprecated_at_raw)
         frontmatter = DesignFileFrontmatter(
             description=fm_data["description"],
+            id=fm_data["id"],
             updated_by=fm_data.get("updated_by", "archivist"),
             status=fm_data.get("status", "active"),
             deprecated_at=deprecated_at,

@@ -53,6 +53,7 @@ def _create_design_file(tmp_path: Path, source_rel: str, source_content: str) ->
     now = datetime.now().isoformat()
     design_content = f"""---
 description: Design file for {source_rel}
+id: DS-001
 updated_by: archivist
 ---
 
@@ -224,6 +225,7 @@ def _create_concept_file(
     resolved_tags = tags or []
     fm_data: dict[str, object] = {
         "title": name,
+        "id": "CN-001",
         "aliases": [],
         "tags": resolved_tags,
         "status": status,
@@ -251,6 +253,7 @@ def _create_design_file_with_tags(
     tags_section = "\n".join(f"- {t}" for t in tags) if tags else "- (none)"
     design_content = f"""---
 description: {description}
+id: DS-001
 updated_by: archivist
 ---
 

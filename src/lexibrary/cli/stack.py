@@ -7,56 +7,18 @@ from typing import Annotated
 
 import typer
 
+from lexibrary.artifacts.ids import next_artifact_id
+from lexibrary.artifacts.slugs import slugify
 from lexibrary.cli._output import error, hint, info
 from lexibrary.cli._shared import require_project_root
+from lexibrary.stack.helpers import find_post_path, stack_dir
 
 stack_app = typer.Typer(help="Stack issue management commands.", rich_markup_mode=None)
 
 
 # ---------------------------------------------------------------------------
-# Stack helpers (private, used only by stack commands)
+# CLI-specific helper (uses typer.Exit, so stays in CLI layer)
 # ---------------------------------------------------------------------------
-
-
-def _stack_dir(project_root: Path) -> Path:
-    """Return the .lexibrary/stack/ directory, creating it if needed."""
-    d = project_root / ".lexibrary" / "stack"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def _next_stack_id(stack_dir: Path) -> int:
-    """Scan existing ST-NNN-*.md files and return the next available number."""
-    import re as _re  # noqa: PLC0415
-
-    max_num = 0
-    for f in stack_dir.glob("ST-*-*.md"):
-        m = _re.match(r"ST-(\d+)-", f.name)
-        if m:
-            max_num = max(max_num, int(m.group(1)))
-    return max_num + 1
-
-
-def _slugify(title: str) -> str:
-    """Convert a title to a URL-friendly slug."""
-    import re as _re  # noqa: PLC0415
-
-    slug = title.lower()
-    slug = _re.sub(r"[^a-z0-9]+", "-", slug)
-    slug = slug.strip("-")
-    # Collapse consecutive hyphens
-    slug = _re.sub(r"-+", "-", slug)
-    return slug[:50]
-
-
-def _find_post_path(project_root: Path, post_id: str) -> Path | None:
-    """Find the file path for a post ID (e.g. 'ST-001')."""
-    stack_dir = project_root / ".lexibrary" / "stack"
-    if not stack_dir.is_dir():
-        return None
-    for f in stack_dir.glob(f"{post_id}-*.md"):
-        return f
-    return None
 
 
 def _require_post(project_root: Path, post_id: str) -> Path:
@@ -65,7 +27,7 @@ def _require_post(project_root: Path, post_id: str) -> Path:
     Raises ``typer.Exit(1)`` if the post is not found, with a hint
     suggesting ``lexi search --type stack`` to discover valid post IDs.
     """
-    post_path = _find_post_path(project_root, post_id)
+    post_path = find_post_path(project_root, post_id)
     if post_path is None:
         error(f"Post not found: {post_id}")
         hint("Run `lexi search --type stack` to see available posts.")
@@ -151,7 +113,7 @@ def stack_post(
     from lexibrary.stack.template import render_post_template  # noqa: PLC0415
 
     project_root = require_project_root()
-    sd = _stack_dir(project_root)
+    sd = stack_dir(project_root)
 
     if not tag:
         error("At least one --tag is required.")
@@ -195,9 +157,8 @@ def stack_post(
         error("--resolution-type requires --resolve.")
         raise typer.Exit(1)
 
-    next_num = _next_stack_id(sd)
-    post_id = f"ST-{next_num:03d}"
-    slug = _slugify(title)
+    post_id = next_artifact_id("ST", sd, "ST-*-*.md")
+    slug = slugify(title)
     filename = f"{post_id}-{slug}.md"
     post_path = sd / filename
 

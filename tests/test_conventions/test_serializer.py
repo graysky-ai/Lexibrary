@@ -15,6 +15,7 @@ class TestSerializeConventionFile:
         cf = ConventionFile(
             frontmatter=ConventionFileFrontmatter(
                 title="Future annotations",
+                id="CV-001",
                 scope="project",
                 tags=["python", "style"],
                 status="active",
@@ -36,7 +37,7 @@ class TestSerializeConventionFile:
 
     def test_empty_tags(self) -> None:
         cf = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="Minimal"),
+            frontmatter=ConventionFileFrontmatter(title="Minimal", id="CV-001"),
             body="Body.\n",
         )
         result = serialize_convention_file(cf)
@@ -44,7 +45,7 @@ class TestSerializeConventionFile:
 
     def test_default_values_serialized(self) -> None:
         cf = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="Defaults"),
+            frontmatter=ConventionFileFrontmatter(title="Defaults", id="CV-001"),
             body="Use defaults.\n",
         )
         result = serialize_convention_file(cf)
@@ -56,7 +57,7 @@ class TestSerializeConventionFile:
     def test_body_preserved_exactly(self) -> None:
         body = "Use `from __future__ import annotations`.\n\n**Rationale**: Consistency.\n"
         cf = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="Test"),
+            frontmatter=ConventionFileFrontmatter(title="Test", id="CV-001"),
             body=body,
         )
         result = serialize_convention_file(cf)
@@ -64,7 +65,7 @@ class TestSerializeConventionFile:
 
     def test_trailing_newline(self) -> None:
         cf = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="T"),
+            frontmatter=ConventionFileFrontmatter(title="T", id="CV-001"),
             body="No trailing newline",
         )
         result = serialize_convention_file(cf)
@@ -72,7 +73,7 @@ class TestSerializeConventionFile:
 
     def test_empty_body(self) -> None:
         cf = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="Empty"),
+            frontmatter=ConventionFileFrontmatter(title="Empty", id="CV-001"),
             body="",
         )
         result = serialize_convention_file(cf)
@@ -81,7 +82,7 @@ class TestSerializeConventionFile:
 
     def test_directory_scope(self) -> None:
         cf = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="Auth", scope="src/auth"),
+            frontmatter=ConventionFileFrontmatter(title="Auth", id="CV-001", scope="src/auth"),
             body="Validate tokens.\n",
         )
         result = serialize_convention_file(cf)
@@ -91,6 +92,7 @@ class TestSerializeConventionFile:
         cf = ConventionFile(
             frontmatter=ConventionFileFrontmatter(
                 title="Old rule",
+                id="CV-001",
                 status="deprecated",
                 deprecated_at="2026-03-04T10:00:00",
             ),
@@ -101,7 +103,9 @@ class TestSerializeConventionFile:
 
     def test_deprecated_at_omitted_when_none(self) -> None:
         cf = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="Active rule", status="active"),
+            frontmatter=ConventionFileFrontmatter(
+                title="Active rule", id="CV-001", status="active"
+            ),
             body="Active rule.\n",
         )
         result = serialize_convention_file(cf)
@@ -111,6 +115,7 @@ class TestSerializeConventionFile:
         cf = ConventionFile(
             frontmatter=ConventionFileFrontmatter(
                 title="Auth decorator required",
+                id="CV-001",
                 aliases=["auth-decorator", "auth-conv"],
             ),
             body="Use auth decorator.\n",
@@ -122,7 +127,7 @@ class TestSerializeConventionFile:
 
     def test_aliases_omitted_when_empty(self) -> None:
         cf = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="Minimal rule"),
+            frontmatter=ConventionFileFrontmatter(title="Minimal rule", id="CV-001"),
             body="Minimal body.\n",
         )
         result = serialize_convention_file(cf)
@@ -134,6 +139,7 @@ class TestRoundTrip:
         original = ConventionFile(
             frontmatter=ConventionFileFrontmatter(
                 title="Future annotations",
+                id="CV-001",
                 scope="src/lexibrary",
                 tags=["python", "imports"],
                 status="active",
@@ -162,7 +168,7 @@ class TestRoundTrip:
 
     def test_round_trip_minimal(self, tmp_path: Path) -> None:
         original = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="Minimal"),
+            frontmatter=ConventionFileFrontmatter(title="Minimal", id="CV-001"),
             body="\nJust a rule.\n",
         )
         serialized = serialize_convention_file(original)
@@ -176,7 +182,7 @@ class TestRoundTrip:
 
     def test_round_trip_preserves_rule_extraction(self, tmp_path: Path) -> None:
         original = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="Rule test"),
+            frontmatter=ConventionFileFrontmatter(title="Rule test", id="CV-001"),
             body="\nFirst paragraph is the rule.\n\nSecond paragraph is rationale.\n",
             rule="First paragraph is the rule.",
         )
@@ -192,6 +198,7 @@ class TestRoundTrip:
         original = ConventionFile(
             frontmatter=ConventionFileFrontmatter(
                 title="Deprecated convention",
+                id="CV-001",
                 status="deprecated",
                 deprecated_at="2026-03-04T10:00:00",
             ),
@@ -209,6 +216,7 @@ class TestRoundTrip:
         original = ConventionFile(
             frontmatter=ConventionFileFrontmatter(
                 title="Auth decorator required",
+                id="CV-001",
                 aliases=["auth-decorator", "auth-conv"],
             ),
             body="\nUse auth decorator.\n",
@@ -223,7 +231,7 @@ class TestRoundTrip:
 
     def test_round_trip_no_aliases(self, tmp_path: Path) -> None:
         original = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="No aliases"),
+            frontmatter=ConventionFileFrontmatter(title="No aliases", id="CV-001"),
             body="\nNo aliases.\n",
         )
         serialized = serialize_convention_file(original)
@@ -236,7 +244,7 @@ class TestRoundTrip:
 
     def test_round_trip_no_deprecated_at(self, tmp_path: Path) -> None:
         original = ConventionFile(
-            frontmatter=ConventionFileFrontmatter(title="Active", status="active"),
+            frontmatter=ConventionFileFrontmatter(title="Active", id="CV-001", status="active"),
             body="\nActive convention.\n",
         )
         serialized = serialize_convention_file(original)

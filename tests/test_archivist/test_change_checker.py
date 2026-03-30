@@ -45,6 +45,7 @@ def _make_design_file(
         body = (
             "---\n"
             "description: Test file.\n"
+            "id: DS-001\n"
             "updated_by: archivist\n"
             "---\n"
             "\n"
@@ -375,7 +376,7 @@ class TestComputeDesignContentHash:
 
     def test_footer_excluded_from_hash(self, tmp_path: Path) -> None:
         source_rel = "src/foo.py"
-        body = "---\ndescription: Test.\nupdated_by: archivist\n---\n\n# src/foo.py\n"
+        body = "---\ndescription: Test.\nid: DS-001\nupdated_by: archivist\n---\n\n# src/foo.py\n"
 
         # Create design file with footer
         design_path = _make_design_file(
@@ -395,7 +396,10 @@ class TestComputeDesignContentHash:
     def test_footer_update_does_not_change_hash(self, tmp_path: Path) -> None:
         """Verify that updating only the footer does not change the design hash."""
         source_rel = "src/bar.py"
-        body = "---\ndescription: Bar module.\nupdated_by: archivist\n---\n\n# src/bar.py\n"
+        body = (
+            "---\ndescription: Bar module.\nid: DS-002\n"
+            "updated_by: archivist\n---\n\n# src/bar.py\n"
+        )
 
         # Create with one set of footer hashes
         path1 = _make_design_file(
@@ -438,6 +442,7 @@ class TestCheckChangeSkeletonOnly:
         body = (
             "---\n"
             "description: Design file for big module\n"
+            "id: DS-001\n"
             "updated_by: skeleton-fallback\n"
             "---\n"
             "\n"
@@ -482,6 +487,7 @@ class TestCheckChangeSkeletonOnly:
         body = (
             "---\n"
             "description: Design file for big module\n"
+            "id: DS-002\n"
             "updated_by: skeleton-fallback\n"
             "---\n"
             "\n"
@@ -529,6 +535,7 @@ class TestCheckChangeSkeletonOnly:
         body = (
             "---\n"
             "description: Normal module.\n"
+            "id: DS-003\n"
             "updated_by: archivist\n"
             "---\n"
             "\n"

@@ -527,6 +527,7 @@ class TestGetOrCreateArtifact:
 _SAMPLE_DESIGN_FILE = """\
 ---
 description: Handles user authentication
+id: DS-001
 updated_by: archivist
 ---
 
@@ -923,6 +924,7 @@ class TestProcessDesignFile:
         minimal_design = """\
 ---
 description: Simple module
+id: DS-002
 updated_by: archivist
 ---
 
@@ -982,6 +984,7 @@ generator: lexibrary-test
         second_design = """\
 ---
 description: Utility helpers
+id: DS-003
 updated_by: archivist
 ---
 
@@ -1039,6 +1042,7 @@ generator: lexibrary-test
 _SAMPLE_CONCEPT_FILE = """\
 ---
 title: Authentication
+id: CN-001
 aliases:
   - auth
   - authn
@@ -1065,6 +1069,7 @@ See also [[Authorization]] and [[SessionManagement]] for related concepts.
 _SAMPLE_CONCEPT_FILE_B = """\
 ---
 title: Authorization
+id: CN-002
 aliases:
   - authz
 tags:
@@ -1085,6 +1090,7 @@ It depends on [[Authentication]] being completed first.
 _SAMPLE_CONCEPT_ALIAS_COLLISION = """\
 ---
 title: AuthService
+id: CN-003
 aliases:
   - auth
 tags:
@@ -1334,6 +1340,7 @@ class TestProcessConceptFile:
         concept_upper = """\
 ---
 title: UpperCase
+id: CN-004
 aliases:
   - Auth
 tags: []
@@ -1345,6 +1352,7 @@ Upper case alias concept.
         concept_lower = """\
 ---
 title: LowerCase
+id: CN-005
 aliases:
   - auth
 tags: []
@@ -1405,6 +1413,7 @@ Lower case alias concept.
         minimal_concept = """\
 ---
 title: SimpleConcept
+id: CN-006
 aliases: []
 tags: []
 status: draft
@@ -2042,11 +2051,11 @@ class TestScanConventionFiles:
         conv_dir = tmp_path / ".lexibrary" / "conventions"
         conv_dir.mkdir(parents=True)
         (conv_dir / "use-type-hints.md").write_text(
-            "---\ntitle: Use Type Hints\nscope: project\n---\nAlways use type hints.\n",
+            "---\ntitle: Use Type Hints\nid: CV-001\nscope: project\n---\nAlways use type hints.\n",
             encoding="utf-8",
         )
         (conv_dir / "auth-middleware.md").write_text(
-            "---\ntitle: Auth Middleware\nscope: src/auth\n---\nUse middleware.\n",
+            "---\ntitle: Auth Middleware\nid: CV-002\nscope: src/auth\n---\nUse middleware.\n",
             encoding="utf-8",
         )
 
@@ -2076,10 +2085,10 @@ class TestScanConventionFiles:
         conv_dir = tmp_path / ".lexibrary" / "conventions"
         conv_dir.mkdir(parents=True)
         (conv_dir / "zebra.md").write_text(
-            "---\ntitle: Zebra\nscope: project\n---\nBody.\n", encoding="utf-8"
+            "---\ntitle: Zebra\nid: CV-003\nscope: project\n---\nBody.\n", encoding="utf-8"
         )
         (conv_dir / "alpha.md").write_text(
-            "---\ntitle: Alpha\nscope: project\n---\nBody.\n", encoding="utf-8"
+            "---\ntitle: Alpha\nid: CV-004\nscope: project\n---\nBody.\n", encoding="utf-8"
         )
 
         builder = IndexBuilder(db_conn, tmp_path)
@@ -2093,7 +2102,7 @@ class TestScanConventionFiles:
         conv_dir = tmp_path / ".lexibrary" / "conventions"
         conv_dir.mkdir(parents=True)
         (conv_dir / "convention.md").write_text(
-            "---\ntitle: Test\nscope: project\n---\nBody.\n", encoding="utf-8"
+            "---\ntitle: Test\nid: CV-005\nscope: project\n---\nBody.\n", encoding="utf-8"
         )
         (conv_dir / ".gitkeep").write_text("", encoding="utf-8")
 
@@ -2122,7 +2131,7 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "use-type-hints.md"
         conv_path.write_text(
-            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "---\ntitle: Use Type Hints\nid: CV-100\nscope: project\nstatus: active\n"
             "source: user\npriority: 0\ntags:\n  - python\n---\n"
             "Always use type hints in function signatures.\n",
             encoding="utf-8",
@@ -2148,7 +2157,7 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "agent-convention.md"
         conv_path.write_text(
-            "---\ntitle: Agent Convention\nscope: src/auth\nstatus: draft\n"
+            "---\ntitle: Agent Convention\nid: CV-101\nscope: src/auth\nstatus: draft\n"
             "source: agent\npriority: -1\n---\n"
             "Agents should follow this convention.\n",
             encoding="utf-8",
@@ -2174,7 +2183,8 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "global-convention.md"
         conv_path.write_text(
-            "---\ntitle: Global Convention\nscope: project\n---\nThis applies everywhere.\n",
+            "---\ntitle: Global Convention\nid: CV-006\nscope: project\n---\n"
+            "This applies everywhere.\n",
             encoding="utf-8",
         )
 
@@ -2191,7 +2201,7 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "auth-convention.md"
         conv_path.write_text(
-            "---\ntitle: Auth Convention\nscope: src/auth\n---\nAuth-specific rule.\n",
+            "---\ntitle: Auth Convention\nid: CV-007\nscope: src/auth\n---\nAuth-specific rule.\n",
             encoding="utf-8",
         )
 
@@ -2210,7 +2220,7 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "auth-convention.md"
         conv_path.write_text(
-            "---\ntitle: Auth Convention\nscope: project\n---\n"
+            "---\ntitle: Auth Convention\nid: CV-008\nscope: project\n---\n"
             "All endpoints must use [[Authentication]] middleware.\n",
             encoding="utf-8",
         )
@@ -2233,7 +2243,8 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "tagged-convention.md"
         conv_path.write_text(
-            "---\ntitle: Tagged Convention\nscope: project\ntags:\n  - python\n  - imports\n---\n"
+            "---\ntitle: Tagged Convention\nid: CV-009\nscope: project\n"
+            "tags:\n  - python\n  - imports\n---\n"
             "Follow import conventions.\n",
             encoding="utf-8",
         )
@@ -2250,7 +2261,7 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "fts-convention.md"
         conv_path.write_text(
-            "---\ntitle: FTS Convention\nscope: project\n---\n"
+            "---\ntitle: FTS Convention\nid: CV-010\nscope: project\n---\n"
             "All modules must have type annotations.\n\n"
             "This is rationale for the convention.\n",
             encoding="utf-8",
@@ -2270,7 +2281,7 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "logged-convention.md"
         conv_path.write_text(
-            "---\ntitle: Logged Convention\nscope: project\n---\nBody.\n",
+            "---\ntitle: Logged Convention\nid: CV-011\nscope: project\n---\nBody.\n",
             encoding="utf-8",
         )
 
@@ -2309,11 +2320,11 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
 
         (conv_dir / "conv-a.md").write_text(
-            "---\ntitle: Convention A\nscope: src/auth\n---\nFirst.\n",
+            "---\ntitle: Convention A\nid: CV-012\nscope: src/auth\n---\nFirst.\n",
             encoding="utf-8",
         )
         (conv_dir / "conv-b.md").write_text(
-            "---\ntitle: Convention B\nscope: src/auth\n---\nSecond.\n",
+            "---\ntitle: Convention B\nid: CV-013\nscope: src/auth\n---\nSecond.\n",
             encoding="utf-8",
         )
 
@@ -2333,7 +2344,7 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "defaults.md"
         conv_path.write_text(
-            "---\ntitle: Defaults Convention\nscope: project\n---\nBody.\n",
+            "---\ntitle: Defaults Convention\nid: CV-014\nscope: project\n---\nBody.\n",
             encoding="utf-8",
         )
 
@@ -2353,7 +2364,7 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "use-type-hints.md"
         conv_path.write_text(
-            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "---\ntitle: Use Type Hints\nid: CV-102\nscope: project\nstatus: active\n"
             "source: user\npriority: 0\ntags:\n  - python\n"
             "aliases:\n  - type-hints\n  - typing-required\n---\n"
             "Always use type hints in function signatures.\n",
@@ -2381,7 +2392,7 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "use-type-hints.md"
         conv_path.write_text(
-            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "---\ntitle: Use Type Hints\nid: CV-103\nscope: project\nstatus: active\n"
             "source: user\npriority: 0\n"
             "aliases:\n  - type-hints\n---\n"
             "Always use type hints.\n",
@@ -2410,7 +2421,8 @@ class TestProcessConventionFile:
         concept_dir.mkdir(parents=True)
         concept_path = concept_dir / "Authentication.md"
         concept_path.write_text(
-            "---\ntitle: Authentication\naliases:\n  - auth\ntags: []\nstatus: active\n---\n"
+            "---\ntitle: Authentication\nid: CN-001\naliases:\n  - auth\n"
+            "tags: []\nstatus: active\n---\n"
             "Auth concept body.\n",
             encoding="utf-8",
         )
@@ -2420,7 +2432,7 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "auth-convention.md"
         conv_path.write_text(
-            "---\ntitle: Auth Convention\nscope: project\nstatus: active\n"
+            "---\ntitle: Auth Convention\nid: CV-104\nscope: project\nstatus: active\n"
             "source: user\npriority: 0\n"
             "aliases:\n  - auth\n---\n"
             "Auth convention body.\n",
@@ -2449,7 +2461,7 @@ class TestProcessConventionFile:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "no-alias.md"
         conv_path.write_text(
-            "---\ntitle: No Alias Convention\nscope: project\nstatus: active\n"
+            "---\ntitle: No Alias Convention\nid: CV-105\nscope: project\nstatus: active\n"
             "source: user\npriority: 0\n---\n"
             "No aliases here.\n",
             encoding="utf-8",
@@ -2520,14 +2532,14 @@ def _create_full_project_tree(tmp_path: Path) -> None:
     conv_dir = tmp_path / ".lexibrary" / "conventions"
     conv_dir.mkdir(parents=True, exist_ok=True)
     (conv_dir / "use-type-hints.md").write_text(
-        "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+        "---\ntitle: Use Type Hints\nid: CV-200\nscope: project\nstatus: active\n"
         "source: user\npriority: 0\ntags:\n  - python\n  - typing\n---\n"
         "All functions must have type annotations.\n\n"
         "This ensures code readability and IDE support.\n",
         encoding="utf-8",
     )
     (conv_dir / "auth-middleware.md").write_text(
-        "---\ntitle: Auth Middleware Required\nscope: src/auth\nstatus: active\n"
+        "---\ntitle: Auth Middleware Required\nid: CV-201\nscope: src/auth\nstatus: active\n"
         "source: user\npriority: 1\ntags:\n  - auth\n---\n"
         "All endpoints must use [[Authentication]] middleware.\n",
         encoding="utf-8",
@@ -3121,6 +3133,7 @@ class TestIncrementalUpdate:
         modified_concept = """\
 ---
 title: Authentication
+id: CN-007
 aliases:
   - auth
   - authentication-system
@@ -3328,6 +3341,7 @@ See also [[Authorization]] for related concepts.
         modified_design = """\
 ---
 description: Updated auth handler
+id: DS-004
 updated_by: archivist
 ---
 
@@ -3800,7 +3814,7 @@ class TestIncrementalConventions:
         conv_dir = tmp_path / ".lexibrary" / "conventions"
         new_conv = conv_dir / "new-convention.md"
         new_conv.write_text(
-            "---\ntitle: New Convention\nscope: project\nstatus: active\n"
+            "---\ntitle: New Convention\nid: CV-300\nscope: project\nstatus: active\n"
             "source: agent\npriority: 5\ntags:\n  - new\n---\n"
             "A newly added convention.\n",
             encoding="utf-8",
@@ -3842,7 +3856,7 @@ class TestIncrementalConventions:
         # Modify an existing convention file
         conv_path = tmp_path / ".lexibrary" / "conventions" / "use-type-hints.md"
         conv_path.write_text(
-            "---\ntitle: Use Type Hints (Updated)\nscope: project\nstatus: active\n"
+            "---\ntitle: Use Type Hints (Updated)\nid: CV-200\nscope: project\nstatus: active\n"
             "source: user\npriority: 10\ntags:\n  - python\n  - updated\n---\n"
             "Updated rule: all functions MUST have type annotations.\n",
             encoding="utf-8",
@@ -3918,7 +3932,7 @@ class TestIncrementalConventions:
         # Add aliases to the initial convention file
         conv_path = tmp_path / ".lexibrary" / "conventions" / "use-type-hints.md"
         conv_path.write_text(
-            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "---\ntitle: Use Type Hints\nid: CV-200\nscope: project\nstatus: active\n"
             "source: user\npriority: 0\ntags:\n  - python\n  - typing\n"
             "aliases:\n  - type-hints\n  - typing-required\n---\n"
             "All functions must have type annotations.\n\n"
@@ -3942,7 +3956,7 @@ class TestIncrementalConventions:
 
         # Modify the convention to change aliases
         conv_path.write_text(
-            "---\ntitle: Use Type Hints (Updated)\nscope: project\nstatus: active\n"
+            "---\ntitle: Use Type Hints (Updated)\nid: CV-200\nscope: project\nstatus: active\n"
             "source: user\npriority: 10\ntags:\n  - python\n  - updated\n"
             "aliases:\n  - type-hints\n  - annotations-required\n---\n"
             "Updated rule: all functions MUST have type annotations.\n",
@@ -4020,7 +4034,7 @@ class TestConventionAwareWikilinkProcessing:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "use-type-hints.md"
         conv_path.write_text(
-            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "---\ntitle: Use Type Hints\nid: CV-400\nscope: project\nstatus: active\n"
             "source: user\npriority: 0\n"
             "aliases:\n  - type-hints\n---\n"
             "Always use type hints.\n",
@@ -4038,7 +4052,7 @@ class TestConventionAwareWikilinkProcessing:
         design_dir = tmp_path / ".lexibrary" / "designs" / "src"
         design_dir.mkdir(parents=True, exist_ok=True)
         (design_dir / "main.py.md").write_text(
-            "---\ndescription: Main entry point\nupdated_by: archivist\n---\n\n"
+            "---\ndescription: Main entry point\nid: DS-001\nupdated_by: archivist\n---\n\n"
             "# src/main.py\n\n"
             "## Interface Contract\n\n"
             "```python\ndef main() -> None: ...\n```\n\n"
@@ -4084,7 +4098,7 @@ class TestConventionAwareWikilinkProcessing:
         concept_dir = tmp_path / ".lexibrary" / "concepts"
         concept_dir.mkdir(parents=True)
         (concept_dir / "Authentication.md").write_text(
-            "---\ntitle: Authentication\naliases: []\ntags: []\nstatus: active\n---\n"
+            "---\ntitle: Authentication\nid: CN-002\naliases: []\ntags: []\nstatus: active\n---\n"
             "Authentication concept body.\n",
             encoding="utf-8",
         )
@@ -4100,7 +4114,7 @@ class TestConventionAwareWikilinkProcessing:
         design_dir = tmp_path / ".lexibrary" / "designs" / "src"
         design_dir.mkdir(parents=True, exist_ok=True)
         (design_dir / "auth.py.md").write_text(
-            "---\ndescription: Auth module\nupdated_by: archivist\n---\n\n"
+            "---\ndescription: Auth module\nid: DS-002\nupdated_by: archivist\n---\n\n"
             "# src/auth.py\n\n"
             "## Interface Contract\n\n"
             "```python\ndef auth() -> bool: ...\n```\n\n"
@@ -4141,7 +4155,7 @@ class TestConventionAwareWikilinkProcessing:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "use-type-hints.md"
         conv_path.write_text(
-            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "---\ntitle: Use Type Hints\nid: CV-401\nscope: project\nstatus: active\n"
             "source: user\npriority: 0\n---\n"
             "Always use type hints.\n",
             encoding="utf-8",
@@ -4158,7 +4172,7 @@ class TestConventionAwareWikilinkProcessing:
         design_dir = tmp_path / ".lexibrary" / "designs" / "src"
         design_dir.mkdir(parents=True, exist_ok=True)
         (design_dir / "main.py.md").write_text(
-            "---\ndescription: Main entry point\nupdated_by: archivist\n---\n\n"
+            "---\ndescription: Main entry point\nid: DS-003\nupdated_by: archivist\n---\n\n"
             "# src/main.py\n\n"
             "## Interface Contract\n\n"
             "```python\ndef main() -> None: ...\n```\n\n"
@@ -4199,7 +4213,7 @@ class TestConventionAwareWikilinkProcessing:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "use-type-hints.md"
         conv_path.write_text(
-            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "---\ntitle: Use Type Hints\nid: CV-402\nscope: project\nstatus: active\n"
             "source: user\npriority: 0\n"
             "aliases:\n  - type-hints\n---\n"
             "Always use type hints.\n",
@@ -4210,7 +4224,8 @@ class TestConventionAwareWikilinkProcessing:
         concept_dir = tmp_path / ".lexibrary" / "concepts"
         concept_dir.mkdir(parents=True)
         (concept_dir / "PythonBestPractices.md").write_text(
-            "---\ntitle: Python Best Practices\naliases: []\ntags: []\nstatus: active\n---\n"
+            "---\ntitle: Python Best Practices\nid: CN-003\n"
+            "aliases: []\ntags: []\nstatus: active\n---\n"
             "Follow [[type-hints]] for all functions.\n",
             encoding="utf-8",
         )
@@ -4247,7 +4262,7 @@ class TestConventionAwareWikilinkProcessing:
         design_dir = tmp_path / ".lexibrary" / "designs" / "src"
         design_dir.mkdir(parents=True, exist_ok=True)
         (design_dir / "main.py.md").write_text(
-            "---\ndescription: Main entry point\nupdated_by: archivist\n---\n\n"
+            "---\ndescription: Main entry point\nid: DS-004\nupdated_by: archivist\n---\n\n"
             "# src/main.py\n\n"
             "## Interface Contract\n\n"
             "```python\ndef main() -> None: ...\n```\n\n"
@@ -4287,7 +4302,7 @@ class TestConventionAwareWikilinkProcessing:
         conv_dir.mkdir(parents=True)
         conv_path = conv_dir / "use-type-hints.md"
         conv_path.write_text(
-            "---\ntitle: Use Type Hints\nscope: project\nstatus: active\n"
+            "---\ntitle: Use Type Hints\nid: CV-403\nscope: project\nstatus: active\n"
             "source: user\npriority: 0\n---\n"
             "Always use type hints.\n",
             encoding="utf-8",
@@ -4304,7 +4319,7 @@ class TestConventionAwareWikilinkProcessing:
         design_dir.mkdir(parents=True, exist_ok=True)
         # Use different case in wikilink
         (design_dir / "main.py.md").write_text(
-            "---\ndescription: Main entry point\nupdated_by: archivist\n---\n\n"
+            "---\ndescription: Main entry point\nid: DS-005\nupdated_by: archivist\n---\n\n"
             "# src/main.py\n\n"
             "## Interface Contract\n\n"
             "```python\ndef main() -> None: ...\n```\n\n"

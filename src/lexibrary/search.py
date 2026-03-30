@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from lexibrary.artifacts.ids import is_artifact_id, parse_artifact_id
 from lexibrary.cli._format import OutputFormat, get_format
 from lexibrary.cli._output import info, markdown_table
 from lexibrary.conventions.parser import extract_rule
@@ -204,6 +205,172 @@ class _PlaybookResult:
 # Valid artifact type values for ``artifact_type`` parameter.
 VALID_ARTIFACT_TYPES = ("concept", "convention", "design", "stack", "playbook")
 
+# Map from 2-letter ID prefix to artifact kind (used for ID-based search).
+_PREFIX_TO_KIND: dict[str, str] = {
+    "CN": "concept",
+    "CV": "convention",
+    "PB": "playbook",
+    "DS": "design",
+    "ST": "stack",
+}
+
+# Map from artifact kind to the subdirectory under ``.lexibrary/``.
+_KIND_TO_DIR: dict[str, str] = {
+    "concept": "concepts",
+    "convention": "conventions",
+    "playbook": "playbooks",
+    "design": "designs",
+    "stack": "stack",
+}
+
+
+def _resolve_artifact_by_id(project_root: Path, artifact_id: str) -> SearchResults | None:
+    """Attempt to resolve a single artifact by its ID (e.g. ``CN-001``, ``ST-042``).
+
+    Scans the appropriate ``.lexibrary/<subdir>/`` directory for a file whose
+    name starts with the artifact ID (for concepts, conventions, playbooks, and
+    stack posts) or whose frontmatter ``id:`` field matches (for design files).
+
+    Returns a :class:`SearchResults` containing the single matching artifact,
+    or ``None`` if no match is found.
+    """
+    parsed = parse_artifact_id(artifact_id)
+    if parsed is None:
+        return None
+
+    prefix, _number = parsed
+    kind = _PREFIX_TO_KIND.get(prefix)
+    if kind is None:
+        return None
+
+    subdir = _KIND_TO_DIR[kind]
+    artifact_dir = project_root / ".lexibrary" / subdir
+
+    if not artifact_dir.is_dir():
+        return None
+
+    results = SearchResults()
+
+    if kind == "design":
+        # Design files use source-mirror paths -- ID is in frontmatter only.
+        return _resolve_design_by_id(artifact_dir, artifact_id)
+
+    # For other artifact types, filenames are prefixed with the ID.
+    matching_files = list(artifact_dir.glob(f"{artifact_id}-*"))
+    if not matching_files:
+        # Also try exact match (unlikely but defensive)
+        matching_files = list(artifact_dir.glob(f"{artifact_id}.*"))
+    if not matching_files:
+        return None
+
+    path = matching_files[0]
+
+    if kind == "concept":
+        concept_hit = _resolve_concept_file(path)
+        if concept_hit is not None:
+            results.concepts.append(concept_hit)
+    elif kind == "convention":
+        convention_hit = _resolve_convention_file(path)
+        if convention_hit is not None:
+            results.conventions.append(convention_hit)
+    elif kind == "playbook":
+        playbook_hit = _resolve_playbook_file(path)
+        if playbook_hit is not None:
+            results.playbooks.append(playbook_hit)
+    elif kind == "stack":
+        stack_hit = _resolve_stack_file(path)
+        if stack_hit is not None:
+            results.stack_posts.append(stack_hit)
+
+    return results if results.has_results() else None
+
+
+def _resolve_concept_file(path: Path) -> _ConceptResult | None:
+    """Parse a concept file and return a ``_ConceptResult``."""
+    from lexibrary.wiki.parser import parse_concept_file  # noqa: PLC0415
+
+    concept = parse_concept_file(path)
+    if concept is None:
+        return None
+    return _ConceptResult(
+        name=concept.frontmatter.title,
+        status=concept.frontmatter.status,
+        tags=list(concept.frontmatter.tags),
+        summary=concept.summary,
+    )
+
+
+def _resolve_convention_file(path: Path) -> _ConventionResult | None:
+    """Parse a convention file and return a ``_ConventionResult``."""
+    from lexibrary.conventions.parser import parse_convention_file  # noqa: PLC0415
+
+    conv = parse_convention_file(path)
+    if conv is None:
+        return None
+    return _ConventionResult(
+        title=conv.frontmatter.title,
+        scope=conv.frontmatter.scope,
+        status=conv.frontmatter.status,
+        tags=list(conv.frontmatter.tags),
+        rule=conv.rule,
+    )
+
+
+def _resolve_playbook_file(path: Path) -> _PlaybookResult | None:
+    """Parse a playbook file and return a ``_PlaybookResult``."""
+    from lexibrary.playbooks.parser import parse_playbook_file  # noqa: PLC0415
+
+    pb = parse_playbook_file(path)
+    if pb is None:
+        return None
+    return _PlaybookResult(
+        title=pb.frontmatter.title,
+        status=pb.frontmatter.status,
+        tags=list(pb.frontmatter.tags),
+        overview=pb.overview,
+    )
+
+
+def _resolve_stack_file(path: Path) -> _StackResult | None:
+    """Parse a stack post file and return a ``_StackResult``."""
+    from lexibrary.stack.parser import parse_stack_post  # noqa: PLC0415
+
+    post = parse_stack_post(path)
+    if post is None:
+        return None
+    return _StackResult(
+        post_id=post.frontmatter.id,
+        title=post.frontmatter.title,
+        status=post.frontmatter.status,
+        votes=post.frontmatter.votes,
+        tags=list(post.frontmatter.tags),
+    )
+
+
+def _resolve_design_by_id(designs_dir: Path, artifact_id: str) -> SearchResults | None:
+    """Scan design file frontmatter for a matching ``id:`` field.
+
+    Design files use source-mirror paths (no ID in filename), so we must
+    scan the ``id`` field in each file's YAML frontmatter.
+    """
+    from lexibrary.artifacts.design_file_parser import parse_design_file  # noqa: PLC0415
+
+    for md_path in designs_dir.rglob("*.md"):
+        design = parse_design_file(md_path)
+        if design is None:
+            continue
+        if design.frontmatter.id == artifact_id:
+            results = SearchResults()
+            results.design_files.append(
+                _DesignFileResult(
+                    source_path=design.source_path,
+                    description=design.frontmatter.description,
+                    tags=list(design.tags),
+                )
+            )
+            return results
+    return None
+
 
 def unified_search(
     project_root: Path,
@@ -253,6 +420,23 @@ def unified_search(
     Returns:
         Grouped :class:`SearchResults`.
     """
+    # --- ID-pattern short-circuit ---
+    # When the query matches an artifact ID pattern (e.g. CN-001, ST-042) and
+    # no other filters are active, attempt a direct lookup by ID.  If the ID
+    # does not resolve to an existing artifact, fall back to the normal search
+    # flow (treating the ID string as a free-text query).
+    if (
+        query is not None
+        and is_artifact_id(query.strip())
+        and tag is None
+        and tags is None
+        and scope is None
+    ):
+        id_result = _resolve_artifact_by_id(project_root, query.strip())
+        if id_result is not None:
+            return id_result
+        # ID did not resolve -- fall through to normal search.
+
     # Normalise tag/tags: merge ``tag`` convenience alias into ``tags`` list.
     resolved_tags = _resolve_tags(tag=tag, tags=tags)
 

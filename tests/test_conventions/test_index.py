@@ -21,6 +21,7 @@ def _write_convention(directory: Path, filename: str, content: str) -> Path:
 FUTURE_ANNOTATIONS = """\
 ---
 title: Future annotations import
+id: CV-001
 scope: project
 tags:
   - python
@@ -37,6 +38,7 @@ This ensures PEP 604 union syntax works on Python 3.9+.
 NO_BARE_PRINT = """\
 ---
 title: No bare print calls
+id: CV-002
 scope: project
 tags:
   - output
@@ -53,6 +55,7 @@ Rationale: consistent formatting and testability.
 AUTH_ERROR_HANDLING = """\
 ---
 title: Auth error handling
+id: CV-003
 scope: src/auth
 tags:
   - auth
@@ -67,6 +70,7 @@ Auth modules must raise AuthenticationError, not generic ValueError.
 AUTH_LOGIN_SPECIFIC = """\
 ---
 title: Login rate limiting
+id: CV-004
 scope: src/auth/login
 tags:
   - auth
@@ -81,6 +85,7 @@ Login endpoints must enforce rate limiting with token bucket.
 SRC_CONVENTIONS = """\
 ---
 title: Type hints required
+id: CV-005
 scope: src
 tags:
   - typing
@@ -94,6 +99,7 @@ All public functions in src/ must have complete type hints.
 ROOT_SCOPE = """\
 ---
 title: Root scope convention
+id: CV-006
 scope: "."
 tags:
   - style
@@ -107,6 +113,7 @@ Root-level convention for testing scope "." behaviour.
 DEPRECATED_CONVENTION = """\
 ---
 title: Old naming convention
+id: CV-007
 scope: project
 tags:
   - naming
@@ -120,6 +127,7 @@ Use camelCase for functions. Superseded by snake_case convention.
 DRAFT_CONVENTION = """\
 ---
 title: Consider dataclasses
+id: CV-008
 scope: src/models
 tags:
   - python
@@ -134,6 +142,7 @@ Consider using dataclasses instead of plain dicts for data transfer.
 CONVENTION_WITH_ALIASES = """\
 ---
 title: All endpoints require auth decorator
+id: CV-009
 scope: src/api
 tags:
   - auth

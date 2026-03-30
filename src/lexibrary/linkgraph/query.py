@@ -44,6 +44,7 @@ class ArtifactResult:
     kind: str
     title: str | None
     status: str | None
+    artifact_code: str | None = None
 
 
 @dataclass
@@ -244,7 +245,7 @@ class LinkGraph:
             that path exists in the index.
         """
         row = self._conn.execute(
-            "SELECT id, path, kind, title, status FROM artifacts WHERE path = ?",
+            "SELECT id, path, kind, title, status, artifact_code FROM artifacts WHERE path = ?",
             (path,),
         ).fetchone()
         if row is None:
@@ -255,6 +256,37 @@ class LinkGraph:
             kind=row[2],
             title=row[3],
             status=row[4],
+            artifact_code=row[5],
+        )
+
+    def get_artifact_by_code(self, code: str) -> ArtifactResult | None:
+        """Look up an artifact by its ``artifact_code`` (e.g. ``'CN-001'``).
+
+        Parameters
+        ----------
+        code:
+            The artifact code to look up (e.g. ``"CN-001"``, ``"ST-042"``).
+
+        Returns
+        -------
+        ArtifactResult | None
+            The matching artifact, or ``None`` if no artifact with
+            that code exists in the index.
+        """
+        row = self._conn.execute(
+            "SELECT id, path, kind, title, status, artifact_code "
+            "FROM artifacts WHERE artifact_code = ?",
+            (code,),
+        ).fetchone()
+        if row is None:
+            return None
+        return ArtifactResult(
+            id=row[0],
+            path=row[1],
+            kind=row[2],
+            title=row[3],
+            status=row[4],
+            artifact_code=row[5],
         )
 
     def resolve_alias(self, alias: str) -> ArtifactResult | None:
@@ -275,7 +307,7 @@ class LinkGraph:
             matching alias exists.
         """
         row = self._conn.execute(
-            "SELECT a.id, a.path, a.kind, a.title, a.status "
+            "SELECT a.id, a.path, a.kind, a.title, a.status, a.artifact_code "
             "FROM aliases AS al "
             "JOIN artifacts AS a ON al.artifact_id = a.id "
             "WHERE al.alias = ? COLLATE NOCASE",
@@ -289,6 +321,7 @@ class LinkGraph:
             kind=row[2],
             title=row[3],
             status=row[4],
+            artifact_code=row[5],
         )
 
     # -- relationship queries -----------------------------------------------
@@ -369,7 +402,7 @@ class LinkGraph:
             when no artifacts match.
         """
         rows = self._conn.execute(
-            "SELECT a.id, a.path, a.kind, a.title, a.status "
+            "SELECT a.id, a.path, a.kind, a.title, a.status, a.artifact_code "
             "FROM tags AS t "
             "JOIN artifacts AS a ON t.artifact_id = a.id "
             "WHERE t.tag = ?",
@@ -383,6 +416,7 @@ class LinkGraph:
                 kind=row[2],
                 title=row[3],
                 status=row[4],
+                artifact_code=row[5],
             )
             for row in rows
         ]
@@ -415,7 +449,7 @@ class LinkGraph:
         safe_query = '"' + query.replace('"', '""') + '"'
 
         rows = self._conn.execute(
-            "SELECT a.id, a.path, a.kind, a.title, a.status "
+            "SELECT a.id, a.path, a.kind, a.title, a.status, a.artifact_code "
             "FROM artifacts_fts AS f "
             "JOIN artifacts AS a ON f.rowid = a.id "
             "WHERE artifacts_fts MATCH ? "
@@ -431,6 +465,7 @@ class LinkGraph:
                 kind=row[2],
                 title=row[3],
                 status=row[4],
+                artifact_code=row[5],
             )
             for row in rows
         ]

@@ -36,6 +36,7 @@ def _write_playbook(tmp_path: Path, slug: str, content: str) -> Path:
 DRAFT_PLAYBOOK = """\
 ---
 title: Version Bump
+id: PB-001
 trigger_files: [pyproject.toml]
 tags: [release]
 status: draft
@@ -55,6 +56,7 @@ Bump the version number.
 ACTIVE_PLAYBOOK = """\
 ---
 title: Deploy Service
+id: PB-002
 trigger_files: [Dockerfile]
 tags: [deploy]
 status: active
@@ -69,6 +71,7 @@ Deploy the service.
 DEPRECATED_PLAYBOOK = """\
 ---
 title: Old Process
+id: PB-003
 trigger_files: []
 tags: []
 status: deprecated
@@ -99,7 +102,8 @@ class TestPlaybookNew:
         assert result.exit_code == 0
         assert "Created" in result.output
 
-        pb_path = tmp_path / ".lexibrary" / "playbooks" / "version-bump.md"
+        # ID-prefixed filename: PB-001-version-bump.md
+        pb_path = tmp_path / ".lexibrary" / "playbooks" / "PB-001-version-bump.md"
         assert pb_path.exists()
         content = pb_path.read_text(encoding="utf-8")
         assert "title: Version Bump" in content
@@ -129,7 +133,8 @@ class TestPlaybookNew:
         )
         assert result.exit_code == 0
 
-        pb_path = tmp_path / ".lexibrary" / "playbooks" / "version-bump.md"
+        # ID-prefixed filename
+        pb_path = tmp_path / ".lexibrary" / "playbooks" / "PB-001-version-bump.md"
         content = pb_path.read_text(encoding="utf-8")
         assert "pyproject.toml" in content
         assert "setup.cfg" in content

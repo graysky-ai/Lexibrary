@@ -370,6 +370,34 @@ def check_concept_frontmatter(
                     )
                 )
 
+        # id — must be present and match CN-NNN pattern (3+ digits)
+        _cn_id_pattern = re.compile(r"^CN-\d{3,}$")
+        if "id" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="concept_frontmatter",
+                    message="Missing mandatory field: id",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"Edit {rel_path} and add 'id:' in CN-NNN format (e.g. 'id: CN-001')."
+                    ),
+                )
+            )
+        elif not isinstance(data["id"], str) or not _cn_id_pattern.match(data["id"]):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="concept_frontmatter",
+                    message=f"Invalid id format: {data['id']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"Edit {rel_path} and correct 'id:' to match CN-NNN format "
+                        f"(e.g. 'id: CN-001')."
+                    ),
+                )
+            )
+
     return issues
 
 
@@ -616,6 +644,34 @@ def check_convention_frontmatter(
                 )
             )
 
+        # id — must be present and match CV-NNN pattern (3+ digits)
+        _cv_id_pattern = re.compile(r"^CV-\d{3,}$")
+        if "id" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message="Missing mandatory field: id",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"Edit {rel_path} and add 'id:' in CV-NNN format (e.g. 'id: CV-001')."
+                    ),
+                )
+            )
+        elif not isinstance(data["id"], str) or not _cv_id_pattern.match(data["id"]):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="convention_frontmatter",
+                    message=f"Invalid id format: {data['id']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"Edit {rel_path} and correct 'id:' to match CV-NNN format "
+                        f"(e.g. 'id: CV-001')."
+                    ),
+                )
+            )
+
     return issues
 
 
@@ -787,6 +843,34 @@ def check_design_frontmatter(
                 )
             )
 
+        # id — must be present and match DS-NNN pattern (3+ digits)
+        _ds_id_pattern = re.compile(r"^DS-\d{3,}$")
+        if "id" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="design_frontmatter",
+                    message="Missing mandatory field: id",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"Edit {rel_path} and add 'id:' in DS-NNN format (e.g. 'id: DS-001')."
+                    ),
+                )
+            )
+        elif not isinstance(data["id"], str) or not _ds_id_pattern.match(data["id"]):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="design_frontmatter",
+                    message=f"Invalid id format: {data['id']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"Edit {rel_path} and correct 'id:' to match DS-NNN format "
+                        f"(e.g. 'id: DS-001')."
+                    ),
+                )
+            )
+
     return issues
 
 
@@ -820,7 +904,7 @@ def check_stack_frontmatter(
         "cannot_reproduce",
         "by_design",
     }
-    id_pattern = re.compile(r"^ST-\d+$")
+    id_pattern = re.compile(r"^ST-\d{3,}$")
 
     for md_path in sorted(posts_dir.glob("*.md")):
         rel_path = _rel(md_path, project_root)
@@ -3191,36 +3275,41 @@ def check_duplicate_slugs(
     project_root: Path,
     lexibrary_dir: Path,
 ) -> list[ValidationIssue]:
-    """Detect duplicate slugs across concept and convention filenames.
+    """Detect duplicate slugs across concept, convention, and playbook filenames.
 
-    Concept and convention files use filename slugs as identifiers.
-    This check flags cases where two files from different artifact types
-    produce the same slug, which could cause confusion.
+    Artifact files may have ID-prefixed filenames (e.g. ``CN-001-error-handling.md``).
+    This check strips the ID prefix before comparing slugs, then flags cases where
+    two files from different artifact types share the same slug.
 
     Args:
         project_root: Root directory of the project.
         lexibrary_dir: Path to the .lexibrary directory.
 
     Returns:
-        List of error-severity ValidationIssues for duplicate slugs.
+        List of warning-severity ValidationIssues for duplicate slugs.
     """
     issues: list[ValidationIssue] = []
+
+    # Regex to strip ID prefix from filenames: XX-NNN- at the start of the stem
+    _id_prefix_re = re.compile(r"^[A-Z]{2}-\d{3,}-")
 
     # Collect slugs: slug -> list of (artifact_rel_path,)
     slug_sources: dict[str, list[str]] = {}
 
-    concepts_dir = lexibrary_dir / "concepts"
-    if concepts_dir.is_dir():
-        for md_path in sorted(concepts_dir.glob("*.md")):
-            slug = md_path.stem
-            rel_path = f"concepts/{md_path.name}"
-            slug_sources.setdefault(slug, []).append(rel_path)
+    artifact_dirs = {
+        "concepts": lexibrary_dir / "concepts",
+        "conventions": lexibrary_dir / "conventions",
+        "playbooks": lexibrary_dir / "playbooks",
+    }
 
-    conventions_dir = lexibrary_dir / "conventions"
-    if conventions_dir.is_dir():
-        for md_path in sorted(conventions_dir.glob("*.md")):
-            slug = md_path.stem
-            rel_path = f"conventions/{md_path.name}"
+    for kind, artifact_dir in artifact_dirs.items():
+        if not artifact_dir.is_dir():
+            continue
+        for md_path in sorted(artifact_dir.glob("*.md")):
+            stem = md_path.stem
+            # Strip ID prefix if present (e.g. CN-001-error-handling -> error-handling)
+            slug = _id_prefix_re.sub("", stem)
+            rel_path = f"{kind}/{md_path.name}"
             slug_sources.setdefault(slug, []).append(rel_path)
 
     for slug, sources in sorted(slug_sources.items()):
@@ -3229,7 +3318,7 @@ def check_duplicate_slugs(
         for source in sources:
             issues.append(
                 ValidationIssue(
-                    severity="error",
+                    severity="warning",
                     check="duplicate_slugs",
                     message=(
                         f"Slug '{slug}' is used by multiple files: {', '.join(sorted(sources))}"
@@ -3242,6 +3331,113 @@ def check_duplicate_slugs(
             )
 
     return issues
+
+
+def check_artifact_id_uniqueness(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Detect duplicate artifact IDs across all artifact types.
+
+    Scans frontmatter ``id`` fields in concepts, conventions, playbooks,
+    stack posts, and design files. Reports an error when two or more
+    artifacts share the same ID.
+
+    Args:
+        project_root: Root directory of the project.
+        lexibrary_dir: Path to the .lexibrary directory.
+
+    Returns:
+        List of error-severity ValidationIssues for duplicate IDs.
+    """
+    issues: list[ValidationIssue] = []
+
+    # id -> list of relative paths that claim it
+    id_sources: dict[str, list[str]] = {}
+
+    # Scan flat artifact directories (concepts, conventions, playbooks)
+    flat_dirs = {
+        "concepts": lexibrary_dir / "concepts",
+        "conventions": lexibrary_dir / "conventions",
+        "playbooks": lexibrary_dir / "playbooks",
+    }
+    for kind, artifact_dir in flat_dirs.items():
+        if not artifact_dir.is_dir():
+            continue
+        for md_path in sorted(artifact_dir.glob("*.md")):
+            artifact_id = _extract_frontmatter_id(md_path)
+            if artifact_id is not None:
+                rel_path = f"{kind}/{md_path.name}"
+                id_sources.setdefault(artifact_id, []).append(rel_path)
+
+    # Scan stack posts
+    posts_dir = lexibrary_dir / "stack" / "posts"
+    if posts_dir.is_dir():
+        for md_path in sorted(posts_dir.glob("*.md")):
+            artifact_id = _extract_frontmatter_id(md_path)
+            if artifact_id is not None:
+                rel_path = f"stack/posts/{md_path.name}"
+                id_sources.setdefault(artifact_id, []).append(rel_path)
+
+    # Scan design files (recursive)
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+    if designs_dir.is_dir():
+        for md_path in sorted(designs_dir.rglob("*.md")):
+            artifact_id = _extract_frontmatter_id(md_path)
+            if artifact_id is not None:
+                rel_path = str(md_path.relative_to(lexibrary_dir))
+                id_sources.setdefault(artifact_id, []).append(rel_path)
+
+    for artifact_id, sources in sorted(id_sources.items()):
+        if len(sources) <= 1:
+            continue
+        for source in sources:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="artifact_id_uniqueness",
+                    message=(
+                        f"Duplicate artifact ID '{artifact_id}' found in: "
+                        f"{', '.join(sorted(sources))}"
+                    ),
+                    artifact=source,
+                    suggestion=(
+                        f"Assign a unique ID to each artifact. "
+                        f"Files sharing ID '{artifact_id}': {', '.join(sorted(sources))}."
+                    ),
+                )
+            )
+
+    return issues
+
+
+def _extract_frontmatter_id(md_path: Path) -> str | None:
+    """Extract the ``id`` value from a markdown file's YAML frontmatter.
+
+    Returns ``None`` if the file cannot be read, has no frontmatter,
+    or the ``id`` field is missing/not a string.
+    """
+    try:
+        text = md_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    fm_match = _FRONTMATTER_RE.match(text)
+    if not fm_match:
+        return None
+
+    try:
+        data = yaml.safe_load(fm_match.group(1))
+    except yaml.YAMLError:
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    raw_id = data.get("id")
+    if isinstance(raw_id, str) and raw_id.strip():
+        return raw_id.strip()
+    return None
 
 
 def check_stack_refs_validity(
@@ -4116,6 +4312,34 @@ def check_playbook_frontmatter(
                             ),
                         )
                     )
+
+        # id — must be present and match PB-NNN pattern (3+ digits)
+        _pb_id_pattern = re.compile(r"^PB-\d{3,}$")
+        if "id" not in data:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="playbook_frontmatter",
+                    message="Missing mandatory field: id",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"Edit {rel_path} and add 'id:' in PB-NNN format (e.g. 'id: PB-001')."
+                    ),
+                )
+            )
+        elif not isinstance(data["id"], str) or not _pb_id_pattern.match(data["id"]):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    check="playbook_frontmatter",
+                    message=f"Invalid id format: {data['id']}",
+                    artifact=rel_path,
+                    suggestion=(
+                        f"Edit {rel_path} and correct 'id:' to match PB-NNN format "
+                        f"(e.g. 'id: PB-001')."
+                    ),
+                )
+            )
 
     return issues
 

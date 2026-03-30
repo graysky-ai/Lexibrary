@@ -17,6 +17,7 @@ def _write_concept(directory: Path, filename: str, content: str) -> Path:
 JWT_CONCEPT = """\
 ---
 title: JWT Auth
+id: CN-004
 aliases:
   - JSON Web Token
 tags:
@@ -34,6 +35,7 @@ JWT tokens are used for stateless authentication.
 RATE_LIMITING_CONCEPT = """\
 ---
 title: Rate Limiting
+id: CN-003
 aliases:
   - Throttling
 tags:
@@ -51,6 +53,7 @@ Token bucket algorithm is common.
 OAUTH_CONCEPT = """\
 ---
 title: OAuth2 Flow
+id: CN-002
 aliases: []
 tags:
   - auth
@@ -62,6 +65,7 @@ OAuth2 authorization code flow for third-party integrations.
 DEPRECATED_CONCEPT = """\
 ---
 title: Session Cookies
+id: CN-001
 aliases:
   - Cookie Auth
 tags:

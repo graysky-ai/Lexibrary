@@ -330,10 +330,10 @@ class TestGetConceptsSkillContent:
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_contains_lexi_concepts(self) -> None:
-        """Concepts skill references lexi concepts command."""
+    def test_contains_lexi_concept(self) -> None:
+        """Concepts skill references lexi concept command."""
         result = get_concepts_skill_content()
-        assert "lexi concepts" in result
+        assert "lexi concept" in result
 
     def test_contains_tag_flag(self) -> None:
         """Concepts skill mentions --tag flag."""

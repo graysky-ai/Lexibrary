@@ -28,6 +28,7 @@ from lexibrary.validator.checks import (
 _DESIGN_FILE_TEMPLATE = """\
 ---
 description: {description}
+id: DS-001
 updated_by: archivist
 ---
 

@@ -23,6 +23,7 @@ from lexibrary.validator.checks import (
 _DESIGN_FILE_TEMPLATE = """\
 ---
 description: {description}
+id: DS-001
 updated_by: archivist
 ---
 
@@ -58,6 +59,7 @@ generator: lexibrary-v2
 _CONCEPT_FILE_TEMPLATE = """\
 ---
 title: {title}
+id: CN-001
 aliases: {aliases}
 tags: {tags}
 status: {status}

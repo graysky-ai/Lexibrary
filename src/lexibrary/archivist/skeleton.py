@@ -19,7 +19,9 @@ from lexibrary.artifacts.design_file import (
     DesignFileFrontmatter,
     StalenessMetadata,
 )
+from lexibrary.artifacts.ids import next_design_id
 from lexibrary.ast_parser import compute_hashes, parse_interface, render_skeleton
+from lexibrary.utils.paths import DESIGNS_DIR, LEXIBRARY_DIR
 
 UpdatedByLiteral = Literal[
     "archivist", "agent", "bootstrap-quick", "skeleton-fallback", "maintainer"
@@ -104,6 +106,10 @@ def generate_skeleton_design(
 
     rel_path = str(source_path.relative_to(project_root))
 
+    # Generate design ID
+    designs_dir = project_root / LEXIBRARY_DIR / DESIGNS_DIR
+    design_id = next_design_id(designs_dir)
+
     # Extract interface skeleton
     skeleton = parse_interface(source_path)
     skeleton_text = ""
@@ -124,6 +130,7 @@ def generate_skeleton_design(
         source_path=rel_path,
         frontmatter=DesignFileFrontmatter(
             description=description,
+            id=design_id,
             updated_by=updated_by,
         ),
         summary=summary,

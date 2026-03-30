@@ -56,6 +56,7 @@ def _create_convention_file(
 
     fm_data: dict[str, object] = {
         "title": title,
+        "id": "CV-001",
         "scope": scope,
         "tags": tags or [],
         "status": status,

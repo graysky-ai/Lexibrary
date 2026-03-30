@@ -54,6 +54,7 @@ def _create_concept_file(
     resolved_tags = tags or []
     fm_data: dict[str, object] = {
         "title": name,
+        "id": "CN-001",
         "aliases": [],
         "tags": resolved_tags,
         "status": status,
@@ -82,6 +83,7 @@ def _create_convention_file(
     path = conventions_dir / f"{slug}.md"
     fm_data = {
         "title": title,
+        "id": "CV-001",
         "scope": scope,
         "tags": tags or [],
         "status": status,

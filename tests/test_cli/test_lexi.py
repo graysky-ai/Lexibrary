@@ -86,6 +86,7 @@ def _create_design_file(tmp_path: Path, source_rel: str, source_content: str) ->
     now = datetime.now().isoformat()
     design_content = f"""---
 description: Design file for {source_rel}
+id: DS-001
 updated_by: archivist
 status: active
 ---
@@ -168,6 +169,7 @@ def _create_concept_file(
 
     fm_data: dict[str, object] = {
         "title": name,
+        "id": "CN-001",
         "aliases": resolved_aliases,
         "tags": resolved_tags,
         "status": status,
@@ -323,6 +325,7 @@ def _create_design_file_with_tags(
     tags_section = "\n".join(f"- {t}" for t in tags) if tags else "- (none)"
     design_content = f"""---
 description: {description}
+id: DS-002
 updated_by: archivist
 status: active
 ---
@@ -548,6 +551,7 @@ def _create_convention_file(
 
     fm_data = {
         "title": title,
+        "id": "CV-001",
         "scope": scope,
         "tags": tags or [],
         "status": status,
@@ -1141,8 +1145,8 @@ class TestConceptNewCommand:
         result = self._invoke(tmp_path, ["concept", "new", "Rate Limiting"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Created" in result.output  # type: ignore[union-attr]
-        assert "slug: RateLimiting" in result.output  # type: ignore[union-attr]
-        assert (tmp_path / ".lexibrary" / "concepts" / "RateLimiting.md").exists()
+        assert "slug: CN-001-rate-limiting" in result.output  # type: ignore[union-attr]
+        assert (tmp_path / ".lexibrary" / "concepts" / "CN-001-rate-limiting.md").exists()
 
     def test_create_concept_with_tags(self, tmp_path: Path) -> None:
         """Create a concept with tags."""
@@ -1154,7 +1158,7 @@ class TestConceptNewCommand:
         )
         assert result.exit_code == 0  # type: ignore[union-attr]
 
-        content = (tmp_path / ".lexibrary" / "concepts" / "Auth.md").read_text()
+        content = (tmp_path / ".lexibrary" / "concepts" / "CN-001-auth.md").read_text()
         assert "security" in content
         assert "core" in content
 
@@ -1174,13 +1178,13 @@ class TestConceptNewCommand:
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
 
     def test_create_concept_pascalcase(self, tmp_path: Path) -> None:
-        """Concept name with spaces gets PascalCase filename."""
+        """Concept name with spaces gets ID-prefixed slug filename."""
         _setup_project(tmp_path)
         (tmp_path / ".lexibrary" / "concepts").mkdir(parents=True, exist_ok=True)
 
         result = self._invoke(tmp_path, ["concept", "new", "my cool concept"])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        assert (tmp_path / ".lexibrary" / "concepts" / "MyCoolConcept.md").exists()
+        assert (tmp_path / ".lexibrary" / "concepts" / "CN-001-my-cool-concept.md").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -1479,10 +1483,13 @@ class TestConventionNewCommand:
         assert "Created" in result.output  # type: ignore[union-attr]
         assert "auth-required.md" in result.output  # type: ignore[union-attr]
 
-        # Verify file was created
-        conv_path = project / ".lexibrary" / "conventions" / "auth-required.md"
-        assert conv_path.exists()
-        content = conv_path.read_text(encoding="utf-8")
+        # Verify file was created (new format: CV-NNN-slug.md)
+        conventions_dir = project / ".lexibrary" / "conventions"
+        conv_files = list(conventions_dir.glob("CV-*-auth-required.md"))
+        assert len(conv_files) == 1, (
+            f"Expected 1 convention file, found: {list(conventions_dir.glob('*.md'))}"
+        )
+        content = conv_files[0].read_text(encoding="utf-8")
         assert "Auth required" in content
         assert "src/auth" in content
         assert "auth" in content
@@ -1926,9 +1933,13 @@ class TestConventionNewAliasFlag:
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert "Created" in result.output  # type: ignore[union-attr]
 
-        conv_path = project / ".lexibrary" / "conventions" / "auth-decorator-required.md"
-        assert conv_path.exists()
-        content = conv_path.read_text(encoding="utf-8")
+        # New format: CV-NNN-slug.md
+        conventions_dir = project / ".lexibrary" / "conventions"
+        conv_files = list(conventions_dir.glob("CV-*-auth-decorator-required.md"))
+        assert len(conv_files) == 1, (
+            f"Expected 1 convention file, found: {list(conventions_dir.glob('*.md'))}"
+        )
+        content = conv_files[0].read_text(encoding="utf-8")
         assert "auth-decorator" in content
         assert "auth-conv" in content
         assert "aliases" in content
@@ -3081,6 +3092,7 @@ def _setup_validate_project(tmp_path: Path) -> Path:
     design_dir.mkdir(parents=True, exist_ok=True)
     design_content = f"""---
 description: Main module
+id: DS-001
 updated_by: archivist
 status: active
 ---
@@ -3121,7 +3133,7 @@ def _setup_validate_project_with_errors(tmp_path: Path) -> Path:
     concepts_dir = project / ".lexibrary" / "concepts"
     concepts_dir.mkdir(parents=True, exist_ok=True)
     (concepts_dir / "BrokenConcept.md").write_text(
-        "---\ntitle: Broken\n---\n\nMissing aliases, tags, status.\n",
+        "---\ntitle: Broken\nid: CN-001\n---\n\nMissing aliases, tags, status.\n",
         encoding="utf-8",
     )
     return project
@@ -3140,6 +3152,7 @@ def _setup_validate_project_with_warnings(tmp_path: Path) -> Path:
     design_dir.mkdir(parents=True, exist_ok=True)
     design_content = """---
 description: Main module
+id: DS-001
 updated_by: archivist
 status: active
 ---
@@ -3437,11 +3450,11 @@ class TestAgentRuleContent:
         assert "lexi orient" in rules
 
     def test_core_rules_includes_before_editing(self) -> None:
-        """get_core_rules() includes 'Before Editing Files' instructions."""
+        """get_core_rules() includes 'Before Reading or Editing Files' instructions."""
         from lexibrary.init.rules.base import get_core_rules
 
         rules = get_core_rules()
-        assert "Before Editing" in rules
+        assert "Before Reading or Editing Files" in rules
         assert "lexi lookup" in rules
 
     def test_core_rules_includes_after_editing(self) -> None:
@@ -4332,12 +4345,10 @@ class TestOrient:
         )
         assert result.exit_code == 0
 
-    def test_context_dump_still_works(self, tmp_path: Path) -> None:
-        """context-dump should still work as a hidden backward-compatible alias."""
-        result = runner.invoke(
-            lexi_app, ["context-dump"], catch_exceptions=False, env={"PWD": str(tmp_path)}
-        )
-        assert result.exit_code == 0
+    def test_context_dump_removed(self, tmp_path: Path) -> None:
+        """context-dump alias was removed; should return usage error."""
+        result = runner.invoke(lexi_app, ["context-dump"], env={"PWD": str(tmp_path)})
+        assert result.exit_code == 2
 
     # -- Topology and file descriptions --
 
@@ -4449,15 +4460,13 @@ class TestOrient:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """When output exceeds budget, deepest-path entries should be omitted first."""
-        import sys  # noqa: PLC0415
-
-        app_module = sys.modules["lexibrary.cli.lexi_app"]
+        import lexibrary.services.orient_render as orient_render_mod  # noqa: PLC0415
 
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".lexibrary").mkdir()
 
         # Use a tiny budget to force truncation easily
-        monkeypatch.setattr(app_module, "_ORIENT_CHAR_BUDGET", 400)
+        monkeypatch.setattr(orient_render_mod, "ORIENT_CHAR_BUDGET", 400)
 
         # Create a small TOPOLOGY.md
         topology_content = "# Project Topology\n\nroot/ -- My project\n"
@@ -4500,9 +4509,7 @@ class TestOrient:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Truncation should prioritise shallow (fewer /) entries over deep ones."""
-        import sys  # noqa: PLC0415
-
-        app_module = sys.modules["lexibrary.cli.lexi_app"]
+        import lexibrary.services.orient_render as orient_render_mod  # noqa: PLC0415
 
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".lexibrary").mkdir()
@@ -4511,7 +4518,7 @@ class TestOrient:
         (tmp_path / ".lexibrary" / "TOPOLOGY.md").write_text("# Topology\nSmall.", encoding="utf-8")
 
         # Use a very small budget to force truncation
-        monkeypatch.setattr(app_module, "_ORIENT_CHAR_BUDGET", 200)
+        monkeypatch.setattr(orient_render_mod, "ORIENT_CHAR_BUDGET", 200)
 
         _write_test_aindex(
             tmp_path,
@@ -4612,8 +4619,12 @@ class TestOrient:
 
         concepts_dir = tmp_path / ".lexibrary" / "concepts"
         concepts_dir.mkdir(parents=True)
-        (concepts_dir / "AuthFlow.md").write_text("---\ntitle: AuthFlow\n---\n", encoding="utf-8")
-        (concepts_dir / "DataModel.md").write_text("---\ntitle: DataModel\n---\n", encoding="utf-8")
+        (concepts_dir / "AuthFlow.md").write_text(
+            "---\ntitle: AuthFlow\nid: CN-002\n---\n", encoding="utf-8"
+        )
+        (concepts_dir / "DataModel.md").write_text(
+            "---\ntitle: DataModel\nid: CN-003\n---\n", encoding="utf-8"
+        )
 
         result = runner.invoke(lexi_app, ["orient"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -4630,7 +4641,9 @@ class TestOrient:
 
         conventions_dir = tmp_path / ".lexibrary" / "conventions"
         conventions_dir.mkdir(parents=True)
-        (conventions_dir / "naming.md").write_text("---\ntitle: naming\n---\n", encoding="utf-8")
+        (conventions_dir / "naming.md").write_text(
+            "---\ntitle: naming\nid: CN-004\n---\n", encoding="utf-8"
+        )
 
         result = runner.invoke(lexi_app, ["orient"], catch_exceptions=False)
         assert result.exit_code == 0
@@ -4983,7 +4996,7 @@ class TestImpact:
         design_path = project / ".lexibrary" / "designs" / "src" / "api" / "controller.py.md"
         design_path.parent.mkdir(parents=True, exist_ok=True)
         design_path.write_text(
-            "---\ndescription: HTTP API request handler\nupdated_by: archivist\n"
+            "---\ndescription: HTTP API request handler\nid: DS-001\nupdated_by: archivist\n"
             "---\n\n# controller\n",
             encoding="utf-8",
         )
@@ -5079,8 +5092,8 @@ class TestLookupKnownIssues:
 
     def test_render_known_issues_rendering(self) -> None:
         """_render_known_issues returns formatted text with status/title/attempts/votes."""
-        from lexibrary.cli.lexi_app import _render_known_issues
         from lexibrary.linkgraph.query import LinkGraph, LinkResult
+        from lexibrary.services.lookup_render import render_known_issues as _render_known_issues
 
         class FakeLinkGraph(LinkGraph):
             """Fake link graph for testing."""
@@ -5126,8 +5139,8 @@ class TestLookupKnownIssues:
 
     def test_render_known_issues_stale_excluded(self) -> None:
         """_render_known_issues excludes stale posts."""
-        from lexibrary.cli.lexi_app import _render_known_issues
         from lexibrary.linkgraph.query import LinkGraph, LinkResult
+        from lexibrary.services.lookup_render import render_known_issues as _render_known_issues
 
         class FakeLinkGraph(LinkGraph):
             def __init__(self, links: list[LinkResult]) -> None:
@@ -5166,8 +5179,8 @@ class TestLookupKnownIssues:
 
     def test_render_known_issues_display_limit(self) -> None:
         """_render_known_issues respects display_limit."""
-        from lexibrary.cli.lexi_app import _render_known_issues
         from lexibrary.linkgraph.query import LinkGraph, LinkResult
+        from lexibrary.services.lookup_render import render_known_issues as _render_known_issues
 
         class FakeLinkGraph(LinkGraph):
             def __init__(self, links: list[LinkResult]) -> None:
@@ -5340,7 +5353,7 @@ class TestLookupTokenBudget:
 
     def test_truncation_respects_priority(self) -> None:
         """Higher-priority sections are kept when budget is tight."""
-        from lexibrary.cli.lexi_app import _truncate_lookup_sections
+        from lexibrary.services.lookup import truncate_lookup_sections as _truncate_lookup_sections
 
         sections = [
             ("design", "x" * 400, 0),  # ~100 tokens
@@ -5361,7 +5374,7 @@ class TestLookupTokenBudget:
 
     def test_empty_sections_skipped(self) -> None:
         """Empty sections are not included in output."""
-        from lexibrary.cli.lexi_app import _truncate_lookup_sections
+        from lexibrary.services.lookup import truncate_lookup_sections as _truncate_lookup_sections
 
         sections = [
             ("design", "content here", 0),
@@ -5378,7 +5391,7 @@ class TestLookupTokenBudget:
 
     def test_estimate_tokens(self) -> None:
         """Token estimator returns reasonable estimates."""
-        from lexibrary.cli.lexi_app import _estimate_tokens
+        from lexibrary.services.lookup import estimate_tokens as _estimate_tokens
 
         assert _estimate_tokens("") == 0
         assert _estimate_tokens("hello world") > 0
@@ -5420,7 +5433,7 @@ class TestLookupTruncationFooter:
     """Tests for lookup truncation footer (task 8.2)."""
 
     def test_truncation_omits_sections(self) -> None:
-        from lexibrary.cli.lexi_app import _truncate_lookup_sections
+        from lexibrary.services.lookup import truncate_lookup_sections as _truncate_lookup_sections
 
         sections = [("issues", "x" * 200, 2), ("iwh", "y" * 200, 3), ("links", "z" * 200, 4)]
         result = _truncate_lookup_sections(sections, total_budget=60)
@@ -5508,9 +5521,7 @@ class TestOrientTopologyStaleness:
         assert "Raw topology is newer" not in result.output
         assert "TOPOLOGY.md is missing" not in result.output
 
-    def test_no_warn_when_raw_absent(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_warn_when_raw_absent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """No staleness warning when raw topology does not exist."""
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".lexibrary").mkdir()
@@ -5529,7 +5540,8 @@ class TestOrientTruncationFooter:
     """Tests for orient truncation footer (task 8.3)."""
 
     def test_orient_truncation_starred_format(self, tmp_path: Path) -> None:
-        from lexibrary.cli.lexi_app import _build_orient_content
+        from lexibrary.services.orient import build_orient
+        from lexibrary.services.orient_render import render_orient
 
         project = _setup_archivist_project(tmp_path)
         (project / ".lexibrary" / "TOPOLOGY.md").write_text("x" * 20000, encoding="utf-8")
@@ -5544,7 +5556,7 @@ class TestOrientTruncationFooter:
             f'generated="{now}" generator="lexibrary-v2" -->\n',
             encoding="utf-8",
         )
-        output = _build_orient_content(project)
+        output = render_orient(build_orient(project))
         if "*Truncated:" in output:
             assert "file descriptions omitted" in output
 

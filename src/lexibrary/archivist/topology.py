@@ -134,9 +134,7 @@ def _collect_aindex_data(project_root: Path) -> list[_DirInfo]:
         key_entries = [entry for entry in parsed.entries if _is_landmark_entry(entry)]
 
         # Collect all file entries for Directory Details section
-        all_file_entries = [
-            entry for entry in parsed.entries if entry.entry_type == "file"
-        ]
+        all_file_entries = [entry for entry in parsed.entries if entry.entry_type == "file"]
 
         infos.append(
             _DirInfo(
@@ -307,9 +305,7 @@ def _generate_header(infos: list[_DirInfo], project_root: Path) -> str:
     return line1
 
 
-def _generate_entry_point_candidates(
-    infos: list[_DirInfo], project_name: str
-) -> str:
+def _generate_entry_point_candidates(infos: list[_DirInfo], project_name: str) -> str:
     """Emit ALL entry-point keyword matches as a markdown table.
 
     Returns a section containing a table with columns File, Directory,
@@ -338,7 +334,7 @@ def _generate_entry_point_candidates(
             else:
                 rel = info.rel_path
                 if rel.startswith(project_name + "/"):
-                    rel = rel[len(project_name) + 1:]
+                    rel = rel[len(project_name) + 1 :]
                 display_dir = rel
 
             # Determine confidence
@@ -581,9 +577,7 @@ _PROJECT_CONFIG_FILES: tuple[tuple[str, str], ...] = (
 )
 
 
-def _build_source_module_map(
-    infos: list[_DirInfo], project_name: str
-) -> dict[str, _DirInfo]:
+def _build_source_module_map(infos: list[_DirInfo], project_name: str) -> dict[str, _DirInfo]:
     """Build a mapping from source module basename to its ``_DirInfo``.
 
     Used by test-directory collapse to correlate ``test_<name>/`` directories
@@ -620,9 +614,7 @@ def _build_source_module_map(
     return src_by_name
 
 
-def _render_directory_detail_block(
-    infos: list[_DirInfo], project_name: str, heading: str
-) -> str:
+def _render_directory_detail_block(infos: list[_DirInfo], project_name: str, heading: str) -> str:
     """Render per-directory subsections with billboard, counts, and file table.
 
     Each directory in *infos* gets a subsection containing:
@@ -731,7 +723,7 @@ def _display_path(rel_path: str, project_name: str) -> str:
         return f"{project_name}/"
     rel = rel_path
     if rel.startswith(project_name + "/"):
-        rel = rel[len(project_name) + 1:]
+        rel = rel[len(project_name) + 1 :]
     return f"{rel}/"
 
 
@@ -768,9 +760,7 @@ def _should_detail_directory(
     return False
 
 
-def _render_summary_block(
-    infos: list[_DirInfo], project_name: str, heading: str
-) -> str:
+def _render_summary_block(infos: list[_DirInfo], project_name: str, heading: str) -> str:
     """Render non-detailed directories as one-line summaries under *heading*.
 
     Each directory is rendered as: ``display_path -- N files``
@@ -823,35 +813,25 @@ def _generate_directory_details(
     dominant_source_dir = _find_dominant_source_dir(infos, project_name)
 
     detail_infos = [
-        i for i in non_test_infos
-        if _should_detail_directory(
-            i.rel_path, project_name, dominant_source_dir, detail_dirs
-        )
+        i
+        for i in non_test_infos
+        if _should_detail_directory(i.rel_path, project_name, dominant_source_dir, detail_dirs)
     ]
     summary_infos = [
-        i for i in non_test_infos
-        if not _should_detail_directory(
-            i.rel_path, project_name, dominant_source_dir, detail_dirs
-        )
+        i
+        for i in non_test_infos
+        if not _should_detail_directory(i.rel_path, project_name, dominant_source_dir, detail_dirs)
     ]
 
     # Build the source-modules section: full tables for detail dirs,
     # then one-line summaries for the rest
-    source_content = _render_directory_detail_block(
-        detail_infos, project_name, "## Source Modules"
-    )
+    source_content = _render_directory_detail_block(detail_infos, project_name, "## Source Modules")
 
     if summary_infos:
-        summary_text = _render_summary_block(
-            summary_infos, project_name, "## Other Directories"
-        )
-        source_content = (
-            source_content + "\n" + summary_text if source_content else summary_text
-        )
+        summary_text = _render_summary_block(summary_infos, project_name, "## Other Directories")
+        source_content = source_content + "\n" + summary_text if source_content else summary_text
 
-    test_content = _render_test_layout_block(
-        test_infos, infos, project_name
-    )
+    test_content = _render_test_layout_block(test_infos, infos, project_name)
 
     return source_content, test_content
 
@@ -988,14 +968,12 @@ def _apply_token_sentinel(
 
     if len(content) // 4 > _TOKEN_BUDGET:
         logger.warning(
-            "Raw topology exceeds 25K token budget after capping "
-            "(%d estimated tokens)",
+            "Raw topology exceeds 25K token budget after capping (%d estimated tokens)",
             len(content) // 4,
         )
     else:
         logger.warning(
-            "Raw topology capped to fit 25K token budget "
-            "(%d estimated tokens after trimming)",
+            "Raw topology capped to fit 25K token budget (%d estimated tokens after trimming)",
             len(content) // 4,
         )
 

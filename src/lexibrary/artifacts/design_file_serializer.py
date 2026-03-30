@@ -65,6 +65,7 @@ def serialize_design_file(data: DesignFile) -> str:
     # --- YAML frontmatter ---
     frontmatter_dict: dict[str, object] = {
         "description": data.frontmatter.description,
+        "id": data.frontmatter.id,
         "updated_by": data.frontmatter.updated_by,
         "status": data.frontmatter.status,
     }

@@ -14,6 +14,7 @@ def render_playbook_template(
     tags: list[str] | None = None,
     *,
     estimated_minutes: int | None = None,
+    playbook_id: str | None = None,
 ) -> str:
     """Render a scaffolded playbook markdown file.
 
@@ -30,6 +31,9 @@ def render_playbook_template(
         Categorisation tags.
     estimated_minutes:
         Optional time estimate for the procedure.
+    playbook_id:
+        Optional artifact ID (e.g. ``"PB-001"``).  When provided the
+        ``id`` field is included in the YAML frontmatter.
     """
     triggers = trigger_files or []
     tag_list = tags or []
@@ -41,6 +45,8 @@ def render_playbook_template(
         "status": "draft",
         "source": "user",
     }
+    if playbook_id is not None:
+        fm_data["id"] = playbook_id
     if estimated_minutes is not None:
         fm_data["estimated_minutes"] = estimated_minutes
 

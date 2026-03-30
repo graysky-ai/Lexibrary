@@ -35,11 +35,3 @@ def slugify(title: str) -> str:
     if last_hyphen > 0:
         truncated = truncated[:last_hyphen]
     return truncated.strip("-")
-
-
-def concept_slug(title: str) -> str:
-    """Derive a filesystem-safe slug from a concept title.
-
-    Delegates to :func:`slugify`.
-    """
-    return slugify(title)

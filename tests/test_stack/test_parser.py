@@ -5,9 +5,6 @@ from __future__ import annotations
 from datetime import date, datetime
 from pathlib import Path
 
-import pytest
-
-from lexibrary.exceptions import ConfigError
 from lexibrary.stack.parser import parse_stack_post
 
 # ---------------------------------------------------------------------------
@@ -490,11 +487,11 @@ class TestParseNonexistentFile:
 class TestParseMalformedFile:
     """Tests for parsing malformed files."""
 
-    def test_invalid_frontmatter_raises_config_error(self, tmp_path: Path) -> None:
+    def test_invalid_frontmatter_returns_none(self, tmp_path: Path) -> None:
         p = tmp_path / "malformed.md"
         p.write_text(_MALFORMED_FRONTMATTER)
-        with pytest.raises(ConfigError):
-            parse_stack_post(p)
+        result = parse_stack_post(p)
+        assert result is None
 
     def test_no_frontmatter_returns_none(self, tmp_path: Path) -> None:
         p = tmp_path / "no-fm.md"

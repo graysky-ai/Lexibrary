@@ -49,7 +49,7 @@ class TestStalenessMetadata:
 
 
 def _frontmatter(**overrides: object) -> DesignFileFrontmatter:
-    base: dict = {"description": "A module."}
+    base: dict = {"description": "A module.", "id": "DS-001"}
     base.update(overrides)
     return DesignFileFrontmatter(**base)
 
@@ -62,7 +62,7 @@ def _frontmatter(**overrides: object) -> DesignFileFrontmatter:
 class TestDesignFileFrontmatter:
     def test_defaults(self) -> None:
         """Create frontmatter with only description; check all defaults."""
-        fm = DesignFileFrontmatter(description="Auth service")
+        fm = DesignFileFrontmatter(description="Auth service", id="DS-001")
         assert fm.description == "Auth service"
         assert fm.updated_by == "archivist"
         assert fm.status == "active"
@@ -71,18 +71,18 @@ class TestDesignFileFrontmatter:
 
     def test_agent_authored(self) -> None:
         """Agent-authored frontmatter stores updated_by correctly."""
-        fm = DesignFileFrontmatter(description="Auth service", updated_by="agent")
+        fm = DesignFileFrontmatter(description="Auth service", id="DS-001", updated_by="agent")
         assert fm.updated_by == "agent"
         assert fm.description == "Auth service"
 
     def test_bootstrap_quick(self) -> None:
         """bootstrap-quick is a valid updated_by value."""
-        fm = DesignFileFrontmatter(description="Module", updated_by="bootstrap-quick")
+        fm = DesignFileFrontmatter(description="Module", id="DS-001", updated_by="bootstrap-quick")
         assert fm.updated_by == "bootstrap-quick"
 
     def test_maintainer_authored(self) -> None:
         """maintainer is a valid updated_by value."""
-        fm = DesignFileFrontmatter(description="Module", updated_by="maintainer")
+        fm = DesignFileFrontmatter(description="Module", id="DS-001", updated_by="maintainer")
         assert fm.updated_by == "maintainer"
 
     def test_deprecated_frontmatter(self) -> None:
@@ -90,6 +90,7 @@ class TestDesignFileFrontmatter:
         ts = datetime(2026, 3, 1, 12, 0, 0)
         fm = DesignFileFrontmatter(
             description="Old module",
+            id="DS-001",
             status="deprecated",
             deprecated_at=ts,
             deprecated_reason="source_deleted",
@@ -100,13 +101,14 @@ class TestDesignFileFrontmatter:
 
     def test_unlinked_status(self) -> None:
         """unlinked is a valid status value."""
-        fm = DesignFileFrontmatter(description="Module", status="unlinked")
+        fm = DesignFileFrontmatter(description="Module", id="DS-001", status="unlinked")
         assert fm.status == "unlinked"
 
     def test_deprecated_reason_source_renamed(self) -> None:
         """source_renamed is a valid deprecated_reason."""
         fm = DesignFileFrontmatter(
             description="Module",
+            id="DS-001",
             status="deprecated",
             deprecated_reason="source_renamed",
         )
@@ -116,6 +118,7 @@ class TestDesignFileFrontmatter:
         """manual is a valid deprecated_reason."""
         fm = DesignFileFrontmatter(
             description="Module",
+            id="DS-001",
             status="deprecated",
             deprecated_reason="manual",
         )
@@ -124,17 +127,17 @@ class TestDesignFileFrontmatter:
     def test_invalid_updated_by_rejected(self) -> None:
         """Invalid updated_by value is rejected by validation."""
         with pytest.raises(ValidationError):
-            DesignFileFrontmatter(description="X", updated_by="unknown")  # type: ignore[arg-type]
+            DesignFileFrontmatter(description="X", id="DS-001", updated_by="unknown")  # type: ignore[arg-type]
 
     def test_invalid_status_rejected(self) -> None:
         """Invalid status value is rejected by validation."""
         with pytest.raises(ValidationError):
-            DesignFileFrontmatter(description="X", status="archived")  # type: ignore[arg-type]
+            DesignFileFrontmatter(description="X", id="DS-001", status="archived")  # type: ignore[arg-type]
 
     def test_invalid_deprecated_reason_rejected(self) -> None:
         """Invalid deprecated_reason value is rejected by validation."""
         with pytest.raises(ValidationError):
-            DesignFileFrontmatter(description="X", deprecated_reason="bad_reason")  # type: ignore[arg-type]
+            DesignFileFrontmatter(description="X", id="DS-001", deprecated_reason="bad_reason")  # type: ignore[arg-type]
 
 
 class TestDesignFile:
@@ -213,7 +216,7 @@ class TestAIndexFile:
 
 class TestConceptFileFrontmatter:
     def test_defaults(self) -> None:
-        fm = ConceptFileFrontmatter(title="JWT Auth")
+        fm = ConceptFileFrontmatter(title="JWT Auth", id="CN-001")
         assert fm.title == "JWT Auth"
         assert fm.aliases == []
         assert fm.tags == []
@@ -223,6 +226,7 @@ class TestConceptFileFrontmatter:
     def test_all_fields(self) -> None:
         fm = ConceptFileFrontmatter(
             title="JWT Auth",
+            id="CN-001",
             aliases=["json-web-token"],
             tags=["auth", "security"],
             status="active",
@@ -233,11 +237,12 @@ class TestConceptFileFrontmatter:
 
     def test_invalid_status_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            ConceptFileFrontmatter(title="Bad", status="archived")  # type: ignore[arg-type]
+            ConceptFileFrontmatter(title="Bad", id="CN-001", status="archived")  # type: ignore[arg-type]
 
     def test_deprecated_with_superseded_by(self) -> None:
         fm = ConceptFileFrontmatter(
             title="OldAuth",
+            id="CN-001",
             status="deprecated",
             superseded_by="NewAuth",
         )
@@ -246,7 +251,7 @@ class TestConceptFileFrontmatter:
 
     def test_all_valid_statuses(self) -> None:
         for status in ("draft", "active", "deprecated"):
-            fm = ConceptFileFrontmatter(title="Test", status=status)  # type: ignore[arg-type]
+            fm = ConceptFileFrontmatter(title="Test", id="CN-001", status=status)  # type: ignore[arg-type]
             assert fm.status == status
 
 
@@ -257,7 +262,7 @@ class TestConceptFileFrontmatter:
 
 class TestConceptFile:
     def test_minimal_valid(self) -> None:
-        fm = ConceptFileFrontmatter(title="auth")
+        fm = ConceptFileFrontmatter(title="auth", id="CN-001")
         cf = ConceptFile(frontmatter=fm, body="")
         assert cf.summary == ""
         assert cf.related_concepts == []
@@ -265,13 +270,14 @@ class TestConceptFile:
         assert cf.decision_log == []
 
     def test_name_property(self) -> None:
-        fm = ConceptFileFrontmatter(title="Authentication")
+        fm = ConceptFileFrontmatter(title="Authentication", id="CN-001")
         cf = ConceptFile(frontmatter=fm)
         assert cf.name == "Authentication"
 
     def test_full_fields(self) -> None:
         fm = ConceptFileFrontmatter(
             title="JWT Auth",
+            id="CN-001",
             aliases=["json-web-token"],
             tags=["auth"],
             status="active",

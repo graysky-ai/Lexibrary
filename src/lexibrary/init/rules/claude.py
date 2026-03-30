@@ -12,7 +12,7 @@ Generates:
 - ``.claude/skills/lexi-orient/SKILL.md`` -- orient session-start skill
 - ``.claude/skills/lexi-search/SKILL.md`` -- cross-artifact search skill
 - ``.claude/skills/lexi-lookup/SKILL.md`` -- file lookup skill
-- ``.claude/skills/lexi-concepts/SKILL.md`` -- concept search skill
+- ``.claude/skills/lexi-concept/SKILL.md`` -- concept search skill
 - ``.claude/skills/lexi-stack/SKILL.md`` -- Stack Q&A skill
 - ``.claude/skills/topology-builder/SKILL.md`` -- topology synthesis skill
 - ``.claude/skills/topology-builder/assets/topology_template.md`` -- output template
@@ -69,7 +69,7 @@ _STALE_COMMAND_FILES: list[str] = [
     "lexi-orient.md",
     "lexi-search.md",
     "lexi-lookup.md",
-    "lexi-concepts.md",
+    "lexi-concept.md",
     "lexi-stack.md",
 ]
 
@@ -364,7 +364,7 @@ def generate_claude_rules(project_root: Path) -> list[Path]:
     9.  ``.claude/skills/lexi-orient/SKILL.md`` -- orient skill (Open Skill format).
     10. ``.claude/skills/lexi-search/SKILL.md`` -- search skill.
     11. ``.claude/skills/lexi-lookup/SKILL.md`` -- lookup skill.
-    12. ``.claude/skills/lexi-concepts/SKILL.md`` -- concepts skill.
+    12. ``.claude/skills/lexi-concept/SKILL.md`` -- concepts skill.
     13. ``.claude/skills/lexi-stack/SKILL.md`` -- Stack Q&A skill.
     14. ``.claude/skills/topology-builder/SKILL.md`` -- topology synthesis skill.
     15. ``.claude/skills/topology-builder/assets/topology_template.md`` -- output template.
@@ -413,15 +413,15 @@ def generate_claude_rules(project_root: Path) -> list[Path]:
     skills_dir = project_root / ".claude" / "skills"
     skills_dir.mkdir(parents=True, exist_ok=True)
 
-    _LEXI_SKILLS = [
+    lexi_skills = [
         "lexi-orient",
         "lexi-search",
         "lexi-lookup",
-        "lexi-concepts",
+        "lexi-concept",
         "lexi-stack",
     ]
 
-    for skill_name in _LEXI_SKILLS:
+    for skill_name in lexi_skills:
         content = read_template(f"rules/skills/{skill_name}/SKILL.md").strip()
         skill_dir = skills_dir / skill_name
         skill_dir.mkdir(parents=True, exist_ok=True)

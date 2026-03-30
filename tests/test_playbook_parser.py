@@ -42,7 +42,7 @@ class TestExtractOverview:
 
 class TestFrontmatterRegex:
     def test_matches_valid_frontmatter(self) -> None:
-        text = "---\ntitle: Test\n---\nBody here."
+        text = "---\ntitle: Test\nid: CN-001\n---\nBody here."
         m = _FRONTMATTER_RE.match(text)
         assert m is not None
         assert "title: Test" in m.group(1)
@@ -66,6 +66,7 @@ class TestParsePlaybookFile:
         content = (
             "---\n"
             "title: DB Migration\n"
+            "id: PB-001\n"
             "trigger_files: [alembic/**]\n"
             "tags: [database]\n"
             "status: active\n"
@@ -100,7 +101,7 @@ class TestParsePlaybookFile:
         assert result is None
 
     def test_invalid_yaml(self, tmp_path: Path) -> None:
-        content = "---\ntitle: [unclosed bracket\n---\nBody.\n"
+        content = "---\ntitle: [unclosed bracket\nid: CN-002\n---\nBody.\n"
         p = tmp_path / "bad-yaml.md"
         p.write_text(content, encoding="utf-8")
         result = parse_playbook_file(p)
@@ -126,6 +127,7 @@ class TestParsePlaybookFile:
             "---\n"
             "# title: use a semantic name that describes the procedure\n"
             "title: Release Checklist\n"
+            "id: PB-002\n"
             "trigger_files: []\n"
             "tags: [release]\n"
             "status: draft\n"
@@ -142,7 +144,7 @@ class TestParsePlaybookFile:
         assert result.overview == "Overview of release process."
 
     def test_empty_body(self, tmp_path: Path) -> None:
-        content = "---\ntitle: Minimal\n---\n"
+        content = "---\ntitle: Minimal\nid: CN-003\n---\n"
         p = tmp_path / "minimal.md"
         p.write_text(content, encoding="utf-8")
 
@@ -152,7 +154,7 @@ class TestParsePlaybookFile:
         assert result.overview == ""
 
     def test_defaults_applied(self, tmp_path: Path) -> None:
-        content = "---\ntitle: Defaults Test\n---\nBody.\n"
+        content = "---\ntitle: Defaults Test\nid: CN-004\n---\nBody.\n"
         p = tmp_path / "defaults.md"
         p.write_text(content, encoding="utf-8")
 

@@ -29,6 +29,7 @@ def serialize_playbook_file(playbook: PlaybookFile) -> str:
     # Build ordered frontmatter dict, omitting optional None/empty fields
     fm_data: dict[str, object] = {
         "title": fm.title,
+        "id": fm.id,
     }
 
     # trigger_files — always include (even if empty, it's a core field)

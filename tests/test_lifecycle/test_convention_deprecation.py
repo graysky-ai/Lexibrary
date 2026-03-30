@@ -22,6 +22,15 @@ from lexibrary.lifecycle.convention_deprecation import (
 # ---------------------------------------------------------------------------
 
 
+_convention_id_counter = 0
+
+
+def _next_convention_id() -> str:
+    global _convention_id_counter
+    _convention_id_counter += 1
+    return f"CV-{_convention_id_counter:03d}"
+
+
 def _create_convention_file(
     project_root: Path,
     slug: str,
@@ -41,6 +50,7 @@ def _create_convention_file(
     lines = [
         "---",
         f"title: '{title}'",
+        f"id: {_next_convention_id()}",
         f"scope: {scope}",
         "tags: []",
         f"status: {status}",

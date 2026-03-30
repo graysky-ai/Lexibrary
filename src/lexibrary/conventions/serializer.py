@@ -21,6 +21,7 @@ def serialize_convention_file(convention: ConventionFile) -> str:
     """
     fm_data: dict[str, object] = {
         "title": convention.frontmatter.title,
+        "id": convention.frontmatter.id,
         "scope": convention.frontmatter.scope,
         "tags": convention.frontmatter.tags,
         "status": convention.frontmatter.status,

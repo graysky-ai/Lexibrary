@@ -10,7 +10,7 @@ Functions:
     get_orient_skill_content: Content for a ``/lexi-orient`` session-start skill.
     get_search_skill_content: Content for a ``/lexi-search`` cross-artifact search skill.
     get_lookup_skill_content: Content for a ``/lexi-lookup`` file lookup skill.
-    get_concepts_skill_content: Content for a ``/lexi-concepts`` concept search skill.
+    get_concepts_skill_content: Content for a ``/lexi-concept`` concept search skill.
     get_stack_skill_content: Content for a ``/lexi-stack`` Stack Q&A skill.
 """
 
@@ -85,7 +85,7 @@ def get_lookup_skill_content() -> str:
 
 
 def get_concepts_skill_content() -> str:
-    """Return the content for a ``/lexi-concepts`` skill.
+    """Return the content for a ``/lexi-concept`` skill.
 
     The concepts skill runs ``lexi concepts [topic]`` with "when to use"
     guidance (before architectural decisions, when following wikilinks)
@@ -94,7 +94,7 @@ def get_concepts_skill_content() -> str:
     Returns:
         Multiline string with concepts skill instructions.
     """
-    return read_template("rules/skills/lexi-concepts/SKILL.md").strip()
+    return read_template("rules/skills/lexi-concept/SKILL.md").strip()
 
 
 def get_stack_skill_content() -> str:

@@ -53,6 +53,18 @@ class ConceptIndex:
                     return concept
         return None
 
+    def find_by_id(self, artifact_id: str) -> ConceptFile | None:
+        """Find a concept by its artifact ID (e.g. ``CN-001``).
+
+        Performs a case-insensitive match against the ``id`` field in each
+        concept's frontmatter.  Returns the first match or ``None``.
+        """
+        needle = artifact_id.strip().upper()
+        for concept in self._concepts.values():
+            if concept.frontmatter.id is not None and concept.frontmatter.id.upper() == needle:
+                return concept
+        return None
+
     def search(self, query: str) -> list[ConceptFile]:
         """Search concepts by normalized substring match.
 

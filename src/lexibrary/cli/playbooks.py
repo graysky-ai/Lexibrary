@@ -6,7 +6,7 @@ from typing import Annotated
 
 import typer
 
-from lexibrary.cli._output import error, hint, info
+from lexibrary.cli._output import error, hint, info, warn
 from lexibrary.cli._shared import require_project_root
 
 playbook_app = typer.Typer(help="Playbook lifecycle management commands.", rich_markup_mode=None)
@@ -49,30 +49,48 @@ def playbook_new(
     ] = None,
 ) -> None:
     """Create a scaffolded playbook file. Status defaults to draft."""
-    from lexibrary.artifacts.playbook import playbook_slug  # noqa: PLC0415
+    from lexibrary.artifacts.ids import next_artifact_id  # noqa: PLC0415
+    from lexibrary.artifacts.playbook import playbook_file_path, playbook_slug  # noqa: PLC0415
+    from lexibrary.artifacts.title_check import find_title_matches  # noqa: PLC0415
     from lexibrary.playbooks.template import render_playbook_template  # noqa: PLC0415
 
     project_root = require_project_root()
     playbooks_dir = project_root / ".lexibrary" / "playbooks"
     playbooks_dir.mkdir(parents=True, exist_ok=True)
 
-    # Check for duplicate slug
+    # Title collision detection
+    title_result = find_title_matches(title, "playbook", project_root)
+    if title_result.has_same_type:
+        match = title_result.same_type[0]
+        rel = match.file_path.relative_to(project_root)
+        error(f"A playbook with this title already exists: {rel}")
+        hint("Edit the existing playbook instead of creating a duplicate.")
+        raise typer.Exit(1)
+    if title_result.has_cross_type:
+        for match in title_result.cross_type:
+            rel = match.file_path.relative_to(project_root)
+            warn(f"Related {match.kind} with same title exists: {rel}")
+
+    # Check for duplicate slug (match ID-prefixed filenames)
     slug = playbook_slug(title)
-    existing = playbooks_dir / f"{slug}.md"
-    if existing.exists():
+    existing_matches = list(playbooks_dir.glob(f"PB-*-{slug}.md"))
+    if existing_matches:
+        existing = existing_matches[0]
         error(
             f"Playbook already exists: {existing.relative_to(project_root)}\n"
             f"Edit the existing file instead of creating a duplicate."
         )
         raise typer.Exit(1)
 
+    playbook_id = next_artifact_id("PB", playbooks_dir, "PB-*-*.md")
     content = render_playbook_template(
         title=title,
         trigger_files=trigger_file or [],
         tags=tag or [],
         estimated_minutes=estimated_minutes,
+        playbook_id=playbook_id,
     )
-    target = playbooks_dir / f"{slug}.md"
+    target = playbook_file_path(playbook_id, title, playbooks_dir)
     target.write_text(content, encoding="utf-8")
 
     info(f"Created {target.relative_to(project_root)}")

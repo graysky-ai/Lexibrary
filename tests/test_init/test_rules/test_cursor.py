@@ -251,7 +251,7 @@ class TestSkillsFileNewSkills:
         generate_cursor_rules(tmp_path)
         skills = tmp_path / ".cursor" / "skills" / "lexi.md"
         content = skills.read_text(encoding="utf-8")
-        assert "lexi concepts" in content
+        assert "lexi concept" in content
 
     def test_skills_has_stack_content(self, tmp_path: Path) -> None:
         """Skills file contains stack skill content."""

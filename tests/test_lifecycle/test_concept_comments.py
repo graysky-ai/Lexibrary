@@ -35,7 +35,7 @@ def _create_concept_file(
 
     concept_path = concepts_dir / f"{slug}.md"
     concept_path.write_text(
-        f"---\ntitle: {title}\naliases: []\ntags: []\nstatus: {status}\n---\n\n"
+        f"---\ntitle: {title}\nid: CN-001\naliases: []\ntags: []\nstatus: {status}\n---\n\n"
         f"Test concept body.\n",
         encoding="utf-8",
     )

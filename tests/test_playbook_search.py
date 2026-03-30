@@ -31,6 +31,15 @@ def _setup_project(tmp_path: Path) -> Path:
     return tmp_path
 
 
+_playbook_id_counter = 0
+
+
+def _next_playbook_id() -> str:
+    global _playbook_id_counter
+    _playbook_id_counter += 1
+    return f"PB-{_playbook_id_counter:03d}"
+
+
 def _create_playbook_file(
     project: Path,
     title: str,
@@ -52,6 +61,7 @@ def _create_playbook_file(
 
     fm_data: dict[str, object] = {
         "title": title,
+        "id": _next_playbook_id(),
         "status": status,
         "tags": tags or [],
         "source": "user",

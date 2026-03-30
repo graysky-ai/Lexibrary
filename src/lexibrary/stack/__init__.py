@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from lexibrary.stack.helpers import find_post_path, stack_dir
 from lexibrary.stack.index import StackIndex
 from lexibrary.stack.models import (
     ResolutionType,
@@ -34,6 +35,7 @@ __all__ = [
     "StackStatus",
     "accept_finding",
     "add_finding",
+    "find_post_path",
     "mark_duplicate",
     "mark_outdated",
     "mark_stale",
@@ -42,4 +44,5 @@ __all__ = [
     "record_vote",
     "render_post_template",
     "serialize_stack_post",
+    "stack_dir",
 ]

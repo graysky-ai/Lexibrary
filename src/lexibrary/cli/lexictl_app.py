@@ -9,11 +9,12 @@ import typer
 
 from lexibrary.cli._output import error, hint, info, warn
 from lexibrary.cli._shared import (
-    _run_status,
     _run_validate,
     load_dotenv_if_configured,
     require_project_root,
 )
+from lexibrary.services.status import collect_status
+from lexibrary.services.status_render import render_dashboard, render_quiet
 
 lexictl_app = typer.Typer(
     name="lexictl",
@@ -806,8 +807,12 @@ def status(
 ) -> None:
     """Show library health and staleness summary."""
     project_root = require_project_root()
-    exit_code = _run_status(project_root, path=path, quiet=quiet, cli_prefix="lexictl")
-    raise typer.Exit(exit_code)
+    result = collect_status(project_root)
+    if quiet:
+        info(render_quiet(result, cli_prefix="lexictl"))
+    else:
+        info(render_dashboard(result, cli_prefix="lexictl"))
+    raise typer.Exit(result.exit_code)
 
 
 # ---------------------------------------------------------------------------

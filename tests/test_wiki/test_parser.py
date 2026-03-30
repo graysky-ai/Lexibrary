@@ -9,6 +9,7 @@ from lexibrary.wiki.parser import parse_concept_file
 VALID_CONCEPT = """\
 ---
 title: JWT Auth
+id: CN-001
 aliases:
   - JSON Web Token
 tags:
@@ -115,12 +116,12 @@ class TestParseConceptFileEdgeCases:
 
     def test_invalid_frontmatter_bad_status(self, tmp_path: Path) -> None:
         path = tmp_path / "bad.md"
-        path.write_text("---\ntitle: Test\nstatus: unknown\n---\nBody.\n")
+        path.write_text("---\ntitle: Test\nid: CN-001\nstatus: unknown\n---\nBody.\n")
         assert parse_concept_file(path) is None
 
     def test_empty_body(self, tmp_path: Path) -> None:
         path = tmp_path / "empty.md"
-        path.write_text("---\ntitle: Empty\n---\n")
+        path.write_text("---\ntitle: Empty\nid: CN-002\n---\n")
         result = parse_concept_file(path)
         assert result is not None
         assert result.summary == ""
@@ -130,21 +131,23 @@ class TestParseConceptFileEdgeCases:
 
     def test_no_wikilinks(self, tmp_path: Path) -> None:
         path = tmp_path / "nolinks.md"
-        path.write_text("---\ntitle: Plain\n---\nJust plain text.\n")
+        path.write_text("---\ntitle: Plain\nid: CN-003\n---\nJust plain text.\n")
         result = parse_concept_file(path)
         assert result is not None
         assert result.related_concepts == []
 
     def test_no_decision_log_section(self, tmp_path: Path) -> None:
         path = tmp_path / "nodeclog.md"
-        path.write_text("---\ntitle: NoDL\n---\n## Details\n\nSome details.\n")
+        path.write_text("---\ntitle: NoDL\nid: CN-004\n---\n## Details\n\nSome details.\n")
         result = parse_concept_file(path)
         assert result is not None
         assert result.decision_log == []
 
     def test_summary_before_first_heading(self, tmp_path: Path) -> None:
         path = tmp_path / "summ.md"
-        path.write_text("---\ntitle: Summ\n---\nFirst paragraph.\n\n## Heading\n\nMore.\n")
+        path.write_text(
+            "---\ntitle: Summ\nid: CN-005\n---\nFirst paragraph.\n\n## Heading\n\nMore.\n"
+        )
         result = parse_concept_file(path)
         assert result is not None
         assert result.summary == "First paragraph."

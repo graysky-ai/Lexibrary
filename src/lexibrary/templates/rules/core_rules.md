@@ -2,15 +2,19 @@
 
 ## Session Start
 
-1. Run `lexi orient` to orient yourself in this project. This displays the
-   project topology, library health, and any IWH (I Was Here) signals left
-   by a previous session.
-   - If IWH signals are listed, run `lexi iwh read <directory>` for each
-     to understand the context and consume the signal before proceeding.
+Run `lexi orient` before any other action. This provides project layout, active
+IWH signals, and library health stats. Do not begin coding without this context.
 
-## Before Editing Files
+If signals exist in a directory you are working in, run `lexi iwh read <dir>` to
+consume the signal and understand what the previous session left behind.
 
-- Run `lexi lookup <file>` before editing any source file under `src/`.
+Do not consume IWH signals for directories you are not actively working in —
+consuming deletes the signal permanently. Sub-agents must not consume IWH signals.
+Do not create an IWH signal if all work is complete.
+
+## Before Reading or Editing Files
+
+- Always run `lexi lookup <file>` before reading or editing any source file under `src/`.
   This does not apply to test files.
 
 ## After Editing Files
@@ -25,12 +29,12 @@
 
 ## Architectural Decisions
 
-- Run `lexi concepts <topic>` before making architectural decisions
+- Always run `lexi search --type stack <query>` before making architectural decisions
   to check for existing project conventions and concepts.
 
 ## Debugging and Problem Solving
 
-- Run `lexi stack search <query>` before starting to debug an issue
+- Always run `lexi stack search <query>` before starting to debug an issue
   -- a solution may already exist.
 - For complex research or investigation, delegate to the `lexi-research`
   subagent rather than doing extensive exploration inline.
@@ -42,7 +46,7 @@
 - If you must stop before completing a task, run:
   `lexi iwh write <directory> --scope incomplete --body "description of what remains"`
 - Use `--scope blocked` if work cannot proceed until a condition is met.
-- Do NOT create an IWH signal if all work is clean and complete.
+- If you encounter files being modified or created by a concurrent agent, use .iwh files to coordinate.
 
 ## Prohibited Commands
 

@@ -69,6 +69,7 @@ def _make_design_file(
         body = (
             "---\n"
             f"description: {description}\n"
+            "id: DS-001\n"
             "updated_by: archivist\n"
             "---\n"
             "\n"
@@ -965,7 +966,7 @@ class TestUpdateProjectConceptLoading:
 
         concept_md = concepts_dir / "Authentication.md"
         concept_md.write_text(
-            "---\ntitle: Authentication\naliases: []\ntags: [security]\n"
+            "---\ntitle: Authentication\nid: CN-001\naliases: []\ntags: [security]\n"
             "status: active\n---\n\nAuth concept body.\n",
             encoding="utf-8",
         )
@@ -2429,6 +2430,7 @@ class TestPipelineIntegrationSkeletonOnly:
             body=(
                 "---\n"
                 "description: Design file for foo\n"
+                "id: DS-001\n"
                 "updated_by: skeleton-fallback\n"
                 "---\n"
                 "\n"
@@ -2472,6 +2474,7 @@ class TestPipelineIntegrationSkeletonOnly:
             body=(
                 "---\n"
                 "description: Design file for foo\n"
+                "id: DS-001\n"
                 "updated_by: skeleton-fallback\n"
                 "---\n"
                 "\n"
@@ -2627,8 +2630,7 @@ class TestPipelineTopologyIntegration:
             for r in caplog.records
         )
         assert any(
-            "Run /topology-builder to generate TOPOLOGY.md" in r.message
-            for r in caplog.records
+            "Run /topology-builder to generate TOPOLOGY.md" in r.message for r in caplog.records
         )
 
     @pytest.mark.asyncio()

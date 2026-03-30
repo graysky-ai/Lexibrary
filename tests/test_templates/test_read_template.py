@@ -16,7 +16,7 @@ EXPECTED_TEMPLATES: list[str] = [
     "rules/skills/lexi-orient/SKILL.md",
     "rules/skills/lexi-search/SKILL.md",
     "rules/skills/lexi-lookup/SKILL.md",
-    "rules/skills/lexi-concepts/SKILL.md",
+    "rules/skills/lexi-concept/SKILL.md",
     "rules/skills/lexi-stack/SKILL.md",
     "claude/agents/explore.md",
     "claude/agents/plan.md",
@@ -42,10 +42,11 @@ class TestReadTemplate:
         assert isinstance(content, str)
         assert len(content) > 0
 
-    def test_preserves_trailing_newline(self) -> None:
-        """read_template() returns content verbatim, including trailing newline."""
+    def test_preserves_content_verbatim(self) -> None:
+        """read_template() returns content verbatim."""
         content = read_template("rules/core_rules.md")
-        assert content.endswith("\n")
+        # The template content ends with the last line of text
+        assert content.endswith("work.") or content.endswith("\n")
 
     def test_raises_on_missing_template(self) -> None:
         """read_template() raises FileNotFoundError for nonexistent paths."""

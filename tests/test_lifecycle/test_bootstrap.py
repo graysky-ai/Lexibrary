@@ -75,6 +75,7 @@ def _make_design_file(
         source_path=source_rel,
         frontmatter=DesignFileFrontmatter(
             description=f"Design for {source_rel}",
+            id="DS-001",
             updated_by=updated_by,
         ),
         summary=f"Design for {source_rel}",

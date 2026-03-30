@@ -52,6 +52,7 @@ def _write_design_file(
     content = f"""\
 ---
 description: Test design file
+id: DS-001
 updated_by: archivist
 status: active
 ---
@@ -111,6 +112,7 @@ def _write_concept_file(
         f"""\
 ---
 title: {title}
+id: CN-001
 aliases: {aliases_yaml}
 tags: {tags_yaml}
 status: {status}
@@ -501,6 +503,7 @@ class TestCheckFilter:
             "playbook_wikilinks",
             "playbook_staleness",
             "playbook_deprecated_ttl",
+            "artifact_id_uniqueness",
         }
         assert set(AVAILABLE_CHECKS.keys()) == expected
 
@@ -538,9 +541,9 @@ class TestAllChecksRegistered:
     """Verify that validate_library() includes all 27 checks and that
     link-graph checks degrade gracefully when index.db is absent."""
 
-    def test_available_checks_count_is_46(self) -> None:
-        """AVAILABLE_CHECKS should contain exactly 46 entries."""
-        assert len(AVAILABLE_CHECKS) == 46
+    def test_available_checks_count_is_47(self) -> None:
+        """AVAILABLE_CHECKS should contain exactly 47 entries."""
+        assert len(AVAILABLE_CHECKS) == 47
 
     def test_validate_library_runs_all_13_checks_without_filters(self, tmp_path: Path) -> None:
         """With no severity or check filters, all 15 checks should be invoked.

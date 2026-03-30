@@ -54,6 +54,8 @@ def convention_new(
         convention_file_path,
         convention_slug,
     )
+    from lexibrary.artifacts.ids import next_artifact_id  # noqa: PLC0415
+    from lexibrary.artifacts.title_check import find_title_matches  # noqa: PLC0415
     from lexibrary.conventions.serializer import serialize_convention_file  # noqa: PLC0415
 
     project_root = require_project_root()
@@ -63,10 +65,24 @@ def convention_new(
     # Derive title from body if not provided
     resolved_title = title if title else body[:60].strip()
 
-    # Check for duplicate slug
+    # Title collision detection
+    title_result = find_title_matches(resolved_title, "convention", project_root)
+    if title_result.has_same_type:
+        match = title_result.same_type[0]
+        rel = match.file_path.relative_to(project_root)
+        error(f"A convention with this title already exists: {rel}")
+        hint("Edit the existing convention instead of creating a duplicate.")
+        raise typer.Exit(1)
+    if title_result.has_cross_type:
+        for match in title_result.cross_type:
+            rel = match.file_path.relative_to(project_root)
+            warn(f"Related {match.kind} with same title exists: {rel}")
+
+    # Check for duplicate slug (match ID-prefixed filenames)
     slug = convention_slug(resolved_title)
-    existing = conventions_dir / f"{slug}.md"
-    if existing.exists():
+    existing_matches = list(conventions_dir.glob(f"CV-*-{slug}.md"))
+    if existing_matches:
+        existing = existing_matches[0]
         error(
             f"Convention already exists: {existing.relative_to(project_root)}\n"
             f"Edit the existing file instead of creating a duplicate."
@@ -82,8 +98,10 @@ def convention_new(
         conv_status = "active"
         conv_priority = 0
 
+    convention_id = next_artifact_id("CV", conventions_dir, "CV-*-*.md")
     frontmatter = ConventionFileFrontmatter(
         title=resolved_title,
+        id=convention_id,
         scope=scope_value,
         tags=tag or [],
         status=conv_status,
@@ -93,7 +111,7 @@ def convention_new(
     )
     convention = ConventionFile(frontmatter=frontmatter, body=body)
     content = serialize_convention_file(convention)
-    target = convention_file_path(resolved_title, conventions_dir)
+    target = convention_file_path(convention_id, resolved_title, conventions_dir)
     target.write_text(content, encoding="utf-8")
 
     info(f"Created {target.relative_to(project_root)}")

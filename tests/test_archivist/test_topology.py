@@ -1215,9 +1215,7 @@ class TestSectionMarkers:
             ],
         )
 
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nname = "test"\n', encoding="utf-8"
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "test"\n', encoding="utf-8")
 
         # Create a library artifact for stats
         concepts_dir = tmp_path / LEXIBRARY_DIR / "concepts"
@@ -1264,9 +1262,7 @@ class TestSectionMarkers:
         import re as _re
 
         # Collect all marker positions in order
-        markers = list(
-            _re.finditer(r"<!-- (?:section|end): [\w-]+ -->", content)
-        )
+        markers = list(_re.finditer(r"<!-- (?:section|end): [\w-]+ -->", content))
         assert len(markers) == 14  # 7 open + 7 close
 
         # Walk markers in order: each open must be followed by its close
@@ -1304,8 +1300,7 @@ class TestSectionMarkers:
         # Verify positions are strictly increasing
         for i in range(1, len(positions)):
             assert positions[i] > positions[i - 1], (
-                f"section '{SECTION_NAMES[i]}' appears before "
-                f"'{SECTION_NAMES[i - 1]}' in output"
+                f"section '{SECTION_NAMES[i]}' appears before '{SECTION_NAMES[i - 1]}' in output"
             )
 
     def test_header_content_within_markers(self, tmp_path: Path) -> None:
@@ -1950,7 +1945,8 @@ class TestGenerateEntryPointCandidates:
         assert "lexi_app.py" in result
         # Count table rows (excluding header/separator)
         table_rows = [
-            line for line in result.split("\n")
+            line
+            for line in result.split("\n")
             if line.startswith("|") and "File" not in line and "---" not in line
         ]
         assert len(table_rows) == 2
@@ -2084,7 +2080,8 @@ class TestGenerateEntryPointCandidates:
         result = _generate_entry_point_candidates(infos, project_name)
         lines = result.split("\n")
         table_rows = [
-            line for line in lines
+            line
+            for line in lines
             if line.startswith("|") and "File" not in line and "---" not in line
         ]
         # High confidence (cli/) should come first
@@ -2140,7 +2137,8 @@ class TestGenerateEntryPointCandidates:
         result = _generate_entry_point_candidates(infos, project_name)
         # Config file should not appear as a row in the table
         table_rows = [
-            line for line in result.split("\n")
+            line
+            for line in result.split("\n")
             if line.startswith("|") and "File" not in line and "---" not in line
         ]
         assert len(table_rows) == 1
@@ -2183,9 +2181,7 @@ class TestTestDirectoryCollapse:
             f"{project_name}/tests",
             "Tests",
             entries=[
-                AIndexEntry(
-                    name="test_auth", entry_type="dir", description="4 Python files"
-                ),
+                AIndexEntry(name="test_auth", entry_type="dir", description="4 Python files"),
                 AIndexEntry(name="conftest.py", entry_type="file", description="Shared fixtures"),
             ],
         )
@@ -2194,18 +2190,10 @@ class TestTestDirectoryCollapse:
             f"{project_name}/tests/test_auth",
             "4 Python files",
             entries=[
-                AIndexEntry(
-                    name="test_login.py", entry_type="file", description="Login tests"
-                ),
-                AIndexEntry(
-                    name="test_session.py", entry_type="file", description="Session tests"
-                ),
-                AIndexEntry(
-                    name="test_utils.py", entry_type="file", description="Auth util tests"
-                ),
-                AIndexEntry(
-                    name="conftest.py", entry_type="file", description="Auth fixtures"
-                ),
+                AIndexEntry(name="test_login.py", entry_type="file", description="Login tests"),
+                AIndexEntry(name="test_session.py", entry_type="file", description="Session tests"),
+                AIndexEntry(name="test_utils.py", entry_type="file", description="Auth util tests"),
+                AIndexEntry(name="conftest.py", entry_type="file", description="Auth fixtures"),
             ],
         )
         return project_name
@@ -2242,9 +2230,7 @@ class TestTestDirectoryCollapse:
             f"{project_name}/tests",
             "Tests",
             entries=[
-                AIndexEntry(
-                    name="test_widgets", entry_type="dir", description="3 Python files"
-                ),
+                AIndexEntry(name="test_widgets", entry_type="dir", description="3 Python files"),
             ],
         )
         _write_aindex(
@@ -2396,27 +2382,19 @@ class TestShouldDetailDirectory:
 
     def test_dir_under_dominant_source_gets_detail(self) -> None:
         """Directories under the dominant source dir get full detail."""
-        assert _should_detail_directory(
-            "myproject/src/auth", "myproject", "src", []
-        )
+        assert _should_detail_directory("myproject/src/auth", "myproject", "src", [])
 
     def test_dominant_source_dir_itself_gets_detail(self) -> None:
         """The dominant source dir itself gets full detail."""
-        assert _should_detail_directory(
-            "myproject/src", "myproject", "src", []
-        )
+        assert _should_detail_directory("myproject/src", "myproject", "src", [])
 
     def test_non_source_dir_no_detail_dirs_gets_summary(self) -> None:
         """Non-source dir without detail_dirs configured gets a summary."""
-        assert not _should_detail_directory(
-            "myproject/docs", "myproject", "src", []
-        )
+        assert not _should_detail_directory("myproject/docs", "myproject", "src", [])
 
     def test_non_source_dir_matching_detail_dirs_gets_detail(self) -> None:
         """Non-source dir matching a detail_dirs pattern gets full detail."""
-        assert _should_detail_directory(
-            "myproject/docs", "myproject", "src", ["docs"]
-        )
+        assert _should_detail_directory("myproject/docs", "myproject", "src", ["docs"])
 
     def test_nested_dir_matching_detail_dirs_glob(self) -> None:
         """Nested directory matching a detail_dirs glob pattern gets detail."""
@@ -2426,21 +2404,15 @@ class TestShouldDetailDirectory:
 
     def test_no_dominant_source_dir_only_detail_dirs(self) -> None:
         """When no dominant source dir, only detail_dirs patterns match."""
-        assert _should_detail_directory(
-            "myproject/lib", "myproject", "", ["lib"]
-        )
+        assert _should_detail_directory("myproject/lib", "myproject", "", ["lib"])
 
     def test_no_dominant_source_no_detail_dirs_gets_summary(self) -> None:
         """No dominant source dir and no detail_dirs means everything is summary."""
-        assert not _should_detail_directory(
-            "myproject/lib", "myproject", "", []
-        )
+        assert not _should_detail_directory("myproject/lib", "myproject", "", [])
 
     def test_root_dir_without_source_gets_summary(self) -> None:
         """Project root not under a source dir gets a summary."""
-        assert not _should_detail_directory(
-            "myproject", "myproject", "src", []
-        )
+        assert not _should_detail_directory("myproject", "myproject", "src", [])
 
 
 class TestDisplayPath:
@@ -2613,9 +2585,7 @@ class TestDirectoryDetailFiltering:
             ),
         ]
 
-        source_content, _ = _generate_directory_details(
-            infos, project_name, detail_dirs=["docs"]
-        )
+        source_content, _ = _generate_directory_details(infos, project_name, detail_dirs=["docs"])
         # Both src/ and docs/ get full tables
         assert "### src/" in source_content
         assert "### docs/" in source_content
@@ -2714,9 +2684,7 @@ class TestDirectoryDetailFiltering:
             ),
         ]
 
-        source_content, _ = _generate_directory_details(
-            infos, project_name, detail_dirs=[]
-        )
+        source_content, _ = _generate_directory_details(infos, project_name, detail_dirs=[])
         # src/ gets full detail
         assert "### src/" in source_content
         # scripts/ and config/ get summaries
@@ -2759,9 +2727,7 @@ class TestDirectoryDetailFiltering:
             ),
         ]
 
-        _, test_content = _generate_directory_details(
-            infos, project_name, detail_dirs=["tests"]
-        )
+        _, test_content = _generate_directory_details(infos, project_name, detail_dirs=["tests"])
         # Test dirs always get collapsed summaries
         assert "tests/ -- 5 files" in test_content
         # No full file table in test layout

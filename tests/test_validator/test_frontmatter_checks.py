@@ -42,6 +42,7 @@ def _write_convention(
         path.write_text(
             f"""---
 title: {title}
+id: CV-001
 status: {status}
 source: {source}
 scope: {scope}
@@ -74,6 +75,7 @@ def _write_design(
         path.write_text(
             f"""---
 description: {description}
+id: DS-004
 updated_by: {updated_by}
 status: {status}
 ---
@@ -213,6 +215,7 @@ Body.
             "bad-status",
             raw_content="""---
 title: Bad Status
+id: CV-004
 status: archived
 source: user
 scope: project
@@ -238,6 +241,7 @@ Body.
             "bad-source",
             raw_content="""---
 title: Bad Source
+id: CV-003
 status: active
 source: llm
 scope: project
@@ -263,6 +267,7 @@ Body.
             "bad-yaml",
             raw_content="""---
 title: [unterminated
+id: CN-001
 status: broken
 ---
 
@@ -321,6 +326,7 @@ Body.
             "no-tags",
             raw_content="""---
 title: No Tags
+id: CV-002
 status: active
 source: user
 scope: project
@@ -343,6 +349,7 @@ Body.
             "no-priority",
             raw_content="""---
 title: No Priority
+id: CV-001
 status: active
 source: user
 scope: project
@@ -413,6 +420,7 @@ Body.
             "bad-updater",
             raw_content="""---
 description: Test file
+id: DS-003
 updated_by: unknown
 status: active
 ---
@@ -435,6 +443,7 @@ Body.
             "bad-status",
             raw_content="""---
 description: Test file
+id: DS-002
 updated_by: archivist
 status: draft
 ---
@@ -478,6 +487,7 @@ Body.
             "bad-yaml",
             raw_content="""---
 description: [unterminated
+id: DS-001
 updated_by: broken
 ---
 
@@ -522,6 +532,7 @@ class TestCheckStackFrontmatter:
             "no-id",
             raw_content="""---
 title: No ID Post
+id: CN-001
 tags: [bug]
 status: open
 created: 2026-01-15

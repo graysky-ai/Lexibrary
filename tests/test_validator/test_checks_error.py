@@ -43,6 +43,7 @@ def _write_design_file(
     now = datetime.now().isoformat()
     content = f"""---
 description: Test design file
+id: DS-001
 updated_by: archivist
 ---
 
@@ -102,6 +103,7 @@ def _write_concept_file(
 
     content = f"""---
 title: {title}
+id: CN-004
 aliases: [{", ".join(aliases)}]
 tags: [{", ".join(tags)}]
 status: {status}
@@ -138,6 +140,7 @@ def _write_convention_file(
 
     content = f"""---
 title: {title}
+id: CV-001
 scope: {scope}
 tags: {tags_yaml}
 status: {status}
@@ -623,6 +626,7 @@ Missing title field.
             "Minimal",
             raw_content="""---
 title: Minimal
+id: CN-003
 ---
 
 Just a title, nothing else.
@@ -647,6 +651,7 @@ Just a title, nothing else.
             "BadStatus",
             raw_content="""---
 title: BadStatus
+id: CN-002
 aliases: [bs]
 tags: [test]
 status: invalid_status
@@ -673,6 +678,7 @@ Bad status value.
             "BadYaml",
             raw_content="""---
 title: [unterminated
+id: CN-001
 aliases: broken
 ---
 

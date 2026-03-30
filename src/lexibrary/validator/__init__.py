@@ -12,6 +12,7 @@ from lexibrary.exceptions import LexibraryError
 from lexibrary.validator.checks import (
     check_aindex_coverage,
     check_aindex_entries,
+    check_artifact_id_uniqueness,
     check_bidirectional_deps,
     check_comment_accumulation,
     check_concept_body,
@@ -122,6 +123,7 @@ AVAILABLE_CHECKS: dict[str, tuple[CheckFn, Severity]] = {
     # --- Cross-artifact checks (Group 3) ---
     "duplicate_aliases": (check_duplicate_aliases, "warning"),
     "duplicate_slugs": (check_duplicate_slugs, "warning"),
+    "artifact_id_uniqueness": (check_artifact_id_uniqueness, "error"),
     "stack_refs_validity": (check_stack_refs_validity, "warning"),
     "design_deps_existence": (check_design_deps_existence, "warning"),
     "aindex_entries": (check_aindex_entries, "warning"),

@@ -92,6 +92,7 @@ def _create_design_file(
     # Build frontmatter
     fm_lines = [
         f"description: Design file for {source_rel}",
+        "id: DS-001",
         "updated_by: archivist",
         f"status: {status}",
     ]
@@ -849,6 +850,7 @@ def _create_concept_file(
 
     content = f"""---
 title: {title}
+id: CN-001
 aliases: {aliases_yaml}
 tags: []
 status: {status}
@@ -1237,6 +1239,7 @@ def _create_convention_file(
 
     content = f"""---
 title: {title}
+id: CV-001
 scope: {scope}
 tags: {tags_yaml}
 status: {status}

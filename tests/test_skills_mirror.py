@@ -39,9 +39,7 @@ def _collect_source_skill_files() -> list[str]:
     if not SOURCE_SKILLS_DIR.is_dir():
         return []
     return sorted(
-        str(p.relative_to(SOURCE_SKILLS_DIR))
-        for p in SOURCE_SKILLS_DIR.rglob("*")
-        if p.is_file()
+        str(p.relative_to(SOURCE_SKILLS_DIR)) for p in SOURCE_SKILLS_DIR.rglob("*") if p.is_file()
     )
 
 
@@ -53,15 +51,11 @@ class TestSkillsMirror:
 
     def test_source_skills_directory_exists(self) -> None:
         """The source skills directory must exist."""
-        assert SOURCE_SKILLS_DIR.is_dir(), (
-            f"Source skills directory not found: {SOURCE_SKILLS_DIR}"
-        )
+        assert SOURCE_SKILLS_DIR.is_dir(), f"Source skills directory not found: {SOURCE_SKILLS_DIR}"
 
     def test_mirror_skills_directory_exists(self) -> None:
         """The mirror skills directory must exist."""
-        assert MIRROR_SKILLS_DIR.is_dir(), (
-            f"Mirror skills directory not found: {MIRROR_SKILLS_DIR}"
-        )
+        assert MIRROR_SKILLS_DIR.is_dir(), f"Mirror skills directory not found: {MIRROR_SKILLS_DIR}"
 
     def test_at_least_one_source_skill_file(self) -> None:
         """There must be at least one skill file to mirror."""
@@ -84,7 +78,7 @@ class TestSkillsMirror:
         source_path = SOURCE_SKILLS_DIR / rel_path
         mirror_path = MIRROR_SKILLS_DIR / rel_path
         if not mirror_path.exists():
-            pytest.skip(f"Mirror file missing (covered by test_mirror_file_exists)")
+            pytest.skip("Mirror file missing (covered by test_mirror_file_exists)")
 
         source_content = source_path.read_text(encoding="utf-8")
         mirror_content = mirror_path.read_text(encoding="utf-8")

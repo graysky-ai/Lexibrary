@@ -19,6 +19,7 @@ from lexibrary.wiki.resolver import (
 _CONCEPT_TEMPLATE = """\
 ---
 title: {title}
+id: CN-001
 aliases: {aliases}
 tags: {tags}
 status: active
@@ -347,6 +348,7 @@ class TestResolutionPriority:
 _CONVENTION_TEMPLATE = """\
 ---
 title: {title}
+id: CV-001
 scope: {scope}
 tags: {tags}
 status: active

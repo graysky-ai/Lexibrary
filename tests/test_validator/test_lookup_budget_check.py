@@ -20,6 +20,7 @@ from lexibrary.validator.checks import check_lookup_token_budget_exceeded
 _DESIGN_FILE_TEMPLATE = """\
 ---
 description: Test module
+id: DS-001
 updated_by: archivist
 ---
 

@@ -20,7 +20,7 @@ from lexibrary.artifacts import (
 
 class TestPlaybookFileFrontmatterDefaults:
     def test_default_field_values(self) -> None:
-        fm = PlaybookFileFrontmatter(title="Test")
+        fm = PlaybookFileFrontmatter(title="Test", id="PB-001")
         assert fm.title == "Test"
         assert fm.trigger_files == []
         assert fm.tags == []
@@ -43,22 +43,23 @@ class TestPlaybookFileFrontmatterDefaults:
 class TestPlaybookFileFrontmatterValidation:
     def test_invalid_status_raises(self) -> None:
         with pytest.raises(ValidationError):
-            PlaybookFileFrontmatter(title="Test", status="archived")  # type: ignore[arg-type]
+            PlaybookFileFrontmatter(title="Test", id="PB-001", status="archived")  # type: ignore[arg-type]
 
     def test_valid_statuses(self) -> None:
         for status in ("draft", "active", "deprecated"):
-            fm = PlaybookFileFrontmatter(title="Test", status=status)  # type: ignore[arg-type]
+            fm = PlaybookFileFrontmatter(title="Test", id="PB-001", status=status)  # type: ignore[arg-type]
             assert fm.status == status
 
     def test_invalid_source_raises(self) -> None:
         with pytest.raises(ValidationError):
-            PlaybookFileFrontmatter(title="Test", source="config")  # type: ignore[arg-type]
+            PlaybookFileFrontmatter(title="Test", id="PB-001", source="config")  # type: ignore[arg-type]
 
     def test_all_fields_populated(self) -> None:
         now = datetime(2025, 6, 15, 12, 0, 0)
         today = date(2025, 6, 15)
         fm = PlaybookFileFrontmatter(
             title="DB Migration",
+            id="PB-001",
             trigger_files=["alembic/**"],
             tags=["database", "migration"],
             status="active",
@@ -84,13 +85,13 @@ class TestPlaybookFileFrontmatterValidation:
 class TestPlaybookFile:
     def test_name_property(self) -> None:
         pb = PlaybookFile(
-            frontmatter=PlaybookFileFrontmatter(title="Version Bump"),
+            frontmatter=PlaybookFileFrontmatter(title="Version Bump", id="PB-001"),
         )
         assert pb.name == "Version Bump"
 
     def test_defaults(self) -> None:
         pb = PlaybookFile(
-            frontmatter=PlaybookFileFrontmatter(title="Test"),
+            frontmatter=PlaybookFileFrontmatter(title="Test", id="PB-001"),
         )
         assert pb.body == ""
         assert pb.overview == ""
@@ -98,7 +99,7 @@ class TestPlaybookFile:
 
     def test_with_body_and_overview(self) -> None:
         pb = PlaybookFile(
-            frontmatter=PlaybookFileFrontmatter(title="Test"),
+            frontmatter=PlaybookFileFrontmatter(title="Test", id="PB-001"),
             body="# Steps\n\n- [ ] Step 1",
             overview="This playbook covers step 1.",
             file_path=Path("/tmp/playbooks/test.md"),
@@ -134,23 +135,21 @@ class TestPlaybookSlug:
 
 class TestPlaybookFilePath:
     def test_basic_file_path(self) -> None:
-        result = playbook_file_path("Version Bump", Path("/p/playbooks"))
-        assert result == Path("/p/playbooks/version-bump.md")
+        result = playbook_file_path("PB-001", "Version Bump", Path("/p/playbooks"))
+        assert result == Path("/p/playbooks/PB-001-version-bump.md")
 
     def test_collision_append(self, tmp_path: Path) -> None:
         playbooks_dir = tmp_path / "playbooks"
         playbooks_dir.mkdir()
-        # Create the first file to cause a collision
-        (playbooks_dir / "version-bump.md").touch()
-
-        result = playbook_file_path("Version Bump", playbooks_dir)
-        assert result == playbooks_dir / "version-bump-2.md"
+        # No collision with ID-prefixed filenames — IDs are unique
+        result = playbook_file_path("PB-001", "Version Bump", playbooks_dir)
+        assert result == playbooks_dir / "PB-001-version-bump.md"
 
     def test_multiple_collisions(self, tmp_path: Path) -> None:
         playbooks_dir = tmp_path / "playbooks"
         playbooks_dir.mkdir()
-        (playbooks_dir / "test.md").touch()
-        (playbooks_dir / "test-2.md").touch()
-
-        result = playbook_file_path("Test", playbooks_dir)
-        assert result == playbooks_dir / "test-3.md"
+        # Different IDs produce different filenames — no collision suffix needed
+        result1 = playbook_file_path("PB-001", "Test", playbooks_dir)
+        result2 = playbook_file_path("PB-002", "Test", playbooks_dir)
+        assert result1 == playbooks_dir / "PB-001-test.md"
+        assert result2 == playbooks_dir / "PB-002-test.md"

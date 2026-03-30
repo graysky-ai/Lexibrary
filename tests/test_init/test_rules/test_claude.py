@@ -59,7 +59,7 @@ class TestCreateFromScratch:
         assert "lexi-orient" in skill_parents
         assert "lexi-search" in skill_parents
         assert "lexi-lookup" in skill_parents
-        assert "lexi-concepts" in skill_parents
+        assert "lexi-concept" in skill_parents
         assert "lexi-stack" in skill_parents
 
 
@@ -224,12 +224,12 @@ class TestSkillFiles:
         assert "lexi lookup" in content
 
     def test_creates_concepts_skill(self, tmp_path: Path) -> None:
-        """lexi-concepts/SKILL.md is created in .claude/skills/."""
+        """lexi-concept/SKILL.md is created in .claude/skills/."""
         generate_claude_rules(tmp_path)
-        concepts = tmp_path / ".claude" / "skills" / "lexi-concepts" / "SKILL.md"
+        concepts = tmp_path / ".claude" / "skills" / "lexi-concept" / "SKILL.md"
         assert concepts.exists()
         content = concepts.read_text(encoding="utf-8")
-        assert "lexi concepts" in content
+        assert "lexi concept" in content
 
     def test_creates_stack_skill(self, tmp_path: Path) -> None:
         """lexi-stack/SKILL.md is created in .claude/skills/."""
@@ -342,7 +342,7 @@ class TestTopologyBuilderSkillDeployment:
 class TestFolderConventionMigration:
     """Verify all five lexi skills use the <name>/SKILL.md folder convention."""
 
-    _LEXI_SKILLS = ["lexi-orient", "lexi-search", "lexi-lookup", "lexi-concepts", "lexi-stack"]
+    _LEXI_SKILLS = ["lexi-orient", "lexi-search", "lexi-lookup", "lexi-concept", "lexi-stack"]
 
     def test_all_lexi_skills_in_subdirs(self, tmp_path: Path) -> None:
         """Each lexi skill is deployed as <name>/SKILL.md in .claude/skills/."""
@@ -838,7 +838,7 @@ class TestAgentFileGeneration:
         content = (tmp_path / ".claude" / "agents" / "explore.md").read_text(encoding="utf-8")
         assert "lexi search" in content
         assert "lexi lookup" in content
-        assert "lexi concepts" in content
+        assert "lexi concept" in content
         assert "lexi conventions" in content
 
     def test_explore_has_fallback_instructions(self, tmp_path: Path) -> None:
@@ -1078,7 +1078,7 @@ class TestIntegrationFullGeneration:
             tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md",
             tmp_path / ".claude" / "skills" / "lexi-search" / "SKILL.md",
             tmp_path / ".claude" / "skills" / "lexi-lookup" / "SKILL.md",
-            tmp_path / ".claude" / "skills" / "lexi-concepts" / "SKILL.md",
+            tmp_path / ".claude" / "skills" / "lexi-concept" / "SKILL.md",
             tmp_path / ".claude" / "skills" / "lexi-stack" / "SKILL.md",
         ]
 

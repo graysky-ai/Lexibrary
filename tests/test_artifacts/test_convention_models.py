@@ -22,7 +22,7 @@ from lexibrary.artifacts.convention import (
 
 class TestConventionFileFrontmatter:
     def test_defaults(self) -> None:
-        fm = ConventionFileFrontmatter(title="Use UTC everywhere")
+        fm = ConventionFileFrontmatter(title="Use UTC everywhere", id="CV-001")
         assert fm.title == "Use UTC everywhere"
         assert fm.scope == "project"
         assert fm.tags == []
@@ -35,6 +35,7 @@ class TestConventionFileFrontmatter:
     def test_all_fields(self) -> None:
         fm = ConventionFileFrontmatter(
             title="Future annotations",
+            id="CV-001",
             scope="project",
             tags=["python"],
             aliases=["future-annotations"],
@@ -53,48 +54,50 @@ class TestConventionFileFrontmatter:
         assert fm.deprecated_at == datetime(2026, 3, 4, 10, 0, 0)
 
     def test_aliases_default_empty(self) -> None:
-        fm = ConventionFileFrontmatter(title="Test")
+        fm = ConventionFileFrontmatter(title="Test", id="CV-001")
         assert fm.aliases == []
 
     def test_aliases_multiple(self) -> None:
         fm = ConventionFileFrontmatter(
             title="Auth decorator required",
+            id="CV-001",
             aliases=["auth-decorator", "auth-conv"],
         )
         assert fm.aliases == ["auth-decorator", "auth-conv"]
 
     def test_deprecated_at_defaults_to_none(self) -> None:
-        fm = ConventionFileFrontmatter(title="Test", status="active")
+        fm = ConventionFileFrontmatter(title="Test", id="CV-001", status="active")
         assert fm.deprecated_at is None
 
     def test_deprecated_at_with_timestamp(self) -> None:
         fm = ConventionFileFrontmatter(
             title="Old rule",
+            id="CV-001",
             status="deprecated",
             deprecated_at="2026-03-04T10:00:00",
         )
         assert fm.deprecated_at == datetime(2026, 3, 4, 10, 0, 0)
 
     def test_directory_scope(self) -> None:
-        fm = ConventionFileFrontmatter(title="Test", scope="src/auth")
+        fm = ConventionFileFrontmatter(title="Test", id="CV-001", scope="src/auth")
         assert fm.scope == "src/auth"
 
     def test_invalid_status_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            ConventionFileFrontmatter(title="Bad", status="archived")  # type: ignore[arg-type]
+            ConventionFileFrontmatter(title="Bad", id="CV-001", status="archived")  # type: ignore[arg-type]
 
     def test_invalid_source_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            ConventionFileFrontmatter(title="Bad", source="llm")  # type: ignore[arg-type]
+            ConventionFileFrontmatter(title="Bad", id="CV-001", source="llm")  # type: ignore[arg-type]
 
     def test_all_valid_statuses(self) -> None:
         for status in ("draft", "active", "deprecated"):
-            fm = ConventionFileFrontmatter(title="Test", status=status)  # type: ignore[arg-type]
+            fm = ConventionFileFrontmatter(title="Test", id="CV-001", status=status)  # type: ignore[arg-type]
             assert fm.status == status
 
     def test_all_valid_sources(self) -> None:
         for source in ("user", "agent", "config"):
-            fm = ConventionFileFrontmatter(title="Test", source=source)  # type: ignore[arg-type]
+            fm = ConventionFileFrontmatter(title="Test", id="CV-001", source=source)  # type: ignore[arg-type]
             assert fm.source == source
 
 
@@ -105,23 +108,23 @@ class TestConventionFileFrontmatter:
 
 class TestConventionFile:
     def test_minimal_valid(self) -> None:
-        fm = ConventionFileFrontmatter(title="Test")
+        fm = ConventionFileFrontmatter(title="Test", id="CV-001")
         cf = ConventionFile(frontmatter=fm, body="")
         assert cf.rule == ""
         assert cf.file_path is None
 
     def test_name_property(self) -> None:
-        fm = ConventionFileFrontmatter(title="Use UTC everywhere")
+        fm = ConventionFileFrontmatter(title="Use UTC everywhere", id="CV-001")
         cf = ConventionFile(frontmatter=fm)
         assert cf.name == "Use UTC everywhere"
 
     def test_scope_property(self) -> None:
-        fm = ConventionFileFrontmatter(title="Test", scope="src/auth")
+        fm = ConventionFileFrontmatter(title="Test", id="CV-001", scope="src/auth")
         cf = ConventionFile(frontmatter=fm)
         assert cf.scope == "src/auth"
 
     def test_rule_extraction_stored(self) -> None:
-        fm = ConventionFileFrontmatter(title="Test")
+        fm = ConventionFileFrontmatter(title="Test", id="CV-001")
         cf = ConventionFile(
             frontmatter=fm,
             body="Every module must use X.\n\n**Rationale**: Because Y.",
@@ -130,7 +133,7 @@ class TestConventionFile:
         assert cf.rule == "Every module must use X."
 
     def test_file_path_stored(self) -> None:
-        fm = ConventionFileFrontmatter(title="Test")
+        fm = ConventionFileFrontmatter(title="Test", id="CV-001")
         p = Path("/tmp/conventions/test.md")
         cf = ConventionFile(frontmatter=fm, file_path=p)
         assert cf.file_path == p
@@ -196,18 +199,14 @@ class TestConventionSlug:
 
 
 class TestConventionFilePath:
-    def test_no_collision(self, tmp_path: Path) -> None:
-        result = convention_file_path("Use UTC", tmp_path)
-        assert result == tmp_path / "use-utc.md"
+    def test_id_prefixed_path(self, tmp_path: Path) -> None:
+        result = convention_file_path("CV-001", "Use UTC", tmp_path)
+        assert result == tmp_path / "CV-001-use-utc.md"
 
-    def test_collision_appends_suffix(self, tmp_path: Path) -> None:
-        (tmp_path / "use-utc.md").write_text("existing")
-        result = convention_file_path("Use UTC", tmp_path)
-        assert result == tmp_path / "use-utc-2.md"
+    def test_different_id(self, tmp_path: Path) -> None:
+        result = convention_file_path("CV-042", "Use UTC", tmp_path)
+        assert result == tmp_path / "CV-042-use-utc.md"
 
-    def test_multiple_collisions(self, tmp_path: Path) -> None:
-        (tmp_path / "use-utc.md").write_text("existing")
-        (tmp_path / "use-utc-2.md").write_text("existing")
-        (tmp_path / "use-utc-3.md").write_text("existing")
-        result = convention_file_path("Use UTC", tmp_path)
-        assert result == tmp_path / "use-utc-4.md"
+    def test_long_title(self, tmp_path: Path) -> None:
+        result = convention_file_path("CV-001", "Future annotations import", tmp_path)
+        assert result == tmp_path / "CV-001-future-annotations-import.md"
