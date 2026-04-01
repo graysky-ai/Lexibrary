@@ -479,6 +479,7 @@ async def update_file(
     archivist: ArchivistService,
     available_concepts: list[str] | None = None,
     *,
+    force: bool = False,
     unlimited: bool = False,
 ) -> FileResult:
     """Generate or update the design file for a single source file.
@@ -489,6 +490,9 @@ async def update_file(
         config: Project configuration.
         archivist: LLM service for design file generation.
         available_concepts: Optional list of concept names for wikilink guidance.
+        force: When True, delete the existing design file before change detection
+            so the pipeline treats it as a new file.  The existing content is
+            preserved and passed as ``existing_design`` context to the LLM.
         unlimited: When True, bypass the size gate and re-enrich SKELETON_ONLY
             files instead of skipping them.
 
@@ -497,6 +501,19 @@ async def update_file(
     # 1. Scope check
     if not _is_within_scope(source_path, project_root, config.scope_root):
         return FileResult(change=ChangeLevel.UNCHANGED)
+
+    # 1a. Force: preserve existing design content, then delete so check_change
+    #     sees a NEW_FILE.  The preserved content is later passed as
+    #     existing_design context to the LLM.
+    force_preserved_design: str | None = None
+    if force:
+        design_path_for_force = mirror_path(project_root, source_path)
+        if design_path_for_force.exists():
+            with contextlib.suppress(OSError):
+                force_preserved_design = design_path_for_force.read_text(encoding="utf-8")
+            with contextlib.suppress(OSError):
+                design_path_for_force.unlink()
+            logger.info("Force mode: deleted existing design file for %s", source_path.name)
 
     # 1b. IWH check: skip if blocked signal exists for the source directory
     if config.iwh.enabled:
@@ -618,9 +635,10 @@ async def update_file(
     if pre_llm_metadata is not None and pre_llm_metadata.design_hash is not None:
         pre_llm_design_hash = pre_llm_metadata.design_hash
 
-    # Read existing design file content for update context
-    existing_design: str | None = None
-    if design_path.exists():
+    # Read existing design file content for update context.
+    # When force was used, the file was deleted earlier — use the preserved copy.
+    existing_design: str | None = force_preserved_design
+    if existing_design is None and design_path.exists():
         with contextlib.suppress(OSError):
             existing_design = design_path.read_text(encoding="utf-8")
 

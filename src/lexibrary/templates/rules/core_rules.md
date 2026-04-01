@@ -20,9 +20,11 @@ Do not create an IWH signal if all work is complete.
 ## After Editing Files
 
 - Update the corresponding design file if one exists (source files under
-  `src/`). If the design file is auto-generated (has `updated_by: lexictl`
-  in frontmatter), set `updated_by: agent` and update relevant sections.
-  Do not attempt to regenerate the full design file.
+  `src/`). Set `updated_by: agent` in the frontmatter and update relevant
+  sections to reflect your changes.
+- If the design file is stale or missing, run `lexi design update <file>` to
+  regenerate it via the archivist pipeline. Use `--force` to regenerate even
+  when the file appears up-to-date.
 - Run `lexi validate` after modifying or creating files under `.lexibrary/`,
   or after changing artifact metadata. Skip for pure code changes under
   `src/` that don't affect library artifacts.

@@ -693,14 +693,14 @@ class TestHookScriptGeneration:
         assert (tmp_path / ".claude" / "hooks").is_dir()
 
 
-class TestPostEditHookSkeletonIntegration:
-    """PostToolUse hook script integrates skeleton generation and enrichment queue."""
+class TestPostEditHookDesignUpdateIntegration:
+    """PostToolUse hook script suggests lexi design update for missing design files."""
 
-    def test_post_edit_calls_lexictl_skeleton(self, tmp_path: Path) -> None:
-        """Post-edit hook script calls lexictl update --skeleton for missing design files."""
+    def test_post_edit_suggests_design_update(self, tmp_path: Path) -> None:
+        """Post-edit hook suggests lexi design update for missing design files."""
         _generate_hook_scripts(tmp_path)
         content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
-        assert "lexictl update --skeleton" in content
+        assert "lexi design update" in content
 
     def test_post_edit_checks_design_file_existence(self, tmp_path: Path) -> None:
         """Post-edit hook resolves and checks design file path."""
@@ -722,18 +722,19 @@ class TestPostEditHookSkeletonIntegration:
         content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
         assert ".git/*" in content
 
-    def test_post_edit_emits_skeleton_generated_message(self, tmp_path: Path) -> None:
-        """Post-edit hook emits message about skeleton generation."""
-        _generate_hook_scripts(tmp_path)
-        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
-        assert "Auto-generated skeleton design file" in content
-        assert "queued it for LLM enrichment" in content
-
-    def test_post_edit_falls_back_to_reminder_on_failure(self, tmp_path: Path) -> None:
-        """Post-edit hook falls back to reminder if skeleton generation fails."""
+    def test_post_edit_suggests_design_update_for_missing(self, tmp_path: Path) -> None:
+        """Post-edit hook suggests lexi design update when design file is missing."""
         _generate_hook_scripts(tmp_path)
         content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
         assert "No design file found" in content
+        assert "lexi design update" in content
+
+    def test_post_edit_no_scaffold_references(self, tmp_path: Path) -> None:
+        """Post-edit hook does not reference scaffold generation."""
+        _generate_hook_scripts(tmp_path)
+        content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
+        assert "generate_design_scaffold" not in content
+        assert "lexictl update --skeleton" not in content
 
     def test_post_edit_emits_reminder_when_design_exists(self, tmp_path: Path) -> None:
         """Post-edit hook emits update reminder when design file already exists."""

@@ -3645,81 +3645,12 @@ class TestIWH:
 
 
 # ---------------------------------------------------------------------------
-# Design scaffold generation tests
-# ---------------------------------------------------------------------------
-
-
-class TestGenerateDesignScaffold:
-    """Tests for generate_design_scaffold() in the archivist module."""
-
-    def test_scaffold_contains_source_path(self, tmp_path: Path) -> None:
-        """Scaffold frontmatter includes the relative source_path."""
-        from lexibrary.archivist.scaffold import generate_design_scaffold
-
-        project_root = tmp_path
-        source = tmp_path / "src" / "lexibrary" / "cli" / "lexi_app.py"
-        source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_text("pass\n")
-
-        result = generate_design_scaffold(source, project_root)
-        assert "source_path: src/lexibrary/cli/lexi_app.py" in result
-
-    def test_scaffold_contains_updated_by_agent(self, tmp_path: Path) -> None:
-        """Scaffold frontmatter includes updated_by: agent."""
-        from lexibrary.archivist.scaffold import generate_design_scaffold
-
-        project_root = tmp_path
-        source = tmp_path / "src" / "main.py"
-        source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_text("pass\n")
-
-        result = generate_design_scaffold(source, project_root)
-        assert "updated_by: agent" in result
-
-    def test_scaffold_contains_placeholder_sections(self, tmp_path: Path) -> None:
-        """Scaffold contains Purpose, Key Components, and Dependencies sections."""
-        from lexibrary.archivist.scaffold import generate_design_scaffold
-
-        project_root = tmp_path
-        source = tmp_path / "src" / "main.py"
-        source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_text("pass\n")
-
-        result = generate_design_scaffold(source, project_root)
-        assert "## Purpose" in result
-        assert "## Key Components" in result
-        assert "## Dependencies" in result
-
-    def test_scaffold_contains_date(self, tmp_path: Path) -> None:
-        """Scaffold frontmatter includes a date field."""
-        from lexibrary.archivist.scaffold import generate_design_scaffold
-
-        project_root = tmp_path
-        source = tmp_path / "src" / "main.py"
-        source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_text("pass\n")
-
-        result = generate_design_scaffold(source, project_root)
-        assert "date:" in result
-
-    def test_scaffold_with_relative_path(self, tmp_path: Path) -> None:
-        """Scaffold works with a relative path input."""
-        from lexibrary.archivist.scaffold import generate_design_scaffold
-
-        project_root = tmp_path
-        rel_path = Path("src/module.py")
-
-        result = generate_design_scaffold(rel_path, project_root)
-        assert "source_path: src/module.py" in result
-
-
-# ---------------------------------------------------------------------------
 # Design update command tests
 # ---------------------------------------------------------------------------
 
 
 class TestDesignUpdateCommand:
-    """Tests for the `lexi design update` command."""
+    """Tests for the `lexi design update` command (pipeline-based)."""
 
     def _invoke(self, tmp_path: Path, args: list[str]) -> object:
         old_cwd = os.getcwd()
@@ -3729,31 +3660,250 @@ class TestDesignUpdateCommand:
         finally:
             os.chdir(old_cwd)
 
-    def test_scaffold_new_design_file(self, tmp_path: Path) -> None:
-        """When no design file exists, a scaffold is created."""
-        _setup_project(tmp_path)
-        source = tmp_path / "src" / "main.py"
-        result = self._invoke(tmp_path, ["design", "update", str(source)])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        assert "Created design scaffold" in result.output  # type: ignore[union-attr]
-        # Design file should exist in mirror tree
-        design_path = tmp_path / ".lexibrary" / "designs" / "src" / "main.py.md"
-        assert design_path.exists()
-        content = design_path.read_text(encoding="utf-8")
-        assert "source_path:" in content
-        assert "## Purpose" in content
+    def test_skip_decision_renders_warning(self, tmp_path: Path) -> None:
+        """When check_design_update returns skip, a warning is printed."""
+        from unittest.mock import patch  # noqa: PLC0415
 
-    def test_display_existing_design_file(self, tmp_path: Path) -> None:
-        """When a design file exists, its content is displayed."""
+        from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
+
         _setup_project(tmp_path)
-        source_content = "print('hello')\n"
-        _create_design_file(tmp_path, "src/main.py", source_content)
         source = tmp_path / "src" / "main.py"
-        result = self._invoke(tmp_path, ["design", "update", str(source)])
+        skip_decision = DesignUpdateDecision(
+            action="skip",
+            reason="Design file is up to date",
+            skip_code="up_to_date",
+        )
+        with patch(
+            "lexibrary.services.design.check_design_update", return_value=skip_decision
+        ):
+            result = self._invoke(tmp_path, ["design", "update", str(source)])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "updated_by" in output
-        assert "Reminder" in output
+        assert "Skipped" in result.output  # type: ignore[union-attr]
+
+    def test_generate_success(self, tmp_path: Path) -> None:
+        """When pipeline succeeds, a success message is printed."""
+        from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
+
+        from lexibrary.archivist.change_checker import ChangeLevel  # noqa: PLC0415
+        from lexibrary.archivist.pipeline import FileResult  # noqa: PLC0415
+        from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
+
+        _setup_project(tmp_path)
+        source = tmp_path / "src" / "main.py"
+        gen_decision = DesignUpdateDecision(action="generate", reason="No design file exists")
+        file_result = FileResult(change=ChangeLevel.NEW_FILE)
+
+        with (
+            patch(
+                "lexibrary.services.design.check_design_update",
+                return_value=gen_decision,
+            ),
+            patch(
+                "lexibrary.llm.client_registry.build_client_registry",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.update_file",
+                new_callable=AsyncMock,
+                return_value=file_result,
+            ),
+            patch(
+                "lexibrary.archivist.service.ArchivistService",
+                return_value=MagicMock(),
+            ),
+        ):
+            result = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Updated design file" in result.output  # type: ignore[union-attr]
+        assert "new_file" in result.output  # type: ignore[union-attr]
+
+    def test_generate_failure(self, tmp_path: Path) -> None:
+        """When pipeline returns failure, error is shown and exit code is 1."""
+        from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
+
+        from lexibrary.archivist.change_checker import ChangeLevel  # noqa: PLC0415
+        from lexibrary.archivist.pipeline import FileResult  # noqa: PLC0415
+        from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
+
+        _setup_project(tmp_path)
+        source = tmp_path / "src" / "main.py"
+        gen_decision = DesignUpdateDecision(action="generate", reason="Stale")
+        file_result = FileResult(
+            change=ChangeLevel.UNCHANGED,
+            failed=True,
+            failure_reason="LLM timeout",
+        )
+
+        with (
+            patch(
+                "lexibrary.services.design.check_design_update",
+                return_value=gen_decision,
+            ),
+            patch(
+                "lexibrary.llm.client_registry.build_client_registry",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.update_file",
+                new_callable=AsyncMock,
+                return_value=file_result,
+            ),
+            patch(
+                "lexibrary.archivist.service.ArchivistService",
+                return_value=MagicMock(),
+            ),
+        ):
+            result = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Failed" in result.output  # type: ignore[union-attr]
+        assert "LLM timeout" in result.output  # type: ignore[union-attr]
+
+    def test_skeleton_fallback_warning(self, tmp_path: Path) -> None:
+        """When pipeline falls back to skeleton, a warning with --unlimited suggestion is shown."""
+        from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
+
+        from lexibrary.archivist.change_checker import ChangeLevel  # noqa: PLC0415
+        from lexibrary.archivist.pipeline import FileResult  # noqa: PLC0415
+        from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
+
+        _setup_project(tmp_path)
+        source = tmp_path / "src" / "main.py"
+        gen_decision = DesignUpdateDecision(action="generate", reason="New file")
+        file_result = FileResult(
+            change=ChangeLevel.SKELETON_ONLY,
+            skeleton=True,
+        )
+
+        with (
+            patch(
+                "lexibrary.services.design.check_design_update",
+                return_value=gen_decision,
+            ),
+            patch(
+                "lexibrary.llm.client_registry.build_client_registry",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.update_file",
+                new_callable=AsyncMock,
+                return_value=file_result,
+            ),
+            patch(
+                "lexibrary.archivist.service.ArchivistService",
+                return_value=MagicMock(),
+            ),
+        ):
+            result = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "skeleton" in result.output  # type: ignore[union-attr]
+        assert "--unlimited" in result.output  # type: ignore[union-attr]
+
+    def test_asyncio_exception_handled(self, tmp_path: Path) -> None:
+        """When asyncio.run raises an exception, error message is shown and exit code is 1."""
+        from unittest.mock import MagicMock, patch  # noqa: PLC0415
+
+        from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
+
+        _setup_project(tmp_path)
+        source = tmp_path / "src" / "main.py"
+        gen_decision = DesignUpdateDecision(action="generate", reason="New file")
+
+        with (
+            patch(
+                "lexibrary.services.design.check_design_update",
+                return_value=gen_decision,
+            ),
+            patch(
+                "lexibrary.llm.client_registry.build_client_registry",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "lexibrary.archivist.pipeline.update_file",
+                side_effect=RuntimeError("Network error"),
+            ),
+            patch(
+                "lexibrary.archivist.service.ArchivistService",
+                return_value=MagicMock(),
+            ),
+        ):
+            result = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Design update failed" in result.output  # type: ignore[union-attr]
+        assert "Network error" in result.output  # type: ignore[union-attr]
+
+    def test_force_flag_passed_to_service(self, tmp_path: Path) -> None:
+        """The --force flag is passed through to check_design_update and update_file."""
+        from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
+
+        from lexibrary.archivist.change_checker import ChangeLevel  # noqa: PLC0415
+        from lexibrary.archivist.pipeline import FileResult  # noqa: PLC0415
+        from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
+
+        _setup_project(tmp_path)
+        source = tmp_path / "src" / "main.py"
+        gen_decision = DesignUpdateDecision(action="generate", reason="Force requested")
+        file_result = FileResult(change=ChangeLevel.NEW_FILE)
+
+        mock_check = MagicMock(return_value=gen_decision)
+        mock_update = AsyncMock(return_value=file_result)
+
+        with (
+            patch("lexibrary.services.design.check_design_update", mock_check),
+            patch(
+                "lexibrary.llm.client_registry.build_client_registry",
+                return_value=MagicMock(),
+            ),
+            patch("lexibrary.archivist.pipeline.update_file", mock_update),
+            patch(
+                "lexibrary.archivist.service.ArchivistService",
+                return_value=MagicMock(),
+            ),
+        ):
+            result = self._invoke(
+                tmp_path, ["design", "update", str(source), "--force"]
+            )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        # Verify force=True was passed to check_design_update
+        assert mock_check.call_args[1]["force"] is True
+        # Verify force=True was passed to update_file
+        assert mock_update.call_args[1]["force"] is True
+
+    def test_unlimited_flag_passed_through(self, tmp_path: Path) -> None:
+        """The --unlimited flag is passed to build_client_registry and update_file."""
+        from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
+
+        from lexibrary.archivist.change_checker import ChangeLevel  # noqa: PLC0415
+        from lexibrary.archivist.pipeline import FileResult  # noqa: PLC0415
+        from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
+
+        _setup_project(tmp_path)
+        source = tmp_path / "src" / "main.py"
+        gen_decision = DesignUpdateDecision(action="generate", reason="New file")
+        file_result = FileResult(change=ChangeLevel.NEW_FILE)
+
+        mock_registry = MagicMock(return_value=MagicMock())
+        mock_update = AsyncMock(return_value=file_result)
+
+        with (
+            patch(
+                "lexibrary.services.design.check_design_update",
+                return_value=gen_decision,
+            ),
+            patch("lexibrary.llm.client_registry.build_client_registry", mock_registry),
+            patch("lexibrary.archivist.pipeline.update_file", mock_update),
+            patch(
+                "lexibrary.archivist.service.ArchivistService",
+                return_value=MagicMock(),
+            ),
+        ):
+            result = self._invoke(
+                tmp_path, ["design", "update", str(source), "--unlimited"]
+            )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        # Verify unlimited=True was passed to build_client_registry
+        assert mock_registry.call_args[1]["unlimited"] is True
+        # Verify unlimited=True was passed to update_file
+        assert mock_update.call_args[1]["unlimited"] is True
 
     def test_file_outside_scope(self, tmp_path: Path) -> None:
         """File outside scope_root should fail."""
@@ -3776,18 +3926,109 @@ class TestDesignUpdateCommand:
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
 
-    def test_scaffold_idempotent(self, tmp_path: Path) -> None:
-        """Running scaffold twice shows existing file second time."""
+    def test_force_short_flag(self, tmp_path: Path) -> None:
+        """The -f short flag works for --force."""
+        from unittest.mock import MagicMock, patch  # noqa: PLC0415
+
+        from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
+
         _setup_project(tmp_path)
         source = tmp_path / "src" / "main.py"
-        # First run: scaffold
-        result1 = self._invoke(tmp_path, ["design", "update", str(source)])
-        assert result1.exit_code == 0  # type: ignore[union-attr]
-        assert "Created design scaffold" in result1.output  # type: ignore[union-attr]
-        # Second run: display existing
-        result2 = self._invoke(tmp_path, ["design", "update", str(source)])
-        assert result2.exit_code == 0  # type: ignore[union-attr]
-        assert "Reminder" in result2.output  # type: ignore[union-attr]
+        skip_decision = DesignUpdateDecision(
+            action="skip",
+            reason="Design file is up to date",
+            skip_code="up_to_date",
+        )
+        mock_check = MagicMock(return_value=skip_decision)
+        with patch("lexibrary.services.design.check_design_update", mock_check):
+            result = self._invoke(tmp_path, ["design", "update", str(source), "-f"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        # Verify force=True was passed
+        assert mock_check.call_args[1]["force"] is True
+
+    def test_concepts_loaded_and_passed(self, tmp_path: Path) -> None:
+        """Available concepts are loaded from ConceptIndex and passed to update_file."""
+        from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
+
+        from lexibrary.archivist.change_checker import ChangeLevel  # noqa: PLC0415
+        from lexibrary.archivist.pipeline import FileResult  # noqa: PLC0415
+        from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
+
+        _setup_project(tmp_path)
+        source = tmp_path / "src" / "main.py"
+        gen_decision = DesignUpdateDecision(action="generate", reason="New file")
+        file_result = FileResult(change=ChangeLevel.NEW_FILE)
+
+        mock_update = AsyncMock(return_value=file_result)
+        # Create a mock ConceptIndex that returns concept names
+        mock_concept_index = MagicMock()
+        mock_concept_index.names.return_value = ["Error Handling", "Pipeline"]
+        mock_concept_cls = MagicMock()
+        mock_concept_cls.load.return_value = mock_concept_index
+
+        with (
+            patch(
+                "lexibrary.services.design.check_design_update",
+                return_value=gen_decision,
+            ),
+            patch(
+                "lexibrary.llm.client_registry.build_client_registry",
+                return_value=MagicMock(),
+            ),
+            patch("lexibrary.archivist.pipeline.update_file", mock_update),
+            patch(
+                "lexibrary.archivist.service.ArchivistService",
+                return_value=MagicMock(),
+            ),
+            patch("lexibrary.wiki.index.ConceptIndex", mock_concept_cls),
+        ):
+            result = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        # Verify concepts were passed to update_file
+        passed_concepts = mock_update.call_args[0][4]
+        assert passed_concepts == ["Error Handling", "Pipeline"]
+
+    def test_no_concepts_passes_none(self, tmp_path: Path) -> None:
+        """When ConceptIndex returns empty names, None is passed to update_file."""
+        from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
+
+        from lexibrary.archivist.change_checker import ChangeLevel  # noqa: PLC0415
+        from lexibrary.archivist.pipeline import FileResult  # noqa: PLC0415
+        from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
+
+        _setup_project(tmp_path)
+        source = tmp_path / "src" / "main.py"
+        gen_decision = DesignUpdateDecision(action="generate", reason="New file")
+        file_result = FileResult(change=ChangeLevel.NEW_FILE)
+
+        mock_update = AsyncMock(return_value=file_result)
+        # Create a mock ConceptIndex with no concepts
+        mock_concept_index = MagicMock()
+        mock_concept_index.names.return_value = []
+        mock_concept_cls = MagicMock()
+        mock_concept_cls.load.return_value = mock_concept_index
+
+        with (
+            patch(
+                "lexibrary.services.design.check_design_update",
+                return_value=gen_decision,
+            ),
+            patch(
+                "lexibrary.llm.client_registry.build_client_registry",
+                return_value=MagicMock(),
+            ),
+            patch("lexibrary.archivist.pipeline.update_file", mock_update),
+            patch(
+                "lexibrary.archivist.service.ArchivistService",
+                return_value=MagicMock(),
+            ),
+            patch("lexibrary.wiki.index.ConceptIndex", mock_concept_cls),
+        ):
+            result = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        # Verify None was passed (empty list -> None via `or None`)
+        passed_concepts = mock_update.call_args[0][4]
+        assert passed_concepts is None
 
 
 # ---------------------------------------------------------------------------

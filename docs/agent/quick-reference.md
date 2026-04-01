@@ -22,6 +22,7 @@ A single-page reference for everything an agent needs when working in a Lexibrar
 
 1. Update the design file in `.lexibrary/` -- update description, summary, and interface contract
 2. Set `updated_by: agent` in the design file frontmatter
+3. If the design file is stale or missing, run `lexi design update <file>` to regenerate it
 
 ---
 
@@ -80,7 +81,9 @@ A single-page reference for everything an agent needs when working in a Lexibrar
 
 | Command | What It Does | When to Use |
 |---------|-------------|-------------|
-| `lexi design update <file>` | Display or scaffold a design file | Before/after editing a source file |
+| `lexi design update <file>` | Generate or regenerate a design file via LLM | When a design file is missing or stale |
+| `lexi design update <file> --force` | Force regenerate even if up-to-date | When you need a fresh design file regardless of staleness |
+| `lexi design update <file> --unlimited` | Skip token-budget truncation | When the source file is large and needs full context |
 | `lexi design comment <file> --body "..."` | Add a comment to a design file | Adding context or notes |
 
 ### IWH Signals

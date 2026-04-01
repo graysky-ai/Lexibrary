@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # lexi-post-edit.sh -- Claude Code PostToolUse hook
-# Auto-generates skeleton design files for new/edited source files and
-# queues them for LLM enrichment.  Falls back to a reminder message when
-# skeleton generation is not possible.
-# After skeleton/reminder logic, runs `lexi impact` to warn about
+# Reminds agents to update design files after editing source files and
+# suggests `lexi design update <file>` for missing or stale design files.
+# After design-file guidance, runs `lexi impact` to warn about
 # downstream dependents that may need updating.
 #
 # Output uses the hookSpecificOutput wrapper required by Claude Code:
@@ -83,19 +82,10 @@ DESIGN_FILE="$PROJECT_DIR/.lexibrary/designs/$REL_PATH.md"
 
 if [ -f "$DESIGN_FILE" ]; then
     # Design file exists -- remind agent to keep it updated
-    BASE_MSG="Remember to update the corresponding design file after editing source files. Set updated_by: agent in the frontmatter."
+    BASE_MSG="Remember to update the corresponding design file after editing source files. Set updated_by: agent in the frontmatter. If the design file is stale, run: lexi design update $REL_PATH"
 else
-    # Design file missing -- generate skeleton and queue for enrichment
-    # Use lexictl update --skeleton which creates a quick skeleton (no LLM)
-    # and appends the file to the enrichment queue.
-    SKELETON_OUTPUT=$(cd "$PROJECT_DIR" && lexictl update --skeleton "$FILE_PATH" 2>&1 || true)
-
-    if echo "$SKELETON_OUTPUT" | grep -q "Skeleton generated"; then
-        BASE_MSG="Auto-generated skeleton design file for this source file and queued it for LLM enrichment. Set updated_by: agent in the frontmatter if you make further edits."
-    else
-        # Skeleton generation failed or not available -- fall back to reminder
-        BASE_MSG="No design file found for this source file. Remember to update the corresponding design file after editing source files. Set updated_by: agent in the frontmatter."
-    fi
+    # Design file missing -- suggest generating via lexi design update
+    BASE_MSG="No design file found for this source file. Run: lexi design update $REL_PATH -- this will generate a full design file via the archivist pipeline."
 fi
 
 # --- Dependents warning via lexi impact ---

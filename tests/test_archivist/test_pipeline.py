@@ -949,6 +949,98 @@ class TestUpdateFileAvailableConcepts:
 
 
 # ---------------------------------------------------------------------------
+# update_file — force parameter
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateFileForce:
+    """Verify force parameter deletes existing design, triggers NEW_FILE, and preserves context."""
+
+    @pytest.mark.asyncio()
+    async def test_force_regenerates_unchanged_file(self, tmp_path: Path) -> None:
+        """Force=True on an up-to-date file deletes the design so check_change sees NEW_FILE."""
+        source_rel = "src/foo.py"
+        source = _make_source_file(tmp_path, source_rel, "def bar(): pass")
+
+        # Compute actual hashes to make the file look "unchanged"
+        actual_hash = _sha256(source.read_bytes().decode())
+        design_path = _make_design_file(
+            tmp_path,
+            source_rel,
+            source_hash=actual_hash,
+        )
+        assert design_path.exists()
+
+        config = _make_config()
+        archivist = _mock_archivist(summary="Regenerated design.")
+
+        result = await update_file(source, tmp_path, config, archivist, force=True)
+
+        # Force should have caused an LLM call via NEW_FILE path
+        assert result.change == ChangeLevel.NEW_FILE
+        assert not result.failed
+        archivist.generate_design_file.assert_awaited_once()
+
+        # Design file should exist again (written by the pipeline)
+        assert design_path.exists()
+
+    @pytest.mark.asyncio()
+    async def test_force_preserves_existing_design_as_context(self, tmp_path: Path) -> None:
+        """Force=True passes the old design content as existing_design to the LLM request."""
+        source_rel = "src/foo.py"
+        source = _make_source_file(tmp_path, source_rel, "def bar(): pass")
+
+        # Create a design file with recognisable content
+        original_body = (
+            "---\n"
+            "description: Original design.\n"
+            "id: DS-001\n"
+            "updated_by: archivist\n"
+            "---\n"
+            "\n"
+            "# Original content\n"
+            "\n"
+            "This is the original design file body.\n"
+        )
+        _make_design_file(tmp_path, source_rel, body=original_body)
+
+        config = _make_config()
+        archivist = _mock_archivist(summary="Updated design.")
+
+        result = await update_file(source, tmp_path, config, archivist, force=True)
+
+        assert result.change == ChangeLevel.NEW_FILE
+        assert not result.failed
+
+        # Verify the preserved content was passed as existing_design_file
+        call_args = archivist.generate_design_file.call_args
+        request = call_args[0][0]
+        assert request.existing_design_file is not None
+        assert "Original content" in request.existing_design_file
+
+    @pytest.mark.asyncio()
+    async def test_force_with_no_existing_file(self, tmp_path: Path) -> None:
+        """Force=True with no existing design file works like a normal new file."""
+        source_rel = "src/foo.py"
+        source = _make_source_file(tmp_path, source_rel, "def bar(): pass")
+
+        # No design file created
+        config = _make_config()
+        archivist = _mock_archivist(summary="New design.")
+
+        result = await update_file(source, tmp_path, config, archivist, force=True)
+
+        assert result.change == ChangeLevel.NEW_FILE
+        assert not result.failed
+        archivist.generate_design_file.assert_awaited_once()
+
+        # Verify existing_design_file is None since there was no prior file
+        call_args = archivist.generate_design_file.call_args
+        request = call_args[0][0]
+        assert request.existing_design_file is None
+
+
+# ---------------------------------------------------------------------------
 # update_project — concept loading
 # ---------------------------------------------------------------------------
 

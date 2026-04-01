@@ -7,9 +7,8 @@ from typing import Annotated
 
 import typer
 
-from lexibrary.cli._output import error, info
-from lexibrary.exceptions import LexibraryNotFoundError
-from lexibrary.utils.root import find_project_root
+from lexibrary.cli._output import error, info, warn
+from lexibrary.cli._shared import require_project_root
 
 design_app = typer.Typer(help="Design file management commands.", rich_markup_mode=None)
 
@@ -18,24 +17,41 @@ design_app = typer.Typer(help="Design file management commands.", rich_markup_mo
 def design_update(
     source_file: Annotated[
         Path,
-        typer.Argument(help="Source file to scaffold or display a design file for."),
+        typer.Argument(help="Source file to generate or update a design file for."),
     ],
+    *,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-f",
+            help="Bypass updated_by protection and staleness checks.",
+        ),
+    ] = False,
+    unlimited: Annotated[
+        bool,
+        typer.Option(
+            "--unlimited",
+            help="Bypass token-budget size gate for large files.",
+        ),
+    ] = False,
 ) -> None:
-    """Return existing design file content, or scaffold a new one if none exists."""
-    from lexibrary.archivist.scaffold import generate_design_scaffold  # noqa: PLC0415
+    """Generate or update the design file for a source file via the archivist pipeline."""
+    import asyncio  # noqa: PLC0415
+
     from lexibrary.config.loader import load_config  # noqa: PLC0415
-    from lexibrary.utils.paths import mirror_path  # noqa: PLC0415
+    from lexibrary.services.design import check_design_update  # noqa: PLC0415
+    from lexibrary.services.design_render import (  # noqa: PLC0415
+        render_failure,
+        render_skeleton_warning,
+        render_skip,
+        render_success,
+    )
+
+    project_root = require_project_root()
+    config = load_config(project_root)
 
     target = Path(source_file).resolve()
-
-    # Find project root starting from the file's directory (walks upward)
-    try:
-        project_root = find_project_root(start=target.parent)
-    except LexibraryNotFoundError:
-        error("No .lexibrary/ directory found. Run `lexictl init` to create one.")
-        raise typer.Exit(1) from None
-
-    config = load_config(project_root)
 
     # Check scope: file must be under scope_root
     scope_abs = (project_root / config.scope_root).resolve()
@@ -45,24 +61,63 @@ def design_update(
         error(f"{source_file} is outside the configured scope_root ({config.scope_root}).")
         raise typer.Exit(1) from None
 
-    # Compute mirror path
-    design_path = mirror_path(project_root, target)
+    # Pre-flight decision
+    decision = check_design_update(target, project_root, config, force=force)
 
-    if design_path.exists():
-        # Display existing design file
-        rel_design = design_path.relative_to(project_root)
-        content = design_path.read_text(encoding="utf-8")
-        info(f"{rel_design}\n")
-        info(content)
-        info("\nReminder: set `updated_by: agent` in frontmatter after making changes.")
-    else:
-        # Scaffold new design file
-        scaffold = generate_design_scaffold(target, project_root)
-        design_path.parent.mkdir(parents=True, exist_ok=True)
-        design_path.write_text(scaffold, encoding="utf-8")
-        rel_design = design_path.relative_to(project_root)
-        info(f"Created design scaffold: {rel_design}\n")
-        info(scaffold)
+    if decision.action == "skip":
+        msg = render_skip(decision)
+        warn(msg)
+        return
+
+    # --- action == "generate" ---
+
+    from lexibrary.archivist.pipeline import update_file  # noqa: PLC0415
+    from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
+    from lexibrary.llm.client_registry import build_client_registry  # noqa: PLC0415
+    from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+    from lexibrary.wiki.index import ConceptIndex  # noqa: PLC0415
+
+    # Load available concepts for wikilink guidance
+    concepts_dir = project_root / LEXIBRARY_DIR / "concepts"
+    concept_index = ConceptIndex.load(concepts_dir)
+    available_concepts = concept_index.names() or None
+
+    # Instantiate archivist service (only when we actually need generation)
+    rate_limiter = RateLimiter()
+    registry = build_client_registry(config, unlimited=unlimited)
+    archivist = ArchivistService(rate_limiter=rate_limiter, client_registry=registry)
+
+    rel_source = str(target.relative_to(project_root))
+
+    try:
+        result = asyncio.run(
+            update_file(
+                target,
+                project_root,
+                config,
+                archivist,
+                available_concepts,
+                force=force,
+                unlimited=unlimited,
+            )
+        )
+    except Exception as exc:
+        error(f"Design update failed: {exc}")
+        raise typer.Exit(1) from None
+
+    if result.failed:
+        msg = render_failure(rel_source, result.failure_reason or "unknown error")
+        error(msg)
+        raise typer.Exit(1) from None
+
+    if result.skeleton:
+        msg = render_skeleton_warning(rel_source, "token budget exceeded")
+        warn(msg)
+        return
+
+    msg = render_success(rel_source, result.change.value)
+    info(msg)
 
 
 @design_app.command("comment")
@@ -83,12 +138,7 @@ def design_comment(
 
     target = Path(source_file).resolve()
 
-    # Find project root starting from the file's directory (walks upward)
-    try:
-        project_root = find_project_root(start=target.parent)
-    except LexibraryNotFoundError:
-        error("No .lexibrary/ directory found. Run `lexictl init` to create one.")
-        raise typer.Exit(1) from None
+    project_root = require_project_root()
 
     # Check that the design file exists for this source file
     design_path = mirror_path(project_root, target)
