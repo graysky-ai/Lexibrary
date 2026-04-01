@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from lexibrary.artifacts.ids import is_artifact_id, parse_artifact_id
+from lexibrary.artifacts.ids import dir_for_kind, is_artifact_id, kind_for_prefix, parse_artifact_id
 from lexibrary.cli._format import OutputFormat, get_format
 from lexibrary.cli._output import info, markdown_table
 from lexibrary.conventions.parser import extract_rule
@@ -52,10 +52,14 @@ class SearchResults:
         """Emit a single JSON array of result dicts."""
         records: list[dict[str, object]] = []
         for c in self.concepts:
-            records.append({"name": c.name, "tags": c.tags, "status": c.status})
+            records.append(
+                {"id": c.id, "type": "concept", "name": c.name, "tags": c.tags, "status": c.status}
+            )
         for cv in self.conventions:
             records.append(
                 {
+                    "id": cv.id,
+                    "type": "convention",
                     "title": cv.title,
                     "scope": cv.scope,
                     "tags": cv.tags,
@@ -66,6 +70,7 @@ class SearchResults:
             records.append(
                 {
                     "id": s.post_id,
+                    "type": "stack",
                     "title": s.title,
                     "votes": s.votes,
                     "tags": s.tags,
@@ -73,10 +78,20 @@ class SearchResults:
                 }
             )
         for d in self.design_files:
-            records.append({"source": d.source_path, "description": d.description, "tags": d.tags})
+            records.append(
+                {
+                    "id": d.id,
+                    "type": "design",
+                    "source": d.source_path,
+                    "description": d.description,
+                    "tags": d.tags,
+                }
+            )
         for pb in self.playbooks:
             records.append(
                 {
+                    "id": pb.id,
+                    "type": "playbook",
                     "title": pb.title,
                     "status": pb.status,
                     "tags": pb.tags,
@@ -90,15 +105,15 @@ class SearchResults:
     def _render_plain(self) -> None:
         """Emit tab-separated lines with no markdown formatting."""
         for c in self.concepts:
-            info(f"{c.name}\t{', '.join(c.tags)}\t{c.status}")
+            info(f"{c.id}\t{c.name}\t{', '.join(c.tags)}\t{c.status}")
         for cv in self.conventions:
-            info(f"{cv.title}\t{cv.scope}\t{', '.join(cv.tags)}\t{cv.status}")
+            info(f"{cv.id}\t{cv.title}\t{cv.scope}\t{', '.join(cv.tags)}\t{cv.status}")
         for s in self.stack_posts:
             info(f"{s.post_id}\t{s.title}\t{s.votes}\t{', '.join(s.tags)}\t{s.status}")
         for d in self.design_files:
-            info(f"{d.source_path}\t{d.description}\t{', '.join(d.tags)}")
+            info(f"{d.id}\t{d.source_path}\t{d.description}\t{', '.join(d.tags)}")
         for pb in self.playbooks:
-            info(f"{pb.title}\t{pb.status}\t{', '.join(pb.tags)}\t{pb.overview}")
+            info(f"{pb.id}\t{pb.title}\t{pb.status}\t{', '.join(pb.tags)}\t{pb.overview}")
 
     # -- Markdown rendering (original behaviour) ----------------------------
 
@@ -108,16 +123,17 @@ class SearchResults:
             info("")
             info("## Concepts\n")
             rows = [
-                [c.name, c.status, ", ".join(c.tags), c.summary[:50] if c.summary else ""]
+                [c.id, c.name, c.status, ", ".join(c.tags), c.summary[:50] if c.summary else ""]
                 for c in self.concepts
             ]
-            info(markdown_table(["Name", "Status", "Tags", "Summary"], rows))
+            info(markdown_table(["ID", "Name", "Status", "Tags", "Summary"], rows))
 
         if self.conventions:
             info("")
             info("## Conventions\n")
             rows = [
                 [
+                    cv.id,
                     cv.title,
                     cv.scope,
                     cv.status,
@@ -126,16 +142,21 @@ class SearchResults:
                 ]
                 for cv in self.conventions
             ]
-            info(markdown_table(["Title", "Scope", "Status", "Rule", "Tags"], rows))
+            info(markdown_table(["ID", "Title", "Scope", "Status", "Rule", "Tags"], rows))
 
         if self.design_files:
             info("")
             info("## Design Files\n")
             rows = [
-                [d.source_path, d.description[:60] if d.description else "", ", ".join(d.tags)]
+                [
+                    d.id,
+                    d.source_path,
+                    d.description[:60] if d.description else "",
+                    ", ".join(d.tags),
+                ]
                 for d in self.design_files
             ]
-            info(markdown_table(["Source", "Description", "Tags"], rows))
+            info(markdown_table(["ID", "Source", "Description", "Tags"], rows))
 
         if self.stack_posts:
             info("")
@@ -151,6 +172,7 @@ class SearchResults:
             info("## Playbooks\n")
             rows = [
                 [
+                    pb.id,
                     pb.title,
                     pb.status,
                     pb.overview[:50] if pb.overview else "",
@@ -158,11 +180,12 @@ class SearchResults:
                 ]
                 for pb in self.playbooks
             ]
-            info(markdown_table(["Title", "Status", "Overview", "Tags"], rows))
+            info(markdown_table(["ID", "Title", "Status", "Overview", "Tags"], rows))
 
 
 @dataclass
 class _ConceptResult:
+    id: str
     name: str
     status: str
     tags: list[str]
@@ -171,6 +194,7 @@ class _ConceptResult:
 
 @dataclass
 class _DesignFileResult:
+    id: str
     source_path: str
     description: str
     tags: list[str]
@@ -178,6 +202,7 @@ class _DesignFileResult:
 
 @dataclass
 class _ConventionResult:
+    id: str
     title: str
     scope: str
     status: str
@@ -196,6 +221,7 @@ class _StackResult:
 
 @dataclass
 class _PlaybookResult:
+    id: str
     title: str
     status: str
     tags: list[str]
@@ -205,23 +231,9 @@ class _PlaybookResult:
 # Valid artifact type values for ``artifact_type`` parameter.
 VALID_ARTIFACT_TYPES = ("concept", "convention", "design", "stack", "playbook")
 
-# Map from 2-letter ID prefix to artifact kind (used for ID-based search).
-_PREFIX_TO_KIND: dict[str, str] = {
-    "CN": "concept",
-    "CV": "convention",
-    "PB": "playbook",
-    "DS": "design",
-    "ST": "stack",
-}
-
-# Map from artifact kind to the subdirectory under ``.lexibrary/``.
-_KIND_TO_DIR: dict[str, str] = {
-    "concept": "concepts",
-    "convention": "conventions",
-    "playbook": "playbooks",
-    "design": "designs",
-    "stack": "stack",
-}
+# _PREFIX_TO_KIND and _KIND_TO_DIR are now centralised in
+# ``lexibrary.artifacts.ids`` and accessed via ``kind_for_prefix()``
+# and ``dir_for_kind()``.
 
 
 def _resolve_artifact_by_id(project_root: Path, artifact_id: str) -> SearchResults | None:
@@ -239,11 +251,11 @@ def _resolve_artifact_by_id(project_root: Path, artifact_id: str) -> SearchResul
         return None
 
     prefix, _number = parsed
-    kind = _PREFIX_TO_KIND.get(prefix)
+    kind = kind_for_prefix(prefix)
     if kind is None:
         return None
 
-    subdir = _KIND_TO_DIR[kind]
+    subdir = dir_for_kind(kind)
     artifact_dir = project_root / ".lexibrary" / subdir
 
     if not artifact_dir.is_dir():
@@ -293,6 +305,7 @@ def _resolve_concept_file(path: Path) -> _ConceptResult | None:
     if concept is None:
         return None
     return _ConceptResult(
+        id=concept.frontmatter.id,
         name=concept.frontmatter.title,
         status=concept.frontmatter.status,
         tags=list(concept.frontmatter.tags),
@@ -308,6 +321,7 @@ def _resolve_convention_file(path: Path) -> _ConventionResult | None:
     if conv is None:
         return None
     return _ConventionResult(
+        id=conv.frontmatter.id,
         title=conv.frontmatter.title,
         scope=conv.frontmatter.scope,
         status=conv.frontmatter.status,
@@ -324,6 +338,7 @@ def _resolve_playbook_file(path: Path) -> _PlaybookResult | None:
     if pb is None:
         return None
     return _PlaybookResult(
+        id=pb.frontmatter.id,
         title=pb.frontmatter.title,
         status=pb.frontmatter.status,
         tags=list(pb.frontmatter.tags),
@@ -363,6 +378,7 @@ def _resolve_design_by_id(designs_dir: Path, artifact_id: str) -> SearchResults 
             results = SearchResults()
             results.design_files.append(
                 _DesignFileResult(
+                    id=design.frontmatter.id,
                     source_path=design.source_path,
                     description=design.frontmatter.description,
                     tags=list(design.tags),
@@ -687,6 +703,7 @@ def _tag_search_from_index(
         if hit.kind == _KIND_CONCEPT:
             results.concepts.append(
                 _ConceptResult(
+                    id=hit.artifact_code or "",
                     name=hit.title or hit.path,
                     status=hit.status or "active",
                     tags=[tag],
@@ -704,6 +721,7 @@ def _tag_search_from_index(
                 conv_rule = ""
             results.conventions.append(
                 _ConventionResult(
+                    id=hit.artifact_code or "",
                     title=hit.title or hit.path,
                     scope=conv_scope,
                     status=hit.status or "active",
@@ -714,6 +732,7 @@ def _tag_search_from_index(
         elif hit.kind == _KIND_DESIGN:
             results.design_files.append(
                 _DesignFileResult(
+                    id=hit.artifact_code or "",
                     source_path=hit.path,
                     description=hit.title or "",
                     tags=[tag],
@@ -722,7 +741,7 @@ def _tag_search_from_index(
         elif hit.kind == _KIND_STACK:
             results.stack_posts.append(
                 _StackResult(
-                    post_id=hit.path,
+                    post_id=hit.artifact_code or hit.path,
                     title=hit.title or "",
                     status=hit.status or "open",
                     votes=0,
@@ -789,6 +808,7 @@ def _fts_search(
         if hit.kind == _KIND_CONCEPT:
             results.concepts.append(
                 _ConceptResult(
+                    id=hit.artifact_code or "",
                     name=hit.title or hit.path,
                     status=hit.status or "active",
                     tags=[],
@@ -806,6 +826,7 @@ def _fts_search(
                 conv_rule = ""
             results.conventions.append(
                 _ConventionResult(
+                    id=hit.artifact_code or "",
                     title=hit.title or hit.path,
                     scope=conv_scope,
                     status=hit.status or "active",
@@ -816,6 +837,7 @@ def _fts_search(
         elif hit.kind == _KIND_DESIGN:
             results.design_files.append(
                 _DesignFileResult(
+                    id=hit.artifact_code or "",
                     source_path=hit.path,
                     description=hit.title or "",
                     tags=[],
@@ -824,7 +846,7 @@ def _fts_search(
         elif hit.kind == _KIND_STACK:
             results.stack_posts.append(
                 _StackResult(
-                    post_id=hit.path,
+                    post_id=hit.artifact_code or hit.path,
                     title=hit.title or "",
                     status=hit.status or "open",
                     votes=0,
@@ -894,6 +916,7 @@ def _search_concepts(
 
     return [
         _ConceptResult(
+            id=c.frontmatter.id,
             name=c.frontmatter.title,
             status=c.frontmatter.status,
             tags=list(c.frontmatter.tags),
@@ -967,6 +990,7 @@ def _search_design_files(
 
         results.append(
             _DesignFileResult(
+                id=design.frontmatter.id,
                 source_path=design.source_path,
                 description=design.frontmatter.description,
                 tags=list(design.tags),
@@ -1122,6 +1146,7 @@ def _search_conventions(
 
     return [
         _ConventionResult(
+            id=c.frontmatter.id,
             title=c.frontmatter.title,
             scope=c.frontmatter.scope,
             status=c.frontmatter.status,
@@ -1192,6 +1217,7 @@ def _search_playbooks(
 
     return [
         _PlaybookResult(
+            id=pb.frontmatter.id,
             title=pb.frontmatter.title,
             status=pb.frontmatter.status,
             tags=list(pb.frontmatter.tags),

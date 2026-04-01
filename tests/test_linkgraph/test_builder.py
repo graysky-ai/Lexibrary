@@ -879,6 +879,27 @@ class TestProcessDesignFile:
         assert "Handles user authentication" in fts_row[1]
         assert "def login" in fts_row[1]
 
+    def test_fts_body_includes_tags(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+        """FTS body includes tags from design file markdown body."""
+        _create_design_file_tree(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_design_file(
+            tmp_path / ".lexibrary" / "designs" / "src" / "auth" / "login.py.md",
+            "2025-06-15T12:00:00+00:00",
+        )
+
+        design_id = db_conn.execute(
+            "SELECT id FROM artifacts WHERE path = '.lexibrary/designs/src/auth/login.py.md'"
+        ).fetchone()[0]
+        fts_row = db_conn.execute(
+            "SELECT body FROM artifacts_fts WHERE rowid = ?",
+            (design_id,),
+        ).fetchone()
+        assert fts_row is not None
+        # The sample design file has tags: [auth, security]
+        assert "auth" in fts_row[0]
+        assert "security" in fts_row[0]
+
     def test_build_log_entry_created(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """A build_log entry is created for a successfully processed design file."""
         _create_design_file_tree(tmp_path)
@@ -1265,6 +1286,42 @@ class TestProcessConceptFile:
         assert fts_row is not None
         assert fts_row[0] == "Authentication"
         assert "verifying identity" in fts_row[1]
+
+    def test_fts_body_includes_aliases(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+        """FTS body includes aliases from concept frontmatter."""
+        concept_path = _create_concept_file(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_concept_file(concept_path, "2025-06-15T12:00:00+00:00")
+
+        concept_id = db_conn.execute(
+            "SELECT id FROM artifacts WHERE path = '.lexibrary/concepts/Authentication.md'"
+        ).fetchone()[0]
+        fts_row = db_conn.execute(
+            "SELECT body FROM artifacts_fts WHERE rowid = ?",
+            (concept_id,),
+        ).fetchone()
+        assert fts_row is not None
+        # The sample concept file has aliases: [auth, authn]
+        assert "auth" in fts_row[0]
+        assert "authn" in fts_row[0]
+
+    def test_fts_body_includes_tags(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+        """FTS body includes tags from concept frontmatter."""
+        concept_path = _create_concept_file(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_concept_file(concept_path, "2025-06-15T12:00:00+00:00")
+
+        concept_id = db_conn.execute(
+            "SELECT id FROM artifacts WHERE path = '.lexibrary/concepts/Authentication.md'"
+        ).fetchone()[0]
+        fts_row = db_conn.execute(
+            "SELECT body FROM artifacts_fts WHERE rowid = ?",
+            (concept_id,),
+        ).fetchone()
+        assert fts_row is not None
+        # The sample concept file has tags: [security, identity]
+        assert "security" in fts_row[0]
+        assert "identity" in fts_row[0]
 
     def test_build_log_entry_created(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """A build_log entry is created for a successfully processed concept file."""
@@ -1831,6 +1888,24 @@ Reduce idle connection timeout and enable connection recycling.
         # Body should contain finding text
         assert "connection recycling" in fts_row[1]
 
+    def test_fts_body_includes_tags(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
+        """FTS body includes tags from stack post frontmatter."""
+        stack_path = _create_stack_post(tmp_path)
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_stack_post(stack_path, "2025-06-15T12:00:00+00:00")
+
+        stack_id = db_conn.execute(
+            "SELECT id FROM artifacts WHERE path = '.lexibrary/stack/ST-001.md'"
+        ).fetchone()[0]
+        fts_row = db_conn.execute(
+            "SELECT body FROM artifacts_fts WHERE rowid = ?",
+            (stack_id,),
+        ).fetchone()
+        assert fts_row is not None
+        # The sample stack post has tags: [auth, jwt]
+        assert "auth" in fts_row[0]
+        assert "jwt" in fts_row[0]
+
     def test_build_log_entry_created(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """A build_log entry is created for a successfully processed Stack post."""
         stack_path = _create_stack_post(tmp_path)
@@ -2274,6 +2349,34 @@ class TestProcessConventionFile:
         assert len(fts_rows) == 1
         assert fts_rows[0][0] == "FTS Convention"
         assert "type annotations" in fts_rows[0][1]
+
+    def test_fts_body_includes_aliases_and_tags(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """FTS body includes aliases and tags from convention frontmatter."""
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        conv_path = conv_dir / "aliased-convention.md"
+        conv_path.write_text(
+            "---\ntitle: Import Convention\nid: CV-020\nscope: project\n"
+            "aliases:\n  - import-rule\n  - module-imports\n"
+            "tags:\n  - python\n  - imports\n---\n"
+            "Follow standard import ordering.\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_convention_file(conv_path, "2025-06-15T12:00:00+00:00")
+
+        fts_rows = db_conn.execute("SELECT body FROM artifacts_fts").fetchall()
+        assert len(fts_rows) == 1
+        body = fts_rows[0][0]
+        # Aliases should be in the FTS body
+        assert "import-rule" in body
+        assert "module-imports" in body
+        # Tags should be in the FTS body
+        assert "python" in body
+        assert "imports" in body
 
     def test_build_log_entry(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """Successful processing creates a 'created' build_log entry."""
@@ -4348,4 +4451,53 @@ class TestConventionAwareWikilinkProcessing:
         assert len(links) == 1
         target_path, target_kind = links[0]
         assert target_kind == "convention"
+        # End of TestConventionAwareWikilinkProcessing
         assert target_path == ".lexibrary/conventions/use-type-hints.md"
+
+
+# ---------------------------------------------------------------------------
+# Playbook FTS body tests (Group 8 -- search-first-workflow)
+# ---------------------------------------------------------------------------
+
+
+class TestProcessPlaybookFTS:
+    """Tests that playbook FTS body includes aliases and tags."""
+
+    def test_fts_body_includes_aliases_and_tags(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """FTS body includes aliases and tags from playbook frontmatter."""
+        playbook_dir = tmp_path / ".lexibrary" / "playbooks"
+        playbook_dir.mkdir(parents=True)
+        playbook_path = playbook_dir / "PB-001-deploy-service.md"
+        playbook_path.write_text(
+            "---\ntitle: Deploy Service\nid: PB-001\n"
+            "aliases:\n  - deploy\n  - ship-it\n"
+            "tags:\n  - ops\n  - deployment\n"
+            "status: active\n---\n\n"
+            "## Overview\n\nHow to deploy the service to production.\n\n"
+            "## Steps\n\n1. Build the image\n2. Push to registry\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_playbook_file(playbook_path, "2025-06-15T12:00:00+00:00")
+
+        playbook_id = db_conn.execute(
+            "SELECT id FROM artifacts WHERE kind = 'playbook'"
+        ).fetchone()[0]
+        fts_row = db_conn.execute(
+            "SELECT title, body FROM artifacts_fts WHERE rowid = ?",
+            (playbook_id,),
+        ).fetchone()
+        assert fts_row is not None
+        assert fts_row[0] == "Deploy Service"
+        body = fts_row[1]
+        # Overview should be in the body
+        assert "deploy the service" in body
+        # Aliases should be in the FTS body
+        assert "deploy" in body
+        assert "ship-it" in body
+        # Tags should be in the FTS body
+        assert "ops" in body
+        assert "deployment" in body

@@ -1,8 +1,9 @@
 """LinkGraph index builder -- populates the SQLite index from parsed artifacts.
 
-Reads five artifact families (design files, concept files, Stack posts,
-convention files, and ``.aindex`` files), resolves cross-references, and writes
-rows into the link graph schema created by :mod:`lexibrary.linkgraph.schema`.
+Reads six artifact families (design files, concept files, Stack posts,
+convention files, playbook files, and ``.aindex`` files), resolves
+cross-references, and writes rows into the link graph schema created by
+:mod:`lexibrary.linkgraph.schema`.
 
 Two entry modes:
 
@@ -30,6 +31,7 @@ from lexibrary.artifacts.concept import ConceptFile  # noqa: F401
 from lexibrary.artifacts.convention import ConventionFile  # noqa: F401
 from lexibrary.artifacts.design_file import DesignFile  # noqa: F401
 from lexibrary.artifacts.design_file_parser import parse_design_file
+from lexibrary.artifacts.playbook import PlaybookFile  # noqa: F401
 from lexibrary.conventions.index import ConventionIndex
 from lexibrary.conventions.parser import parse_convention_file
 from lexibrary.errors import ErrorSummary
@@ -37,6 +39,7 @@ from lexibrary.linkgraph.schema import (
     ensure_schema,
     set_pragmas,
 )
+from lexibrary.playbooks.parser import parse_playbook_file
 from lexibrary.stack.models import StackPost  # noqa: F401
 from lexibrary.stack.parser import parse_stack_post  # noqa: F401
 from lexibrary.utils.hashing import hash_file
@@ -483,12 +486,16 @@ class IndexBuilder:
         for tag in concept_file.frontmatter.tags:
             self._insert_tag(concept_id, tag)
 
-        # 6. FTS row -- body = summary + "\n" + body
+        # 6. FTS row -- body = summary + "\n" + body + aliases + tags
         fts_body_parts = []
         if concept_file.summary:
             fts_body_parts.append(concept_file.summary)
         if concept_file.body:
             fts_body_parts.append(concept_file.body)
+        if concept_file.frontmatter.aliases:
+            fts_body_parts.append(" ".join(concept_file.frontmatter.aliases))
+        if concept_file.frontmatter.tags:
+            fts_body_parts.append(" ".join(concept_file.frontmatter.tags))
         fts_body = "\n".join(fts_body_parts)
         self._insert_fts(concept_id, concept_file.frontmatter.title, fts_body)
 
@@ -803,12 +810,14 @@ class IndexBuilder:
         for tag in design_file.tags:
             self._insert_tag(design_id, tag)
 
-        # 8. FTS row -- body = summary + "\n" + interface_contract
+        # 8. FTS row -- body = summary + "\n" + interface_contract + tags
         fts_body_parts = []
         if design_file.summary:
             fts_body_parts.append(design_file.summary)
         if design_file.interface_contract:
             fts_body_parts.append(design_file.interface_contract)
+        if design_file.tags:
+            fts_body_parts.append(" ".join(design_file.tags))
         fts_body = "\n".join(fts_body_parts)
         self._insert_fts(design_id, design_file.frontmatter.description, fts_body)
 
@@ -911,7 +920,7 @@ class IndexBuilder:
         for tag in stack_post.frontmatter.tags:
             self._insert_tag(stack_id, tag)
 
-        # 5. FTS row -- body = problem + context + attempts + findings
+        # 5. FTS row -- body = problem + context + attempts + findings + tags
         fts_body_parts: list[str] = []
         if stack_post.problem:
             fts_body_parts.append(stack_post.problem)
@@ -922,6 +931,8 @@ class IndexBuilder:
         finding_bodies = " ".join(finding.body for finding in stack_post.findings if finding.body)
         if finding_bodies:
             fts_body_parts.append(finding_bodies)
+        if stack_post.frontmatter.tags:
+            fts_body_parts.append(" ".join(stack_post.frontmatter.tags))
         fts_body = "\n".join(fts_body_parts)
         self._insert_fts(stack_id, stack_post.frontmatter.title, fts_body)
 
@@ -1049,12 +1060,16 @@ class IndexBuilder:
             concept_id = self._get_or_create_artifact(concept_path, "concept", title=wikilink_name)
             self._insert_link(conv_id, concept_id, "convention_concept_ref")
 
-        # 4. FTS row -- body = rule + "\n" + body
+        # 4. FTS row -- body = rule + "\n" + body + aliases + tags
         fts_body_parts = []
         if conv_file.rule:
             fts_body_parts.append(conv_file.rule)
         if conv_file.body:
             fts_body_parts.append(conv_file.body)
+        if conv_file.frontmatter.aliases:
+            fts_body_parts.append(" ".join(conv_file.frontmatter.aliases))
+        if conv_file.frontmatter.tags:
+            fts_body_parts.append(" ".join(conv_file.frontmatter.tags))
         fts_body = "\n".join(fts_body_parts)
         self._insert_fts(conv_id, conv_file.frontmatter.title, fts_body)
 
@@ -1072,6 +1087,102 @@ class IndexBuilder:
             "INSERT INTO build_log (build_started, build_type, artifact_path, "
             "artifact_kind, action, duration_ms) VALUES (?, 'full', ?, 'convention', 'created', ?)",
             (build_started, conv_relpath, duration_ms),
+        )
+
+    # -- playbook file processing -----------------------------------------------
+
+    def _scan_playbook_files(self) -> list[Path]:
+        """Discover all ``.md`` files under ``.lexibrary/playbooks/``.
+
+        Returns a sorted list of absolute ``Path`` objects for deterministic
+        processing order.
+        """
+        playbooks_root = self.project_root / LEXIBRARY_DIR / "playbooks"
+        if not playbooks_root.is_dir():
+            return []
+        return sorted(playbooks_root.rglob("*.md"))
+
+    def _process_playbook_file(self, playbook_path: Path, build_started: str) -> None:
+        """Parse a playbook file and insert artifact, tags, aliases, and FTS.
+
+        This is the main entry point for processing a single playbook file
+        during a full build.  It handles:
+
+        1. Playbook artifact insertion
+        2. Alias insertion (first-writer-wins on duplicates)
+        3. Tags associated with the playbook artifact
+        4. FTS row for the playbook artifact (includes aliases and tags)
+
+        Parameters
+        ----------
+        playbook_path:
+            Absolute path to the playbook file on disk.
+        build_started:
+            ISO 8601 timestamp of the current build (for ``build_log``).
+        """
+        start_ns = time.monotonic_ns()
+
+        # Parse the playbook file
+        playbook_file = parse_playbook_file(playbook_path)
+        if playbook_file is None:
+            error_msg = f"Failed to parse playbook file: {playbook_path}"
+            logger.warning(error_msg)
+            playbook_rel = str(playbook_path.relative_to(self.project_root))
+            self.conn.execute(
+                "INSERT INTO build_log (build_started, build_type, artifact_path, "
+                "artifact_kind, action, duration_ms, error_message) "
+                "VALUES (?, 'full', ?, 'playbook', 'failed', ?, ?)",
+                (
+                    build_started,
+                    playbook_rel,
+                    (time.monotonic_ns() - start_ns) // 1_000_000,
+                    error_msg,
+                ),
+            )
+            return
+
+        playbook_relpath = str(playbook_path.relative_to(self.project_root))
+
+        # 1. Playbook artifact
+        playbook_id = self._get_or_create_artifact(
+            playbook_relpath,
+            "playbook",
+            title=playbook_file.frontmatter.title,
+            artifact_code=playbook_file.frontmatter.id,
+        )
+        # Update the artifact with full details
+        self.conn.execute(
+            "UPDATE artifacts SET title = ?, artifact_code = ? WHERE id = ?",
+            (playbook_file.frontmatter.title, playbook_file.frontmatter.id, playbook_id),
+        )
+
+        # 2. Aliases
+        for alias in playbook_file.frontmatter.aliases:
+            self._insert_alias(playbook_id, alias, playbook_relpath)
+
+        # 3. Tags
+        for tag in playbook_file.frontmatter.tags:
+            self._insert_tag(playbook_id, tag)
+
+        # 4. FTS row -- body = overview + body + aliases + tags
+        fts_body_parts = []
+        if playbook_file.overview:
+            fts_body_parts.append(playbook_file.overview)
+        if playbook_file.body:
+            fts_body_parts.append(playbook_file.body)
+        if playbook_file.frontmatter.aliases:
+            fts_body_parts.append(" ".join(playbook_file.frontmatter.aliases))
+        if playbook_file.frontmatter.tags:
+            fts_body_parts.append(" ".join(playbook_file.frontmatter.tags))
+        fts_body = "\n".join(fts_body_parts)
+        self._insert_fts(playbook_id, playbook_file.frontmatter.title, fts_body)
+
+        # Log success
+        duration_ms = (time.monotonic_ns() - start_ns) // 1_000_000
+        self.conn.execute(
+            "INSERT INTO build_log (build_started, build_type, artifact_path, "
+            "artifact_kind, action, duration_ms) VALUES (?, 'full', ?, 'playbook', 'created', ?)",
+            (build_started, playbook_relpath, duration_ms),
         )
 
     # -- full build orchestration (task group 7) ----------------------------
@@ -1182,6 +1293,16 @@ class IndexBuilder:
                     errors.append(error_msg)
                     error_summary.add("linkgraph", exc, path=str(conv_path))
 
+            # 4e. Playbook files (creates playbook artifacts, aliases, tags, FTS)
+            for playbook_path in self._scan_playbook_files():
+                try:
+                    self._process_playbook_file(playbook_path, build_started)
+                except Exception as exc:
+                    error_msg = f"Error processing playbook file {playbook_path}: {exc}"
+                    logger.error(error_msg, exc_info=True)
+                    errors.append(error_msg)
+                    error_summary.add("linkgraph", exc, path=str(playbook_path))
+
             # Step 5: Update meta table with build summary
             self._update_meta(build_started)
 
@@ -1233,6 +1354,7 @@ class IndexBuilder:
         - Paths under ``.lexibrary/concepts/`` are concept files
         - Paths under ``.lexibrary/stack/`` are Stack posts
         - Paths under ``.lexibrary/conventions/`` are convention files
+        - Paths under ``.lexibrary/playbooks/`` are playbook files
         - Paths ending in ``.aindex`` under ``.lexibrary/`` are aindex files
         - Paths ending in ``.md`` under ``.lexibrary/designs/`` are design files
         - All other paths are treated as source files
@@ -1245,8 +1367,8 @@ class IndexBuilder:
         Returns
         -------
         str
-            One of ``'concept'``, ``'stack'``, ``'convention'``, ``'aindex'``,
-            ``'design'``, or ``'source'``.
+            One of ``'concept'``, ``'stack'``, ``'convention'``, ``'playbook'``,
+            ``'aindex'``, ``'design'``, or ``'source'``.
         """
         # Normalise to a project-relative string for prefix matching
         try:
@@ -1263,6 +1385,8 @@ class IndexBuilder:
             return "stack"
         if rel_str.startswith(f"{lex_prefix}conventions/"):
             return "convention"
+        if rel_str.startswith(f"{lex_prefix}playbooks/"):
+            return "playbook"
         if rel_str.startswith(lex_prefix) and rel.name == ".aindex":
             return "aindex"
         if rel_str.startswith(f"{lex_prefix}{DESIGNS_DIR}/") and rel_str.endswith(".md"):
@@ -1412,12 +1536,14 @@ class IndexBuilder:
                     for tag in design_file.tags:
                         self._insert_tag(design_id, tag)
 
-                    # Re-insert FTS
+                    # Re-insert FTS (includes tags)
                     fts_body_parts = []
                     if design_file.summary:
                         fts_body_parts.append(design_file.summary)
                     if design_file.interface_contract:
                         fts_body_parts.append(design_file.interface_contract)
+                    if design_file.tags:
+                        fts_body_parts.append(" ".join(design_file.tags))
                     fts_body = "\n".join(fts_body_parts)
                     self._insert_fts(design_id, design_file.frontmatter.description, fts_body)
 
@@ -1507,12 +1633,16 @@ class IndexBuilder:
         for tag in concept_file.frontmatter.tags:
             self._insert_tag(concept_id, tag)
 
-        # Re-insert FTS row
+        # Re-insert FTS row (includes aliases and tags)
         fts_body_parts = []
         if concept_file.summary:
             fts_body_parts.append(concept_file.summary)
         if concept_file.body:
             fts_body_parts.append(concept_file.body)
+        if concept_file.frontmatter.aliases:
+            fts_body_parts.append(" ".join(concept_file.frontmatter.aliases))
+        if concept_file.frontmatter.tags:
+            fts_body_parts.append(" ".join(concept_file.frontmatter.tags))
         fts_body = "\n".join(fts_body_parts)
         self._insert_fts(concept_id, concept_file.frontmatter.title, fts_body)
 
@@ -1597,7 +1727,7 @@ class IndexBuilder:
         for tag in stack_post.frontmatter.tags:
             self._insert_tag(stack_id, tag)
 
-        # Re-insert FTS row
+        # Re-insert FTS row (includes tags)
         fts_body_parts: list[str] = []
         if stack_post.problem:
             fts_body_parts.append(stack_post.problem)
@@ -1608,6 +1738,8 @@ class IndexBuilder:
         finding_bodies = " ".join(finding.body for finding in stack_post.findings if finding.body)
         if finding_bodies:
             fts_body_parts.append(finding_bodies)
+        if stack_post.frontmatter.tags:
+            fts_body_parts.append(" ".join(stack_post.frontmatter.tags))
         fts_body = "\n".join(fts_body_parts)
         self._insert_fts(stack_id, stack_post.frontmatter.title, fts_body)
 
@@ -1695,12 +1827,14 @@ class IndexBuilder:
         for tag in design_file.tags:
             self._insert_tag(design_id, tag)
 
-        # Re-insert FTS
+        # Re-insert FTS (includes tags)
         fts_body_parts = []
         if design_file.summary:
             fts_body_parts.append(design_file.summary)
         if design_file.interface_contract:
             fts_body_parts.append(design_file.interface_contract)
+        if design_file.tags:
+            fts_body_parts.append(" ".join(design_file.tags))
         fts_body = "\n".join(fts_body_parts)
         self._insert_fts(design_id, design_file.frontmatter.description, fts_body)
 
@@ -1825,12 +1959,16 @@ class IndexBuilder:
             concept_id = self._get_or_create_artifact(concept_path, "concept", title=wikilink_name)
             self._insert_link(conv_id, concept_id, "convention_concept_ref")
 
-        # FTS row
+        # FTS row (includes aliases and tags)
         fts_body_parts = []
         if conv_file.rule:
             fts_body_parts.append(conv_file.rule)
         if conv_file.body:
             fts_body_parts.append(conv_file.body)
+        if conv_file.frontmatter.aliases:
+            fts_body_parts.append(" ".join(conv_file.frontmatter.aliases))
+        if conv_file.frontmatter.tags:
+            fts_body_parts.append(" ".join(conv_file.frontmatter.tags))
         fts_body = "\n".join(fts_body_parts)
         self._insert_fts(conv_id, conv_file.frontmatter.title, fts_body)
 
@@ -1848,6 +1986,74 @@ class IndexBuilder:
             "artifact_kind, action, duration_ms) "
             "VALUES (?, 'incremental', ?, 'convention', 'updated', ?)",
             (build_started, conv_relpath, duration_ms),
+        )
+
+    def _handle_changed_playbook(self, file_path: Path, build_started: str) -> None:
+        """Handle a changed playbook file during incremental update.
+
+        Re-parses the playbook file, deletes outbound data, and reinserts
+        aliases, tags, and FTS.
+
+        Parameters
+        ----------
+        file_path:
+            Absolute path to the playbook file.
+        build_started:
+            ISO 8601 timestamp of the current build (for ``build_log``).
+        """
+        start_ns = time.monotonic_ns()
+
+        playbook_file = parse_playbook_file(file_path)
+        if playbook_file is None:
+            error_msg = f"Failed to parse playbook file: {file_path}"
+            logger.warning(error_msg)
+            return
+
+        playbook_relpath = str(file_path.relative_to(self.project_root))
+
+        # Get or create the artifact (may already exist from a prior build)
+        playbook_id = self._get_or_create_artifact(
+            playbook_relpath,
+            "playbook",
+            title=playbook_file.frontmatter.title,
+            artifact_code=playbook_file.frontmatter.id,
+        )
+        # Update the artifact with current details
+        self.conn.execute(
+            "UPDATE artifacts SET title = ?, artifact_code = ? WHERE id = ?",
+            (playbook_file.frontmatter.title, playbook_file.frontmatter.id, playbook_id),
+        )
+
+        # Delete existing outbound data and reinsert from current content
+        self._delete_artifact_outbound(playbook_id)
+
+        # Re-insert aliases
+        for alias in playbook_file.frontmatter.aliases:
+            self._insert_alias(playbook_id, alias, playbook_relpath)
+
+        # Re-insert tags
+        for tag in playbook_file.frontmatter.tags:
+            self._insert_tag(playbook_id, tag)
+
+        # Re-insert FTS row (includes aliases and tags)
+        fts_body_parts: list[str] = []
+        if playbook_file.overview:
+            fts_body_parts.append(playbook_file.overview)
+        if playbook_file.body:
+            fts_body_parts.append(playbook_file.body)
+        if playbook_file.frontmatter.aliases:
+            fts_body_parts.append(" ".join(playbook_file.frontmatter.aliases))
+        if playbook_file.frontmatter.tags:
+            fts_body_parts.append(" ".join(playbook_file.frontmatter.tags))
+        fts_body = "\n".join(fts_body_parts)
+        self._insert_fts(playbook_id, playbook_file.frontmatter.title, fts_body)
+
+        duration_ms = (time.monotonic_ns() - start_ns) // 1_000_000
+        self.conn.execute(
+            "INSERT INTO build_log (build_started, build_type, artifact_path, "
+            "artifact_kind, action, duration_ms) "
+            "VALUES (?, 'incremental', ?, 'playbook', 'updated', ?)",
+            (build_started, playbook_relpath, duration_ms),
         )
 
     def incremental_update(self, changed_paths: list[Path]) -> BuildResult:
@@ -1914,6 +2120,8 @@ class IndexBuilder:
                         self._handle_changed_stack(abs_path, build_started)
                     elif kind == "convention":
                         self._handle_changed_convention(abs_path, build_started)
+                    elif kind == "playbook":
+                        self._handle_changed_playbook(abs_path, build_started)
                     elif kind == "design":
                         self._handle_changed_design(abs_path, build_started)
                     else:

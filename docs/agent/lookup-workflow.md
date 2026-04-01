@@ -39,7 +39,7 @@ If the source file's SHA-256 hash does not match the hash stored in the design f
 
 ```
 Warning: Source file has changed since the design file was last generated.
-Run lexictl update src/lexibrary/config/schema.py to refresh.
+Advise user to run lexictl update src/lexibrary/config/schema.py to refresh.
 ```
 
 This means the design file may not reflect the current state of the source. The information is still useful -- just be aware it may be outdated. Do not run `lexictl update` yourself; that is an operator command.

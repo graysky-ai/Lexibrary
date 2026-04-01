@@ -150,6 +150,7 @@ class TestSearchResultsConventions:
         results = SearchResults(
             conventions=[
                 _ConventionResult(
+                    id="CV-001",
                     title="Auth decorator",
                     scope="project",
                     status="active",
@@ -172,6 +173,7 @@ class TestSearchResultsConventions:
         results = SearchResults(
             conventions=[
                 _ConventionResult(
+                    id="CV-001",
                     title="Auth decorator required",
                     scope="src/auth",
                     status="active",
@@ -194,6 +196,7 @@ class TestSearchResultsConventions:
         results = SearchResults(
             conventions=[
                 _ConventionResult(
+                    id="CV-002",
                     title="Draft convention",
                     scope="project",
                     status="draft",
@@ -212,6 +215,7 @@ class TestSearchResultsConventions:
         results = SearchResults(
             conventions=[
                 _ConventionResult(
+                    id="CV-003",
                     title="Old convention",
                     scope="project",
                     status="deprecated",
@@ -230,6 +234,7 @@ class TestSearchResultsConventions:
         results = SearchResults(
             concepts=[
                 _ConceptResult(
+                    id="CN-001",
                     name="Auth",
                     status="active",
                     tags=["auth"],
@@ -249,6 +254,7 @@ class TestSearchResultsConventions:
         results = SearchResults(
             conventions=[
                 _ConventionResult(
+                    id="CV-004",
                     title="Long rule conv",
                     scope="project",
                     status="active",
@@ -835,3 +841,354 @@ class TestSearchCLIConventions:
         output = result.output  # type: ignore[union-attr]
         assert "Conventions" in output
         assert "Auth required" in output
+
+
+# ---------------------------------------------------------------------------
+# ID column rendering tests (Group 8 -- search-first-workflow)
+# ---------------------------------------------------------------------------
+
+
+class TestMarkdownIDColumn:
+    """8.1 -- Search output includes ID column in markdown format."""
+
+    def test_concept_table_has_id_column(self) -> None:
+        """Concept markdown table includes an ID column header and shows the ID value."""
+        from lexibrary.search import _ConceptResult
+
+        results = SearchResults(
+            concepts=[
+                _ConceptResult(
+                    id="CN-001",
+                    name="Authentication",
+                    status="active",
+                    tags=["security"],
+                    summary="Auth logic",
+                )
+            ]
+        )
+        output = _render_to_string(results)
+        assert "| ID" in output
+        assert "CN-001" in output
+
+    def test_convention_table_has_id_column(self) -> None:
+        """Convention markdown table includes an ID column header and shows the ID value."""
+        from lexibrary.search import _ConventionResult
+
+        results = SearchResults(
+            conventions=[
+                _ConventionResult(
+                    id="CV-010",
+                    title="Require type hints",
+                    scope="project",
+                    status="active",
+                    tags=["typing"],
+                    rule="All functions must have type annotations",
+                )
+            ]
+        )
+        output = _render_to_string(results)
+        assert "| ID" in output
+        assert "CV-010" in output
+
+    def test_design_file_table_has_id_column(self) -> None:
+        """Design file markdown table includes an ID column header and shows the ID value."""
+        from lexibrary.search import _DesignFileResult
+
+        results = SearchResults(
+            design_files=[
+                _DesignFileResult(
+                    id="DS-005",
+                    source_path="src/auth.py",
+                    description="Authentication handler",
+                    tags=["security"],
+                )
+            ]
+        )
+        output = _render_to_string(results)
+        assert "| ID" in output
+        assert "DS-005" in output
+
+    def test_stack_table_has_id_column(self) -> None:
+        """Stack markdown table includes an ID column header and shows the post_id value."""
+        from lexibrary.search import _StackResult
+
+        results = SearchResults(
+            stack_posts=[
+                _StackResult(
+                    post_id="ST-007",
+                    title="Login timeout bug",
+                    status="open",
+                    votes=3,
+                    tags=["auth"],
+                )
+            ]
+        )
+        output = _render_to_string(results)
+        assert "| ID" in output
+        assert "ST-007" in output
+
+    def test_playbook_table_has_id_column(self) -> None:
+        """Playbook markdown table includes an ID column header and shows the ID value."""
+        from lexibrary.search import _PlaybookResult
+
+        results = SearchResults(
+            playbooks=[
+                _PlaybookResult(
+                    id="PB-003",
+                    title="Deploy procedure",
+                    status="active",
+                    tags=["ops"],
+                    overview="How to deploy",
+                )
+            ]
+        )
+        output = _render_to_string(results)
+        assert "| ID" in output
+        assert "PB-003" in output
+
+
+class TestStackIDShowsArtifactCode:
+    """8.2 -- Stack search results show ST-NNN IDs, not file paths."""
+
+    def test_tag_search_stack_uses_artifact_code_not_path(self, tmp_path: Path) -> None:
+        """Tag search returns stack results with ST-NNN post_id from artifact_code."""
+        project = _setup_project(tmp_path)
+        db_path = _create_linkgraph_db(project)
+
+        _create_populated_index(
+            db_path,
+            artifacts=[(1, ".lexibrary/stack/ST-042.md", "stack", "Fix timeout", "open")],
+            tags=[(1, "auth")],
+        )
+        # Set artifact_code so the search path picks it up
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("UPDATE artifacts SET artifact_code = 'ST-042' WHERE id = 1")
+        conn.commit()
+        conn.close()
+
+        graph = LinkGraph.open(db_path)
+        assert graph is not None
+        try:
+            results = unified_search(project, tag="auth", link_graph=graph)
+            assert results.has_results()
+            assert len(results.stack_posts) == 1
+            assert results.stack_posts[0].post_id == "ST-042"
+            # Must NOT be the raw file path
+            assert ".lexibrary/stack/" not in results.stack_posts[0].post_id
+        finally:
+            graph.close()
+
+    def test_fts_search_stack_uses_artifact_code_not_path(self, tmp_path: Path) -> None:
+        """FTS search returns stack results with ST-NNN post_id from artifact_code."""
+        project = _setup_project(tmp_path)
+        db_path = _create_linkgraph_db(project)
+
+        _create_populated_index(
+            db_path,
+            artifacts=[(1, ".lexibrary/stack/ST-099.md", "stack", "Memory leak fix", "open")],
+            fts=[(1, "Memory leak fix", "Fixed a memory leak in the connection pool")],
+        )
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("UPDATE artifacts SET artifact_code = 'ST-099' WHERE id = 1")
+        conn.commit()
+        conn.close()
+
+        graph = LinkGraph.open(db_path)
+        assert graph is not None
+        try:
+            results = unified_search(project, query="memory", link_graph=graph)
+            assert results.has_results()
+            assert len(results.stack_posts) == 1
+            assert results.stack_posts[0].post_id == "ST-099"
+            assert ".lexibrary/stack/" not in results.stack_posts[0].post_id
+        finally:
+            graph.close()
+
+    def test_stack_renders_st_id_in_markdown(self) -> None:
+        """Stack results render ST-NNN in the ID column, not a file path."""
+        from lexibrary.search import _StackResult
+
+        results = SearchResults(
+            stack_posts=[
+                _StackResult(
+                    post_id="ST-042",
+                    title="Fix timeout",
+                    status="open",
+                    votes=1,
+                    tags=["auth"],
+                )
+            ]
+        )
+        output = _render_to_string(results)
+        assert "ST-042" in output
+        assert ".lexibrary/stack/" not in output
+
+
+class TestJSONOutputTypeAndId:
+    """8.3 -- JSON output includes 'type' and 'id' fields for all artifact types."""
+
+    def _render_json(self, results: SearchResults) -> list[dict[str, object]]:
+        """Render SearchResults as JSON and parse back into a list of dicts."""
+        import json
+
+        from lexibrary.cli._format import OutputFormat, set_format
+
+        buf = StringIO()
+        old_format = OutputFormat.markdown
+        set_format(OutputFormat.json)
+        try:
+            with patch("lexibrary.cli._output.sys.stdout", buf):
+                results.render()
+        finally:
+            set_format(old_format)
+        return json.loads(buf.getvalue())
+
+    def test_concept_json_has_type_and_id(self) -> None:
+        """Concept JSON record includes 'type': 'concept' and 'id' field."""
+        from lexibrary.search import _ConceptResult
+
+        results = SearchResults(
+            concepts=[
+                _ConceptResult(
+                    id="CN-001",
+                    name="Authentication",
+                    status="active",
+                    tags=["security"],
+                    summary="Auth logic",
+                )
+            ]
+        )
+        records = self._render_json(results)
+        assert len(records) == 1
+        assert records[0]["type"] == "concept"
+        assert records[0]["id"] == "CN-001"
+
+    def test_convention_json_has_type_and_id(self) -> None:
+        """Convention JSON record includes 'type': 'convention' and 'id' field."""
+        from lexibrary.search import _ConventionResult
+
+        results = SearchResults(
+            conventions=[
+                _ConventionResult(
+                    id="CV-010",
+                    title="Type hints required",
+                    scope="project",
+                    status="active",
+                    tags=["typing"],
+                    rule="All functions need type annotations",
+                )
+            ]
+        )
+        records = self._render_json(results)
+        assert len(records) == 1
+        assert records[0]["type"] == "convention"
+        assert records[0]["id"] == "CV-010"
+
+    def test_stack_json_has_type_and_id(self) -> None:
+        """Stack JSON record includes 'type': 'stack' and 'id' field."""
+        from lexibrary.search import _StackResult
+
+        results = SearchResults(
+            stack_posts=[
+                _StackResult(
+                    post_id="ST-042",
+                    title="Timeout bug",
+                    status="open",
+                    votes=1,
+                    tags=["auth"],
+                )
+            ]
+        )
+        records = self._render_json(results)
+        assert len(records) == 1
+        assert records[0]["type"] == "stack"
+        assert records[0]["id"] == "ST-042"
+
+    def test_design_json_has_type_and_id(self) -> None:
+        """Design file JSON record includes 'type': 'design' and 'id' field."""
+        from lexibrary.search import _DesignFileResult
+
+        results = SearchResults(
+            design_files=[
+                _DesignFileResult(
+                    id="DS-005",
+                    source_path="src/auth.py",
+                    description="Auth handler",
+                    tags=["security"],
+                )
+            ]
+        )
+        records = self._render_json(results)
+        assert len(records) == 1
+        assert records[0]["type"] == "design"
+        assert records[0]["id"] == "DS-005"
+
+    def test_playbook_json_has_type_and_id(self) -> None:
+        """Playbook JSON record includes 'type': 'playbook' and 'id' field."""
+        from lexibrary.search import _PlaybookResult
+
+        results = SearchResults(
+            playbooks=[
+                _PlaybookResult(
+                    id="PB-003",
+                    title="Deploy procedure",
+                    status="active",
+                    tags=["ops"],
+                    overview="How to deploy",
+                )
+            ]
+        )
+        records = self._render_json(results)
+        assert len(records) == 1
+        assert records[0]["type"] == "playbook"
+        assert records[0]["id"] == "PB-003"
+
+    def test_mixed_json_all_have_type_and_id(self) -> None:
+        """All artifact types in a mixed result set include 'type' and 'id'."""
+        from lexibrary.search import (
+            _ConceptResult,
+            _ConventionResult,
+            _DesignFileResult,
+            _PlaybookResult,
+            _StackResult,
+        )
+
+        results = SearchResults(
+            concepts=[
+                _ConceptResult(
+                    id="CN-001", name="Auth", status="active", tags=[], summary=""
+                )
+            ],
+            conventions=[
+                _ConventionResult(
+                    id="CV-001",
+                    title="Hints",
+                    scope="project",
+                    status="active",
+                    tags=[],
+                    rule="",
+                )
+            ],
+            stack_posts=[
+                _StackResult(
+                    post_id="ST-001", title="Bug", status="open", votes=0, tags=[]
+                )
+            ],
+            design_files=[
+                _DesignFileResult(
+                    id="DS-001", source_path="src/a.py", description="", tags=[]
+                )
+            ],
+            playbooks=[
+                _PlaybookResult(
+                    id="PB-001", title="Deploy", status="active", tags=[], overview=""
+                )
+            ],
+        )
+        records = self._render_json(results)
+        assert len(records) == 5
+        for record in records:
+            assert "type" in record, f"Missing 'type' in {record}"
+            assert "id" in record, f"Missing 'id' in {record}"
+        types = {r["type"] for r in records}
+        assert types == {"concept", "convention", "stack", "design", "playbook"}

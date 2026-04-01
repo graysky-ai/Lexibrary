@@ -6,7 +6,10 @@ from pathlib import Path
 
 from lexibrary.artifacts.ids import (
     ARTIFACT_PREFIXES,
+    dir_for_kind,
+    find_artifact_path,
     is_artifact_id,
+    kind_for_prefix,
     next_artifact_id,
     next_design_id,
     parse_artifact_id,
@@ -45,6 +48,74 @@ class TestPrefixForKind:
     def test_registry_contains_all_types(self) -> None:
         expected_kinds = {"concept", "convention", "playbook", "design", "stack"}
         assert set(ARTIFACT_PREFIXES.keys()) == expected_kinds
+
+
+# ---------------------------------------------------------------------------
+# kind_for_prefix
+# ---------------------------------------------------------------------------
+
+
+class TestKindForPrefix:
+    """Scenario: kind_for_prefix returns the kind name for known prefixes."""
+
+    def test_concept(self) -> None:
+        assert kind_for_prefix("CN") == "concept"
+
+    def test_convention(self) -> None:
+        assert kind_for_prefix("CV") == "convention"
+
+    def test_playbook(self) -> None:
+        assert kind_for_prefix("PB") == "playbook"
+
+    def test_design(self) -> None:
+        assert kind_for_prefix("DS") == "design"
+
+    def test_stack(self) -> None:
+        assert kind_for_prefix("ST") == "stack"
+
+    def test_unknown_returns_none(self) -> None:
+        assert kind_for_prefix("ZZ") is None
+
+    def test_lowercase_returns_none(self) -> None:
+        assert kind_for_prefix("cn") is None
+
+    def test_empty_returns_none(self) -> None:
+        assert kind_for_prefix("") is None
+
+    def test_round_trip_with_prefix_for_kind(self) -> None:
+        """kind_for_prefix is the inverse of prefix_for_kind."""
+        for kind_name, prefix in ARTIFACT_PREFIXES.items():
+            assert kind_for_prefix(prefix) == kind_name
+
+
+# ---------------------------------------------------------------------------
+# dir_for_kind
+# ---------------------------------------------------------------------------
+
+
+class TestDirForKind:
+    """Scenario: dir_for_kind returns the .lexibrary/ subdirectory for a kind."""
+
+    def test_concept(self) -> None:
+        assert dir_for_kind("concept") == "concepts"
+
+    def test_convention(self) -> None:
+        assert dir_for_kind("convention") == "conventions"
+
+    def test_playbook(self) -> None:
+        assert dir_for_kind("playbook") == "playbooks"
+
+    def test_design(self) -> None:
+        assert dir_for_kind("design") == "designs"
+
+    def test_stack(self) -> None:
+        assert dir_for_kind("stack") == "stack"
+
+    def test_unknown_raises_key_error(self) -> None:
+        import pytest
+
+        with pytest.raises(KeyError):
+            dir_for_kind("unknown")
 
 
 # ---------------------------------------------------------------------------
@@ -254,3 +325,114 @@ class TestNextDesignId:
         (tmp_path / "not_markdown.txt").write_text("id: DS-999\n")
         result = next_design_id(tmp_path)
         assert result == "DS-008"
+
+
+# ---------------------------------------------------------------------------
+# find_artifact_path
+# ---------------------------------------------------------------------------
+
+
+class TestFindArtifactPath:
+    """Scenario: find_artifact_path resolves artifact IDs to file paths."""
+
+    def _setup_lexibrary(self, tmp_path: Path) -> Path:
+        """Create a .lexibrary/ directory structure for testing."""
+        lib = tmp_path / ".lexibrary"
+        for subdir in ("concepts", "conventions", "playbooks", "designs", "stack"):
+            (lib / subdir).mkdir(parents=True)
+        return tmp_path
+
+    # -- Concept --
+
+    def test_find_concept_by_id(self, tmp_path: Path) -> None:
+        root = self._setup_lexibrary(tmp_path)
+        concept_file = root / ".lexibrary" / "concepts" / "CN-001-example-concept.md"
+        concept_file.write_text("---\nid: CN-001\ntitle: Example\n---\n")
+        result = find_artifact_path(root, "CN-001")
+        assert result == concept_file
+
+    # -- Convention --
+
+    def test_find_convention_by_id(self, tmp_path: Path) -> None:
+        root = self._setup_lexibrary(tmp_path)
+        conv_file = root / ".lexibrary" / "conventions" / "CV-002-naming.md"
+        conv_file.write_text("---\nid: CV-002\ntitle: Naming\n---\n")
+        result = find_artifact_path(root, "CV-002")
+        assert result == conv_file
+
+    # -- Playbook --
+
+    def test_find_playbook_by_id(self, tmp_path: Path) -> None:
+        root = self._setup_lexibrary(tmp_path)
+        pb_file = root / ".lexibrary" / "playbooks" / "PB-003-setup.md"
+        pb_file.write_text("---\nid: PB-003\ntitle: Setup\n---\n")
+        result = find_artifact_path(root, "PB-003")
+        assert result == pb_file
+
+    # -- Stack post --
+
+    def test_find_stack_post_by_id(self, tmp_path: Path) -> None:
+        root = self._setup_lexibrary(tmp_path)
+        st_file = root / ".lexibrary" / "stack" / "ST-001-debug-issue.md"
+        st_file.write_text("---\nid: ST-001\ntitle: Debug\n---\n")
+        result = find_artifact_path(root, "ST-001")
+        assert result == st_file
+
+    # -- Design file (frontmatter scan) --
+
+    def test_find_design_by_frontmatter_id(self, tmp_path: Path) -> None:
+        root = self._setup_lexibrary(tmp_path)
+        # Design files use source-mirror paths, not ID-prefixed names
+        design_dir = root / ".lexibrary" / "designs" / "src" / "lexibrary"
+        design_dir.mkdir(parents=True)
+        design_file = design_dir / "main.py.md"
+        design_file.write_text("---\nid: DS-001\ndescription: Main module\n---\nBody\n")
+        result = find_artifact_path(root, "DS-001")
+        assert result == design_file
+
+    def test_find_design_recursive(self, tmp_path: Path) -> None:
+        root = self._setup_lexibrary(tmp_path)
+        nested_dir = root / ".lexibrary" / "designs" / "src" / "pkg" / "sub"
+        nested_dir.mkdir(parents=True)
+        nested_file = nested_dir / "module.py.md"
+        nested_file.write_text("---\nid: DS-042\ndescription: Nested\n---\n")
+        result = find_artifact_path(root, "DS-042")
+        assert result == nested_file
+
+    # -- Not found --
+
+    def test_no_matching_file_returns_none(self, tmp_path: Path) -> None:
+        root = self._setup_lexibrary(tmp_path)
+        result = find_artifact_path(root, "CN-999")
+        assert result is None
+
+    def test_missing_directory_returns_none(self, tmp_path: Path) -> None:
+        # No .lexibrary/ at all
+        result = find_artifact_path(tmp_path, "CN-001")
+        assert result is None
+
+    # -- Invalid input --
+
+    def test_invalid_id_format_returns_none(self, tmp_path: Path) -> None:
+        root = self._setup_lexibrary(tmp_path)
+        result = find_artifact_path(root, "not-an-id")
+        assert result is None
+
+    def test_unknown_prefix_returns_none(self, tmp_path: Path) -> None:
+        root = self._setup_lexibrary(tmp_path)
+        result = find_artifact_path(root, "ZZ-001")
+        assert result is None
+
+    def test_design_file_without_matching_id_returns_none(self, tmp_path: Path) -> None:
+        root = self._setup_lexibrary(tmp_path)
+        design_dir = root / ".lexibrary" / "designs"
+        (design_dir / "file.md").write_text("---\nid: DS-010\n---\n")
+        result = find_artifact_path(root, "DS-999")
+        assert result is None
+
+    def test_design_file_without_frontmatter_skipped(self, tmp_path: Path) -> None:
+        root = self._setup_lexibrary(tmp_path)
+        design_dir = root / ".lexibrary" / "designs"
+        (design_dir / "no-fm.md").write_text("No frontmatter\nid: DS-001\n")
+        result = find_artifact_path(root, "DS-001")
+        assert result is None

@@ -64,6 +64,49 @@ lexi_app.add_typer(playbook_app, name="playbook")
 
 
 # ---------------------------------------------------------------------------
+# view
+# ---------------------------------------------------------------------------
+
+
+@lexi_app.command()
+def view(
+    artifact_id: Annotated[
+        str,
+        typer.Argument(
+            metavar="ARTIFACT_ID",
+            help="Artifact ID in XX-NNN format (e.g. CN-001, ST-042, DS-017).",
+        ),
+    ],
+) -> None:
+    """View any artifact by its ID.
+
+    Accepts concept (CN), convention (CV), playbook (PB), design (DS),
+    and stack (ST) IDs.  Displays the full parsed content of the artifact.
+
+    Use --format json at the top level for JSON output on errors.
+    """
+    from lexibrary.cli._format import OutputFormat, get_format  # noqa: PLC0415
+    from lexibrary.services.view import ViewError, resolve_and_load  # noqa: PLC0415
+    from lexibrary.services.view_render import render_view, render_view_error  # noqa: PLC0415
+
+    project_root = require_project_root()
+
+    fmt = get_format()
+
+    try:
+        result = resolve_and_load(project_root, artifact_id)
+    except ViewError as exc:
+        if fmt == OutputFormat.json:
+            info(render_view_error(exc, fmt="json"))
+        else:
+            error(render_view_error(exc))
+        raise typer.Exit(1) from None
+
+    output = render_view(result)
+    info(output)
+
+
+# ---------------------------------------------------------------------------
 # lookup
 # ---------------------------------------------------------------------------
 
@@ -169,7 +212,7 @@ def lookup(
     if file_result.is_stale:
         warn(
             "Source file has changed since the design file was last generated. "
-            "Run `lexictl update " + str(file) + "` to refresh.\n"
+            "Advise user to run `lexictl update " + str(file) + "` to refresh.\n"
         )
 
     # --- Brief mode (default): description + conventions + issue count ---
@@ -411,7 +454,7 @@ def status(
 # ---------------------------------------------------------------------------
 
 
-_VALID_ARTIFACT_TYPES = {"concept", "convention", "design", "stack"}
+_VALID_ARTIFACT_TYPES = {"concept", "convention", "design", "playbook", "stack"}
 _STACK_ONLY_FLAGS = ("--concept", "--resolution-type", "--include-stale")
 
 
@@ -419,14 +462,14 @@ _STACK_ONLY_FLAGS = ("--concept", "--resolution-type", "--include-stale")
 def search(
     query: Annotated[
         str | None,
-        typer.Argument(help="Free-text search query."),
+        typer.Argument(help="Free-text search query (quote multi-word phrases)."),
     ] = None,
     *,
     artifact_type: Annotated[
         str | None,
         typer.Option(
             "--type",
-            help="Restrict to artifact type: concept, convention, design, or stack.",
+            help="Restrict to artifact type: concept, convention, design, playbook, or stack.",
         ),
     ] = None,
     tag: Annotated[
@@ -461,7 +504,7 @@ def search(
         typer.Option("--include-stale", help="Stack-only: include stale posts."),
     ] = False,
 ) -> None:
-    """Search across concepts, conventions, design files, and Stack posts."""
+    """Search across concepts, conventions, design files, playbooks, and Stack posts."""
     from lexibrary.linkgraph import open_index  # noqa: PLC0415
     from lexibrary.search import unified_search  # noqa: PLC0415
 

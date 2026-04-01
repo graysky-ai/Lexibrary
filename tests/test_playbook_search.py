@@ -109,6 +109,7 @@ def test_has_results_with_only_playbooks() -> None:
     results = SearchResults(
         playbooks=[
             _PlaybookResult(
+                id="PB-001",
                 title="Deploy",
                 status="active",
                 tags=["ops"],
@@ -137,6 +138,7 @@ def test_render_markdown_playbooks() -> None:
     results = SearchResults(
         playbooks=[
             _PlaybookResult(
+                id="PB-002",
                 title="Version Bump",
                 status="active",
                 tags=["release"],
@@ -170,6 +172,7 @@ def test_render_json_playbooks() -> None:
     results = SearchResults(
         playbooks=[
             _PlaybookResult(
+                id="PB-001",
                 title="Deploy",
                 status="active",
                 tags=["ops"],
@@ -203,6 +206,7 @@ def test_render_plain_playbooks() -> None:
     results = SearchResults(
         playbooks=[
             _PlaybookResult(
+                id="PB-001",
                 title="Deploy",
                 status="active",
                 tags=["ops"],

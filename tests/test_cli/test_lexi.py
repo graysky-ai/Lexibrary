@@ -35,6 +35,7 @@ class TestHelp:
             "validate",
             "status",
             "impact",
+            "view",
         ):
             assert cmd in result.output
 
@@ -3034,12 +3035,24 @@ class TestSearchFlagValidation:
         assert "Stale bug" in result.output  # type: ignore[union-attr]
 
     def test_invalid_type_value(self, tmp_path: Path) -> None:
-        """Invalid --type value shows clear error."""
+        """Invalid --type value shows clear error listing all five valid types."""
         _setup_project(tmp_path)
         result = self._invoke(tmp_path, ["search", "--type", "foobar"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "Invalid --type" in result.output  # type: ignore[union-attr]
         assert "concept" in result.output  # type: ignore[union-attr]
+        assert "playbook" in result.output  # type: ignore[union-attr]
+
+    def test_type_playbook_accepted(self, tmp_path: Path) -> None:
+        """--type playbook is accepted without error."""
+        lib = tmp_path / ".lexibrary"
+        lib.mkdir()
+        (lib / "config.yaml").write_text("")
+        (lib / "playbooks").mkdir()
+        result = self._invoke(tmp_path, ["search", "--type", "playbook"])
+        # Should not fail with "Invalid --type" — exit 0 with no results is fine
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Invalid --type" not in result.output  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------
@@ -5627,3 +5640,280 @@ class TestBlankSectionWarnings:
             os.chdir(old_cwd)
         assert result.exit_code == 0
         assert "Note: The following sections are blank:" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# view
+# ---------------------------------------------------------------------------
+
+# Fixture content for view CLI tests
+_VIEW_CONCEPT = """\
+---
+id: CN-001
+title: Example Concept
+status: active
+tags: []
+aliases: []
+---
+A brief summary of this concept.
+
+## Details
+
+Some body content.
+"""
+
+_VIEW_CONVENTION = """\
+---
+id: CV-001
+title: Example Convention
+scope: project
+status: active
+source: user
+priority: 0
+tags: []
+---
+All files must follow this rule.
+
+## Rationale
+
+Because consistency matters.
+"""
+
+_VIEW_PLAYBOOK = """\
+---
+id: PB-001
+title: Example Playbook
+status: active
+trigger_files: []
+tags: [testing]
+---
+Overview of the playbook.
+
+## Steps
+
+1. Do step one.
+2. Do step two.
+"""
+
+_VIEW_STACK = """\
+---
+id: ST-001
+title: Example Stack Post
+tags: [bug]
+status: open
+created: 2024-01-15
+author: agent
+votes: 0
+---
+
+## Problem
+
+Something is broken.
+
+## Context
+
+It broke yesterday.
+"""
+
+_VIEW_DESIGN = """\
+---
+id: DS-001
+description: Main entry point module
+updated_by: archivist
+status: active
+---
+
+# src/main.py
+
+Main module for the application.
+
+## Interface Contract
+
+```python
+def main() -> None: ...
+```
+
+## Dependencies
+
+- os
+- sys
+
+<!-- lexibrary:meta
+source: src/main.py
+source_hash: abc123
+design_hash: def456
+generated: 2024-01-15T00:00:00
+generator: archivist
+-->
+"""
+
+
+def _setup_view_project(tmp_path: Path) -> Path:
+    """Create a minimal project with .lexibrary/ and artifact directories."""
+    lib = tmp_path / ".lexibrary"
+    for subdir in ("concepts", "conventions", "playbooks", "designs", "stack"):
+        (lib / subdir).mkdir(parents=True)
+    (lib / "config.yaml").write_text("")
+    return tmp_path
+
+
+class TestViewHappyPath:
+    """lexi view displays parsed artifact content for valid IDs."""
+
+    def test_view_concept(self, tmp_path: Path) -> None:
+        project = _setup_view_project(tmp_path)
+        (project / ".lexibrary" / "concepts" / "CN-001-example-concept.md").write_text(
+            _VIEW_CONCEPT
+        )
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["view", "CN-001"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 0
+        assert "CN-001" in result.output
+        assert "Example Concept" in result.output
+
+    def test_view_convention(self, tmp_path: Path) -> None:
+        project = _setup_view_project(tmp_path)
+        (project / ".lexibrary" / "conventions" / "CV-001-example-convention.md").write_text(
+            _VIEW_CONVENTION
+        )
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["view", "CV-001"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 0
+        assert "CV-001" in result.output
+        assert "Example Convention" in result.output
+
+    def test_view_playbook(self, tmp_path: Path) -> None:
+        project = _setup_view_project(tmp_path)
+        (project / ".lexibrary" / "playbooks" / "PB-001-example-playbook.md").write_text(
+            _VIEW_PLAYBOOK
+        )
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["view", "PB-001"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 0
+        assert "PB-001" in result.output
+        assert "Example Playbook" in result.output
+
+    def test_view_stack(self, tmp_path: Path) -> None:
+        project = _setup_view_project(tmp_path)
+        (project / ".lexibrary" / "stack" / "ST-001-example-stack-post.md").write_text(_VIEW_STACK)
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["view", "ST-001"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 0
+        assert "ST-001" in result.output
+        assert "Example Stack Post" in result.output
+
+    def test_view_design(self, tmp_path: Path) -> None:
+        project = _setup_view_project(tmp_path)
+        design_dir = project / ".lexibrary" / "designs" / "src"
+        design_dir.mkdir(parents=True)
+        (design_dir / "main.py.md").write_text(_VIEW_DESIGN)
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["view", "DS-001"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 0
+        assert "DS-001" in result.output
+        assert "Main entry point module" in result.output
+
+
+class TestViewErrors:
+    """lexi view reports errors with helpful messages."""
+
+    def test_invalid_id_format(self, tmp_path: Path) -> None:
+        project = _setup_view_project(tmp_path)
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["view", "NOPE"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 1
+        assert "Invalid" in result.output or "XX-NNN" in result.output
+
+    def test_unknown_prefix(self, tmp_path: Path) -> None:
+        project = _setup_view_project(tmp_path)
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["view", "ZZ-001"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 1
+        assert "Unknown" in result.output or "prefix" in result.output
+
+    def test_artifact_not_found(self, tmp_path: Path) -> None:
+        project = _setup_view_project(tmp_path)
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["view", "CN-999"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower() or "CN-999" in result.output
+
+    def test_no_lexibrary_dir(self, tmp_path: Path) -> None:
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = runner.invoke(lexi_app, ["view", "CN-001"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 1
+        assert "No .lexibrary/ directory found" in result.output
+
+    def test_json_error_format(self, tmp_path: Path) -> None:
+        import json
+
+        project = _setup_view_project(tmp_path)
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["--format", "json", "view", "CN-999"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 1
+        # Output should be valid JSON with error info
+        output = result.output.strip()
+        parsed = json.loads(output)
+        assert "error" in parsed
+        assert parsed["artifact_id"] == "CN-999"
+
+    def test_json_error_for_invalid_id(self, tmp_path: Path) -> None:
+        import json
+
+        project = _setup_view_project(tmp_path)
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(lexi_app, ["--format", "json", "view", "NOPE"])
+        finally:
+            os.chdir(old_cwd)
+        assert result.exit_code == 1
+        output = result.output.strip()
+        parsed = json.loads(output)
+        assert parsed["error"] == "invalid_id"
+
+    def test_view_help(self) -> None:
+        result = runner.invoke(lexi_app, ["view", "--help"])
+        assert result.exit_code == 0
+        assert "ARTIFACT_ID" in result.output
+        assert "CN" in result.output or "artifact" in result.output.lower()
