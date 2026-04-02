@@ -75,7 +75,7 @@ class TestFullFlowPerEnvironment:
 
         assert "claude" in results
         paths = results["claude"]
-        assert len(paths) == 15
+        assert len(paths) == 14
 
         # CLAUDE.md
         claude_md = tmp_path / "CLAUDE.md"
@@ -83,14 +83,10 @@ class TestFullFlowPerEnvironment:
         content = claude_md.read_text(encoding="utf-8")
         assert MARKER_START in content
         assert MARKER_END in content
-        assert "lexi orient" in content
+        assert "TOPOLOGY.md" in content
         assert "lexi lookup" in content
 
         # Skill files
-        orient = tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md"
-        assert orient.exists()
-        assert "lexi orient" in orient.read_text(encoding="utf-8")
-
         search = tmp_path / ".claude" / "skills" / "lexi-search" / "SKILL.md"
         assert search.exists()
         assert "lexi search" in search.read_text(encoding="utf-8")
@@ -109,13 +105,12 @@ class TestFullFlowPerEnvironment:
         mdc_content = mdc.read_text(encoding="utf-8")
         assert mdc_content.startswith("---\n")
         assert "alwaysApply: true" in mdc_content
-        assert "lexi orient" in mdc_content
+        assert "TOPOLOGY.md" in mdc_content
 
         # Skills file
         skills = tmp_path / ".cursor" / "skills" / "lexi.md"
         assert skills.exists()
         skills_content = skills.read_text(encoding="utf-8")
-        assert "lexi orient" in skills_content
         assert "lexi search" in skills_content
 
     def test_codex_full_flow(self, tmp_path: Path) -> None:
@@ -131,10 +126,9 @@ class TestFullFlowPerEnvironment:
         content = agents_md.read_text(encoding="utf-8")
         assert MARKER_START in content
         assert MARKER_END in content
-        assert "lexi orient" in content
+        assert "TOPOLOGY.md" in content
         assert "lexi lookup" in content
-        # Codex embeds orient and search skills inline
-        assert "lexi orient" in content
+        # Codex embeds search skills inline
         assert "lexi search" in content
 
 
@@ -159,7 +153,6 @@ class TestMultiEnvironment:
 
         # Verify all expected files exist
         assert (tmp_path / "CLAUDE.md").exists()
-        assert (tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md").exists()
         assert (tmp_path / ".claude" / "skills" / "lexi-search" / "SKILL.md").exists()
         assert (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").exists()
         assert (tmp_path / ".cursor" / "skills" / "lexi.md").exists()
@@ -178,11 +171,10 @@ class TestMultiEnvironment:
         assert MARKER_START in agents_content
 
         # Both have core rules
-        assert "lexi orient" in claude_content
-        assert "lexi orient" in agents_content
+        assert "TOPOLOGY.md" in claude_content
+        assert "TOPOLOGY.md" in agents_content
 
         # AGENTS.md has embedded skills; CLAUDE.md does not (uses separate skill files)
-        assert "lexi orient" in agents_content
         assert "lexi search" in agents_content
 
     def test_multi_env_does_not_interfere(self, tmp_path: Path) -> None:
@@ -216,7 +208,6 @@ class TestSetupUpdateRefresh:
 
         # Rules created
         assert (project / "CLAUDE.md").exists()
-        assert (project / ".claude" / "skills" / "lexi-orient" / "SKILL.md").exists()
         assert (project / ".claude" / "skills" / "lexi-search" / "SKILL.md").exists()
 
         # Gitignore updated
@@ -334,7 +325,7 @@ class TestUserContentPreservation:
         assert "Custom instructions." in content
         assert "# More Instructions" in content
         assert "old lexibrary rules" not in content
-        assert "lexi orient" in content
+        assert "TOPOLOGY.md" in content
 
     def test_user_content_preserved_across_multiple_updates(self, tmp_path: Path) -> None:
         """User content survives repeated regeneration cycles."""
@@ -528,8 +519,8 @@ class TestEndToEndFlow:
         for content in (claude_content, agents_content, mdc_content):
             assert "Never run `lexictl`" in content or "never" in content.lower()
 
-    def test_all_environments_reference_orient(self, tmp_path: Path) -> None:
-        """Every environment's rules reference lexi orient."""
+    def test_all_environments_reference_topology(self, tmp_path: Path) -> None:
+        """Every environment's rules reference TOPOLOGY.md for session start."""
         generate_rules(tmp_path, ["claude", "codex", "cursor"])
 
         claude_content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
@@ -537,7 +528,7 @@ class TestEndToEndFlow:
         mdc_content = (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").read_text(encoding="utf-8")
 
         for content in (claude_content, agents_content, mdc_content):
-            assert "lexi orient" in content
+            assert "TOPOLOGY.md" in content
 
     def test_all_environments_mention_iwh(self, tmp_path: Path) -> None:
         """Every environment's rules mention IWH signals."""

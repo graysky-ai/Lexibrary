@@ -13,7 +13,6 @@ from lexibrary.templates import read_template
 EXPECTED_TEMPLATES: list[str] = [
     "config/default_config.yaml",
     "rules/core_rules.md",
-    "rules/skills/lexi-orient/SKILL.md",
     "rules/skills/lexi-search/SKILL.md",
     "rules/skills/lexi-lookup/SKILL.md",
     "rules/skills/lexi-concept/SKILL.md",

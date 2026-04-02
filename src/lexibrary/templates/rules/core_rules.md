@@ -2,8 +2,8 @@
 
 ## Session Start
 
-Run `lexi orient` before any other action. This provides project layout, active
-IWH signals, and library health stats. Do not begin coding without this context.
+Read `.lexibrary/TOPOLOGY.md` for project layout, then run `lexi iwh list`
+to check for pending signals. Do not begin coding without this context.
 
 If signals exist in a directory you are working in, run `lexi iwh read <dir>` to
 consume the signal and understand what the previous session left behind.

@@ -97,7 +97,6 @@ class TokenBudgetConfig(BaseModel):
     aindex_tokens: int = 200
     concept_file_tokens: int = 400
     convention_file_tokens: int = 500
-    orientation_tokens: int = 300
     lookup_total_tokens: int = 1200
     playbook_tokens: int = 500
     summarize_max_tokens: int = 200

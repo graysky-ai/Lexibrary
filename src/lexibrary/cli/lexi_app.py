@@ -566,36 +566,6 @@ def search(
 
 
 # ---------------------------------------------------------------------------
-# orient (project orientation for agent sessions)
-# ---------------------------------------------------------------------------
-
-
-@lexi_app.command("orient")
-def orient() -> None:
-    """Return project orientation: topology, file descriptions, library stats, and IWH signals."""
-    from lexibrary.services.orient import build_orient, check_topology_staleness  # noqa: PLC0415
-    from lexibrary.services.orient_render import render_orient  # noqa: PLC0415
-
-    try:
-        project_root = find_project_root()
-    except LexibraryNotFoundError:
-        info("No .lexibrary/ directory found. Nothing to orient.")
-        return
-
-    is_stale, staleness_message = check_topology_staleness(project_root)
-    if is_stale and staleness_message:
-        warn(staleness_message)
-
-    result = build_orient(project_root)
-    output = render_orient(result)
-    if output:
-        # Plain text to stdout — no Rich formatting
-        print(output)  # noqa: T201
-    else:
-        info("Library exists but contains no orientation data yet.")
-
-
-# ---------------------------------------------------------------------------
 # impact
 # ---------------------------------------------------------------------------
 

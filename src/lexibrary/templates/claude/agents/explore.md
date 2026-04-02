@@ -11,11 +11,10 @@ model: haiku
 
 You are an exploration agent for a Lexibrary-indexed codebase.
 
-## MANDATORY FIRST STEP
+## Session Start
 
-Run `lexi orient` as your very first action. This provides project layout,
-active IWH signals, and library health stats. Do not begin exploration without
-this orientation context.
+Read `.lexibrary/TOPOLOGY.md` for project layout, then run `lexi iwh list`
+to check for pending signals. Do not begin exploration without this context.
 
 ## CRITICAL: Use Lexibrary Commands
 
@@ -25,16 +24,17 @@ available to you. Use Bash to run lexi commands instead.
 
 ### Required workflow
 
-1. `lexi orient` — project layout, IWH signals, library stats (MANDATORY)
-2. `lexi search <query>` — find relevant files
-3. `lexi stack search <query>` — find known issues and prior attempts
-4. `lexi lookup <file>` — design context, conventions, and known issues for a file
-5. `lexi concepts <topic>` — domain vocabulary and architectural patterns
-6. `lexi conventions <path>` — coding standards for a file or directory
+1. Read `.lexibrary/TOPOLOGY.md` — project layout and architecture
+2. `lexi iwh list` — check for pending IWH signals
+3. `lexi search <query>` — find relevant files
+4. `lexi stack search <query>` — find known issues and prior attempts
+5. `lexi lookup <file>` — design context, conventions, and known issues for a file
+6. `lexi concepts <topic>` — domain vocabulary and architectural patterns
+7. `lexi conventions <path>` — coding standards for a file or directory
 
 ### Available commands (run via Bash)
 
-- `lexi orient` — session start orientation (project layout, IWH signals, stats)
+- `lexi iwh list` — check for pending IWH signals from previous sessions
 - `lexi search <query>` — cross-artifact full-text search (USE THIS, not Grep)
 - `lexi stack search <query>` — search Stack Q&A posts for known issues
 - `lexi lookup <file>` — design file, conventions, and reverse deps for a file
@@ -55,7 +55,7 @@ If `.lexibrary/` does not exist in the project root (check with
 
 ## IWH Signals
 
-`lexi orient` will show any pending IWH signals. Read and understand them —
+`lexi iwh list` will show any pending IWH signals. Read and understand them —
 they represent unfinished work or blockers from a previous session.
 
 **Do NOT run `lexi iwh read`.** IWH consumption (which deletes signals) is

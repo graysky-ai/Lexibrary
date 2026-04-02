@@ -171,7 +171,7 @@ def update(
         bool,
         typer.Option(
             "--topology",
-            help="Regenerate TOPOLOGY.md only, without running the full update.",
+            help="Regenerate raw-topology.md only, without running the full update.",
         ),
     ] = False,
     skeleton: Annotated[
@@ -406,9 +406,10 @@ def update(
         )
 
     if stats.topology_failed:
-        error("Failed to generate TOPOLOGY.md.")
+        error("Failed to generate raw-topology.md.")
     else:
-        info("TOPOLOGY.md generated.")
+        info("Raw topology generated.")
+        hint("Run /topology-builder to generate TOPOLOGY.md")
 
     # Print summary stats
     info("")

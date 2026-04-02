@@ -32,7 +32,6 @@ token_budgets:
   aindex_tokens: 200                     # .aindex routing table budget
   concept_file_tokens: 400               # Concept file budget
   convention_file_tokens: 500            # Convention file budget
-  orientation_tokens: 300                # Orientation output budget
   lookup_total_tokens: 1200              # Total budget for lexi lookup output
   playbook_tokens: 500                   # Playbook display budget
   summarize_max_tokens: 200              # Max tokens for LLM summarize responses

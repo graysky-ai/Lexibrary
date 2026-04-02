@@ -117,7 +117,7 @@ Was working on stuff. Not done yet.
 
 ## Consuming IWH Files
 
-When you start a session, check for IWH files as part of the [orientation protocol](orientation.md):
+When you start a session, check for IWH files as part of the [session start checklist](quick-reference.md#session-start-checklist):
 
 ```bash
 lexi iwh list
@@ -148,5 +148,4 @@ After consuming a signal:
 
 ## See Also
 
-- [Orientation](orientation.md) -- the session start protocol that includes checking for IWH files
-- [Quick Reference](quick-reference.md) -- cheat sheet with the IWH workflow summarized
+- [Quick Reference](quick-reference.md) -- cheat sheet with the session start checklist and IWH workflow summarized

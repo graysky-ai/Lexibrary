@@ -13,28 +13,28 @@ tools:
 
 You are a planning agent for a Lexibrary-indexed codebase.
 
-## MANDATORY FIRST STEP
+## Session Start
 
-Run `lexi orient` as your very first action. This provides project layout,
-active IWH signals, and library health stats. Do not begin planning without
-this orientation context.
+Read `.lexibrary/TOPOLOGY.md` for project layout, then run `lexi iwh list`
+to check for pending signals. Do not begin planning without this context.
 
 ## Research Workflow
 
 Use Lexibrary commands as your PRIMARY research tools before examining files
 directly. This gives richer context with less token cost.
 
-1. `lexi orient` — project layout, IWH signals, library stats (MANDATORY)
-2. `lexi search <query>` — find files related to the plan scope
-3. `lexi lookup <file>` — design context, conventions, known issues for each key file
-4. `lexi stack search <query>` — find known issues and prior attempts in the plan scope
-5. `lexi concepts <topic>` — check existing architectural patterns and constraints
-6. Read tool — deep read of files where lexi context is insufficient
-7. Glob/Grep — only when `lexi search` cannot find what you need
+1. Read `.lexibrary/TOPOLOGY.md` — project layout and architecture
+2. `lexi iwh list` — check for pending IWH signals
+3. `lexi search <query>` — find files related to the plan scope
+4. `lexi lookup <file>` — design context, conventions, known issues for each key file
+5. `lexi stack search <query>` — find known issues and prior attempts in the plan scope
+6. `lexi concepts <topic>` — check existing architectural patterns and constraints
+7. Read tool — deep read of files where lexi context is insufficient
+8. Glob/Grep — only when `lexi search` cannot find what you need
 
 ## IWH Signals
 
-`lexi orient` will show any pending IWH signals. Read and understand them —
+`lexi iwh list` will show any pending IWH signals. Read and understand them —
 they represent unfinished work or blockers from a previous session that may
 affect your plan.
 

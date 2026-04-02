@@ -2,6 +2,17 @@
 
 All notable changes to Lexibrary are documented in this file.
 
+## [0.3.1] - 2026-04-02
+
+### Removed
+- **`lexi orient` command** -- Removed the orient command, service modules (`orient.py`, `orient_render.py`), and the `lexi-orient` skill template. Session start now uses `TOPOLOGY.md` for project layout and `lexi iwh list` for pending signals instead of the orient command.
+- **`orientation_tokens` config** -- Removed from `TokenBudgetConfig` schema and default config since the orient command no longer exists.
+- **`docs/agent/orientation.md`** -- Deleted; session start protocol is now documented in `quick-reference.md` and agent rule files.
+
+### Changed
+- **Agent rules and templates** -- Updated `CLAUDE.md`, core rules template, and agent templates (explore, plan, code) to replace `lexi orient` with reading `TOPOLOGY.md` and running `lexi iwh list`.
+- **Documentation** -- Updated README, agent docs, and user docs to remove orient references and reflect the new session start workflow.
+
 ## [0.3.0] - 2026-03-27
 
 ### Added

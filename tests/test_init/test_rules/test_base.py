@@ -6,7 +6,6 @@ from lexibrary.init.rules.base import (
     get_concepts_skill_content,
     get_core_rules,
     get_lookup_skill_content,
-    get_orient_skill_content,
     get_search_skill_content,
     get_stack_skill_content,
 )
@@ -25,10 +24,10 @@ class TestGetCoreRules:
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_contains_orient_reference(self) -> None:
-        """Core rules reference lexi orient."""
+    def test_contains_topology_reference(self) -> None:
+        """Core rules reference TOPOLOGY.md for session start."""
         result = get_core_rules()
-        assert "lexi orient" in result
+        assert "TOPOLOGY.md" in result
 
     def test_contains_iwh_reference(self) -> None:
         """Core rules reference IWH signals."""
@@ -126,10 +125,10 @@ class TestGetCoreRules:
         result = get_core_rules()
         assert "lexi iwh read" in result
 
-    def test_core_rules_references_lexi_orient(self) -> None:
-        """Core rules reference lexi orient for session start."""
+    def test_core_rules_references_lexi_iwh_list(self) -> None:
+        """Core rules reference lexi iwh list for session start."""
         result = get_core_rules()
-        assert "lexi orient" in result
+        assert "lexi iwh list" in result
 
     def test_core_rules_no_design_file_read_instruction(self) -> None:
         """Core rules do not instruct reading design files in .lexibrary/designs/."""
@@ -139,59 +138,6 @@ class TestGetCoreRules:
     def test_no_leading_trailing_whitespace(self) -> None:
         """Returned content has no leading/trailing whitespace."""
         result = get_core_rules()
-        assert result == result.strip()
-
-
-# ---------------------------------------------------------------------------
-# get_orient_skill_content — session start
-# ---------------------------------------------------------------------------
-
-
-class TestGetOrientSkillContent:
-    """Orient skill contains session start actions."""
-
-    def test_returns_string(self) -> None:
-        """get_orient_skill_content() returns a non-empty string."""
-        result = get_orient_skill_content()
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    def test_references_lexi_orient_command(self) -> None:
-        """Orient skill references `lexi orient` as a single command."""
-        result = get_orient_skill_content()
-        assert "lexi orient" in result
-
-    def test_mentions_topology(self) -> None:
-        """Orient skill mentions project topology in its output description."""
-        result = get_orient_skill_content()
-        assert "topology" in result.lower()
-
-    def test_mentions_iwh_signals(self) -> None:
-        """Orient skill mentions IWH signals."""
-        result = get_orient_skill_content()
-        assert "IWH" in result
-
-    def test_mentions_library_stats(self) -> None:
-        """Orient skill mentions library stats."""
-        result = get_orient_skill_content()
-        lower = result.lower()
-        assert "stats" in lower or "count" in lower
-
-    def test_mentions_sub_agents_prohibition(self) -> None:
-        """Orient skill notes sub-agents must not consume IWH signals."""
-        result = get_orient_skill_content()
-        lower = result.lower()
-        assert "sub-agent" in lower or "subagent" in lower
-
-    def test_orient_skill_does_not_reference_ls_iwh(self) -> None:
-        """Orient skill does NOT contain raw 'ls .iwh' instructions."""
-        result = get_orient_skill_content()
-        assert "ls .iwh" not in result
-        assert "ls .lexibrary" not in result
-
-    def test_no_leading_trailing_whitespace(self) -> None:
-        """Returned content has no leading/trailing whitespace."""
-        result = get_orient_skill_content()
         assert result == result.strip()
 
 

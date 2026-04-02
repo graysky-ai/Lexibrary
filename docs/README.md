@@ -70,12 +70,11 @@ Documentation for operators and team members who install, configure, and maintai
 
 Documentation for AI agents working within Lexibrary-managed codebases.
 
-### Orientation
+### Overview
 
 | Document | Description |
 |----------|-------------|
 | [Agent Overview](agent/README.md) | What Lexibrary is from the agent's perspective, what `.lexibrary/` provides, how to use it |
-| [Orientation](agent/orientation.md) | Session start protocol -- read START_HERE.md, check for IWH signals, get library health overview |
 
 ### CLI Reference
 

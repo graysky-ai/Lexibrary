@@ -6,34 +6,6 @@ Run `lexi --help` for a quick overview, or `lexi <command> --help` for any speci
 
 ---
 
-## orient
-
-Show project orientation: topology, file map, library stats, and IWH signals. This replaces the former `context-dump` command.
-
-```
-lexi orient
-```
-
-**What it outputs:**
-
-1. **Project topology** -- root billboard and top-level directory summaries from `.aindex` files
-2. **Library stats** -- concept count, convention count, open stack post count
-3. **IWH signals peek** -- lists all pending IWH signals with scope, directory, and body preview (without consuming them)
-4. **IWH consumption guidance** -- when signals are present, includes a footer explaining how to consume them with `lexi iwh read <dir>`
-
-**Token budget:** Controlled by `orientation_tokens` in `TokenBudgetConfig` (default: 300).
-
-**Examples:**
-
-```bash
-# Orient at session start
-lexi orient
-```
-
-**When to use:** Run at the start of every session as directed by CLAUDE.md rules. This is your first step to understand the project state and any pending work from previous sessions.
-
----
-
 ## lookup
 
 Look up the design file for a source file, or show a directory overview. Includes applicable conventions, Known Issues from Stack, IWH signals, and dependents from the link graph.
@@ -636,7 +608,6 @@ lexi impact src/lexibrary/config/schema.py --quiet
 
 | Command | Purpose |
 |---------|---------|
-| `lexi orient` | Project orientation: topology, stats, IWH signals |
 | `lexi lookup <file\|dir>` | Get design file, conventions, Known Issues, IWH, and dependents |
 | `lexi impact <file> [--depth] [--quiet]` | Show reverse dependents (who imports this file) |
 | `lexictl index [dir] [-r]` | Generate `.aindex` routing table(s) for a directory |
@@ -664,7 +635,7 @@ The `lexi-research` subagent (`.claude/agents/lexi-research.md`) is a specialize
 **When to use:** For complex bugs requiring synthesis across many Stack posts, design files, and source files. Spawn the subagent with your problem description instead of searching manually.
 
 **Workflow:**
-1. Runs `lexi orient` to understand project state
+1. Reads `.lexibrary/TOPOLOGY.md` and runs `lexi iwh list` to understand project state
 2. Searches Stack posts and design files for relevant context
 3. Reads source files to understand the problem
 4. Synthesizes findings into a structured analysis

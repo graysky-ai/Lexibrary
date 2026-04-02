@@ -54,7 +54,6 @@ lexictl update        Re-index changed files, regenerate stale designs
 Agents then query this library at runtime through `lexi`:
 
 ```
-lexi orient      →  Project topology, stats, pending IWH signals
 lexi lookup      →  File role, dependencies, conventions before editing
 lexi search      →  Find concepts, conventions, designs, stack posts
 lexi impact      →  What depends on this file?
@@ -71,13 +70,14 @@ lexi validate    →  Check library health after changes
 Lexibrary is designed to slot into an AI coding agent's workflow. The typical session:
 
 ```
-1. lexi orient                     # Understand project structure + check for IWH signals
-2. lexi iwh read <dir>             # Consume any handoff signals from previous agents
-3. lexi lookup <file>              # Before editing — understand role, deps, conventions
-4. lexi search <topic>             # Before architectural decisions — find existing patterns
-5. lexi stack post --title "..."   # After solving a bug — document the fix + failed attempts
-6. lexi validate                   # After editing — check for broken links, stale artifacts
-7. lexi iwh write <dir>            # If stopping early — leave a breadcrumb for the next agent
+1. Read .lexibrary/TOPOLOGY.md     # Understand project structure
+2. lexi iwh list                   # Check for pending handoff signals
+3. lexi iwh read <dir>             # Consume any handoff signals from previous agents
+4. lexi lookup <file>              # Before editing — understand role, deps, conventions
+5. lexi search <topic>             # Before architectural decisions — find existing patterns
+6. lexi stack post --title "..."   # After solving a bug — document the fix + failed attempts
+7. lexi validate                   # After editing — check for broken links, stale artifacts
+8. lexi iwh write <dir>            # If stopping early — leave a breadcrumb for the next agent
 ```
 
 Agents also have access to `concept`, `convention`, `design`, and `stack` subcommand groups for managing those artifact types. See the full reference at [docs/agent/lexi-reference.md](docs/agent/lexi-reference.md).
@@ -98,9 +98,6 @@ lexictl bootstrap
 
 # Verify library health
 lexi validate
-
-# Orient yourself
-lexi orient
 
 # Look up a specific file
 lexi lookup src/main.py
@@ -141,7 +138,6 @@ Environment variables override values from `.lexibrary/config.yaml`. The `.env` 
 
 | Command | Purpose |
 |---|---|
-| `orient` | Project topology, stats, and IWH signals |
 | `lookup <path>` | File context: role, dependencies, conventions |
 | `search <query>` | Full-text search across all artifact types |
 | `impact <file>` | Reverse dependency lookup |

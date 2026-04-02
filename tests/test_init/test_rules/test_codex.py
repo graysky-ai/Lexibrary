@@ -31,14 +31,14 @@ class TestCreateFromScratch:
         """Created AGENTS.md contains core Lexibrary rules."""
         generate_codex_rules(tmp_path)
         content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-        assert "lexi orient" in content
+        assert "TOPOLOGY.md" in content
         assert "lexi lookup" in content
 
-    def test_agents_md_has_orient_content(self, tmp_path: Path) -> None:
-        """Created AGENTS.md includes embedded orient skill content."""
+    def test_agents_md_has_topology_reference(self, tmp_path: Path) -> None:
+        """Created AGENTS.md references TOPOLOGY.md for session start."""
         generate_codex_rules(tmp_path)
         content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-        assert "lexi orient" in content
+        assert "TOPOLOGY.md" in content
 
     def test_agents_md_has_search_content(self, tmp_path: Path) -> None:
         """Created AGENTS.md includes embedded search skill content."""
@@ -121,7 +121,7 @@ class TestUpdateExistingSection:
 
         content = agents_md.read_text(encoding="utf-8")
         assert "outdated lexibrary rules" not in content
-        assert "lexi orient" in content
+        assert "TOPOLOGY.md" in content
 
     def test_preserves_surrounding_content(self, tmp_path: Path) -> None:
         """Content before and after the marker block is preserved."""
@@ -150,7 +150,7 @@ class TestUpdateExistingSection:
         assert content.count(MARKER_END) == 1
 
     def test_updated_section_has_embedded_skills(self, tmp_path: Path) -> None:
-        """Updated section includes orient and search skill content."""
+        """Updated section includes search skill content."""
         agents_md = tmp_path / "AGENTS.md"
         old_content = f"{MARKER_START}\nold\n{MARKER_END}"
         agents_md.write_text(old_content, encoding="utf-8")
@@ -158,5 +158,4 @@ class TestUpdateExistingSection:
         generate_codex_rules(tmp_path)
 
         content = agents_md.read_text(encoding="utf-8")
-        assert "lexi orient" in content
         assert "lexi search" in content

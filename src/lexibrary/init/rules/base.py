@@ -7,7 +7,6 @@ in the appropriate file format and location.
 
 Functions:
     get_core_rules: Shared agent rules applicable to all environments.
-    get_orient_skill_content: Content for a ``/lexi-orient`` session-start skill.
     get_search_skill_content: Content for a ``/lexi-search`` cross-artifact search skill.
     get_lookup_skill_content: Content for a ``/lexi-lookup`` file lookup skill.
     get_concepts_skill_content: Content for a ``/lexi-concept`` concept search skill.
@@ -24,7 +23,7 @@ def get_core_rules() -> str:
 
     The rules instruct agents to:
 
-    * Run ``lexi orient`` at session start (includes topology, health, IWH)
+    * Read ``.lexibrary/TOPOLOGY.md`` and run ``lexi iwh list`` at session start
     * Consume IWH signals if any are listed
     * Run ``lexi lookup <file>`` before editing
     * Update design files after editing (set ``updated_by: agent``)
@@ -40,21 +39,6 @@ def get_core_rules() -> str:
         Multiline string with all core agent rules.
     """
     return read_template("rules/core_rules.md").strip()
-
-
-def get_orient_skill_content() -> str:
-    """Return the content for a ``/lexi-orient`` skill.
-
-    The orient skill instructs agents to run ``lexi orient`` -- a single
-    command that returns project topology, library stats, and IWH signals
-    (peek mode).  It replaces the previous multi-step workflow of reading
-    TOPOLOGY.md, running ``lexi iwh list``, and running ``lexi status``
-    separately.
-
-    Returns:
-        Multiline string with orient skill instructions.
-    """
-    return read_template("rules/skills/lexi-orient/SKILL.md").strip()
 
 
 def get_search_skill_content() -> str:

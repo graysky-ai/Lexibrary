@@ -6,8 +6,9 @@ A single-page reference for everything an agent needs when working in a Lexibrar
 
 ## Session Start Checklist
 
-1. Run `lexi orient` -- get project topology, library stats, and IWH signal overview in a single command
-2. If IWH signals are shown, run `lexi iwh read <dir>` for each directory you plan to work in to consume the signals
+1. Read `.lexibrary/TOPOLOGY.md` -- get project layout and directory summaries
+2. Run `lexi iwh list` -- check for pending IWH signals
+3. If IWH signals are present, run `lexi iwh read <dir>` for each directory you plan to work in to consume the signals
 
 ---
 
@@ -32,7 +33,8 @@ A single-page reference for everything an agent needs when working in a Lexibrar
 
 | Command | What It Does | When to Use |
 |---------|-------------|-------------|
-| `lexi orient` | Show project topology, stats, IWH signals | At session start (first command) |
+| Read `.lexibrary/TOPOLOGY.md` | Project layout and directory summaries | At session start (first step) |
+| `lexi iwh list` | List all pending IWH signals | At session start (second step) |
 | `lexi --help` | Show all available commands | First time using lexi |
 
 ### Lookup & Navigation
@@ -167,8 +169,8 @@ lexi iwh write src/lexibrary/config/ --scope blocked --body "Waiting on upstream
 ### Picking up where someone left off
 
 ```bash
-# Run orient to see all pending signals
-lexi orient
+# Check for pending signals
+lexi iwh list
 
 # Read and consume a signal (deletes it after display)
 lexi iwh read src/lexibrary/config/
@@ -192,7 +194,7 @@ lexi iwh read src/lexibrary/config/
 
 | Topic | Document |
 |-------|----------|
-| Session start protocol | [Orientation](orientation.md) |
+| Session start protocol | [Agent Overview](README.md) |
 | Full CLI reference | [lexi Reference](lexi-reference.md) |
 | Before-edit workflow | [Lookup Workflow](lookup-workflow.md) |
 | After-edit workflow | [Update Workflow](update-workflow.md) |

@@ -38,13 +38,13 @@ class TestCreateFromScratch:
         """Created CLAUDE.md contains core Lexibrary rules."""
         generate_claude_rules(tmp_path)
         content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
-        assert "lexi orient" in content
+        assert "TOPOLOGY.md" in content
         assert "lexi lookup" in content
 
     def test_returns_all_created_paths(self, tmp_path: Path) -> None:
         """Return value includes all generated files."""
         result = generate_claude_rules(tmp_path)
-        assert len(result) == 15
+        assert len(result) == 14
         filenames = [p.name for p in result]
         assert "CLAUDE.md" in filenames
         assert "settings.json" in filenames
@@ -56,7 +56,6 @@ class TestCreateFromScratch:
         assert "lexi-research.md" in filenames
         # Skill files are in per-skill subdirs; check by parent directory names
         skill_parents = {p.parent.name for p in result if p.name == "SKILL.md"}
-        assert "lexi-orient" in skill_parents
         assert "lexi-search" in skill_parents
         assert "lexi-lookup" in skill_parents
         assert "lexi-concept" in skill_parents
@@ -127,7 +126,7 @@ class TestUpdateExistingSection:
 
         content = claude_md.read_text(encoding="utf-8")
         assert "old lexibrary rules" not in content
-        assert "lexi orient" in content
+        assert "TOPOLOGY.md" in content
 
     def test_preserves_surrounding_content(self, tmp_path: Path) -> None:
         """Content before and after the marker block is preserved."""
@@ -164,27 +163,6 @@ class TestUpdateExistingSection:
 class TestSkillFiles:
     """Skill files are created in .claude/skills/."""
 
-    def test_creates_orient_skill(self, tmp_path: Path) -> None:
-        """lexi-orient/SKILL.md is created in .claude/skills/."""
-        generate_claude_rules(tmp_path)
-        orient = tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md"
-        assert orient.exists()
-
-    def test_orient_contains_lexi_orient(self, tmp_path: Path) -> None:
-        """Orient skill references lexi orient."""
-        generate_claude_rules(tmp_path)
-        orient = tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md"
-        content = orient.read_text(encoding="utf-8")
-        assert "lexi orient" in content
-
-    def test_orient_contains_library_stats(self, tmp_path: Path) -> None:
-        """Orient skill mentions library stats."""
-        generate_claude_rules(tmp_path)
-        orient = tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md"
-        content = orient.read_text(encoding="utf-8")
-        lower = content.lower()
-        assert "stats" in lower or "count" in lower or "topology" in lower
-
     def test_creates_search_skill(self, tmp_path: Path) -> None:
         """lexi-search/SKILL.md is created in .claude/skills/."""
         generate_claude_rules(tmp_path)
@@ -200,15 +178,15 @@ class TestSkillFiles:
 
     def test_skill_files_overwritten_on_update(self, tmp_path: Path) -> None:
         """Skill files are overwritten when regenerated."""
-        orient = tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md"
-        orient.parent.mkdir(parents=True, exist_ok=True)
-        orient.write_text("old orient content", encoding="utf-8")
+        search = tmp_path / ".claude" / "skills" / "lexi-search" / "SKILL.md"
+        search.parent.mkdir(parents=True, exist_ok=True)
+        search.write_text("old search content", encoding="utf-8")
 
         generate_claude_rules(tmp_path)
 
-        content = orient.read_text(encoding="utf-8")
-        assert "old orient content" not in content
-        assert "lexi orient" in content
+        content = search.read_text(encoding="utf-8")
+        assert "old search content" not in content
+        assert "lexi search" in content
 
     def test_creates_skills_directory(self, tmp_path: Path) -> None:
         """The .claude/skills/ directory is created if it does not exist."""
@@ -244,14 +222,14 @@ class TestSkillFiles:
         import yaml
 
         generate_claude_rules(tmp_path)
-        orient = tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md"
-        content = orient.read_text(encoding="utf-8")
+        search = tmp_path / ".claude" / "skills" / "lexi-search" / "SKILL.md"
+        content = search.read_text(encoding="utf-8")
         assert content.startswith("---"), "Skill file must start with YAML frontmatter"
         # Extract content between the two --- delimiters
         end = content.index("---", 3)
         fm_text = content[3:end].strip()
         frontmatter = yaml.safe_load(fm_text)
-        assert frontmatter["name"] == "lexi-orient"
+        assert frontmatter["name"] == "lexi-search"
         assert frontmatter["description"]
 
     def test_cleans_up_stale_command_files(self, tmp_path: Path) -> None:
@@ -342,7 +320,7 @@ class TestTopologyBuilderSkillDeployment:
 class TestFolderConventionMigration:
     """Verify all five lexi skills use the <name>/SKILL.md folder convention."""
 
-    _LEXI_SKILLS = ["lexi-orient", "lexi-search", "lexi-lookup", "lexi-concept", "lexi-stack"]
+    _LEXI_SKILLS = ["lexi-search", "lexi-lookup", "lexi-concept", "lexi-stack"]
 
     def test_all_lexi_skills_in_subdirs(self, tmp_path: Path) -> None:
         """Each lexi skill is deployed as <name>/SKILL.md in .claude/skills/."""
@@ -409,7 +387,6 @@ class TestSettingsJsonGeneration:
         assert "permissions" in settings
         assert "allow" in settings["permissions"]
         allow = settings["permissions"]["allow"]
-        assert "Bash(lexi orient)" in allow
         assert "Bash(lexi lookup *)" in allow
         assert "Bash(lexi impact *)" in allow
         assert "Bash(lexi concept new *)" in allow
@@ -474,7 +451,7 @@ class TestSettingsJsonMerge:
         settings = json.loads((claude_dir / "settings.json").read_text(encoding="utf-8"))
         allow = settings["permissions"]["allow"]
         assert "Bash(my-custom-command *)" in allow
-        assert "Bash(lexi orient)" in allow
+        assert "Bash(lexi lookup *)" in allow
 
     def test_merges_with_existing_deny_entries(self, tmp_path: Path) -> None:
         """Existing deny entries are preserved when merging."""
@@ -889,14 +866,14 @@ class TestAgentFileGeneration:
         content = explore.read_text(encoding="utf-8")
         assert "name: Explore" in content
 
-    # --- Explore agent: mandatory orient, stack search, IWH prohibition ---
+    # --- Explore agent: TOPOLOGY.md + IWH, stack search, IWH prohibition ---
 
-    def test_explore_has_mandatory_orient(self, tmp_path: Path) -> None:
-        """explore.md contains mandatory lexi orient first step."""
+    def test_explore_has_topology_session_start(self, tmp_path: Path) -> None:
+        """explore.md references TOPOLOGY.md and lexi iwh list for session start."""
         _generate_agent_files(tmp_path)
         content = (tmp_path / ".claude" / "agents" / "explore.md").read_text(encoding="utf-8")
-        assert "MANDATORY FIRST STEP" in content
-        assert "lexi orient" in content
+        assert "TOPOLOGY.md" in content
+        assert "lexi iwh list" in content
 
     def test_explore_has_stack_search(self, tmp_path: Path) -> None:
         """explore.md includes lexi stack search in workflow."""
@@ -924,12 +901,12 @@ class TestAgentFileGeneration:
         assert content.startswith("---\n")
         assert "name: Plan" in content
 
-    def test_plan_has_mandatory_orient(self, tmp_path: Path) -> None:
-        """plan.md contains mandatory lexi orient first step."""
+    def test_plan_has_topology_session_start(self, tmp_path: Path) -> None:
+        """plan.md references TOPOLOGY.md and lexi iwh list for session start."""
         _generate_agent_files(tmp_path)
         content = (tmp_path / ".claude" / "agents" / "plan.md").read_text(encoding="utf-8")
-        assert "MANDATORY FIRST STEP" in content
-        assert "lexi orient" in content
+        assert "TOPOLOGY.md" in content
+        assert "lexi iwh list" in content
 
     def test_plan_has_iwh_prohibition(self, tmp_path: Path) -> None:
         """plan.md prohibits IWH consumption."""
@@ -961,12 +938,12 @@ class TestAgentFileGeneration:
         assert content.startswith("---\n")
         assert "name: Code" in content
 
-    def test_code_has_mandatory_orient(self, tmp_path: Path) -> None:
-        """code.md contains mandatory lexi orient first step."""
+    def test_code_has_topology_session_start(self, tmp_path: Path) -> None:
+        """code.md references TOPOLOGY.md and lexi iwh list for session start."""
         _generate_agent_files(tmp_path)
         content = (tmp_path / ".claude" / "agents" / "code.md").read_text(encoding="utf-8")
-        assert "MANDATORY FIRST STEP" in content
-        assert "lexi orient" in content
+        assert "TOPOLOGY.md" in content
+        assert "lexi iwh list" in content
 
     def test_code_has_model_sonnet(self, tmp_path: Path) -> None:
         """code.md specifies model: sonnet."""
@@ -1076,7 +1053,6 @@ class TestIntegrationFullGeneration:
             tmp_path / ".claude" / "agents" / "plan.md",
             tmp_path / ".claude" / "agents" / "code.md",
             tmp_path / ".claude" / "agents" / "lexi-research.md",
-            tmp_path / ".claude" / "skills" / "lexi-orient" / "SKILL.md",
             tmp_path / ".claude" / "skills" / "lexi-search" / "SKILL.md",
             tmp_path / ".claude" / "skills" / "lexi-lookup" / "SKILL.md",
             tmp_path / ".claude" / "skills" / "lexi-concept" / "SKILL.md",
@@ -1087,9 +1063,9 @@ class TestIntegrationFullGeneration:
             assert expected.exists(), f"Missing expected file: {expected}"
 
     def test_returned_paths_match_expected_count(self, tmp_path: Path) -> None:
-        """generate_claude_rules() returns exactly 15 paths."""
+        """generate_claude_rules() returns exactly 14 paths."""
         result = generate_claude_rules(tmp_path)
-        assert len(result) == 15
+        assert len(result) == 14
 
     def test_returned_paths_all_exist_on_disk(self, tmp_path: Path) -> None:
         """Every path in the returned list points to an existing file."""
@@ -1150,12 +1126,12 @@ class TestIntegrationFullGeneration:
         allow = settings["permissions"]["allow"]
         assert "Bash(lexi context-dump)" not in allow
 
-    def test_orient_in_permissions(self, tmp_path: Path) -> None:
-        """settings.json allow list includes Bash(lexi orient)."""
+    def test_orient_not_in_permissions(self, tmp_path: Path) -> None:
+        """settings.json allow list does not include Bash(lexi orient) (removed)."""
         generate_claude_rules(tmp_path)
         settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
         allow = settings["permissions"]["allow"]
-        assert "Bash(lexi orient)" in allow
+        assert "Bash(lexi orient)" not in allow
 
     def test_all_hook_types_in_settings(self, tmp_path: Path) -> None:
         """settings.json contains PreToolUse and PostToolUse hooks."""
@@ -1378,7 +1354,8 @@ class TestIntegrationHookMerge:
         assert "Bash(other-tool *)" in allow
         assert "Bash(rm -rf *)" in deny
         # Lexibrary permissions added (explicit, no wildcard)
-        assert "Bash(lexi orient)" in allow
+        assert "Bash(lexi lookup *)" in allow
+        assert "Bash(lexi orient)" not in allow
         assert "Bash(lexi *)" not in allow
         assert "Bash(lexi context-dump)" not in allow
         assert "Bash(lexictl *)" in deny

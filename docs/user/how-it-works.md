@@ -98,7 +98,7 @@ wikilinks:
 
 ### 6. TOPOLOGY.md regeneration
 
-After all design files are updated, Lexibrary regenerates `.lexibrary/TOPOLOGY.md`. This file is a procedural topology of the project -- it contains the directory tree, package map, and navigation guidance. Agents use the `/lexi-orient` session-start skill to orient themselves at the start of every session.
+After all design files are updated, Lexibrary regenerates `.lexibrary/TOPOLOGY.md`. This file is a procedural topology of the project -- it contains the directory tree, package map, and navigation guidance. Agents read this file at the start of every session to understand the project layout.
 
 ### 7. .aindex routing tables
 
@@ -123,7 +123,7 @@ The operator-agent collaboration model follows a clear separation of concerns:
 
 ### Agents are responsible for:
 
-- **Orienting** via the `/lexi-orient` skill (which reads `TOPOLOGY.md`) at the start of every session.
+- **Orienting** by reading `.lexibrary/TOPOLOGY.md` and running `lexi iwh list` at the start of every session.
 - **Looking up** design files before editing source code (`lexi lookup`).
 - **Updating** design files after editing source code (manual edits to `.lexibrary/` Markdown files).
 - **Creating** concepts when recurring patterns emerge (`lexi concept new`).
@@ -147,4 +147,4 @@ This cycle ensures that knowledge accumulates over time. Agents contribute under
 - [Design File Generation](design-file-generation.md) -- Deep dive into how `lexictl update` works
 - [Configuration](configuration.md) -- Full config.yaml reference
 - [Agent Overview](../agent/README.md) -- What Lexibrary is from the agent's perspective
-- [Agent Orientation](../agent/orientation.md) -- How agents start each session
+- [Quick Reference](../agent/quick-reference.md) -- Agent session start checklist and command cheat sheet

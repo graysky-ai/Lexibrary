@@ -2,7 +2,7 @@
 
 Generates:
 - ``LEXIBRARY_RULES.md`` — a standalone file at the project root containing
-  core agent rules with embedded orient and search skill content.
+  core agent rules with embedded search skill content.
 
 For environments without first-class Lexibrary integration (i.e. not Claude
 Code, Cursor, or Codex), agents can be pointed to this single file.  The
@@ -16,7 +16,6 @@ from pathlib import Path
 
 from lexibrary.init.rules.base import (
     get_core_rules,
-    get_orient_skill_content,
     get_search_skill_content,
 )
 
@@ -26,8 +25,8 @@ def generate_generic_rules(project_root: Path) -> list[Path]:
 
     Creates or overwrites:
 
-    1. ``LEXIBRARY_RULES.md`` — core rules plus embedded orient and search
-       skill content.  Suitable for any AI coding agent.
+    1. ``LEXIBRARY_RULES.md`` — core rules plus embedded search skill
+       content.  Suitable for any AI coding agent.
 
     Args:
         project_root: Absolute path to the project root directory.
@@ -48,13 +47,11 @@ def generate_generic_rules(project_root: Path) -> list[Path]:
 def _build_content() -> str:
     """Build the full content for LEXIBRARY_RULES.md.
 
-    Combines core rules with orient and search skill content into a
-    single document.
+    Combines core rules with search skill content into a single document.
 
     Returns:
         Combined rules and skills content.
     """
     core = get_core_rules()
-    orient = get_orient_skill_content()
     search = get_search_skill_content()
-    return f"{core}\n\n{orient}\n\n{search}\n"
+    return f"{core}\n\n{search}\n"

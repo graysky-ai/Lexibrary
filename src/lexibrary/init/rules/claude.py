@@ -9,7 +9,6 @@ Generates:
 - ``.claude/agents/plan.md`` -- custom Plan agent with Lexibrary-first research
 - ``.claude/agents/code.md`` -- custom Code agent with knowledge capture obligations
 - ``.claude/agents/lexi-research.md`` -- deep research subagent for debugging
-- ``.claude/skills/lexi-orient/SKILL.md`` -- orient session-start skill
 - ``.claude/skills/lexi-search/SKILL.md`` -- cross-artifact search skill
 - ``.claude/skills/lexi-lookup/SKILL.md`` -- file lookup skill
 - ``.claude/skills/lexi-concept/SKILL.md`` -- concept search skill
@@ -50,7 +49,6 @@ _PERMISSIONS_ALLOW: list[str] = [
     "Bash(lexi impact *)",
     "Bash(lexi iwh *)",
     "Bash(lexi lookup *)",
-    "Bash(lexi orient)",
     "Bash(lexi search *)",
     "Bash(lexi stack *)",
     "Bash(lexi status *)",
@@ -361,13 +359,12 @@ def generate_claude_rules(project_root: Path) -> list[Path]:
     6.  ``.claude/agents/plan.md`` -- custom Plan agent definition.
     7.  ``.claude/agents/code.md`` -- custom Code agent definition.
     8.  ``.claude/agents/lexi-research.md`` -- deep research subagent.
-    9.  ``.claude/skills/lexi-orient/SKILL.md`` -- orient skill (Open Skill format).
-    10. ``.claude/skills/lexi-search/SKILL.md`` -- search skill.
-    11. ``.claude/skills/lexi-lookup/SKILL.md`` -- lookup skill.
-    12. ``.claude/skills/lexi-concept/SKILL.md`` -- concepts skill.
-    13. ``.claude/skills/lexi-stack/SKILL.md`` -- Stack Q&A skill.
-    14. ``.claude/skills/topology-builder/SKILL.md`` -- topology synthesis skill.
-    15. ``.claude/skills/topology-builder/assets/topology_template.md`` -- output template.
+    9.  ``.claude/skills/lexi-search/SKILL.md`` -- search skill.
+    10. ``.claude/skills/lexi-lookup/SKILL.md`` -- lookup skill.
+    11. ``.claude/skills/lexi-concept/SKILL.md`` -- concepts skill.
+    12. ``.claude/skills/lexi-stack/SKILL.md`` -- Stack Q&A skill.
+    13. ``.claude/skills/topology-builder/SKILL.md`` -- topology synthesis skill.
+    14. ``.claude/skills/topology-builder/assets/topology_template.md`` -- output template.
 
     Also removes deprecated files from prior installations:
     - ``lexi-explore-context.sh`` hook script
@@ -414,7 +411,6 @@ def generate_claude_rules(project_root: Path) -> list[Path]:
     skills_dir.mkdir(parents=True, exist_ok=True)
 
     lexi_skills = [
-        "lexi-orient",
         "lexi-search",
         "lexi-lookup",
         "lexi-concept",

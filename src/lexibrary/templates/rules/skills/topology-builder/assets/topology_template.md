@@ -34,7 +34,7 @@ Directory descriptions in the tree below are synthesised keyword fragments drawn
 
 ## Directory Tree
 
-*Paste the tree output from `lexi orient` (or equivalent) here. Directory annotations come from the billboard summaries in each `.aindex` file — see the legend above.*
+*Paste the directory tree here. Directory annotations come from the billboard summaries in each `.aindex` file — see the legend above.*
 
 ```
 {{PROJECT_NAME}}/ -- {{root billboard fragment}}

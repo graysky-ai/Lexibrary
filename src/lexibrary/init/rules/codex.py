@@ -2,8 +2,7 @@
 
 Generates:
 - ``AGENTS.md`` — marker-delimited Lexibrary section containing core agent
-  rules with embedded orient, search, lookup, concepts, and stack skill
-  content.
+  rules with embedded search, lookup, concepts, and stack skill content.
 
 Codex reads ``AGENTS.md`` from the project root.  Unlike Claude Code which
 uses separate command files, Codex receives all instructions in a single
@@ -19,7 +18,6 @@ from lexibrary.init.rules.base import (
     get_concepts_skill_content,
     get_core_rules,
     get_lookup_skill_content,
-    get_orient_skill_content,
     get_search_skill_content,
     get_stack_skill_content,
 )
@@ -37,7 +35,7 @@ def generate_codex_rules(project_root: Path) -> list[Path]:
 
     1. ``AGENTS.md`` — Lexibrary section appended (new file / no markers)
        or replaced (existing markers).  Includes core rules plus embedded
-       orient and search skill content.
+       search, lookup, concepts, and stack skill content.
 
     Args:
         project_root: Absolute path to the project root directory.
@@ -68,16 +66,15 @@ def generate_codex_rules(project_root: Path) -> list[Path]:
 def _build_section_content() -> str:
     """Build the combined section content for AGENTS.md.
 
-    Combines core rules with orient, search, lookup, concepts, and stack
-    skill content into a single block that goes between the Lexibrary markers.
+    Combines core rules with search, lookup, concepts, and stack skill
+    content into a single block that goes between the Lexibrary markers.
 
     Returns:
         Combined rules and skills content.
     """
     core = get_core_rules()
-    orient = get_orient_skill_content()
     search = get_search_skill_content()
     lookup = get_lookup_skill_content()
     concepts = get_concepts_skill_content()
     stack = get_stack_skill_content()
-    return f"{core}\n\n{orient}\n\n{search}\n\n{lookup}\n\n{concepts}\n\n{stack}"
+    return f"{core}\n\n{search}\n\n{lookup}\n\n{concepts}\n\n{stack}"

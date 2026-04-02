@@ -27,9 +27,9 @@ Design files are your primary context source. Before editing a file, read its de
 
 Each directory has a `.aindex` file that provides a billboard description of the directory's purpose and lists the files it contains with brief descriptions. These help you navigate the project structure without reading every file.
 
-### `START_HERE.md`
+### `TOPOLOGY.md`
 
-A single project-level orientation file at `.lexibrary/START_HERE.md`. It contains:
+A single project overview file at `.lexibrary/TOPOLOGY.md`. It contains:
 
 - **Project topology** -- the full directory tree with annotations
 - **Package map** -- what each package does
@@ -73,7 +73,7 @@ See [lexi-reference.md](lexi-reference.md) for the complete CLI reference.
 
 ## How Using Lexibrary Makes You More Effective
 
-1. **Faster orientation.** Reading `START_HERE.md` gives you the full project topology and navigation table in one file instead of exploring the filesystem.
+1. **Faster onboarding.** Reading `TOPOLOGY.md` gives you the full project topology and navigation table in one file instead of exploring the filesystem.
 
 2. **Fewer mistakes.** Running `lexi lookup` before editing shows you the file's conventions, dependents, and design context -- so you know what will break and what patterns to follow.
 
@@ -94,7 +94,6 @@ See [prohibited-commands.md](prohibited-commands.md) for details.
 
 ## Next Steps
 
-- [Orientation](orientation.md) -- the step-by-step session start protocol
 - [lexi Reference](lexi-reference.md) -- complete CLI reference with examples
 - [Quick Reference](quick-reference.md) -- single-page cheat sheet
 - [How It Works (User Docs)](../user/how-it-works.md) -- the full artifact lifecycle and operator/agent collaboration model

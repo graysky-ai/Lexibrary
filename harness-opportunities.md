@@ -548,7 +548,7 @@ You are a code review agent. Your job is to analyze code quality, find issues, a
 - Do NOT create conventions
 
 ## Workflow
-1. Run `lexi orient` to understand project structure
+1. Read `.lexibrary/TOPOLOGY.md` for project layout, then run `lexi iwh list` to check for pending signals
 2. For each file to review, run `lexi lookup <file>`
 3. Read the file and analyze for issues
 4. For each issue found, run `lexi stack post --title "..." --problem "..." --tag review`
@@ -566,7 +566,7 @@ You are a code review agent. Your job is to analyze code quality, find issues, a
 
 ### What It Solves
 
-Harness engineering emphasizes making all team tools agent-accessible, preferably via CLI or MCP (Model Context Protocol). Stripe's "Toolshed" connects agents to 400+ internal tools via MCP servers. Lexibrary currently exposes everything through the `lexi` CLI, which agents call via `Bash` tool invocations. An MCP server would let IDEs and agent frameworks call `lookup`, `search`, `validate`, `orient`, etc. as native tools — reducing shell-out overhead, enabling structured JSON responses natively, and opening integration with non-CLI agent platforms.
+Harness engineering emphasizes making all team tools agent-accessible, preferably via CLI or MCP (Model Context Protocol). Stripe's "Toolshed" connects agents to 400+ internal tools via MCP servers. Lexibrary currently exposes everything through the `lexi` CLI, which agents call via `Bash` tool invocations. An MCP server would let IDEs and agent frameworks call `lookup`, `search`, `validate`, etc. as native tools — reducing shell-out overhead, enabling structured JSON responses natively, and opening integration with non-CLI agent platforms.
 
 ### How to Implement
 
@@ -578,7 +578,6 @@ Check which commands already have extracted core logic vs. which are still in CL
 - `search` -> `src/lexibrary/search.py:unified_search()` — already extracted
 - `lookup` -> may still be in CLI glue (check `lexi_app.py` `lexi_lookup` function)
 - `validate` -> `src/lexibrary/validator/__init__.py:validate_library()` — already extracted
-- `orient` -> likely in CLI glue
 - `impact` -> likely in CLI glue
 
 For commands still in CLI glue, extract core logic into standalone functions that return dataclasses.

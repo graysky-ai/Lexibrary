@@ -5,8 +5,8 @@ Generates:
   (``alwaysApply: true``) containing the core Lexibrary agent rules.
 - ``.cursor/rules/lexibrary-editing.mdc`` — MDC rules file scoped to source
   files (``alwaysApply: false``, glob-triggered) with editing instructions.
-- ``.cursor/skills/lexi.md`` — combined skill content (orient, search,
-  lookup, concepts, stack).
+- ``.cursor/skills/lexi.md`` — combined skill content (search, lookup,
+  concepts, stack).
 
 All files are standalone and overwritten on each generation (no marker-based
 section management needed since Cursor scans dedicated directories).
@@ -20,7 +20,6 @@ from lexibrary.init.rules.base import (
     get_concepts_skill_content,
     get_core_rules,
     get_lookup_skill_content,
-    get_orient_skill_content,
     get_search_skill_content,
     get_stack_skill_content,
 )
@@ -44,7 +43,7 @@ def generate_cursor_rules(
        agent rules.
     2. ``.cursor/rules/lexibrary-editing.mdc`` — MDC file scoped to source
        files under *scope_root* with editing instructions.
-    3. ``.cursor/skills/lexi.md`` — combined skills (orient, search, lookup,
+    3. ``.cursor/skills/lexi.md`` — combined skills (search, lookup,
        concepts, stack).
 
     Args:
@@ -128,11 +127,10 @@ def _build_skills_content() -> str:
     """Build the combined skills file content.
 
     Returns:
-        Combined orient, search, lookup, concepts, and stack skill content.
+        Combined search, lookup, concepts, and stack skill content.
     """
-    orient = get_orient_skill_content()
     search = get_search_skill_content()
     lookup = get_lookup_skill_content()
     concepts = get_concepts_skill_content()
     stack = get_stack_skill_content()
-    return f"{orient}\n\n{search}\n\n{lookup}\n\n{concepts}\n\n{stack}\n"
+    return f"{search}\n\n{lookup}\n\n{concepts}\n\n{stack}\n"

@@ -66,7 +66,6 @@ _DEFAULT_TOKEN_BUDGETS: dict[str, int] = {
     "aindex_tokens": 200,
     "concept_file_tokens": 400,
     "convention_file_tokens": 500,
-    "orientation_tokens": 300,
     "lookup_total_tokens": 1200,
     "summarize_max_tokens": 200,
     "archivist_max_tokens": 5000,

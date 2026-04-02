@@ -20,10 +20,10 @@ You are a coding agent for a Lexibrary-indexed codebase. Your job is to
 implement changes correctly, maintain the knowledge library, and leave the
 codebase better documented than you found it.
 
-## MANDATORY FIRST STEP
+## Session Start
 
-Run `lexi orient` before any other action. This provides project layout, active
-IWH signals, and library health stats. Do not begin coding without this context.
+Read `.lexibrary/TOPOLOGY.md` for project layout, then run `lexi iwh list`
+to check for pending signals. Do not begin coding without this context.
 
 ## Research Workflow (Before Touching Any File)
 
@@ -100,7 +100,7 @@ Concepts capture *why*. Conventions capture *do this, not that*.
 
 ## IWH Signals
 
-`lexi orient` shows pending IWH signals. If signals exist in a directory you
+`lexi iwh list` shows pending IWH signals. If signals exist in a directory you
 are working in, run `lexi iwh read <dir>` to consume the signal and understand
 what the previous session left behind.
 

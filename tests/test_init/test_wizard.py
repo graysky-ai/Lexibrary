@@ -213,24 +213,23 @@ class TestStepIgnorePatternsDefaults:
 
 
 class TestDefaultTokenBudgetsCompleteness:
-    """Verify _DEFAULT_TOKEN_BUDGETS contains all 9 TokenBudgetConfig fields."""
+    """Verify _DEFAULT_TOKEN_BUDGETS contains all 8 TokenBudgetConfig fields."""
 
-    def test_all_nine_fields_present(self) -> None:
+    def test_all_eight_fields_present(self) -> None:
         expected_fields = {
             "design_file_tokens",
             "design_file_abridged_tokens",
             "aindex_tokens",
             "concept_file_tokens",
             "convention_file_tokens",
-            "orientation_tokens",
             "lookup_total_tokens",
             "summarize_max_tokens",
             "archivist_max_tokens",
         }
         assert set(_DEFAULT_TOKEN_BUDGETS.keys()) == expected_fields
 
-    def test_field_count_is_nine(self) -> None:
-        assert len(_DEFAULT_TOKEN_BUDGETS) == 9
+    def test_field_count_is_eight(self) -> None:
+        assert len(_DEFAULT_TOKEN_BUDGETS) == 8
 
     def test_defaults_match_schema(self) -> None:
         """Ensure wizard defaults match TokenBudgetConfig defaults."""
@@ -685,8 +684,8 @@ class TestStepTokenBudgetsInteractive:
         assert budgets == {}
 
     def test_user_customizes_a_budget(self, console: Console) -> None:
-        # Responses for all 9 fields: design_file_tokens (customized to 500),
-        # then defaults for the remaining 8 fields
+        # Responses for all 8 fields: design_file_tokens (customized to 500),
+        # then defaults for the remaining 7 fields
         prompt_responses = iter(
             [
                 "500",  # design_file_tokens (custom)
@@ -694,7 +693,6 @@ class TestStepTokenBudgetsInteractive:
                 "200",  # aindex_tokens
                 "400",  # concept_file_tokens
                 "500",  # convention_file_tokens
-                "300",  # orientation_tokens
                 "1200",  # lookup_total_tokens
                 "200",  # summarize_max_tokens
                 "5000",  # archivist_max_tokens

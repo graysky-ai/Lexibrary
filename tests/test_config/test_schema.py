@@ -67,7 +67,6 @@ def test_token_budget_defaults() -> None:
     assert config.aindex_tokens == 200
     assert config.concept_file_tokens == 400
     assert config.convention_file_tokens == 500
-    assert config.orientation_tokens == 300
     assert config.lookup_total_tokens == 1200
     assert config.summarize_max_tokens == 200
     assert config.archivist_max_tokens == 5000
@@ -443,16 +442,18 @@ def test_lookup_total_tokens_custom() -> None:
     assert config.token_budgets.lookup_total_tokens == 2000
 
 
-def test_orientation_tokens_default() -> None:
-    """TokenBudgetConfig.orientation_tokens defaults to 300."""
+def test_token_budget_no_orientation_tokens() -> None:
+    """TokenBudgetConfig SHALL NOT have an orientation_tokens attribute (removed)."""
     config = TokenBudgetConfig()
-    assert config.orientation_tokens == 300
+    assert not hasattr(config, "orientation_tokens")
 
 
-def test_orientation_tokens_custom() -> None:
-    """orientation_tokens can be overridden from YAML."""
-    config = LexibraryConfig.model_validate({"token_budgets": {"orientation_tokens": 500}})
-    assert config.token_budgets.orientation_tokens == 500
+def test_stale_orientation_tokens_silently_ignored() -> None:
+    """Loading config with stale orientation_tokens key does not raise an error."""
+    config = TokenBudgetConfig.model_validate({"orientation_tokens": 300})
+    assert not hasattr(config, "orientation_tokens")
+    # Other defaults still work
+    assert config.design_file_tokens == 400
 
 
 # --- TokenBudgetConfig summarize_max_tokens tests ---

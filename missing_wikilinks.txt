@@ -1,0 +1,834 @@
+.aindex
+.aindex file
+.aindex files
+.claude/agents
+.claude/commands
+.claude/hooks/lexi-post-edit.sh
+.claude/hooks/lexi-pre-edit.sh
+.comments.yaml
+.comments.yaml sibling file
+.git directory
+.gitignore
+.lexibrary
+.lexibrary directory
+.lexibrary/concepts/
+.lexibrary/designs
+.lexibrary/stack
+.lexignore
+AGENTS.md
+AGENT_UPDATED
+AIndex
+AIndex content
+AIndexEntry
+AIndexFile
+ANSI escape codes
+API key (environment variable)
+API keys
+ASCII art
+AST models
+AST parsing
+AST traversal
+AST-based interface extraction
+AVAILABLE_CHECKS
+Abstract Syntax Tree (AST)
+Anthropic API
+ArchivistGenerateDesignFile
+ArchivistService
+ArtefactComment
+ArtefactCommentFile
+ArtifactResult
+BAML client
+BamlAsyncClient
+BuildResult
+Byte Pair Encoding (BPE)
+CI mode
+CLAUDE.md
+CLI
+CLI banner
+CLI flags
+CLI output formatting
+CLI output routing
+CLI rendering
+ChangeLevel
+CheckFn
+Child Map
+ClassSig
+Claude (Anthropic)
+Claude Code hook
+CleanedSignal
+ClientRegistry
+CommonJS exports (module.exports / exports)
+Concept lookup
+ConceptConfig
+ConceptFile
+ConceptFileFrontmatter
+ConceptIndex
+ConfigError
+ConstantSig
+ConventionConfig
+ConventionDeclaration
+ConventionFile
+ConventionFileFrontmatter
+ConventionIndex
+ConventionResult
+CrawlStats
+Crawler engine
+Cursor rules
+DESIGNS_DIR
+DOTALL flag
+DaemonConfig
+Debouncer
+Decision Log
+DeprecationConfig
+Design file frontmatter
+Design file search
+DesignFile
+DesignFileOutput
+DesignFileRequest
+DesignFileResult
+ECMAScript module export syntax
+EXTENSION_MAP
+Enum
+ErrorSummary
+FIXERS
+FTS5
+FTS5 (full-text search)
+FTS5 full-text search
+Fallback exploration
+FileInput
+FileNotFoundError
+FunctionSig
+F{n} finding numbering
+GRAMMAR_MAP
+Git merge conflict marker
+HTML comment footer
+HTML comment markers
+HTML comments
+I Was Here
+I Was Here (IWH)
+I/O streams
+ISO 8601
+ISO 8601 date
+ISO 8601 dates
+ISO 8601 datetime
+ISO 8601 timestamps
+IWH
+IWH (I Was Here)
+IWH (I Was Here) signals
+IWH (In-Work Header) signals
+IWH blocked signal
+IWH file
+IWH files
+IWH signal
+IWH signals
+IWHConfig
+IWHFile
+IWHFile model
+IWHScope
+IgnoreConfig
+IgnoreMatcher
+IndexBuilder
+IndexHealth
+IndexingError
+InterfaceSkeleton
+JSON cache
+JSON logging
+JSON serialization
+LEXIBRARY_DIR
+LEXIBRARY_RULES.md
+LLM enrichment
+LLM pipeline
+LLM provider
+LLM providers
+LLM summarization
+LLMConfig
+LLMService
+LLMServiceError
+Language
+Latin-1
+Lexi CLI
+Lexibrary
+Lexibrary commands
+Lexibrary configuration
+Lexibrary index
+Lexibrary marker
+Lexibrary section
+LexibraryConfig
+LexibraryError
+LexibraryNotFoundError
+LinkGraph
+LinkGraphError
+LinkResult
+Literal (typing)
+Literal type
+Literal types
+MDC rules file
+MappingConfig
+Markdown
+Markdown headers
+Markdown scaffolding
+Markdown serialization
+Markdown table format
+OSError handling
+OpenAI models
+PEP 544 (Protocol)
+PEP 561
+POSIX atomic rename
+POSIX path
+ParameterSig
+ParseError
+Parser
+PascalCase filenames
+Path
+Path.resolve
+Path.suffix
+Path.with_suffix
+PathSpec
+PlaybookIndex
+Populated vs scaffold mode
+Post metadata
+PreToolUse
+PreToolUse/PostToolUse hooks
+PyYAML
+Pydantic
+Pydantic model
+Pydantic model validation
+Pydantic models
+Pydantic v2
+Pydantic validation
+RateLimiter
+Read tool
+Refs (files and concepts)
+ResolutionType
+ResolvedLink
+Rich logging
+RotatingFileHandler
+SCHEMA_VERSION
+SHA-256
+SHA-256 content hash
+ST-NNN (stack ID pattern)
+Severity
+Some Concept
+Stack Q&A
+Stack post
+Stack posts
+Stack search
+StackConfig
+StackFinding
+StackIndex
+StackPost
+StackPostFrontmatter
+StackPostRefs
+StackStatus
+Staleness metadata
+StalenessMetadata
+TOCTOU
+TOPOLOGY.md
+TSX
+TTL
+TTL (time-to-live)
+TTL (time-to-live) by commit count
+TokenBudgetConfig
+TokenCounter
+TokenizerConfig
+TraversalNode
+TypeScript
+Typer callback
+Typer command
+UPPER_CASE constant naming
+UTC
+UTC ISO 8601
+UTC timestamp
+UTC timestamps
+UTC timezone
+UTF-8
+UTF-8 decoding
+UTF-8 encoding
+Unicode normalization
+UnresolvedLink
+UpdateStats
+ValidationIssue
+ValidationReport
+ValidationSummary
+ValueError
+WAL
+WAL and foreign key pragmas
+WikilinkResolver
+WizardAnswers
+XDG base directory
+XDG_CONFIG_HOME
+YAML
+YAML frontmatter
+YAML serialization
+_FOOTER_RE
+__all__
+__all__ (module export list)
+__all__ convention
+__init__ (package initializer)
+__init__ module
+__init__ package initializer
+__init__.py
+abstract syntax tree (AST)
+accept_finding
+adaptive-depth algorithm
+add_finding
+additive merge and deduplication
+agent environments
+agent rules
+agent-edited design
+agent-facing CLI
+aindex
+aindex_coverage
+alias
+aliases
+aliases and tags
+anthropic
+append-only
+append_comment
+append_comment / read_comments / comment_count
+append_convention_comment
+applicable conventions
+approximate
+architectural constraints
+architecture
+archivist
+archivist pipeline
+arrow functions
+artefact comment
+artefact comment model
+artifact
+artifact ID
+artifact count
+artifact generator
+artifacts
+ast_import
+async functions
+async/await
+asyncio.Lock
+atomic file replace
+atomic file write
+atomic write
+atomic_write
+autogenerated files
+available_concepts
+background processes
+batch processing
+batching
+bead
+billboard summaries
+binary file detection
+bootstrap
+bootstrap (quick/full)
+bottom-up discovery
+bottom-up traversal
+build_index
+byte order mark (BOM)
+caching
+callback pattern
+canonicalization
+case sensitivity
+case-insensitive sorting
+change detector
+character-based token counting
+check_change
+check_filter
+check_schema_version
+checksum
+chunked file I/O
+circular import
+circular imports
+class inheritance (extends)
+class signature
+cli formatting
+cli workflow
+coalescing
+collapse annotation
+comment_count
+comments
+comments file (.comments.yaml)
+commit workflow
+concept
+concept comments
+concept file
+concept files
+concept slug
+concept_file_path
+concepts
+concepts directory
+concepts skill
+config.ignore.additional_patterns
+configuration layering
+configuration system
+conflict marker
+console_scripts
+consume-on-read
+consume_iwh
+content-hash matching
+convention
+convention comments
+convention file
+convention file format
+convention_concept_ref
+convention_file_path
+convention_slug
+conventions
+core agent rules
+core rules
+crawl behaviour
+cross-references
+cycle detection
+daemon
+daemon logging
+daemon runtime files
+daemon service
+daemon thread
+daemon threads
+dataclass
+datetime handling
+debouncing
+debugging
+decision
+decorators (staticmethod, classmethod, property)
+deduplication
+default_factory
+dependencies
+dependency extraction
+dependency graph
+dependency tree
+deprecated
+deprecated convention
+deprecated_at
+deprecated_at (ISO 8601)
+deprecated_ttl
+deprecation lifecycle
+deprecation workflow
+design comments
+design file
+design file frontmatter
+design file metadata
+design file metadata footer
+design file mirror
+design files
+design frontmatter
+design output tree
+design rationale
+design-file mirror path
+design_source
+destructured parameters
+deterministic rendering
+directory traversal / should_descend
+dirty flag
+dot-index files (.aindex, .iwh)
+dotenv
+dotfiles
+dry run
+dunder methods
+duplicate
+encoding errors
+encoding errors (errors="replace")
+enrichment queue
+ensure_iwh_gitignored
+ensure_schema
+entry point
+environment variables
+error aggregation
+error handling
+exception handling
+exception hierarchy
+executable bit
+exit codes
+export_statement
+facade pattern
+factory pattern
+feature flag
+fenced code block
+file I/O
+file I/O errors
+file IO encoding
+file encoding
+file extension
+file globbing
+file globbing / rglob
+file hashing
+file naming convention
+file overwrite
+file path generation
+file permissions
+file references (backtick paths)
+file system event batching
+file truncation
+file-based queue
+filesystem ancestor search
+filesystem atomicity
+filesystem event handling
+filesystem race condition
+filesystem rename
+filesystem root
+filesystem-safe filename
+find_all_iwh
+find_config_file
+find_project_root
+finding
+finding comments
+findings
+first-writer-wins alias
+flat package layout
+foreign keys
+from __future__ import annotations
+frontmatter
+frontmatter status
+frontmatter tags
+frontmatter.aliases
+frontmatter.tags
+frontmatter.title
+frozen dataclass
+full-mode
+full-text search
+full_crawl
+function signature
+fuzzy matching / get_close_matches
+generate_rules
+generator function
+git commit history
+git diff-tree
+git hooks
+git rename detection
+git worktree/gitdir file
+gitignore format
+gitignore pattern
+gitignore pattern style
+gitignore pattern syntax
+gitignore patterns
+glob pattern
+glob patterns
+global state
+guard lock
+hash_file
+hash_freshness
+hash_string
+hashing
+heuristic estimation
+heuristic_description
+hidden file (.iwh)
+hierarchical ignore rules
+hookSpecificOutput
+hotspot
+hyphenation
+idempotence
+idempotency
+ignore matcher
+ignore patterns
+ignore patterns (gitignore)
+import side-effects
+importance-weighted depth
+importlib
+importlib.resources.files
+in-place pruning
+in-process synchronization
+incremental change detection
+index file resolution
+init wizard
+inter-agent signal files
+interface contract
+interface extraction
+interface_hash (public interface / tree-sitter)
+interface_skeleton
+isatty
+iwh_cleanup
+jq
+landmark detection
+lazy import
+lazy imports
+lazy imports / dynamic import
+lazy loading
+leaky bucket
+lexi CLI
+lexi CLI commands
+lexi commands
+lexi concepts
+lexi conventions
+lexi design update
+lexi impact
+lexi lookup
+lexi orient
+lexi search
+lexi stack finding
+lexi stack post
+lexi stack search
+lexi validate
+lexi-research
+lexi-research subagent
+lexibrary
+lexibrary:meta
+lexictl
+lexictl (admin-only)
+lexictl update pipeline
+library health
+lifecycle management
+lifecycle templates
+link count
+link graph
+load_config
+log handlers
+log rotation
+logging
+logging levels
+logging.Formatter
+lookup skill
+map the territory before zooming in
+mapping strategies
+mark_duplicate
+mark_outdated
+mark_stale
+mark_unstale
+markdown
+markdown frontmatter
+markdown headings
+markdown table
+marker files
+marker-based section
+marker-based section management
+marker-delimited section
+memory leak (unbounded dict growth)
+meta table
+metadata footer
+metadata template
+migrations
+mirror directory
+mirror path
+mirror tree
+mirror_path
+mkstemp (temporary file)
+model_copy (pydantic)
+module docstring heuristic
+module entry point
+module exports
+module re-export
+module specifier
+module-level docstring
+monotonic clock
+multi-extension files
+multi-tag AND filtering
+mutex / lock
+naive vs timezone-aware datetimes
+namespace package
+network I/O
+no placeholders
+non-greedy matching
+null byte check
+open_index
+orient skill
+orphan detection
+orphan_artifacts
+orphaned_aindex
+orphaned_designs
+orphaned_iwh
+os.replace
+os.walk
+output formats
+package __init__ re-export
+package __init__.py
+package initializer
+package metadata
+package namespace
+package re-export
+package resources
+package-level re-export
+package.json
+packaging (sdist/wheel)
+parse/serialize roundtrip
+parse_concept_file
+parse_convention_file
+parse_design_file_metadata
+parse_iwh
+parse_stack_post
+path depth sorting
+path mirroring
+path.relative_to
+pathlib.Path
+pathlib.Path.iterdir
+pathlib.Path.resolve
+pathspec
+pathspec (library)
+pattern
+pattern matching
+per-directory lock
+pip package
+playbook
+playbook comments
+playbook lifecycle
+playbook slug
+playbook templates
+playbooks
+pluggable backend
+post lifecycle
+post-commit hook
+pragmas
+pre-commit hook
+pre-edit hook
+print
+priority
+procedural topology
+project configuration
+project directory conventions
+project header
+project root
+project root (.lexibrary)
+project scaffolding
+project topology
+public API
+py.typed marker
+pydantic
+pydantic BaseModel
+pydantic model
+pyproject.toml
+python -m
+python package
+python3 one-liner
+questionary
+queue header
+queued timestamp
+quick-mode
+rate limiting
+re-export
+re-export pattern
+read_comments
+read_index_health
+read_template
+record_vote
+recursive CTE
+refs.files
+regex
+registry (module-level)
+regular expression frontmatter pattern
+regular expressions
+relative imports
+relative path
+relative path matching
+relative paths
+relative source path
+render_concept_template
+render_post_template
+render_skeleton
+repository root
+research agent
+resolution_type
+resource path (slash-separated)
+retry policy
+reverse dependency
+reverse dependency analysis
+rglob
+rich.console / rich.prompt
+root logger
+same-filesystem rename
+scaffold generator
+scaffolding
+scheduling
+schema version
+scope
+scope filtering
+scope root
+scope_root
+search skill
+semantic versioning
+serialization
+serialize_aindex
+serialize_concept_file
+serialize_convention_file
+serialize_iwh
+serialize_stack_post
+settings.json (permissions & hooks)
+severity levels
+severity_filter
+sha256 hash
+shallow dict merge
+shebang
+shell word splitting
+side effects
+side effects (global state)
+sidecar comments
+signal consumption
+single source of truth
+skeleton
+skeleton design
+skeleton design file
+skills
+slug
+slugification
+slugify
+soft deprecation (unlinked vs deprecated)
+special filenames
+src-layout
+stable sorting
+stack comments
+stack post
+stack posts
+stack skill
+stack_file_ref
+stale
+stale/outdated/duplicate statuses
+staleness metadata
+startup banner
+status (draft/active/deprecated)
+stdin JSON
+stdout/stderr
+string literal concatenation
+string padding and alignment
+structural subtyping
+subagent
+summarise
+summary
+superseded_by
+supported_environments
+sweep / watch mode
+symbol exports
+synthesized research report
+tags
+tempfile.mkstemp
+template file
+template files
+temporary file
+terminal (TTY)
+text vs binary files
+thread-safety
+threading.Lock
+threading.Timer
+throttling
+tiktoken
+title normalization
+token bucket
+token budget
+token budgets
+token counting
+tokenization
+tokenizer backends
+tomllib
+top-down directory traversal
+traceback
+traversable
+tree-sitter
+tree-sitter AST
+trigger-file globs
+truecolor (24-bit) terminals
+type annotation
+type annotations
+type checking
+typer CLI
+umask and file permissions
+unicode block characters
+update pipeline
+update_file
+update_project
+updated_by: agent
+utility functions
+validate_library
+validation report
+vote rate-limiting
+watchdog (FileSystemEventHandler)
+wikilink
+wikilinks
+word-boundary truncation
+workspace discovery
+write_artifact
+write_iwh
+yaml.safe_load

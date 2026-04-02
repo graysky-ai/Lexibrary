@@ -129,5 +129,5 @@ lexi lookup tests/test_config/test_schema.py
 
 - [Update Workflow](update-workflow.md) -- what to do after editing a file
 - [lexi Reference](lexi-reference.md) -- full `lookup` command reference
-- [Orientation](orientation.md) -- session start protocol (runs before any lookups)
+- [Quick Reference](quick-reference.md) -- session start checklist and command cheat sheet
 - [Design File Generation (User Docs)](../user/design-file-generation.md) -- how design files are created and how change detection works

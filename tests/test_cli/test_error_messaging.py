@@ -6,7 +6,6 @@ Covers:
 - Recovery hints on concept link file-not-found, describe aindex-parse-failure,
   convention-not-found
 - Vote rate-limiting with 60s cooldown
-- Silent-exit path audit (orient with no project)
 """
 
 from __future__ import annotations
@@ -274,20 +273,3 @@ class TestVoteRateLimiting:
         # Verify last_vote_at was written to the post
         content = post_path.read_text(encoding="utf-8")
         assert "last_vote_at" in content
-
-
-# ---------------------------------------------------------------------------
-# 7.5: Silent-exit path tests
-# ---------------------------------------------------------------------------
-
-
-class TestSilentExitPaths:
-    """Previously silent exit paths should now emit informational messages."""
-
-    def test_orient_no_project_emits_message(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.chdir(tmp_path)
-        result = runner.invoke(lexi_app, ["orient"])
-        assert result.exit_code == 0
-        assert "No .lexibrary/" in result.output

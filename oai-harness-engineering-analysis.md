@@ -36,7 +36,7 @@ Lexibrary is significantly ahead of what most teams described in the harness eng
 | "Small AGENTS.md pointing to deeper sources of truth" | CLAUDE.md -> `lexi lookup`, `lexi search`, design files, concepts | **Strong** — this is exactly Lexibrary's architecture |
 | Documentation as living feedback loop (update on every failure) | Conventions + Stack posts capture failures | **Partial** — conventions are more static; Stack posts capture this but aren't auto-triggered |
 | Structured progress files for session handoff | IWH system (`lexi iwh write/read/list`) | **Strong** — purpose-built for this |
-| Directory structure mapping at startup | `lexi orient` + TOPOLOGY.md | **Strong** |
+| Directory structure mapping at startup | `.lexibrary/TOPOLOGY.md` + `lexi iwh list` | **Strong** |
 
 ### Architectural Constraints
 
@@ -152,7 +152,7 @@ This could be packaged as a `lexictl maintain` command that outputs the playbook
 
 **Lexibrary has:** A CLI (`lexi`) that agents call via bash. No MCP server.
 
-**Opportunity:** Wrap `lexi` commands as MCP tools. This would let IDEs and agent frameworks call `lookup`, `search`, `validate`, `orient` etc. natively without shelling out. The lookup-upgrade plan already notes this as a motivation for extracting core logic from CLI glue.
+**Opportunity:** Wrap `lexi` commands as MCP tools. This would let IDEs and agent frameworks call `lookup`, `search`, `validate` etc. natively without shelling out. The lookup-upgrade plan already notes this as a motivation for extracting core logic from CLI glue.
 
 **Complexity:** Medium. The core logic extraction (to `lookup.py`, `search.py` etc.) is prerequisite. MCP server is a thin wrapper once that's done.
 
@@ -161,7 +161,7 @@ This could be packaged as a `lexictl maintain` command that outputs the playbook
 **The gap:** Best practice is three tiers: (1) auto-loaded project overview, (2) specialist context loaded only when needed, (3) persistent knowledge base queried on-demand. The key insight: "an agent should receive exactly the context it needs for its current task — no more, no less."
 
 **Lexibrary has:** Elements of all three tiers but doesn't frame them explicitly:
-- Tier 1: CLAUDE.md (auto-loaded) + `lexi orient`
+- Tier 1: CLAUDE.md (auto-loaded) + `.lexibrary/TOPOLOGY.md`
 - Tier 2: `lexi lookup <file>` (loaded before editing specific files)
 - Tier 3: `lexi search` + Stack posts (queried on demand)
 
