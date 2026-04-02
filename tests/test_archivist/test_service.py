@@ -172,7 +172,7 @@ class TestGenerateDesignFile:
             interface_skeleton="def login(): ...",
             language="python",
             existing_design_file=None,
-            available_concepts=None,
+            available_artifacts=None,
         )
 
     @pytest.mark.asyncio()
@@ -223,7 +223,7 @@ class TestGenerateDesignFile:
             interface_skeleton=None,
             language=None,
             existing_design_file=None,
-            available_concepts=None,
+            available_artifacts=None,
         )
 
 
@@ -300,48 +300,48 @@ class TestClientRouting:
 
 
 # ---------------------------------------------------------------------------
-# DesignFileRequest — available_concepts field
+# DesignFileRequest — available_artifacts field
 # ---------------------------------------------------------------------------
 
 
-class TestDesignFileRequestAvailableConcepts:
-    """Verify available_concepts field on DesignFileRequest."""
+class TestDesignFileRequestAvailableArtifacts:
+    """Verify available_artifacts field on DesignFileRequest."""
 
     def test_defaults_to_none(self) -> None:
         req = DesignFileRequest(
             source_path="src/foo.py",
             source_content="class Foo: pass",
         )
-        assert req.available_concepts is None
+        assert req.available_artifacts is None
 
-    def test_accepts_concept_list(self) -> None:
-        concepts = ["Authentication", "Rate Limiting", "Caching"]
+    def test_accepts_artifact_list(self) -> None:
+        artifacts = ["Authentication", "Rate Limiting", "Caching"]
         req = DesignFileRequest(
             source_path="src/foo.py",
             source_content="class Foo: pass",
-            available_concepts=concepts,
+            available_artifacts=artifacts,
         )
-        assert req.available_concepts == concepts
+        assert req.available_artifacts == artifacts
 
     def test_accepts_empty_list(self) -> None:
         req = DesignFileRequest(
             source_path="src/foo.py",
             source_content="class Foo: pass",
-            available_concepts=[],
+            available_artifacts=[],
         )
-        assert req.available_concepts == []
+        assert req.available_artifacts == []
 
 
 # ---------------------------------------------------------------------------
-# ArchivistService — available_concepts passed to BAML
+# ArchivistService — available_artifacts passed to BAML
 # ---------------------------------------------------------------------------
 
 
-class TestGenerateDesignFileWithConcepts:
-    """Verify available_concepts is forwarded to the BAML call."""
+class TestGenerateDesignFileWithArtifacts:
+    """Verify available_artifacts is forwarded to the BAML call."""
 
     @pytest.mark.asyncio()
-    async def test_concepts_passed_to_baml(
+    async def test_artifacts_passed_to_baml(
         self,
         rate_limiter: RateLimiter,
         client_registry: ClientRegistry,
@@ -349,11 +349,11 @@ class TestGenerateDesignFileWithConcepts:
     ) -> None:
         service = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
 
-        concepts = ["Authentication", "Session Management"]
+        artifacts = ["Authentication", "Session Management"]
         request = DesignFileRequest(
             source_path="src/auth.py",
             source_content="def login(): ...",
-            available_concepts=concepts,
+            available_artifacts=artifacts,
         )
 
         mock_client = MagicMock()
@@ -369,11 +369,11 @@ class TestGenerateDesignFileWithConcepts:
             interface_skeleton=None,
             language=None,
             existing_design_file=None,
-            available_concepts=concepts,
+            available_artifacts=artifacts,
         )
 
     @pytest.mark.asyncio()
-    async def test_none_concepts_passed_to_baml(
+    async def test_none_artifacts_passed_to_baml(
         self,
         rate_limiter: RateLimiter,
         client_registry: ClientRegistry,
@@ -399,7 +399,7 @@ class TestGenerateDesignFileWithConcepts:
             interface_skeleton=None,
             language=None,
             existing_design_file=None,
-            available_concepts=None,
+            available_artifacts=None,
         )
 
 

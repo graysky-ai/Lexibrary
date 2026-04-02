@@ -41,6 +41,7 @@ from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.artifacts.ids import next_design_id
 from lexibrary.ast_parser import compute_hashes, parse_interface, render_skeleton
 from lexibrary.config.schema import LexibraryConfig
+from lexibrary.conventions.index import ConventionIndex
 from lexibrary.errors import ErrorSummary
 from lexibrary.exceptions import ArchivistTruncationError
 from lexibrary.ignore import create_ignore_matcher
@@ -55,6 +56,7 @@ from lexibrary.lifecycle.deprecation import (
 )
 from lexibrary.lifecycle.queue import clear_queue, read_queue
 from lexibrary.linkgraph.builder import build_index
+from lexibrary.playbooks.index import PlaybookIndex
 from lexibrary.utils.atomic import atomic_write
 from lexibrary.utils.conflict import has_conflict_markers
 from lexibrary.utils.languages import detect_language
@@ -477,7 +479,7 @@ async def update_file(
     project_root: Path,
     config: LexibraryConfig,
     archivist: ArchivistService,
-    available_concepts: list[str] | None = None,
+    available_artifacts: list[str] | None = None,
     *,
     force: bool = False,
     unlimited: bool = False,
@@ -489,7 +491,7 @@ async def update_file(
         project_root: Absolute path to the project root.
         config: Project configuration.
         archivist: LLM service for design file generation.
-        available_concepts: Optional list of concept names for wikilink guidance.
+        available_artifacts: Optional list of artifact names for wikilink guidance.
         force: When True, delete the existing design file before change detection
             so the pipeline treats it as a new file.  The existing content is
             preserved and passed as ``existing_design`` context to the LLM.
@@ -648,7 +650,7 @@ async def update_file(
         interface_skeleton=skeleton_text,
         language=language,
         existing_design_file=existing_design,
-        available_concepts=available_concepts,
+        available_artifacts=available_artifacts,
     )
 
     try:
@@ -922,10 +924,25 @@ async def _process_enrichment_queue(
     if not entries:
         return
 
-    # Load available concept names for wikilink guidance
+    # Load available artifact names for wikilink guidance
     concepts_dir = project_root / LEXIBRARY_DIR / "concepts"
-    concept_index = ConceptIndex.load(concepts_dir)
-    available_concepts = concept_index.names() or None
+    conventions_dir = project_root / LEXIBRARY_DIR / "conventions"
+    playbooks_dir = project_root / LEXIBRARY_DIR / "playbooks"
+
+    artifact_names: list[str] = []
+    if concepts_dir.exists():
+        concept_index = ConceptIndex.load(concepts_dir)
+        artifact_names.extend(concept_index.names())
+    if conventions_dir.exists():
+        conv_index = ConventionIndex(conventions_dir)
+        conv_index.load()
+        artifact_names.extend(conv_index.names())
+    if playbooks_dir.exists():
+        pb_index = PlaybookIndex(playbooks_dir)
+        pb_index.load()
+        artifact_names.extend(pb_index.names())
+
+    available_artifacts = artifact_names or None
 
     processed_paths: list[Path] = []
 
@@ -943,7 +960,7 @@ async def _process_enrichment_queue(
                 project_root,
                 config,
                 archivist,
-                available_concepts=available_concepts,
+                available_artifacts=available_artifacts,
             )
             if file_result.failed:
                 stats.queue_failed += 1
@@ -1066,10 +1083,25 @@ async def update_files(
     ignore_matcher = create_ignore_matcher(config, project_root)
     binary_exts = set(config.crawl.binary_extensions)
 
-    # Load available concept names for wikilink guidance
+    # Load available artifact names for wikilink guidance
     concepts_dir = project_root / LEXIBRARY_DIR / "concepts"
-    concept_index = ConceptIndex.load(concepts_dir)
-    available_concepts = concept_index.names() or None
+    conventions_dir = project_root / LEXIBRARY_DIR / "conventions"
+    playbooks_dir = project_root / LEXIBRARY_DIR / "playbooks"
+
+    artifact_names: list[str] = []
+    if concepts_dir.exists():
+        concept_index = ConceptIndex.load(concepts_dir)
+        artifact_names.extend(concept_index.names())
+    if conventions_dir.exists():
+        conv_index = ConventionIndex(conventions_dir)
+        conv_index.load()
+        artifact_names.extend(conv_index.names())
+    if playbooks_dir.exists():
+        pb_index = PlaybookIndex(playbooks_dir)
+        pb_index.load()
+        artifact_names.extend(pb_index.names())
+
+    available_artifacts = artifact_names or None
 
     # Collect deleted file paths before the processing loop so they can be
     # forwarded to the link graph incremental update for CASCADE cleanup.
@@ -1108,7 +1140,7 @@ async def update_files(
                 project_root,
                 config,
                 archivist,
-                available_concepts=available_concepts,
+                available_artifacts=available_artifacts,
                 unlimited=unlimited,
             )
         except Exception as exc:
@@ -1173,9 +1205,25 @@ async def update_directory(
     """
     stats = UpdateStats()
 
+    # Load available artifact names for wikilink guidance
     concepts_dir = project_root / LEXIBRARY_DIR / "concepts"
-    concept_index = ConceptIndex.load(concepts_dir)
-    available_concepts = concept_index.names() or None
+    conventions_dir = project_root / LEXIBRARY_DIR / "conventions"
+    playbooks_dir = project_root / LEXIBRARY_DIR / "playbooks"
+
+    artifact_names: list[str] = []
+    if concepts_dir.exists():
+        concept_index = ConceptIndex.load(concepts_dir)
+        artifact_names.extend(concept_index.names())
+    if conventions_dir.exists():
+        conv_index = ConventionIndex(conventions_dir)
+        conv_index.load()
+        artifact_names.extend(conv_index.names())
+    if playbooks_dir.exists():
+        pb_index = PlaybookIndex(playbooks_dir)
+        pb_index.load()
+        artifact_names.extend(pb_index.names())
+
+    available_artifacts = artifact_names or None
 
     source_files = discover_source_files(project_root, config, scope_dir=directory)
 
@@ -1196,7 +1244,7 @@ async def update_directory(
                 project_root,
                 config,
                 archivist,
-                available_concepts=available_concepts,
+                available_artifacts=available_artifacts,
                 unlimited=unlimited,
             )
         except Exception as exc:
@@ -1261,10 +1309,25 @@ async def update_project(
     """
     stats = UpdateStats()
 
-    # Load available concept names for wikilink guidance
+    # Load available artifact names for wikilink guidance
     concepts_dir = project_root / LEXIBRARY_DIR / "concepts"
-    concept_index = ConceptIndex.load(concepts_dir)
-    available_concepts = concept_index.names() or None
+    conventions_dir = project_root / LEXIBRARY_DIR / "conventions"
+    playbooks_dir = project_root / LEXIBRARY_DIR / "playbooks"
+
+    artifact_names: list[str] = []
+    if concepts_dir.exists():
+        concept_index = ConceptIndex.load(concepts_dir)
+        artifact_names.extend(concept_index.names())
+    if conventions_dir.exists():
+        conv_index = ConventionIndex(conventions_dir)
+        conv_index.load()
+        artifact_names.extend(conv_index.names())
+    if playbooks_dir.exists():
+        pb_index = PlaybookIndex(playbooks_dir)
+        pb_index.load()
+        artifact_names.extend(pb_index.names())
+
+    available_artifacts = artifact_names or None
 
     # Discover all source files within scope
     source_files = discover_source_files(project_root, config)
@@ -1284,7 +1347,7 @@ async def update_project(
                 project_root,
                 config,
                 archivist,
-                available_concepts=available_concepts,
+                available_artifacts=available_artifacts,
                 unlimited=unlimited,
             )
         except Exception as exc:

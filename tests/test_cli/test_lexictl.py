@@ -384,7 +384,7 @@ class TestUpdateCommand:
             os.chdir(old_cwd)
 
         assert result.exit_code == 0
-        assert "TOPOLOGY.md generated" in result.output
+        assert "Raw topology generated" in result.output
         assert "Files scanned" in result.output
 
     def test_update_no_project_error(self, tmp_path: Path) -> None:

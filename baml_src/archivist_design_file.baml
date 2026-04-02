@@ -6,7 +6,7 @@ function ArchivistGenerateDesignFile(
   interface_skeleton: string?,
   language: string?,
   existing_design_file: string?,
-  available_concepts: string[]?
+  available_artifacts: string[]?
 ) -> DesignFileOutput {
   client ConfigDriven
   prompt #"
@@ -30,10 +30,10 @@ function ArchivistGenerateDesignFile(
     {{ existing_design_file }}
     {% endif %}
 
-    {% if available_concepts %}
-    --- AVAILABLE CONCEPTS (prefer these names for wikilinks) ---
-    {% for concept in available_concepts %}
-    - {{ concept }}
+    {% if available_artifacts %}
+    --- AVAILABLE ARTIFACTS (prefer these names for wikilinks) ---
+    {% for artifact in available_artifacts %}
+    - {{ artifact }}
     {% endfor %}
     {% endif %}
 
@@ -53,10 +53,12 @@ function ArchivistGenerateDesignFile(
     5. **complexity_warning**: Flag any non-obvious behaviour, tricky edge
        cases, or architectural gotchas. Leave null if the file is
        straightforward.
-    6. **wikilinks**: List concept names (domain terms, patterns, or
-       conventions) that a reader should understand. Use short noun phrases.
-       When available concepts are provided above, prefer using those exact
-       names for wikilinks instead of inventing new ones.
+    6. **wikilinks**: ONLY use names from the available artifacts list above.
+       Do not invent new names. If no available artifacts are relevant, return
+       an empty list. Every entry in this list MUST exactly match one of the
+       provided artifact names. If no available artifacts section is present,
+       list concept names (domain terms, patterns, or conventions) that a
+       reader should understand using short noun phrases.
     7. **tags**: Provide 3-7 short lowercase labels categorizing the file
        (e.g. "config", "parser", "pydantic-model", "cli", "async").
 

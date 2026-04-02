@@ -73,15 +73,32 @@ def design_update(
 
     from lexibrary.archivist.pipeline import update_file  # noqa: PLC0415
     from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
+    from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
     from lexibrary.llm.client_registry import build_client_registry  # noqa: PLC0415
     from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
+    from lexibrary.playbooks.index import PlaybookIndex  # noqa: PLC0415
     from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
     from lexibrary.wiki.index import ConceptIndex  # noqa: PLC0415
 
-    # Load available concepts for wikilink guidance
+    # Load available artifact names for wikilink guidance
     concepts_dir = project_root / LEXIBRARY_DIR / "concepts"
-    concept_index = ConceptIndex.load(concepts_dir)
-    available_concepts = concept_index.names() or None
+    conventions_dir = project_root / LEXIBRARY_DIR / "conventions"
+    playbooks_dir = project_root / LEXIBRARY_DIR / "playbooks"
+
+    artifact_names: list[str] = []
+    if concepts_dir.exists():
+        concept_index = ConceptIndex.load(concepts_dir)
+        artifact_names.extend(concept_index.names())
+    if conventions_dir.exists():
+        conv_index = ConventionIndex(conventions_dir)
+        conv_index.load()
+        artifact_names.extend(conv_index.names())
+    if playbooks_dir.exists():
+        pb_index = PlaybookIndex(playbooks_dir)
+        pb_index.load()
+        artifact_names.extend(pb_index.names())
+
+    available_artifacts = artifact_names or None
 
     # Instantiate archivist service (only when we actually need generation)
     rate_limiter = RateLimiter()
@@ -97,7 +114,7 @@ def design_update(
                 project_root,
                 config,
                 archivist,
-                available_concepts,
+                available_artifacts,
                 force=force,
                 unlimited=unlimited,
             )

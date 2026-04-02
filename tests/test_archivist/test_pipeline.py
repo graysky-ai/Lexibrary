@@ -891,21 +891,21 @@ class TestRefreshParentAindex:
 
 
 # ---------------------------------------------------------------------------
-# update_file — available_concepts forwarding
+# update_file — available_artifacts forwarding
 # ---------------------------------------------------------------------------
 
 
-class TestUpdateFileAvailableConcepts:
-    """Verify available_concepts is passed through to the DesignFileRequest."""
+class TestUpdateFileAvailableArtifacts:
+    """Verify available_artifacts is passed through to the DesignFileRequest."""
 
     @pytest.mark.asyncio()
-    async def test_concepts_passed_to_archivist(self, tmp_path: Path) -> None:
+    async def test_artifacts_passed_to_archivist(self, tmp_path: Path) -> None:
         source_rel = "src/foo.py"
         source = _make_source_file(tmp_path, source_rel, "def bar(): pass")
 
         config = _make_config()
         archivist = _mock_archivist(summary="Foo module.")
-        concepts = ["Authentication", "Caching"]
+        artifacts = ["Authentication", "Caching"]
 
         with patch("lexibrary.archivist.pipeline.compute_hashes") as mock_hashes:
             mock_hashes.return_value = ("hash1", "iface1")
@@ -918,16 +918,16 @@ class TestUpdateFileAvailableConcepts:
                     tmp_path,
                     config,
                     archivist,
-                    available_concepts=concepts,
+                    available_artifacts=artifacts,
                 )
 
-        # Verify the request passed to generate_design_file includes concepts
+        # Verify the request passed to generate_design_file includes artifacts
         call_args = archivist.generate_design_file.call_args
         request = call_args[0][0]
-        assert request.available_concepts == concepts
+        assert request.available_artifacts == artifacts
 
     @pytest.mark.asyncio()
-    async def test_none_concepts_by_default(self, tmp_path: Path) -> None:
+    async def test_none_artifacts_by_default(self, tmp_path: Path) -> None:
         source_rel = "src/foo.py"
         source = _make_source_file(tmp_path, source_rel, "def bar(): pass")
 
@@ -942,10 +942,10 @@ class TestUpdateFileAvailableConcepts:
             ):
                 await update_file(source, tmp_path, config, archivist)
 
-        # Verify the request passed to generate_design_file has None concepts
+        # Verify the request passed to generate_design_file has None artifacts
         call_args = archivist.generate_design_file.call_args
         request = call_args[0][0]
-        assert request.available_concepts is None
+        assert request.available_artifacts is None
 
 
 # ---------------------------------------------------------------------------
@@ -1066,17 +1066,17 @@ class TestUpdateProjectConceptLoading:
         config = _make_config(scope_root="src")
         archivist = _mock_archivist()
 
-        captured_concepts: list[list[str] | None] = []
+        captured_artifacts: list[list[str] | None] = []
 
         async def fake_update_file(
             source_path: Path,
             project_root: Path,
             cfg: LexibraryConfig,
             svc: ArchivistService,
-            available_concepts: list[str] | None = None,
+            available_artifacts: list[str] | None = None,
             **kwargs: object,
         ) -> FileResult:
-            captured_concepts.append(available_concepts)
+            captured_artifacts.append(available_artifacts)
             return FileResult(change=ChangeLevel.UNCHANGED)
 
         with patch(
@@ -1085,9 +1085,9 @@ class TestUpdateProjectConceptLoading:
         ):
             await update_project(tmp_path, config, archivist)
 
-        assert len(captured_concepts) == 1
-        assert captured_concepts[0] is not None
-        assert "Authentication" in captured_concepts[0]
+        assert len(captured_artifacts) == 1
+        assert captured_artifacts[0] is not None
+        assert "Authentication" in captured_artifacts[0]
 
     @pytest.mark.asyncio()
     async def test_no_concepts_dir_passes_none(self, tmp_path: Path) -> None:
@@ -1096,17 +1096,17 @@ class TestUpdateProjectConceptLoading:
         config = _make_config(scope_root="src")
         archivist = _mock_archivist()
 
-        captured_concepts: list[list[str] | None] = []
+        captured_artifacts: list[list[str] | None] = []
 
         async def fake_update_file(
             source_path: Path,
             project_root: Path,
             cfg: LexibraryConfig,
             svc: ArchivistService,
-            available_concepts: list[str] | None = None,
+            available_artifacts: list[str] | None = None,
             **kwargs: object,
         ) -> FileResult:
-            captured_concepts.append(available_concepts)
+            captured_artifacts.append(available_artifacts)
             return FileResult(change=ChangeLevel.UNCHANGED)
 
         with patch(
@@ -1115,9 +1115,9 @@ class TestUpdateProjectConceptLoading:
         ):
             await update_project(tmp_path, config, archivist)
 
-        assert len(captured_concepts) == 1
+        assert len(captured_artifacts) == 1
         # No concepts dir means empty list -> None
-        assert captured_concepts[0] is None
+        assert captured_artifacts[0] is None
 
 
 # ---------------------------------------------------------------------------

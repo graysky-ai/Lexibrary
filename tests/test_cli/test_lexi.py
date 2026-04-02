@@ -3938,8 +3938,8 @@ class TestDesignUpdateCommand:
         # Verify force=True was passed
         assert mock_check.call_args[1]["force"] is True
 
-    def test_concepts_loaded_and_passed(self, tmp_path: Path) -> None:
-        """Available concepts are loaded from ConceptIndex and passed to update_file."""
+    def test_artifacts_loaded_and_passed(self, tmp_path: Path) -> None:
+        """Available artifacts are loaded from indexes and passed to update_file."""
         from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
 
         from lexibrary.archivist.change_checker import ChangeLevel  # noqa: PLC0415
@@ -3950,6 +3950,9 @@ class TestDesignUpdateCommand:
         source = tmp_path / "src" / "main.py"
         gen_decision = DesignUpdateDecision(action="generate", reason="New file")
         file_result = FileResult(change=ChangeLevel.NEW_FILE)
+
+        # Create artifact directories so the code path executes
+        (tmp_path / ".lexibrary" / "concepts").mkdir(parents=True, exist_ok=True)
 
         mock_update = AsyncMock(return_value=file_result)
         # Create a mock ConceptIndex that returns concept names
@@ -3976,12 +3979,12 @@ class TestDesignUpdateCommand:
         ):
             result = self._invoke(tmp_path, ["design", "update", str(source)])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        # Verify concepts were passed to update_file
-        passed_concepts = mock_update.call_args[0][4]
-        assert passed_concepts == ["Error Handling", "Pipeline"]
+        # Verify artifacts were passed to update_file
+        passed_artifacts = mock_update.call_args[0][4]
+        assert passed_artifacts == ["Error Handling", "Pipeline"]
 
-    def test_no_concepts_passes_none(self, tmp_path: Path) -> None:
-        """When ConceptIndex returns empty names, None is passed to update_file."""
+    def test_no_artifacts_passes_none(self, tmp_path: Path) -> None:
+        """When no artifact directories exist, None is passed to update_file."""
         from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
 
         from lexibrary.archivist.change_checker import ChangeLevel  # noqa: PLC0415
@@ -3994,11 +3997,6 @@ class TestDesignUpdateCommand:
         file_result = FileResult(change=ChangeLevel.NEW_FILE)
 
         mock_update = AsyncMock(return_value=file_result)
-        # Create a mock ConceptIndex with no concepts
-        mock_concept_index = MagicMock()
-        mock_concept_index.names.return_value = []
-        mock_concept_cls = MagicMock()
-        mock_concept_cls.load.return_value = mock_concept_index
 
         with (
             patch(
@@ -4014,13 +4012,12 @@ class TestDesignUpdateCommand:
                 "lexibrary.archivist.service.ArchivistService",
                 return_value=MagicMock(),
             ),
-            patch("lexibrary.wiki.index.ConceptIndex", mock_concept_cls),
         ):
             result = self._invoke(tmp_path, ["design", "update", str(source)])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        # Verify None was passed (empty list -> None via `or None`)
-        passed_concepts = mock_update.call_args[0][4]
-        assert passed_concepts is None
+        # Verify None was passed (no artifact dirs -> empty list -> None via `or None`)
+        passed_artifacts = mock_update.call_args[0][4]
+        assert passed_artifacts is None
 
 
 # ---------------------------------------------------------------------------
