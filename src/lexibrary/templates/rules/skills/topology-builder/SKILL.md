@@ -114,7 +114,7 @@ If this produces any output, the index has been rebuilt since the last
 4. **Review existing TOPOLOGY.md.** If `.lexibrary/TOPOLOGY.md` already
    exists, read it. For the Key Architectural Insights section, review each
    existing insight individually against current source files, CLAUDE.md,
-   README, and `lexi concepts` output before deciding whether to keep,
+   README, and `lexi search --type concept` output before deciding whether to keep,
    update, or remove it.
 
 5. **Synthesise and write.** Produce `.lexibrary/TOPOLOGY.md` following the
@@ -168,7 +168,7 @@ it work this way?" rather than "what does it do?"
 Guidelines:
 - **Review-and-prune, not accumulate**: When updating this section, review
   each existing insight individually against the current source files,
-  CLAUDE.md, README, and `lexi concepts` output. Remove any insight that
+  CLAUDE.md, README, and `lexi search --type concept` output. Remove any insight that
   is outdated, redundant with those sources, or no longer accurate.
 - **Addition bar**: Only add a new insight if it meets this test: "an agent
   would plausibly make the wrong assumption without this." If the insight

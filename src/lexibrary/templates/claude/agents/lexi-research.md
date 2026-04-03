@@ -19,19 +19,20 @@ You will receive a problem description and optional target file(s).
 Execute this workflow in order:
 
 ### Step 1: Search the Stack
-`lexi stack search <problem keywords>` — find prior attempts and dead ends.
+`lexi search --type stack <problem keywords>` — find prior attempts and dead ends.
 Try multiple query variations if the first returns few results.
 
 ### Step 2: Read Matching Posts
-For each relevant post in the search results, use the Read tool to read
-the full post file (path shown in search results). Extract:
+For each relevant post in the search results, run `lexi view <post-id>`
+(e.g. `lexi view ST-042`) to read the full post content. Extract:
 - Problem description and context
 - All attempts and why they failed
 - Findings and resolution (if resolved)
 
 ### Step 3: Search Concepts
-`lexi concepts <topic>` — find architectural constraints and design patterns
-relevant to the problem domain.
+`lexi search --type concept <topic>` — find architectural constraints and
+design patterns relevant to the problem domain. Use `lexi view <concept-id>`
+to read full concept content.
 
 ### Step 4: File Context
 For each target file provided, run `lexi lookup <file>` to get design

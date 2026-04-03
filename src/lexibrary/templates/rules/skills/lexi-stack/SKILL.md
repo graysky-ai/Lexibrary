@@ -19,9 +19,9 @@ future sessions do not repeat the same investigation.
 
 ## Steps
 
-1. **Search before you dig** — run `lexi stack search <query>` with keywords
-   that describe the symptom or area. Read any matching posts before writing
-   a single line of debug code.
+1. **Search before you dig** — run `lexi search --type stack <query>` with keywords
+   that describe the symptom or area. Use `lexi view <post-id>` to read matching
+   posts before writing a single line of debug code.
 
 2. **If no matching post exists**, proceed with your investigation. Keep notes
    on approaches that did not work — these become your `--attempts` value.
@@ -36,14 +36,14 @@ future sessions do not repeat the same investigation.
    `lexi stack finding <post-id>` rather than creating a duplicate post.
 
 5. **For complex multi-post research** — delegate to the `lexi-research`
-   subagent instead of chaining many `lexi stack search` calls manually.
+   subagent instead of chaining many `lexi search --type stack` calls manually.
 
 ## Examples
 
 Search before debugging:
 ```
-lexi stack search "config loader YAML validation error"
-lexi stack search "pathspec gitwildmatch pattern"
+lexi search --type stack "config loader YAML validation error"
+lexi search --type stack "pathspec gitwildmatch pattern"
 ```
 
 Post a solved bug:
@@ -70,8 +70,8 @@ lexi stack finding post-42 \
   opportunity. Even one-line notes about what you ruled out help future agents.
 - **Use `--resolve` at post time** when the issue is already solved. A post
   created and immediately resolved is better than leaving a ghost open post.
-- **Do not create duplicate posts.** Run `lexi stack search` first; add a
+- **Do not create duplicate posts.** Run `lexi search --type stack` first; add a
   finding to the existing post if one covers the same root cause.
-- **Delegate large research tasks.** If synthesising findings requires reading
+- **Delegate large research tasks.** If synthesizing findings requires reading
   five or more stack posts plus multiple concepts, use the `lexi-research`
   subagent. The coding agent posts the final findings — `lexi-research` does not.

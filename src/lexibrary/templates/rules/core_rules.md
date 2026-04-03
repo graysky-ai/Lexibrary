@@ -2,8 +2,15 @@
 
 ## Session Start
 
-Read `.lexibrary/TOPOLOGY.md` for project layout, then run `lexi iwh list`
-to check for pending signals. Do not begin coding without this context.
+1. Read `.lexibrary/TOPOLOGY.md` for project layout.
+2. Run `lexi iwh list` to check for pending signals.
+3. Run `lexi search <keyword>` and/or `lexi search "key phrase"` for targeted
+   searches related to your current task.
+   - For design file hits: run `lexi lookup <path>` to get full design context.
+   - For all other hits (concepts, conventions, stack posts, playbooks):
+     run `lexi view <artifact-id>` to read the full artifact.
+
+Do not begin coding without this context.
 
 If signals exist in a directory you are working in, run `lexi iwh read <dir>` to
 consume the signal and understand what the previous session left behind.
@@ -31,13 +38,16 @@ Do not create an IWH signal if all work is complete.
 
 ## Architectural Decisions
 
-- Always run `lexi search --type stack <query>` before making architectural decisions
-  to check for existing project conventions and concepts.
+- Run `lexi search <query>` before making architectural decisions to check for
+  existing patterns, conventions, and prior art across all artifact types.
+  - For design file hits: `lexi lookup <path>`
+  - For concept, convention, or stack hits: `lexi view <artifact-id>`
 
 ## Debugging and Problem Solving
 
-- Always run `lexi stack search <query>` before starting to debug an issue
-  -- a solution may already exist.
+- Always run `lexi search --type stack <query>` before starting to debug an
+  issue — a solution may already exist. Use `lexi view <post-id>` to read
+  matching posts.
 - For complex research or investigation, delegate to the `lexi-research`
   subagent rather than doing extensive exploration inline.
 - After solving a non-trivial bug, run `lexi stack post` to document

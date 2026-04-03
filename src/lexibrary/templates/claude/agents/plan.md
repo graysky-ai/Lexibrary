@@ -25,12 +25,13 @@ directly. This gives richer context with less token cost.
 
 1. Read `.lexibrary/TOPOLOGY.md` — project layout and architecture
 2. `lexi iwh list` — check for pending IWH signals
-3. `lexi search <query>` — find files related to the plan scope
-4. `lexi lookup <file>` — design context, conventions, known issues for each key file
-5. `lexi stack search <query>` — find known issues and prior attempts in the plan scope
-6. `lexi concepts <topic>` — check existing architectural patterns and constraints
-7. Read tool — deep read of files where lexi context is insufficient
-8. Glob/Grep — only when `lexi search` cannot find what you need
+3. `lexi search <query>` — find artifacts related to the plan scope
+4. For design file hits: `lexi lookup <path>` — design context, conventions, known issues
+5. For other hits: `lexi view <artifact-id>` — read the full artifact
+6. `lexi search --type stack <query>` — find known issues and prior attempts in the plan scope
+7. `lexi search --type concept <topic>` — check existing architectural patterns and constraints
+8. Read tool — deep read of files where lexi context is insufficient
+9. Glob/Grep — only when `lexi search` cannot find what you need
 
 ## IWH Signals
 

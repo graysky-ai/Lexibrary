@@ -63,8 +63,11 @@ def serialize_design_file(data: DesignFile) -> str:
     parts: list[str] = []
 
     # --- YAML frontmatter ---
+    description = data.frontmatter.description
+    if "\n" in description:
+        description = " ".join(description.split())
     frontmatter_dict: dict[str, object] = {
-        "description": data.frontmatter.description,
+        "description": description,
         "id": data.frontmatter.id,
         "updated_by": data.frontmatter.updated_by,
         "status": data.frontmatter.status,
@@ -75,7 +78,7 @@ def serialize_design_file(data: DesignFile) -> str:
     if data.frontmatter.deprecated_reason is not None:
         frontmatter_dict["deprecated_reason"] = data.frontmatter.deprecated_reason
     parts.append("---")
-    parts.append(yaml.dump(frontmatter_dict, default_flow_style=False).rstrip())
+    parts.append(yaml.dump(frontmatter_dict, default_flow_style=False, sort_keys=False).rstrip())
     parts.append("---")
     parts.append("")
 

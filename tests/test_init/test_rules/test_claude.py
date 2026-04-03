@@ -816,8 +816,8 @@ class TestAgentFileGeneration:
         content = (tmp_path / ".claude" / "agents" / "explore.md").read_text(encoding="utf-8")
         assert "lexi search" in content
         assert "lexi lookup" in content
-        assert "lexi concept" in content
-        assert "lexi conventions" in content
+        assert "lexi search --type concept" in content
+        assert "lexi search --type convention" in content
 
     def test_explore_has_fallback_instructions(self, tmp_path: Path) -> None:
         """explore.md instructs fallback to Glob/Grep/Read for unindexed projects."""
@@ -876,10 +876,10 @@ class TestAgentFileGeneration:
         assert "lexi iwh list" in content
 
     def test_explore_has_stack_search(self, tmp_path: Path) -> None:
-        """explore.md includes lexi stack search in workflow."""
+        """explore.md includes lexi search --type stack in workflow."""
         _generate_agent_files(tmp_path)
         content = (tmp_path / ".claude" / "agents" / "explore.md").read_text(encoding="utf-8")
-        assert "lexi stack search" in content
+        assert "lexi search --type stack" in content
 
     def test_explore_has_iwh_prohibition(self, tmp_path: Path) -> None:
         """explore.md prohibits IWH consumption."""

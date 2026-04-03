@@ -43,8 +43,15 @@ bd sync               # Sync with git
 
 ## Session Start
 
-Read `.lexibrary/TOPOLOGY.md` for project layout, then run `lexi iwh list`
-to check for pending signals. Do not begin coding without this context.
+1. Read `.lexibrary/TOPOLOGY.md` for project layout.
+2. Run `lexi iwh list` to check for pending signals.
+3. Run `lexi search <keyword>` and/or `lexi search "key phrase"` for targeted
+   searches related to your current task.
+   - For design file hits: run `lexi lookup <path>` to get full design context.
+   - For all other hits (concepts, conventions, stack posts, playbooks):
+     run `lexi view <artifact-id>` to read the full artifact.
+
+Do not begin coding without this context.
 
 If signals exist in a directory you are working in, run `lexi iwh read <dir>` to
 consume the signal and understand what the previous session left behind.
@@ -72,13 +79,16 @@ Do not create an IWH signal if all work is complete.
 
 ## Architectural Decisions
 
-- Always run `lexi search --type stack <query>` before making architectural decisions
-  to check for existing project conventions and concepts.
+- Run `lexi search <query>` before making architectural decisions to check for
+  existing patterns, conventions, and prior art across all artifact types.
+  - For design file hits: `lexi lookup <path>`
+  - For concept, convention, or stack hits: `lexi view <artifact-id>`
 
 ## Debugging and Problem Solving
 
-- Always run `lexi stack search <query>` before starting to debug an issue
-  -- a solution may already exist.
+- Always run `lexi search --type stack <query>` before starting to debug an
+  issue — a solution may already exist. Use `lexi view <post-id>` to read
+  matching posts.
 - For complex research or investigation, delegate to the `lexi-research`
   subagent rather than doing extensive exploration inline.
 - After solving a non-trivial bug, run `lexi stack post` to document
@@ -121,10 +131,16 @@ Map the territory before zooming in. Run a broad search first to discover what e
 ## Steps
 
 1. Run `lexi search <query>` with a topic, file name, or keyword.
-2. Review concept matches — wiki entries whose title, alias, or tag matches your query.
-3. Review stack matches — Q&A posts whose title or body matches your query; note any previous attempts and dead ends.
-4. Review design file matches — design files whose source path or content matches your query.
-5. Follow up with `lexi lookup <file>` on any specific files of interest to get design intent, conventions, and known issues.
+2. Review the results across all artifact types: concepts, conventions,
+   design files, playbooks, and stack posts.
+3. Drill into results:
+   - **Design file hits** — run `lexi lookup <path>` to get design intent,
+     conventions, known issues, and cross-references.
+   - **All other hits** (concepts, conventions, stack posts, playbooks) —
+     run `lexi view <artifact-id>` (e.g. `lexi view CN-003`, `lexi view ST-042`)
+     to read the full artifact content.
+4. Use `--type` to narrow results when the broad search returns too many hits
+   (e.g. `lexi search --type stack <query>`).
 
 ## Examples
 
@@ -139,7 +155,7 @@ lexi search "rate limit"
 
 - **Start broad, then narrow.** If a query returns too many results, add a qualifying word. If it returns nothing, remove a word or try a synonym.
 - **`lexi search` does not search source code.** It searches concepts, stack posts, and design files only. To find a symbol or string in source code, use `grep` or the Grep tool.
-- **Follow up with `lexi lookup`.** Search results tell you what exists; `lexi lookup <file>` tells you why it was designed that way and what conventions apply.
+- **Follow up with `lexi lookup` or `lexi view`.** Search results tell you what exists; `lexi lookup <file>` tells you why a file was designed that way and what conventions apply; `lexi view <artifact-id>` gives you the full content of any non-design artifact.
 
 ---
 name: lexi-lookup
@@ -229,17 +245,15 @@ before introducing new patterns or interpreting domain-specific terminology.
 
 ## Steps
 
-1. **Search by topic** — run `lexi concept <topic>` to find concepts matching
-   a keyword or phrase. Review the returned titles, tags, and summaries before
-   proceeding with your design decision.
+1. **Search by topic** — run `lexi search --type concept <topic>` to find
+   concepts matching a keyword or phrase. Review the returned titles, tags,
+   and summaries before proceeding with your design decision.
 
-2. **Filter by tag** — if you know the category, run
-   `lexi concept --tag <tag>` to narrow results. Common tags are `pattern`,
-   `architecture`, and `decision`.
+2. **Filter by tag** — run `lexi search --type concept --tag <tag>` to narrow
+   results. Common tags are `pattern`, `architecture`, and `decision`.
 
-3. **List all concepts** — run `lexi concept --all` to get a full inventory
-   of documented concepts. Useful when starting work in an unfamiliar area or
-   auditing coverage.
+3. **Read a concept** — run `lexi view <concept-id>` (e.g. `lexi view CN-005`)
+   to read the full concept content.
 
 4. **Act on what you find** — if a concept constrains your approach, follow it.
    If no concept exists for your area, consider documenting one after you
@@ -248,32 +262,34 @@ before introducing new patterns or interpreting domain-specific terminology.
 ## Examples
 
 ```
-lexi concept context allocation
+lexi search --type concept "context allocation"
 ```
 Returns concepts matching "context allocation" — useful before deciding how
 to partition LLM context across sub-agents.
 
 ```
-lexi concept --tag pattern
+lexi search --type concept --tag pattern
 ```
 Returns architectural and design patterns documented for this project.
 
 ```
-lexi concept --all
+lexi view CN-005
 ```
-Lists every concept in the wiki — use for broad orientation or coverage audits.
+Reads the full content of concept CN-005.
 
 ## Edge cases
 
 - **Wikilinks** — a wikilink like `[[Some Concept]]` can be resolved by
-  running `lexi concept "Some Concept"`. The search is fuzzy, so partial
-  matches will surface related entries.
+  running `lexi search --type concept "Some Concept"`. The search is fuzzy,
+  so partial matches will surface related entries.
 - **Conventions are not concepts** — coding standards and project conventions
   are their own artifact type. Do not add them as concepts. Use
-  `lexi convention` to find or document conventions.
+  `lexi search --type convention` to find conventions or `lexi convention new`
+  to document them.
 - **No results** — if a search returns nothing, the project has not yet
-  documented that concept. Check `lexi stack search <topic>` for informal
-  discussion, then consider capturing the knowledge with `lexi concept new`.
+  documented that concept. Check `lexi search --type stack <topic>` for
+  informal discussion, then consider capturing the knowledge with
+  `lexi concept new`.
 - **New concepts** — after discovering or defining a new pattern, document it
   with `lexi concept new --title "..." --tags "..." --body "..."` so future
   sessions can find it.
@@ -299,9 +315,9 @@ future sessions do not repeat the same investigation.
 
 ## Steps
 
-1. **Search before you dig** — run `lexi stack search <query>` with keywords
-   that describe the symptom or area. Read any matching posts before writing
-   a single line of debug code.
+1. **Search before you dig** — run `lexi search --type stack <query>` with keywords
+   that describe the symptom or area. Use `lexi view <post-id>` to read matching
+   posts before writing a single line of debug code.
 
 2. **If no matching post exists**, proceed with your investigation. Keep notes
    on approaches that did not work — these become your `--attempts` value.
@@ -316,14 +332,14 @@ future sessions do not repeat the same investigation.
    `lexi stack finding <post-id>` rather than creating a duplicate post.
 
 5. **For complex multi-post research** — delegate to the `lexi-research`
-   subagent instead of chaining many `lexi stack search` calls manually.
+   subagent instead of chaining many `lexi search --type stack` calls manually.
 
 ## Examples
 
 Search before debugging:
 ```
-lexi stack search "config loader YAML validation error"
-lexi stack search "pathspec gitwildmatch pattern"
+lexi search --type stack "config loader YAML validation error"
+lexi search --type stack "pathspec gitwildmatch pattern"
 ```
 
 Post a solved bug:
@@ -350,9 +366,9 @@ lexi stack finding post-42 \
   opportunity. Even one-line notes about what you ruled out help future agents.
 - **Use `--resolve` at post time** when the issue is already solved. A post
   created and immediately resolved is better than leaving a ghost open post.
-- **Do not create duplicate posts.** Run `lexi stack search` first; add a
+- **Do not create duplicate posts.** Run `lexi search --type stack` first; add a
   finding to the existing post if one covers the same root cause.
-- **Delegate large research tasks.** If synthesising findings requires reading
+- **Delegate large research tasks.** If synthesizing findings requires reading
   five or more stack posts plus multiple concepts, use the `lexi-research`
   subagent. The coding agent posts the final findings — `lexi-research` does not.
 <!-- lexibrary:end -->

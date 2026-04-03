@@ -50,7 +50,7 @@ Directory descriptions in the tree below are synthesised keyword fragments drawn
 
 *Explain the non-obvious design decisions that a new agent is most likely to get wrong. Each subsection should answer "why does it work this way?" rather than "what does it do?"*
 
-*Review guidance: When updating this section, review each existing insight individually against the current source files, CLAUDE.md, README, and `lexi concepts` output. Remove any insight that is outdated, redundant with those sources, or no longer accurate. Only add a new insight if it meets this bar: "an agent would plausibly make the wrong assumption without this." This section should be curated, not accumulated -- prune aggressively.*
+*Review guidance: When updating this section, review each existing insight individually against the current source files, CLAUDE.md, README, and `lexi search --type concept` output. Remove any insight that is outdated, redundant with those sources, or no longer accurate. Only add a new insight if it meets this bar: "an agent would plausibly make the wrong assumption without this." This section should be curated, not accumulated -- prune aggressively.*
 
 ### {{Insight Title 1}}
 

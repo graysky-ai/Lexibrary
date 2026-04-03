@@ -20,17 +20,15 @@ before introducing new patterns or interpreting domain-specific terminology.
 
 ## Steps
 
-1. **Search by topic** — run `lexi concept <topic>` to find concepts matching
-   a keyword or phrase. Review the returned titles, tags, and summaries before
-   proceeding with your design decision.
+1. **Search by topic** — run `lexi search --type concept <topic>` to find
+   concepts matching a keyword or phrase. Review the returned titles, tags,
+   and summaries before proceeding with your design decision.
 
-2. **Filter by tag** — if you know the category, run
-   `lexi concept --tag <tag>` to narrow results. Common tags are `pattern`,
-   `architecture`, and `decision`.
+2. **Filter by tag** — run `lexi search --type concept --tag <tag>` to narrow
+   results. Common tags are `pattern`, `architecture`, and `decision`.
 
-3. **List all concepts** — run `lexi concept --all` to get a full inventory
-   of documented concepts. Useful when starting work in an unfamiliar area or
-   auditing coverage.
+3. **Read a concept** — run `lexi view <concept-id>` (e.g. `lexi view CN-005`)
+   to read the full concept content.
 
 4. **Act on what you find** — if a concept constrains your approach, follow it.
    If no concept exists for your area, consider documenting one after you
@@ -39,32 +37,34 @@ before introducing new patterns or interpreting domain-specific terminology.
 ## Examples
 
 ```
-lexi concept context allocation
+lexi search --type concept "context allocation"
 ```
 Returns concepts matching "context allocation" — useful before deciding how
 to partition LLM context across sub-agents.
 
 ```
-lexi concept --tag pattern
+lexi search --type concept --tag pattern
 ```
 Returns architectural and design patterns documented for this project.
 
 ```
-lexi concept --all
+lexi view CN-005
 ```
-Lists every concept in the wiki — use for broad orientation or coverage audits.
+Reads the full content of concept CN-005.
 
 ## Edge cases
 
 - **Wikilinks** — a wikilink like `[[Some Concept]]` can be resolved by
-  running `lexi concept "Some Concept"`. The search is fuzzy, so partial
-  matches will surface related entries.
+  running `lexi search --type concept "Some Concept"`. The search is fuzzy,
+  so partial matches will surface related entries.
 - **Conventions are not concepts** — coding standards and project conventions
   are their own artifact type. Do not add them as concepts. Use
-  `lexi convention` to find or document conventions.
+  `lexi search --type convention` to find conventions or `lexi convention new`
+  to document them.
 - **No results** — if a search returns nothing, the project has not yet
-  documented that concept. Check `lexi stack search <topic>` for informal
-  discussion, then consider capturing the knowledge with `lexi concept new`.
+  documented that concept. Check `lexi search --type stack <topic>` for
+  informal discussion, then consider capturing the knowledge with
+  `lexi concept new`.
 - **New concepts** — after discovering or defining a new pattern, document it
   with `lexi concept new --title "..." --tags "..." --body "..."` so future
   sessions can find it.

@@ -51,9 +51,9 @@ class TestGetCoreRules:
         assert "lexi search" in result
 
     def test_contains_lexi_stack_search(self) -> None:
-        """Core rules instruct agents to run lexi stack search."""
+        """Core rules instruct agents to search Stack posts via lexi search --type stack."""
         result = get_core_rules()
-        assert "lexi stack search" in result
+        assert "lexi search --type stack" in result
 
     def test_contains_lexi_stack_post(self) -> None:
         """Core rules instruct agents to run lexi stack post."""
@@ -286,10 +286,10 @@ class TestGetConceptsSkillContent:
         result = get_concepts_skill_content()
         assert "--tag" in result
 
-    def test_contains_all_flag(self) -> None:
-        """Concepts skill mentions --all flag."""
+    def test_contains_view_command(self) -> None:
+        """Concepts skill mentions lexi view to read a concept by ID."""
         result = get_concepts_skill_content()
-        assert "--all" in result
+        assert "lexi view" in result
 
     def test_mentions_topic_argument(self) -> None:
         """Concepts skill mentions topic argument."""
@@ -334,9 +334,9 @@ class TestGetStackSkillContent:
         assert len(result) > 0
 
     def test_contains_lexi_stack_search(self) -> None:
-        """Stack skill references lexi stack search."""
+        """Stack skill references lexi search --type stack for searching Stack posts."""
         result = get_stack_skill_content()
-        assert "lexi stack search" in result
+        assert "lexi search --type stack" in result
 
     def test_contains_lexi_stack_post(self) -> None:
         """Stack skill references lexi stack post."""

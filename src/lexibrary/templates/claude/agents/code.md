@@ -27,14 +27,15 @@ to check for pending signals. Do not begin coding without this context.
 
 ## Research Workflow (Before Touching Any File)
 
-1. `lexi search <query>` — find files relevant to your task
-2. `lexi lookup <file>` — design context, conventions, and known issues for each
-   file you intend to modify (the pre-edit hook also runs this automatically)
-3. `lexi stack search <query>` — check for prior attempts in the change area;
-   read the Attempts section to avoid repeating dead ends
-4. `lexi concepts <topic>` — check existing patterns and constraints before any
-   architectural decision
-5. `lexi impact <file>` — see what depends on a file before modifying it
+1. `lexi search <query>` — find artifacts relevant to your task
+2. For design file hits: `lexi lookup <path>` — design context, conventions,
+   and known issues (the pre-edit hook also runs this automatically)
+3. For other hits: `lexi view <artifact-id>` — read the full artifact
+4. `lexi search --type stack <query>` — check for prior attempts in the change
+   area; read the Attempts section to avoid repeating dead ends
+5. `lexi search --type concept <topic>` — check existing patterns and constraints
+   before any architectural decision
+6. `lexi impact <file>` — see what depends on a file before modifying it
 
 For complex bugs requiring synthesis across many posts and files, spawn the
 `lexi-research` subagent with your problem description instead of searching
@@ -47,8 +48,9 @@ Run `lexi lookup <file>` before editing any source file. The pre-edit hook runs
 this automatically, but also run it manually when studying a file before
 deciding whether to change it.
 
-Run `lexi conventions <dir>` when writing a new file in a directory — it shows
-all conventions at that scope, not just those for a single existing file.
+Run `lexi search --type convention --scope <dir>` when writing a new file in a
+directory — it shows all conventions at that scope, not just those for a single
+existing file.
 
 ## After Every Edit
 

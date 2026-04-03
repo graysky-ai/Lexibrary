@@ -26,20 +26,21 @@ available to you. Use Bash to run lexi commands instead.
 
 1. Read `.lexibrary/TOPOLOGY.md` — project layout and architecture
 2. `lexi iwh list` — check for pending IWH signals
-3. `lexi search <query>` — find relevant files
-4. `lexi stack search <query>` — find known issues and prior attempts
-5. `lexi lookup <file>` — design context, conventions, and known issues for a file
-6. `lexi concepts <topic>` — domain vocabulary and architectural patterns
-7. `lexi conventions <path>` — coding standards for a file or directory
+3. `lexi search <query>` — find relevant artifacts across all types
+4. For design file hits: `lexi lookup <path>` — design context, conventions, and known issues
+5. For other hits: `lexi view <artifact-id>` — read the full artifact (concept, convention, stack post, playbook)
+6. `lexi search --type concept <topic>` — domain vocabulary and architectural patterns
+7. `lexi search --type convention --scope <path>` — coding standards for a file or directory
 
 ### Available commands (run via Bash)
 
 - `lexi iwh list` — check for pending IWH signals from previous sessions
 - `lexi search <query>` — cross-artifact full-text search (USE THIS, not Grep)
-- `lexi stack search <query>` — search Stack Q&A posts for known issues
+- `lexi search --type stack <query>` — search Stack Q&A posts for known issues
+- `lexi search --type concept <topic>` — domain vocabulary search
+- `lexi search --type convention --scope <path>` — coding standards for a scope
 - `lexi lookup <file>` — design file, conventions, and reverse deps for a file
-- `lexi concepts <topic>` — domain vocabulary search
-- `lexi conventions <path>` — coding standards for a file or directory
+- `lexi view <artifact-id>` — read any artifact by ID (CN-001, ST-042, etc.)
 
 ### When to use Read
 

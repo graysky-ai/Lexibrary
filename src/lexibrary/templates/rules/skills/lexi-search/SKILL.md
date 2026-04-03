@@ -19,10 +19,16 @@ Map the territory before zooming in. Run a broad search first to discover what e
 ## Steps
 
 1. Run `lexi search <query>` with a topic, file name, or keyword.
-2. Review concept matches — wiki entries whose title, alias, or tag matches your query.
-3. Review stack matches — Q&A posts whose title or body matches your query; note any previous attempts and dead ends.
-4. Review design file matches — design files whose source path or content matches your query.
-5. Follow up with `lexi lookup <file>` on any specific files of interest to get design intent, conventions, and known issues.
+2. Review the results across all artifact types: concepts, conventions,
+   design files, playbooks, and stack posts.
+3. Drill into results:
+   - **Design file hits** — run `lexi lookup <path>` to get design intent,
+     conventions, known issues, and cross-references.
+   - **All other hits** (concepts, conventions, stack posts, playbooks) —
+     run `lexi view <artifact-id>` (e.g. `lexi view CN-003`, `lexi view ST-042`)
+     to read the full artifact content.
+4. Use `--type` to narrow results when the broad search returns too many hits
+   (e.g. `lexi search --type stack <query>`).
 
 ## Examples
 
@@ -37,4 +43,4 @@ lexi search "rate limit"
 
 - **Start broad, then narrow.** If a query returns too many results, add a qualifying word. If it returns nothing, remove a word or try a synonym.
 - **`lexi search` does not search source code.** It searches concepts, stack posts, and design files only. To find a symbol or string in source code, use `grep` or the Grep tool.
-- **Follow up with `lexi lookup`.** Search results tell you what exists; `lexi lookup <file>` tells you why it was designed that way and what conventions apply.
+- **Follow up with `lexi lookup` or `lexi view`.** Search results tell you what exists; `lexi lookup <file>` tells you why a file was designed that way and what conventions apply; `lexi view <artifact-id>` gives you the full content of any non-design artifact.

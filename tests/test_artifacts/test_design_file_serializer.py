@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
+from pathlib import Path
 
 from lexibrary.artifacts.design_file import DesignFile, DesignFileFrontmatter, StalenessMetadata
+from lexibrary.artifacts.design_file_parser import parse_design_file
 from lexibrary.artifacts.design_file_serializer import serialize_design_file
 
 
@@ -356,3 +359,70 @@ class TestSerializeDesignFileWikilinkBrackets:
         df = _design_file(wikilinks=[])
         result = serialize_design_file(df)
         assert "## Wikilinks" not in result
+
+
+class TestSerializeDesignFileNewlineCollapse:
+    """Regression tests for newline collapse in description and sort_keys=False."""
+
+    def test_description_newlines_collapsed(self, tmp_path: Path) -> None:
+        """A description containing literal newlines is collapsed to a single line
+        during serialization, and round-trips correctly."""
+        # (a) Create a DesignFile with a ~200 char description containing literal \n
+        long_desc = (
+            "Provides the main entry point for the lexi command-line interface,\n"
+            "including argument parsing, subcommand dispatch, and error handling\n"
+            "for all agent-facing operations. Also initializes logging and\n"
+            "validates the project root before delegating to service modules."
+        )
+        assert len(long_desc) > 200
+        assert "\n" in long_desc
+
+        df = _design_file(frontmatter=_frontmatter(description=long_desc))
+
+        # (b) Serialize
+        content = serialize_design_file(df)
+
+        # (c) Write to disk and parse the YAML frontmatter
+        f = tmp_path / "design.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+
+        # (d) Assert id matches ^DS-\d{3,}$
+        assert re.match(r"^DS-\d{3,}$", parsed.frontmatter.id)
+
+        # (e) Assert description contains no newline characters
+        assert "\n" not in parsed.frontmatter.description
+
+        # (f) Round-trip integrity: re-serialize and re-parse produce equivalent data
+        content2 = serialize_design_file(parsed)
+        f2 = tmp_path / "design2.md"
+        f2.write_text(content2)
+        parsed2 = parse_design_file(f2)
+        assert parsed2 is not None
+        assert parsed2.frontmatter.description == parsed.frontmatter.description
+        assert parsed2.frontmatter.id == parsed.frontmatter.id
+        assert parsed2.frontmatter.updated_by == parsed.frontmatter.updated_by
+        assert parsed2.frontmatter.status == parsed.frontmatter.status
+        assert parsed2.source_path == parsed.source_path
+        assert parsed2.interface_contract == parsed.interface_contract
+
+    def test_description_without_newlines_unchanged(self) -> None:
+        """A description without newlines passes through serialization unchanged."""
+        desc = "CLI entry point for the lexi command."
+        df = _design_file(frontmatter=_frontmatter(description=desc))
+        content = serialize_design_file(df)
+        assert f"description: {desc}" in content
+
+    def test_sort_keys_false_preserves_field_order(self) -> None:
+        """Frontmatter fields appear in insertion order (description first, not sorted)."""
+        df = _design_file()
+        content = serialize_design_file(df)
+        lines = content.split("\n")
+        # Find frontmatter lines between --- delimiters
+        fm_start = lines.index("---") + 1
+        fm_end = lines.index("---", fm_start)
+        fm_lines = lines[fm_start:fm_end]
+        # First field should be description (insertion order), not id (alphabetical)
+        first_key = fm_lines[0].split(":")[0]
+        assert first_key == "description"

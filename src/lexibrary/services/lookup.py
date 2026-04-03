@@ -351,7 +351,13 @@ def build_file_lookup(
                 "convention_concept_ref": "convention concept ref",
             }
             all_links = link_graph.reverse_deps(rel_target)
-            other_links = [lnk for lnk in all_links if lnk.link_type != "ast_import"]
+            # Exclude ast_import (shown in Dependents) and the file's own design file
+            rel_design = str(design_path.relative_to(project_root))
+            other_links = [
+                lnk for lnk in all_links
+                if lnk.link_type != "ast_import"
+                and not (lnk.link_type == "design_source" and lnk.source_path == rel_design)
+            ]
             if other_links:
                 links_text_parts.append("\n## Also Referenced By\n")
                 for link in other_links:
