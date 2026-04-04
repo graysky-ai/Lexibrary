@@ -181,6 +181,7 @@ class ConceptConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     deprecation_confirm: Literal["human", "maintainer"] = "human"
+    lookup_display_limit: int = 10
 
 
 class IWHConfig(BaseModel):

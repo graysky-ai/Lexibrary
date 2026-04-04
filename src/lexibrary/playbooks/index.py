@@ -18,7 +18,8 @@ class PlaybookIndex:
 
     Use :meth:`load` to build an index from a ``.lexibrary/playbooks/``
     directory, then query with :meth:`find`, :meth:`search`, :meth:`by_tag`,
-    :meth:`by_status`, :meth:`by_trigger_file`, and :meth:`names`.
+    :meth:`by_status`, :meth:`by_trigger_file`, :meth:`by_trigger_dir`,
+    and :meth:`names`.
 
     Iteration is explicitly disallowed (consistent with ``ConventionIndex``).
     """
@@ -121,6 +122,21 @@ class PlaybookIndex:
         # Sort by specificity descending (more specific first), then title ascending
         scored.sort(key=lambda t: (-t[0], t[1]))
         return [entry[2] for entry in scored]
+
+    def by_trigger_dir(self, dir_path: str) -> list[PlaybookFile]:
+        """Return playbooks whose ``trigger_files`` globs match *dir_path*.
+
+        Creates a synthetic file path by appending ``/.d`` to the
+        normalized directory path, then delegates to :meth:`by_trigger_file`.
+        This works because pathspec matches ``src/lexibrary/cli/.d`` against
+        ``src/lexibrary/cli/**`` (True) but ``src/lexibrary/.d`` against
+        ``src/lexibrary/cli/**`` (False).
+        """
+        norm = dir_path.strip("/")
+        if not norm:
+            return []
+        synthetic_path = f"{norm}/.d"
+        return self.by_trigger_file(synthetic_path)
 
     def names(self) -> list[str]:
         """Return a sorted list of all playbook titles."""

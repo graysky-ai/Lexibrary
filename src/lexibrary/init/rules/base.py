@@ -58,9 +58,10 @@ def get_lookup_skill_content() -> str:
     """Return the content for a ``/lexi-lookup`` skill.
 
     The lookup skill runs ``lexi lookup <file|directory>`` to retrieve
-    design context, conventions, known issues, and IWH signals.  Leads
-    with "when to use" guidance and documents both file and directory
-    lookup modes.
+    design context, conventions, known issues, IWH signals, sibling files,
+    and related concepts for file lookups, plus triggered playbooks and
+    inbound import summaries for directory lookups.  Leads with "when to
+    use" guidance and documents both file and directory lookup modes.
 
     Returns:
         Multiline string with lookup skill instructions.

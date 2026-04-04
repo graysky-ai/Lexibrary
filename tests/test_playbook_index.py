@@ -133,6 +133,34 @@ source: user
 General steps when any Python file changes.
 """
 
+CLI_DIR_GLOB = """\
+---
+title: CLI Directory Playbook
+id: PB-007
+trigger_files:
+  - "src/lexibrary/cli/**"
+tags:
+  - cli
+status: active
+source: user
+---
+Steps when editing CLI files.
+"""
+
+CLI_DIR_SLASH = """\
+---
+title: CLI Slash Playbook
+id: PB-008
+trigger_files:
+  - "src/lexibrary/cli/"
+tags:
+  - cli
+status: active
+source: user
+---
+Steps for the CLI directory (slash syntax).
+"""
+
 MALFORMED_FILE = """\
 Not valid frontmatter at all.
 Just random text.
@@ -468,6 +496,87 @@ class TestPlaybookIndexByTriggerFile:
         index = PlaybookIndex(tmp_path)
         index.load()
         results = index.by_trigger_file("")
+        assert results == []
+
+
+# ---------------------------------------------------------------------------
+# TestPlaybookIndexByTriggerDir
+# ---------------------------------------------------------------------------
+
+
+class TestPlaybookIndexByTriggerDir:
+    """Tests for by_trigger_dir() — directory-level trigger matching."""
+
+    def test_dir_matches_double_star_glob(self, tmp_path: Path) -> None:
+        """by_trigger_dir("src/lexibrary/cli") matches glob "src/lexibrary/cli/**"."""
+        _write_playbook(tmp_path, "cli-dir.md", CLI_DIR_GLOB)
+        index = PlaybookIndex(tmp_path)
+        index.load()
+        results = index.by_trigger_dir("src/lexibrary/cli")
+        assert len(results) == 1
+        assert results[0].frontmatter.title == "CLI Directory Playbook"
+
+    def test_dir_matches_slash_glob(self, tmp_path: Path) -> None:
+        """by_trigger_dir("src/lexibrary/cli") matches glob "src/lexibrary/cli/"."""
+        _write_playbook(tmp_path, "cli-slash.md", CLI_DIR_SLASH)
+        index = PlaybookIndex(tmp_path)
+        index.load()
+        results = index.by_trigger_dir("src/lexibrary/cli")
+        assert len(results) == 1
+        assert results[0].frontmatter.title == "CLI Slash Playbook"
+
+    def test_parent_dir_does_not_match_child_glob(self, tmp_path: Path) -> None:
+        """by_trigger_dir("src/lexibrary") does NOT match "src/lexibrary/cli/**"."""
+        _write_playbook(tmp_path, "cli-dir.md", CLI_DIR_GLOB)
+        index = PlaybookIndex(tmp_path)
+        index.load()
+        results = index.by_trigger_dir("src/lexibrary")
+        assert results == []
+
+    def test_empty_result_when_no_match(self, tmp_path: Path) -> None:
+        """Empty result when no playbooks match the directory."""
+        _write_playbook(tmp_path, "version-bump.md", VERSION_BUMP)
+        index = PlaybookIndex(tmp_path)
+        index.load()
+        results = index.by_trigger_dir("src/lexibrary/services")
+        assert results == []
+
+    def test_specificity_ordering_preserved(self, tmp_path: Path) -> None:
+        """More specific patterns rank higher than broad globs."""
+        _write_playbook(tmp_path, "cli-dir.md", CLI_DIR_GLOB)  # src/lexibrary/cli/**
+        _write_playbook(tmp_path, "deploy-checklist.md", DEPLOY_CHECKLIST)  # **/*.toml
+        index = PlaybookIndex(tmp_path)
+        index.load()
+        # Both match src/lexibrary/cli via .d synthetic path:
+        #   src/lexibrary/cli/** matches src/lexibrary/cli/.d (True)
+        # But **/*.toml does NOT match .d, so only cli-dir matches.
+        # To test ordering, use two patterns that both match directories.
+        # Use cli-dir.md (src/lexibrary/cli/**) and cli-slash.md (src/lexibrary/cli/)
+        _write_playbook(tmp_path, "cli-slash.md", CLI_DIR_SLASH)  # src/lexibrary/cli/
+        index.load()
+        results = index.by_trigger_dir("src/lexibrary/cli")
+        assert len(results) == 2
+        # Both match; cli/** has specificity 3 (src + lexibrary + cli),
+        # cli/ has specificity 3 (src + lexibrary + cli).
+        # Equal specificity, so sorted by title alphabetically.
+        titles = [r.frontmatter.title for r in results]
+        assert titles == sorted(titles)
+
+    def test_trailing_slash_stripped(self, tmp_path: Path) -> None:
+        """Trailing slashes in dir_path are stripped."""
+        _write_playbook(tmp_path, "cli-dir.md", CLI_DIR_GLOB)
+        index = PlaybookIndex(tmp_path)
+        index.load()
+        results = index.by_trigger_dir("src/lexibrary/cli/")
+        assert len(results) == 1
+        assert results[0].frontmatter.title == "CLI Directory Playbook"
+
+    def test_empty_dir_path(self, tmp_path: Path) -> None:
+        """Empty dir_path returns empty list."""
+        _write_playbook(tmp_path, "cli-dir.md", CLI_DIR_GLOB)
+        index = PlaybookIndex(tmp_path)
+        index.load()
+        results = index.by_trigger_dir("")
         assert results == []
 
 

@@ -23,6 +23,23 @@ if TYPE_CHECKING:
 
 
 @dataclass
+class SiblingSummary:
+    """Summary of a sibling file from .aindex."""
+
+    name: str  # filename (e.g., "search.py")
+    description: str  # one-line description from .aindex entry
+
+
+@dataclass
+class ConceptSummary:
+    """Summary of a related concept."""
+
+    name: str  # concept slug (e.g., "error-handling")
+    status: str | None  # "active", "draft", "deprecated" -- None when only name is known
+    summary: str | None  # one-line summary -- None in brief mode or when unavailable
+
+
+@dataclass
 class DirectoryLookupResult:
     """Data gathered for a directory lookup."""
 
@@ -43,6 +60,18 @@ class DirectoryLookupResult:
 
     iwh_text: str
     """Rendered IWH signal text, or empty string."""
+
+    playbooks: list[PlaybookFile]
+    """Triggered playbooks for this directory."""
+
+    playbook_display_limit: int
+    """Maximum number of playbooks to display."""
+
+    import_count: int
+    """Total inbound ast_import links."""
+
+    imported_file_count: int
+    """Distinct files with inbound imports."""
 
 
 @dataclass
@@ -90,6 +119,15 @@ class LookupResult:
 
     open_issue_count: int
     """Number of open stack issues referencing this file."""
+
+    siblings: list[SiblingSummary]
+    """Sibling files from .aindex."""
+
+    concepts: list[ConceptSummary]
+    """Related concepts."""
+
+    concepts_linkgraph_available: bool = True
+    """Whether concepts were populated from the link graph (True) or fell back to wikilinks."""
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +205,8 @@ def build_directory_lookup(
     from lexibrary.artifacts.aindex_parser import parse_aindex  # noqa: PLC0415
     from lexibrary.config.schema import LexibraryConfig  # noqa: PLC0415
     from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
+    from lexibrary.linkgraph import open_index  # noqa: PLC0415
+    from lexibrary.playbooks.index import PlaybookIndex  # noqa: PLC0415
     from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
 
     if not isinstance(config, LexibraryConfig):
@@ -211,6 +251,31 @@ def build_directory_lookup(
             limit=display_limit,
         )
 
+    # Triggered playbooks for directory
+    playbooks_dir = project_root / ".lexibrary" / "playbooks"
+    playbook_index = PlaybookIndex(playbooks_dir)
+    playbook_index.load()
+    triggered_playbooks = playbook_index.by_trigger_dir(rel_target)
+    pb_display_limit = config.playbooks.lookup_display_limit
+
+    # Inbound import counts from link graph
+    import_count = 0
+    imported_file_count = 0
+    link_graph = open_index(project_root)
+    if link_graph is not None and aindex is not None:
+        importing_files: set[str] = set()
+        file_entries = [e for e in aindex.entries if e.entry_type == "file"]
+        for entry in file_entries:
+            entry_path = f"{rel_target}/{entry.name}"
+            import_links = link_graph.reverse_deps(entry_path, link_type="ast_import")
+            import_count += len(import_links)
+            for lnk in import_links:
+                importing_files.add(lnk.source_path)
+        imported_file_count = len(importing_files)
+        link_graph.close()
+    elif link_graph is not None:
+        link_graph.close()
+
     # IWH signal peek
     iwh_text = _build_iwh_peek(project_root, target)
 
@@ -221,6 +286,10 @@ def build_directory_lookup(
         conventions_total_count=total_count,
         display_limit=display_limit,
         iwh_text=iwh_text,
+        playbooks=triggered_playbooks,
+        playbook_display_limit=pb_display_limit,
+        import_count=import_count,
+        imported_file_count=imported_file_count,
     )
 
 
@@ -240,7 +309,9 @@ def build_file_lookup(
     When *full* is ``False`` (brief mode), only basic fields are populated;
     design_content, links_text, and issues_text remain empty.
     """
+    from lexibrary.artifacts.aindex_parser import parse_aindex  # noqa: PLC0415
     from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
+        parse_design_file,
         parse_design_file_frontmatter,
         parse_design_file_metadata,
     )
@@ -249,7 +320,8 @@ def build_file_lookup(
     from lexibrary.linkgraph import open_index  # noqa: PLC0415
     from lexibrary.playbooks.index import PlaybookIndex  # noqa: PLC0415
     from lexibrary.stack.parser import parse_stack_post  # noqa: PLC0415
-    from lexibrary.utils.paths import mirror_path  # noqa: PLC0415
+    from lexibrary.utils.paths import LEXIBRARY_DIR, mirror_path  # noqa: PLC0415
+    from lexibrary.wiki.index import ConceptIndex as _ConceptIndex  # noqa: PLC0415
 
     if not isinstance(config, LexibraryConfig):
         return None
@@ -283,6 +355,17 @@ def build_file_lookup(
             design_content = design_path.read_text(encoding="utf-8")
     else:
         design_content = None
+
+    # Sibling population from parent .aindex
+    aindex_path = project_root / LEXIBRARY_DIR / "designs" / Path(rel_target).parent / ".aindex"
+    aindex = parse_aindex(aindex_path)
+    siblings_list: list[SiblingSummary] = []
+    if aindex is not None:
+        siblings_list = [
+            SiblingSummary(name=entry.name, description=entry.description)
+            for entry in aindex.entries
+            if entry.entry_type == "file"
+        ]
 
     # Convention delivery
     conventions_dir = project_root / ".lexibrary" / "conventions"
@@ -321,6 +404,8 @@ def build_file_lookup(
     links_text = ""
     dependents: list[str] = []
     open_issue_count = 0
+    # Concept link data gathered from link graph (used in full mode)
+    concept_link_names: list[str] = []
 
     if link_graph is not None:
         if full:
@@ -367,6 +452,18 @@ def build_file_lookup(
                 links_text_parts.append("")
 
             links_text = "\n".join(links_text_parts)
+
+            # Gather concept names from link graph (wikilink + concept_file_ref)
+            concept_links = [
+                lnk for lnk in all_links
+                if lnk.link_type in ("wikilink", "concept_file_ref")
+            ]
+            seen_concept_names: set[str] = set()
+            for lnk in concept_links:
+                name = lnk.link_context or lnk.source_path
+                if name not in seen_concept_names:
+                    seen_concept_names.add(name)
+                    concept_link_names.append(name)
         else:
             # Brief mode: just count open issues
             stack_links = link_graph.reverse_deps(rel_target, link_type="stack_file_ref")
@@ -377,6 +474,55 @@ def build_file_lookup(
                     open_issue_count += 1
 
         link_graph.close()
+
+    # Concept population
+    concepts_list: list[ConceptSummary] = []
+    linkgraph_available = True
+    concept_limit = config.concepts.lookup_display_limit
+
+    # Load concept index for enriching status/summary
+    concepts_dir = project_root / ".lexibrary" / "concepts"
+    concept_index = _ConceptIndex.load(concepts_dir)
+
+    if full and concept_link_names:
+        # Full mode with link graph: use link graph concept names
+        for name in concept_link_names:
+            concept_file = concept_index.find(name)
+            if concept_file is not None:
+                concepts_list.append(
+                    ConceptSummary(
+                        name=name,
+                        status=concept_file.frontmatter.status,
+                        summary=concept_file.summary or None,
+                    )
+                )
+            else:
+                concepts_list.append(
+                    ConceptSummary(name=name, status=None, summary=None)
+                )
+    else:
+        # Brief mode, or full mode without link graph: use design file wikilinks
+        if full and link_graph is None:
+            linkgraph_available = False
+
+        wikilink_names: list[str] = []
+        if design_path.exists():
+            design_file = parse_design_file(design_path)
+            if design_file is not None:
+                wikilink_names = design_file.wikilinks
+
+        for name in wikilink_names:
+            concept_file = concept_index.find(name)
+            status = concept_file.frontmatter.status if concept_file is not None else None
+            summary = (
+                (concept_file.summary or None) if concept_file is not None and full else None
+            )
+            concepts_list.append(
+                ConceptSummary(name=name, status=status, summary=summary)
+            )
+
+    # Apply display limit
+    concepts_list = concepts_list[:concept_limit]
 
     # IWH signal peek
     iwh_text = _build_iwh_peek(project_root, target)
@@ -396,6 +542,9 @@ def build_file_lookup(
         links_text=links_text,
         dependents=dependents,
         open_issue_count=open_issue_count,
+        siblings=siblings_list,
+        concepts=concepts_list,
+        concepts_linkgraph_available=linkgraph_available,
     )
 
 

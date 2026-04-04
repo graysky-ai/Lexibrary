@@ -144,6 +144,9 @@ def lookup(
     )
     from lexibrary.services.lookup_render import (  # noqa: PLC0415
         render_conventions,
+        render_directory_link_summary,
+        render_related_concepts,
+        render_siblings,
         render_triggered_playbooks,
     )
     from lexibrary.utils.paths import mirror_path  # noqa: PLC0415
@@ -189,6 +192,19 @@ def lookup(
             )
             if conv_text:
                 info(conv_text)
+
+        if dir_result.playbooks:
+            playbook_section = render_triggered_playbooks(
+                dir_result.playbooks, dir_result.playbook_display_limit
+            )
+            if playbook_section:
+                info(playbook_section)
+
+        link_summary = render_directory_link_summary(
+            dir_result.import_count, dir_result.imported_file_count
+        )
+        if link_summary:
+            info(link_summary)
 
         if dir_result.iwh_text:
             info(dir_result.iwh_text)
@@ -238,6 +254,14 @@ def lookup(
             if playbook_section:
                 info(playbook_section)
 
+        siblings_text = render_siblings(file_result.siblings, file_result.file_path, full=False)
+        if siblings_text:
+            info(siblings_text)
+
+        concepts_text = render_related_concepts(file_result.concepts, full=False)
+        if concepts_text:
+            info(concepts_text)
+
         info(f"Open issues: {file_result.open_issue_count}")
         info("")
         info("Run `lexi lookup <path> --full` for complete details.")
@@ -269,6 +293,20 @@ def lookup(
         if playbook_section:
             info(playbook_section)
             playbook_token_estimate = estimate_tokens(playbook_section)
+
+    # Sibling files (always shown in full mode)
+    siblings_text = render_siblings(file_result.siblings, file_result.file_path, full=True)
+    if siblings_text:
+        info(siblings_text)
+
+    # Related concepts (always shown in full mode)
+    concepts_text = render_related_concepts(
+        file_result.concepts,
+        full=True,
+        linkgraph_available=file_result.concepts_linkgraph_available,
+    )
+    if concepts_text:
+        info(concepts_text)
 
     # Apply token budget truncation to supplementary sections
     total_budget = config.token_budgets.lookup_total_tokens

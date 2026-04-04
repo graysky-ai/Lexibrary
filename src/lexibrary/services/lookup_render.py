@@ -215,3 +215,106 @@ def render_triggered_playbooks(
 
     lines.append("")
     return "\n".join(lines)
+
+
+def render_siblings(
+    siblings: Sequence[object],
+    current_file: str,
+    full: bool = False,
+) -> str:
+    """Render a sibling files section.
+
+    *siblings* should be a list of :class:`SiblingSummary` instances from the
+    parent directory's ``.aindex``.  The entry matching *current_file* is
+    annotated with ``(this file)``.
+
+    **Brief mode** (``full=False``): returns a single inline line.
+    **Full mode** (``full=True``): returns a ``## Sibling Files`` section with
+    descriptions.
+
+    Returns an empty string when *siblings* is empty.
+    """
+    from lexibrary.services.lookup import SiblingSummary  # noqa: PLC0415
+
+    typed: list[SiblingSummary] = [s for s in siblings if isinstance(s, SiblingSummary)]
+    if not typed:
+        return ""
+
+    current_name = Path(current_file).name
+
+    if not full:
+        parts: list[str] = []
+        for s in typed:
+            label = f"{s.name} (this file)" if s.name == current_name else s.name
+            parts.append(label)
+        return f"Siblings: {', '.join(parts)}\n"
+
+    lines: list[str] = ["\n## Sibling Files\n"]
+    for s in typed:
+        marker = " (this file)" if s.name == current_name else ""
+        lines.append(f"- {s.name}{marker} -- {s.description}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_related_concepts(
+    concepts: Sequence[object],
+    full: bool = False,
+    linkgraph_available: bool = True,
+) -> str:
+    """Render a related concepts section.
+
+    *concepts* should be a list of :class:`ConceptSummary` instances.
+
+    **Brief mode** (``full=False``): returns a single inline line with
+    ``[[name]] (status)`` notation; status parenthetical is omitted when
+    ``status is None``.
+
+    **Full mode** (``full=True``): returns a ``## Related Concepts`` section.
+    When *linkgraph_available* is ``False`` the heading includes a note that
+    only names are available.
+
+    Returns an empty string when *concepts* is empty.
+    """
+    from lexibrary.services.lookup import ConceptSummary  # noqa: PLC0415
+
+    typed: list[ConceptSummary] = [c for c in concepts if isinstance(c, ConceptSummary)]
+    if not typed:
+        return ""
+
+    if not full:
+        parts: list[str] = []
+        for c in typed:
+            if c.status is not None:
+                parts.append(f"[[{c.name}]] ({c.status})")
+            else:
+                parts.append(f"[[{c.name}]]")
+        return f"Related concepts: {', '.join(parts)}\n"
+
+    if linkgraph_available:
+        heading = "## Related Concepts"
+    else:
+        heading = "## Related Concepts (link graph unavailable -- names only)"
+
+    lines: list[str] = [f"\n{heading}\n"]
+    for c in typed:
+        status_part = f" ({c.status})" if c.status is not None else ""
+        if c.summary is not None:
+            lines.append(f"- **{c.name}**{status_part} -- {c.summary}")
+        else:
+            lines.append(f"- **{c.name}**{status_part}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_directory_link_summary(
+    import_count: int,
+    imported_file_count: int,
+) -> str:
+    """Render a one-line inbound import summary for a directory.
+
+    Returns an empty string when *import_count* is zero.
+    """
+    if import_count == 0:
+        return ""
+    return f"Inbound imports: {import_count} (across {imported_file_count} files)\n"
