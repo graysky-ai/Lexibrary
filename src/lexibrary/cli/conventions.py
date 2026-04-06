@@ -24,7 +24,15 @@ def convention_new(
     *,
     scope_value: Annotated[
         str,
-        typer.Option("--scope", help="Convention scope: 'project' or a directory path."),
+        typer.Option(
+            "--scope",
+            help=(
+                "Convention scope: 'project' for repo-wide, or one or more "
+                "comma-separated directory paths (e.g. 'src/auth' or "
+                "'src/lexibrary/cli/, src/lexibrary/services/'). "
+                "Each path must be an existing directory relative to the project root."
+            ),
+        ),
     ],
     body: Annotated[
         str,
@@ -88,6 +96,23 @@ def convention_new(
             f"Edit the existing file instead of creating a duplicate."
         )
         raise typer.Exit(1)
+
+    # Validate scope paths exist
+    if scope_value != "project":
+        from lexibrary.artifacts.convention import split_scope  # noqa: PLC0415
+
+        scope_paths = split_scope(scope_value)
+        if not scope_paths:
+            error("Scope must be 'project' or at least one directory path.")
+            raise typer.Exit(1)
+        missing = [p for p in scope_paths if not (project_root / p).is_dir()]
+        if missing:
+            error(
+                f"Scope director{'ies do' if len(missing) > 1 else 'y does'} not exist: "
+                + ", ".join(missing)
+            )
+            hint("Each scope path must be an existing directory relative to the project root.")
+            raise typer.Exit(1)
 
     # Set defaults based on source
     conv_status: Literal["draft", "active", "deprecated"]

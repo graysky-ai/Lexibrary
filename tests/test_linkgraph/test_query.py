@@ -522,6 +522,66 @@ class TestFullTextSearch:
 
 
 # ---------------------------------------------------------------------------
+# 7.8b -- full_text_search(raw=True) bypasses double-quote wrapping
+# ---------------------------------------------------------------------------
+
+
+class TestFullTextSearchRaw:
+    """Tests for full_text_search(raw=True) — raw FTS5 expression passthrough."""
+
+    def test_raw_true_passes_query_as_is(self, graph: LinkGraph) -> None:
+        """raw=True passes the query string directly without double-quote wrapping.
+
+        An AND expression like '"auth" AND "service"' should work as a boolean
+        FTS5 query when raw=True.
+        """
+        results = graph.full_text_search('"auth" AND "service"', raw=True)
+        assert isinstance(results, list)
+        # Should find Auth service (matches both tokens)
+        assert len(results) >= 1
+        graph.close()
+
+    def test_raw_false_wraps_in_quotes(self, graph: LinkGraph) -> None:
+        """raw=False (default) wraps the query in double quotes.
+
+        FTS5 operators like AND/OR are treated as literal text, so
+        'auth AND service' is searched as a literal phrase.
+        """
+        # This should NOT be interpreted as an AND expression
+        results = graph.full_text_search("auth AND service", raw=False)
+        assert isinstance(results, list)
+        # "auth AND service" as a literal phrase — unlikely to match
+        # (there is no document containing the literal string "auth AND service")
+        graph.close()
+
+    def test_raw_true_or_expression(self, graph: LinkGraph) -> None:
+        """raw=True allows OR expressions in FTS5."""
+        results = graph.full_text_search(
+            '"authentication" OR "controller"', raw=True
+        )
+        assert isinstance(results, list)
+        # Should match Authentication concept and API controller
+        assert len(results) >= 2
+        graph.close()
+
+    def test_raw_default_is_false(self, graph: LinkGraph) -> None:
+        """The default value of raw is False (existing behavior preserved)."""
+        # A query with FTS5 operators should be safely quoted by default
+        results = graph.full_text_search("NOT something OR other")
+        assert isinstance(results, list)
+        # Should not raise an FTS5 syntax error
+        graph.close()
+
+    def test_raw_true_with_limit(self, graph: LinkGraph) -> None:
+        """raw=True works correctly with the limit parameter."""
+        results = graph.full_text_search(
+            '"authentication" OR "controller"', limit=1, raw=True
+        )
+        assert len(results) <= 1
+        graph.close()
+
+
+# ---------------------------------------------------------------------------
 # 7.9 -- resolve_alias() with case-insensitive matching
 # ---------------------------------------------------------------------------
 

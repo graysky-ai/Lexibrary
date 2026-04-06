@@ -1370,7 +1370,10 @@ def check_config_valid(
                 check="config_valid",
                 message="Config file not found",
                 artifact=artifact,
-                suggestion=("Run: lexictl init to initialise the library and create config.yaml."),
+                suggestion=(
+                    "Ask the user to run `lexictl init` to initialise "
+                    "the library and create config.yaml."
+                ),
             )
         )
         return issues
@@ -1527,7 +1530,10 @@ def check_linkgraph_version(
                 check="linkgraph_version",
                 message="Could not open linkgraph database",
                 artifact=artifact,
-                suggestion="Delete the index file and rebuild with `lexictl update`.",
+                suggestion=(
+                    "Delete the index file and ask the user to run "
+                    "`lexictl update` to rebuild it."
+                ),
             )
         )
         return issues
@@ -1542,7 +1548,10 @@ def check_linkgraph_version(
                 check="linkgraph_version",
                 message="Could not read schema version from linkgraph database",
                 artifact=artifact,
-                suggestion="Delete the index file and rebuild with `lexictl update`.",
+                suggestion=(
+                    "Delete the index file and ask the user to run "
+                    "`lexictl update` to rebuild it."
+                ),
             )
         )
         return issues
@@ -1556,7 +1565,10 @@ def check_linkgraph_version(
                 check="linkgraph_version",
                 message="No schema version found in linkgraph database",
                 artifact=artifact,
-                suggestion="Delete the index file and rebuild with `lexictl update`.",
+                suggestion=(
+                    "Delete the index file and ask the user to run "
+                    "`lexictl update` to rebuild it."
+                ),
             )
         )
         return issues
@@ -1570,7 +1582,7 @@ def check_linkgraph_version(
                     f"Schema version mismatch: stored={stored_version}, current={SCHEMA_VERSION}"
                 ),
                 artifact=artifact,
-                suggestion="Run `lexictl update` to rebuild the linkgraph index.",
+                suggestion="Ask the user to run `lexictl update` to rebuild the linkgraph index.",
             )
         )
 
@@ -1710,8 +1722,8 @@ def check_token_budgets(
                     message=(f"Over budget: {tokens} tokens (limit {budgets.aindex_tokens})"),
                     artifact=rel_path,
                     suggestion=(
-                        "Regenerate the .aindex via lexictl update, or increase "
-                        "token_budgets.aindex_tokens in .lexibrary/config.yaml."
+                        "Ask the user to run `lexictl update` to regenerate the .aindex, "
+                        "or increase token_budgets.aindex_tokens in .lexibrary/config.yaml."
                     ),
                 )
             )
@@ -2210,7 +2222,10 @@ def check_aindex_coverage(
                     check="aindex_coverage",
                     message=f"Directory not indexed: {dir_rel}",
                     artifact=dir_rel,
-                    suggestion=(f"Run: lexictl update to index the directory '{dir_rel}'."),
+                    suggestion=(
+                        f"Ask the user to run `lexictl update` to index "
+                        f"the directory '{dir_rel}'."
+                    ),
                 )
             )
 
@@ -2312,7 +2327,8 @@ def check_bidirectional_deps(
                     ),
                     artifact=rel_design,
                     suggestion=(
-                        "The link graph index may be stale; run: lexictl update to rebuild."
+                        "The link graph index may be stale; ask the user "
+                        "to run `lexictl update` to rebuild it."
                     ),
                 )
             )
@@ -2330,8 +2346,8 @@ def check_bidirectional_deps(
                     artifact=rel_design,
                     suggestion=(
                         f"Run: lexi design update {source_path} to regenerate "
-                        f"the design file with current import data, or run "
-                        f"lexictl update to rebuild the index."
+                        f"the design file with current import data, or ask the user to run "
+                        f"`lexictl update` to rebuild the index."
                     ),
                 )
             )
@@ -2411,7 +2427,8 @@ def check_dangling_links(
                     ),
                     artifact=artifact_path,
                     suggestion=(
-                        "Run: lexictl update to rebuild the index and remove stale entries."
+                        "Ask the user to run `lexictl update` to rebuild "
+                        "the index and remove stale entries."
                     ),
                 )
             )
@@ -2464,7 +2481,8 @@ def find_orphaned_aindex(
                     ),
                     artifact=rel_aindex,
                     suggestion=(
-                        f"Run: lexictl update to remove this orphaned .aindex file, "
+                        "Ask the user to run `lexictl update` to remove "
+                        f"this orphaned .aindex file, "
                         f"or delete it manually: {rel_aindex}"
                     ),
                 )
@@ -2521,7 +2539,7 @@ def find_orphaned_iwh(
                     ),
                     artifact=rel_iwh,
                     suggestion=(
-                        f"Run: lexictl update to remove this orphaned .iwh file, "
+                        f"Ask the user to run `lexictl update` to remove this orphaned .iwh file, "
                         f"or delete it manually: {rel_iwh}"
                     ),
                 )
@@ -2588,18 +2606,30 @@ def check_orphan_artifacts(
             with contextlib.suppress(Exception):
                 conn.close()
 
+    # The prefix used by the project root in artifact paths stored in the DB
+    _LEXIBRARY_PREFIX = ".lexibrary/"
+
     # Check each artifact's backing file
     for artifact_path, kind in rows:
         full_path = project_root / artifact_path
         if not full_path.exists():
+            # Normalise to lexibrary-relative format so fixers can resolve
+            # the path as ``project_root / ".lexibrary" / artifact``.
+            # The DB stores paths like ``.lexibrary/designs/src/foo.py.md``
+            # but fixers expect ``designs/src/foo.py.md``.
+            normalized_path = artifact_path
+            if normalized_path.startswith(_LEXIBRARY_PREFIX):
+                normalized_path = normalized_path[len(_LEXIBRARY_PREFIX) :]
+
             issues.append(
                 ValidationIssue(
                     severity="info",
                     check="orphan_artifacts",
                     message=(f"Index contains {kind} artifact for deleted file: {artifact_path}"),
-                    artifact=artifact_path,
+                    artifact=normalized_path,
                     suggestion=(
-                        "Run: lexictl update to rebuild the index and prune stale entries."
+                        "Ask the user to run `lexictl update` to rebuild "
+                        "the index and prune stale entries."
                     ),
                 )
             )
@@ -2652,7 +2682,8 @@ def check_orphaned_designs(
                     message=(f"Design file references missing source: {source_rel}"),
                     artifact=rel_design,
                     suggestion=(
-                        f"Run: lexictl update to trigger the deprecation workflow for "
+                        "Ask the user to run `lexictl update` to trigger "
+                        f"the deprecation workflow for "
                         f"'{source_rel}' and mark the design file as deprecated."
                     ),
                 )
@@ -2757,7 +2788,8 @@ def check_deprecated_ttl(
                     message=(f"Deprecated design file has exceeded TTL ({ttl_commits} commits)"),
                     artifact=rel_design,
                     suggestion=(
-                        f"Run: lexictl update to hard-delete the expired deprecated "
+                        "Ask the user to run `lexictl update` to "
+                        f"hard-delete the expired deprecated "
                         f"design file '{rel_design}'."
                     ),
                 )
@@ -2930,9 +2962,10 @@ def check_convention_orphaned_scope(
     """Detect conventions whose scope directory no longer exists.
 
     Scans all convention files and checks that each convention's ``scope``
-    directory exists under the project root. Conventions with
-    ``scope == "project"`` are always valid and are skipped. Deprecated
-    conventions are also skipped.
+    directory exists under the project root.  Multi-path scopes (comma-
+    separated) are supported — each individual path is validated.
+    Conventions with ``scope == "project"`` are always valid and are
+    skipped.  Deprecated conventions are also skipped.
 
     Args:
         project_root: Root directory of the project.
@@ -2941,6 +2974,8 @@ def check_convention_orphaned_scope(
     Returns:
         List of warning-severity ValidationIssues for orphaned scopes.
     """
+    from lexibrary.artifacts.convention import split_scope
+
     issues: list[ValidationIssue] = []
 
     conventions_dir = lexibrary_dir / "conventions"
@@ -2962,15 +2997,20 @@ def check_convention_orphaned_scope(
         if scope == "project":
             continue
 
-        # Check if the scope directory exists under project root
-        scope_path = project_root / scope
-        if not scope_path.is_dir():
+        # Check each scope path individually
+        scope_paths = split_scope(scope)
+        missing = [p for p in scope_paths if not (project_root / p).is_dir()]
+        if missing:
             rel_convention = str(md_path.relative_to(lexibrary_dir))
+            missing_str = ", ".join(missing)
             issues.append(
                 ValidationIssue(
                     severity="warning",
                     check="convention_orphaned_scope",
-                    message=(f"Convention scope directory '{scope}' does not exist"),
+                    message=(
+                        f"Convention scope director{'ies do' if len(missing) > 1 else 'y does'} "
+                        f"not exist: {missing_str}"
+                    ),
                     artifact=rel_convention,
                     suggestion=(
                         f"Update the scope in {rel_convention}, or deprecate the convention: "
@@ -2986,10 +3026,12 @@ def check_convention_stale(
     project_root: Path,
     lexibrary_dir: Path,
 ) -> list[ValidationIssue]:
-    """Detect active conventions whose scope directory is empty.
+    """Detect active conventions whose scope directories are all empty.
 
-    An active convention whose scope directory exists but contains no source
-    files (non-directory entries) may be stale. Conventions with
+    An active convention whose scope directories all exist but none contain
+    source files (non-directory entries) may be stale.  Multi-path scopes
+    (comma-separated) are supported — the convention is only flagged if
+    *every* scope directory is empty.  Conventions with
     ``scope == "project"`` are skipped (project-wide conventions are always
     relevant). Deprecated and draft conventions are also skipped.
 
@@ -3000,6 +3042,8 @@ def check_convention_stale(
     Returns:
         List of info-severity ValidationIssues for stale conventions.
     """
+    from lexibrary.artifacts.convention import split_scope
+
     issues: list[ValidationIssue] = []
 
     conventions_dir = lexibrary_dir / "conventions"
@@ -3021,30 +3065,37 @@ def check_convention_stale(
         if scope == "project":
             continue
 
-        scope_path = project_root / scope
-        if not scope_path.is_dir():
-            # If the directory doesn't exist, orphaned_scope covers it
-            continue
+        scope_paths = split_scope(scope)
 
-        # Check if scope directory has any source files (non-directory entries)
-        has_files = False
-        try:
-            for child in scope_path.iterdir():
-                if child.is_file():
-                    has_files = True
-                    break
-        except PermissionError:
-            continue
+        # Check each scope path — if any has files, the convention is not stale
+        any_has_files = False
+        all_exist = True
+        for sp in scope_paths:
+            scope_dir = project_root / sp
+            if not scope_dir.is_dir():
+                # If any directory doesn't exist, orphaned_scope covers it
+                all_exist = False
+                continue
+            try:
+                for child in scope_dir.iterdir():
+                    if child.is_file():
+                        any_has_files = True
+                        break
+            except PermissionError:
+                continue
+            if any_has_files:
+                break
 
-        if not has_files:
+        if all_exist and not any_has_files:
             rel_convention = str(md_path.relative_to(lexibrary_dir))
+            empty_dirs = ", ".join(scope_paths)
             issues.append(
                 ValidationIssue(
                     severity="info",
                     check="convention_stale",
                     message=(
                         f"Active convention scoped to '{scope}' "
-                        f"but directory contains no source files"
+                        f"but scope directories contain no source files"
                     ),
                     artifact=rel_convention,
                     suggestion=(
@@ -3633,7 +3684,8 @@ def check_aindex_entries(
                             ),
                             artifact=rel_aindex,
                             suggestion=(
-                                f"Run: lexictl update to rebuild .aindex files, or delete "
+                                "Ask the user to run `lexictl update` to "
+                                f"rebuild .aindex files, or delete "
                                 f"the stale entry '{entry.name}' from {rel_aindex} manually."
                             ),
                         )
@@ -3650,7 +3702,8 @@ def check_aindex_entries(
                             ),
                             artifact=rel_aindex,
                             suggestion=(
-                                f"Run: lexictl update to rebuild .aindex files, or delete "
+                                "Ask the user to run `lexictl update` to "
+                                f"rebuild .aindex files, or delete "
                                 f"the stale entry '{entry.name}' from {rel_aindex} manually."
                             ),
                         )

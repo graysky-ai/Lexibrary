@@ -96,13 +96,59 @@ def _run_validate(
     # Fix mode: run fixers after validation
     if fix:
         from lexibrary.config.loader import load_config  # noqa: PLC0415
-        from lexibrary.validator.fixes import FIXERS  # noqa: PLC0415
+        from lexibrary.validator.fixes import DESTRUCTIVE_CHECKS, FIXERS  # noqa: PLC0415
 
         config = load_config(project_root)
         fixed_count = 0
-        total_issues = len(report.issues)
 
-        for issue in report.issues:
+        # Deduplicate: when both ``orphaned_designs`` and ``orphan_artifacts``
+        # fire for the same artifact path, keep only the ``orphaned_designs``
+        # issue because its fixer applies the proper deprecation workflow rather
+        # than hard-deleting the file.  This pair-specific dedup is intentionally
+        # narrow; a general "skip already-fixed paths" guard follows in the fixer
+        # loops below.
+        _preferred_check = "orphaned_designs"
+        _subordinate_check = "orphan_artifacts"
+        _preferred_paths = {
+            issue.artifact
+            for issue in report.issues
+            if issue.check == _preferred_check
+        }
+        deduped_issues = [
+            issue
+            for issue in report.issues
+            if not (issue.check == _subordinate_check and issue.artifact in _preferred_paths)
+        ]
+
+        total_issues = len(deduped_issues)
+
+        # Separate fixable issues into destructive and non-destructive buckets.
+        destructive_issues = [
+            issue
+            for issue in deduped_issues
+            if issue.check in DESTRUCTIVE_CHECKS and issue.check in FIXERS
+        ]
+        safe_issues = [
+            issue
+            for issue in deduped_issues
+            if issue.check not in DESTRUCTIVE_CHECKS
+        ]
+
+        # Gate destructive fixes behind a single user confirmation.
+        run_destructive = False
+        if destructive_issues:
+            warn(f"{len(destructive_issues)} issue(s) require deleting files:")
+            for issue in destructive_issues:
+                warn(f"  {issue.check}: {issue.artifact}")
+            run_destructive = typer.confirm(
+                f"\nDelete {len(destructive_issues)} file(s)? [y/N]",
+                default=False,
+            )
+            if not run_destructive:
+                info("Skipping all destructive fixes.")
+
+        # Run non-destructive fixers unconditionally.
+        for issue in safe_issues:
             fixer = FIXERS.get(issue.check)
             if fixer is not None:
                 result = fixer(issue, project_root, config)
@@ -113,6 +159,22 @@ def _run_validate(
                     info(f"  [SKIP] {issue.check}: {result.message}")
             else:
                 info(f"  [SKIP] {issue.check}: no auto-fix available")
+
+        # Run destructive fixers only when the user confirmed.
+        for issue in destructive_issues:
+            if run_destructive:
+                fixer = FIXERS.get(issue.check)
+                if fixer is not None:
+                    result = fixer(issue, project_root, config)
+                    if result.fixed:
+                        info(f"  [FIXED] {issue.check}: {result.message}")
+                        fixed_count += 1
+                    else:
+                        info(f"  [SKIP] {issue.check}: {result.message}")
+                else:
+                    info(f"  [SKIP] {issue.check}: no auto-fix available")
+            else:
+                info(f"  [SKIP] {issue.check}: skipped (destructive fix not confirmed)")
 
         manual_count = total_issues - fixed_count
         info("")

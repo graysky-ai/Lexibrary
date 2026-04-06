@@ -140,6 +140,7 @@ class IndexBuilder:
         self.conn = conn
         self.project_root = project_root
         self._convention_index: ConventionIndex | None = None
+        self._concept_index: ConceptIndex | None = None
 
     # -- housekeeping -------------------------------------------------------
 
@@ -564,7 +565,20 @@ class IndexBuilder:
                             conv_relpath = f".lexibrary/conventions/{slug}.md"
                         return conv_relpath, "convention"
 
-        # Fallback: treat as concept
+        # Check concept titles/aliases before creating a stub path.
+        # Without this, wikilinks produce phantom paths like
+        # `.lexibrary/concepts/Design File.md` instead of resolving to the
+        # actual file (e.g. `CN-004-design-file.md`).
+        if self._concept_index is not None:
+            concept = self._concept_index.find(wikilink_name)
+            if concept is not None and concept.file_path is not None:
+                try:
+                    concept_relpath = str(concept.file_path.relative_to(self.project_root))
+                except ValueError:
+                    concept_relpath = str(concept.file_path)
+                return concept_relpath, "concept"
+
+        # Fallback: treat as concept stub (no matching file on disk)
         concept_path = f".lexibrary/concepts/{wikilink_name}.md"
         return concept_path, "concept"
 
@@ -1237,6 +1251,18 @@ class IndexBuilder:
             self._convention_index.load()
         else:
             self._convention_index = None
+
+        # Step 2c: Load ConceptIndex for concept-aware wikilink resolution.
+        # Without this, wikilinks like [[Design File]] create phantom stubs at
+        # `.lexibrary/concepts/Design File.md` instead of resolving to the
+        # actual concept file (e.g. `CN-004-design-file.md`).
+        from lexibrary.wiki.index import ConceptIndex as _ConceptIndex  # noqa: PLC0415
+
+        concepts_dir = self.project_root / LEXIBRARY_DIR / "concepts"
+        if concepts_dir.is_dir():
+            self._concept_index = _ConceptIndex.load(concepts_dir)
+        else:
+            self._concept_index = None
 
         # Step 3-5: Main build wrapped in a transaction.
         # After ensure_schema commits, the first DML statement
@@ -2101,6 +2127,15 @@ class IndexBuilder:
             self._convention_index.load()
         else:
             self._convention_index = None
+
+        # Load ConceptIndex for concept-aware wikilink resolution
+        from lexibrary.wiki.index import ConceptIndex as _ConceptIndex  # noqa: PLC0415
+
+        concepts_dir = self.project_root / LEXIBRARY_DIR / "concepts"
+        if concepts_dir.is_dir():
+            self._concept_index = _ConceptIndex.load(concepts_dir)
+        else:
+            self._concept_index = None
 
         for file_path in changed_paths:
             # Normalise to absolute path for file existence checks

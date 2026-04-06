@@ -470,6 +470,19 @@ def fix_deprecated_ttl(
     )
 
 
+# Checks whose fixers delete files from disk and therefore require user confirmation
+# before running in interactive mode.  This set is consumed by the CLI fix flow in
+# ``lexibrary.cli._shared._run_validate`` to gate a single y/n prompt before any
+# destructive work begins.
+DESTRUCTIVE_CHECKS: frozenset[str] = frozenset(
+    {
+        "orphan_artifacts",  # deletes orphaned design files
+        "orphaned_aindex",  # deletes orphaned .aindex files + empty parent dirs
+        "orphaned_iwh",  # deletes orphaned .iwh files + empty parent dirs
+        "deprecated_ttl",  # hard-deletes expired deprecated design files + empty parent dirs
+    }
+)
+
 # Registry of auto-fixable checks.
 # Maps check name -> fixer function.
 FIXERS: dict[str, Callable[[ValidationIssue, Path, LexibraryConfig], FixResult]] = {

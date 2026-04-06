@@ -18,10 +18,10 @@ llm:
 
 # Per-artifact token budgets (validation targets for generated content)
 token_budgets:
-  design_file_tokens: 400
+  design_file_tokens: 1600
   design_file_abridged_tokens: 100
-  aindex_tokens: 200
-  concept_file_tokens: 400
+  aindex_tokens: 500
+  concept_file_tokens: 1200
   convention_file_tokens: 500
   lookup_total_tokens: 1200
   summarize_max_tokens: 200

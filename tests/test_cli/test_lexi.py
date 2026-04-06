@@ -1465,6 +1465,8 @@ class TestConventionNewCommand:
     def test_create_convention_with_all_flags(self, tmp_path: Path) -> None:
         """Create a convention with --scope, --body, --tag, --title flags."""
         project = _setup_project(tmp_path)
+        # Scope validation now requires the directory to exist on disk.
+        (project / "src" / "auth").mkdir(parents=True, exist_ok=True)
         result = self._invoke(
             project,
             [
@@ -1914,6 +1916,8 @@ class TestConventionNewAliasFlag:
     def test_create_with_aliases(self, tmp_path: Path) -> None:
         """Create a convention with --alias flags populates aliases in frontmatter."""
         project = _setup_project(tmp_path)
+        # Scope validation now requires the directory to exist on disk.
+        (project / "src" / "api").mkdir(parents=True, exist_ok=True)
         result = self._invoke(
             project,
             [

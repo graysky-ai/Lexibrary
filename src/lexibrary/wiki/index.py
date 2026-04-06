@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 from pathlib import Path
 
 from lexibrary.artifacts.concept import ConceptFile
@@ -66,11 +67,15 @@ class ConceptIndex:
         return None
 
     def search(self, query: str) -> list[ConceptFile]:
-        """Search concepts by normalized substring match.
+        """Search concepts by normalized substring match with fuzzy fallback.
 
-        Matches against titles, aliases, tags, and summaries.  Returns a
-        list of matching :class:`ConceptFile` instances (no duplicates,
-        ordered by title).
+        First attempts exact substring matching against titles, aliases,
+        tags, and summaries.  If no exact matches are found, falls back to
+        fuzzy matching (via :func:`difflib.get_close_matches`) against
+        concept titles and aliases that are at least 5 characters long.
+
+        Returns a list of matching :class:`ConceptFile` instances (no
+        duplicates, ordered by title).
         """
         needle = _normalize(query)
         if not needle:
@@ -79,7 +84,32 @@ class ConceptIndex:
         for concept in self._concepts.values():
             if _matches_concept(concept, needle):
                 matches[concept.frontmatter.title] = concept
-        return [matches[k] for k in sorted(matches.keys())]
+        if matches:
+            return [matches[k] for k in sorted(matches.keys())]
+
+        # Fuzzy fallback: only when exact substring matching returns nothing.
+        candidates: list[str] = []
+        candidate_to_concept: dict[str, ConceptFile] = {}
+        for concept in self._concepts.values():
+            title = concept.frontmatter.title
+            if len(title) >= 5:
+                lower_title = title.lower()
+                candidates.append(lower_title)
+                candidate_to_concept[lower_title] = concept
+            for alias in concept.frontmatter.aliases:
+                if len(alias) >= 5:
+                    lower_alias = alias.lower()
+                    candidates.append(lower_alias)
+                    candidate_to_concept[lower_alias] = concept
+
+        fuzzy_hits = difflib.get_close_matches(
+            needle, candidates, n=5, cutoff=0.6
+        )
+        fuzzy_matches: dict[str, ConceptFile] = {}
+        for hit in fuzzy_hits:
+            concept = candidate_to_concept[hit]
+            fuzzy_matches[concept.frontmatter.title] = concept
+        return [fuzzy_matches[k] for k in sorted(fuzzy_matches.keys())]
 
     def by_tag(self, tag: str) -> list[ConceptFile]:
         """Return all concepts that have *tag* (case-insensitive).

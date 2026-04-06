@@ -58,6 +58,7 @@ def parse_concept_file(path: Path) -> ConceptFile | None:
         related_concepts=related_concepts,
         linked_files=linked_files,
         decision_log=decision_log,
+        file_path=path,
     )
 
 

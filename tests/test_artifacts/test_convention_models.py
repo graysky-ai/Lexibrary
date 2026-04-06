@@ -13,6 +13,7 @@ from lexibrary.artifacts.convention import (
     ConventionFileFrontmatter,
     convention_file_path,
     convention_slug,
+    split_scope,
 )
 
 # ---------------------------------------------------------------------------
@@ -123,6 +124,23 @@ class TestConventionFile:
         cf = ConventionFile(frontmatter=fm)
         assert cf.scope == "src/auth"
 
+    def test_scope_paths_single(self) -> None:
+        fm = ConventionFileFrontmatter(title="Test", id="CV-001", scope="src/auth")
+        cf = ConventionFile(frontmatter=fm)
+        assert cf.scope_paths == ["src/auth"]
+
+    def test_scope_paths_multi(self) -> None:
+        fm = ConventionFileFrontmatter(
+            title="Test", id="CV-001", scope="src/cli/, src/services/"
+        )
+        cf = ConventionFile(frontmatter=fm)
+        assert cf.scope_paths == ["src/cli", "src/services"]
+
+    def test_scope_paths_project(self) -> None:
+        fm = ConventionFileFrontmatter(title="Test", id="CV-001", scope="project")
+        cf = ConventionFile(frontmatter=fm)
+        assert cf.scope_paths == ["project"]
+
     def test_rule_extraction_stored(self) -> None:
         fm = ConventionFileFrontmatter(title="Test", id="CV-001")
         cf = ConventionFile(
@@ -210,3 +228,34 @@ class TestConventionFilePath:
     def test_long_title(self, tmp_path: Path) -> None:
         result = convention_file_path("CV-001", "Future annotations import", tmp_path)
         assert result == tmp_path / "CV-001-future-annotations-import.md"
+
+
+# ---------------------------------------------------------------------------
+# split_scope
+# ---------------------------------------------------------------------------
+
+
+class TestSplitScope:
+    def test_project_scope(self) -> None:
+        assert split_scope("project") == ["project"]
+
+    def test_single_path(self) -> None:
+        assert split_scope("src/auth") == ["src/auth"]
+
+    def test_single_path_with_trailing_slash(self) -> None:
+        assert split_scope("src/auth/") == ["src/auth"]
+
+    def test_multi_path(self) -> None:
+        assert split_scope("src/cli/, src/services/") == ["src/cli", "src/services"]
+
+    def test_multi_path_no_spaces(self) -> None:
+        assert split_scope("src/cli/,src/services/") == ["src/cli", "src/services"]
+
+    def test_multi_path_extra_whitespace(self) -> None:
+        assert split_scope("  src/cli/ ,  src/services/  ") == ["src/cli", "src/services"]
+
+    def test_empty_parts_filtered(self) -> None:
+        assert split_scope("src/cli/,,src/services/") == ["src/cli", "src/services"]
+
+    def test_dot_scope(self) -> None:
+        assert split_scope(".") == ["."]

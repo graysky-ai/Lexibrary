@@ -1393,6 +1393,61 @@ class TestCheckConventionOrphanedScope:
         assert len(issues) == 1
         assert issues[0].severity == "warning"
 
+    def test_multi_path_scope_all_exist_no_issue(self, tmp_path: Path) -> None:
+        """Multi-path scope where all directories exist produces no issue."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        (project_root / "src/cli").mkdir(parents=True)
+        (project_root / "src/services").mkdir(parents=True)
+
+        _create_convention_file(
+            lexibrary_dir / "conventions",
+            "multi-scope",
+            scope="src/cli, src/services",
+        )
+
+        issues = check_convention_orphaned_scope(project_root, lexibrary_dir)
+        assert len(issues) == 0
+
+    def test_multi_path_scope_one_missing_produces_warning(self, tmp_path: Path) -> None:
+        """Multi-path scope where one directory is missing produces a warning."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        (project_root / "src/cli").mkdir(parents=True)
+        # src/services intentionally not created
+
+        _create_convention_file(
+            lexibrary_dir / "conventions",
+            "partial-scope",
+            scope="src/cli, src/services",
+        )
+
+        issues = check_convention_orphaned_scope(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        assert "src/services" in issues[0].message
+        assert issues[0].severity == "warning"
+
+    def test_multi_path_scope_all_missing_produces_warning(self, tmp_path: Path) -> None:
+        """Multi-path scope where all directories are missing produces a warning."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        _create_convention_file(
+            lexibrary_dir / "conventions",
+            "all-missing",
+            scope="src/foo, src/bar",
+        )
+
+        issues = check_convention_orphaned_scope(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        assert "src/foo" in issues[0].message
+        assert "src/bar" in issues[0].message
+
 
 # ---------------------------------------------------------------------------
 # check_convention_stale
@@ -1540,6 +1595,45 @@ class TestCheckConventionStale:
 
         issues = check_convention_stale(project_root, lexibrary_dir)
         assert len(issues) == 0
+
+    def test_multi_path_scope_one_has_files_not_stale(self, tmp_path: Path) -> None:
+        """Multi-path scope is not stale if at least one directory has files."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        (project_root / "src/cli").mkdir(parents=True)
+        (project_root / "src/cli" / "app.py").write_text("# cli")
+        (project_root / "src/services").mkdir(parents=True)
+        # src/services has no files
+
+        _create_convention_file(
+            lexibrary_dir / "conventions",
+            "multi-scope",
+            scope="src/cli, src/services",
+        )
+
+        issues = check_convention_stale(project_root, lexibrary_dir)
+        assert len(issues) == 0
+
+    def test_multi_path_scope_all_empty_is_stale(self, tmp_path: Path) -> None:
+        """Multi-path scope is stale when all directories exist but are empty."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        (project_root / "src/cli").mkdir(parents=True)
+        (project_root / "src/services").mkdir(parents=True)
+
+        _create_convention_file(
+            lexibrary_dir / "conventions",
+            "empty-multi",
+            scope="src/cli, src/services",
+        )
+
+        issues = check_convention_stale(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        assert issues[0].check == "convention_stale"
 
 
 # ---------------------------------------------------------------------------

@@ -157,6 +157,21 @@ aliases:
 Every API endpoint must use the @require_auth decorator.
 """
 
+MULTI_PATH_SCOPE = """\
+---
+title: CLI service extraction pattern
+id: CV-010
+scope: src/cli, src/services
+tags:
+  - cli
+  - services
+status: active
+source: agent
+priority: 0
+---
+New CLI commands must separate domain logic into a service module.
+"""
+
 MALFORMED_FILE = """\
 Not valid frontmatter at all.
 Just random text.
@@ -300,6 +315,40 @@ class TestConventionIndexFindByScope:
         index.load()
         result = index.find_by_scope("src/foo.py")
         assert result == []
+
+    def test_multi_path_scope_matches_first_directory(self, tmp_path: Path) -> None:
+        _write_convention(tmp_path, "multi-scope.md", MULTI_PATH_SCOPE)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        result = index.find_by_scope("src/cli/app.py")
+        assert len(result) == 1
+        assert result[0].frontmatter.title == "CLI service extraction pattern"
+
+    def test_multi_path_scope_matches_second_directory(self, tmp_path: Path) -> None:
+        _write_convention(tmp_path, "multi-scope.md", MULTI_PATH_SCOPE)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        result = index.find_by_scope("src/services/lookup.py")
+        assert len(result) == 1
+        assert result[0].frontmatter.title == "CLI service extraction pattern"
+
+    def test_multi_path_scope_does_not_match_unrelated(self, tmp_path: Path) -> None:
+        _write_convention(tmp_path, "multi-scope.md", MULTI_PATH_SCOPE)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        result = index.find_by_scope("src/utils/helpers.py")
+        assert result == []
+
+    def test_multi_path_scope_ordering_with_project(self, tmp_path: Path) -> None:
+        _write_convention(tmp_path, "future-annotations.md", FUTURE_ANNOTATIONS)  # project
+        _write_convention(tmp_path, "multi-scope.md", MULTI_PATH_SCOPE)  # src/cli, src/services
+        index = ConventionIndex(tmp_path)
+        index.load()
+        result = index.find_by_scope("src/cli/app.py")
+        assert len(result) == 2
+        # project scope first, then directory scope
+        assert result[0].frontmatter.title == "Future annotations import"
+        assert result[1].frontmatter.title == "CLI service extraction pattern"
 
 
 # ---------------------------------------------------------------------------

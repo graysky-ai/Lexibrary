@@ -541,6 +541,13 @@ def search(
         bool,
         typer.Option("--include-stale", help="Stack-only: include stale posts."),
     ] = False,
+    limit: Annotated[
+        int,
+        typer.Option(
+            "--limit",
+            help="Maximum results returned from full-text search (default: 20).",
+        ),
+    ] = 20,
 ) -> None:
     """Search across concepts, conventions, design files, playbooks, and Stack posts."""
     from lexibrary.linkgraph import open_index  # noqa: PLC0415
@@ -591,12 +598,14 @@ def search(
             concept=concept,
             resolution_type=resolution_type,
             include_stale=include_stale,
+            limit=limit,
+            suggest=True,
         )
     finally:
         if link_graph is not None:
             link_graph.close()
 
-    if not results.has_results():
+    if not results.has_results() and not results.suggestions:
         warn("No results found.")
         return
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from lexibrary.artifacts.convention import ConventionFile
+from lexibrary.artifacts.convention import ConventionFile, split_scope
 from lexibrary.conventions.parser import parse_convention_file
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,9 @@ class ConventionIndex:
         matching: list[ConventionFile] = []
         for conv in self.conventions:
             scope = conv.frontmatter.scope
-            if scope == "project" or _normalise_scope(scope) in ancestry:
+            if scope == "project":
+                matching.append(conv)
+            elif any(_normalise_scope(p) in ancestry for p in split_scope(scope)):
                 matching.append(conv)
 
         # Sort: root-to-leaf by scope depth, then priority desc, then title asc
@@ -190,7 +192,8 @@ def _scope_sort_key(conv: ConventionFile) -> tuple[int, int, int, str]:
 
     Tuple: (scope_type_order, scope_depth, -priority, title)
     - scope_type_order: 0 for "project", 1 for directory scopes
-    - scope_depth: number of path segments (root "." = 0)
+    - scope_depth: number of path segments (root "." = 0).
+      For multi-path scopes the shallowest path determines depth.
     - -priority: negated so higher priority sorts first
     - title: alphabetical tiebreak
     """
@@ -198,8 +201,12 @@ def _scope_sort_key(conv: ConventionFile) -> tuple[int, int, int, str]:
     if scope == "project":
         return (0, 0, -conv.frontmatter.priority, conv.frontmatter.title)
 
-    norm = _normalise_scope(scope)
-    depth = 0 if norm == "." else norm.count("/") + 1
+    paths = split_scope(scope)
+    depths = []
+    for p in paths:
+        norm = _normalise_scope(p)
+        depths.append(0 if norm == "." else norm.count("/") + 1)
+    depth = min(depths) if depths else 0
     return (1, depth, -conv.frontmatter.priority, conv.frontmatter.title)
 
 

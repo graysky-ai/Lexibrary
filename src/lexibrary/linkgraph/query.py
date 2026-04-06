@@ -421,12 +421,17 @@ class LinkGraph:
             for row in rows
         ]
 
-    def full_text_search(self, query: str, limit: int = 20) -> list[ArtifactResult]:
+    def full_text_search(
+        self, query: str, limit: int = 20, *, raw: bool = False
+    ) -> list[ArtifactResult]:
         """Search indexed artifacts via FTS5 full-text search.
 
-        The *query* string is wrapped in double quotes so that FTS5
-        operators (``AND``, ``OR``, ``NOT``, etc.) are treated as
-        literal terms, preventing syntax errors from user input.
+        By default the *query* string is wrapped in double quotes so that
+        FTS5 operators (``AND``, ``OR``, ``NOT``, etc.) are treated as
+        literal terms, preventing syntax errors from user input.  When
+        *raw* is ``True``, the query is passed directly to the MATCH
+        expression without any escaping -- the caller is responsible for
+        constructing a valid FTS5 boolean expression.
 
         Results are ordered by FTS5 relevance rank (lower is better)
         and capped at *limit*.
@@ -434,10 +439,15 @@ class LinkGraph:
         Parameters
         ----------
         query:
-            The search string.  Special FTS5 characters are
-            automatically escaped by literal quoting.
+            The search string.  When *raw* is ``False`` (default),
+            special FTS5 characters are automatically escaped by
+            literal quoting.  When *raw* is ``True``, the string is
+            used as-is for the MATCH expression.
         limit:
             Maximum number of results to return (default 20).
+        raw:
+            When ``True``, skip the default double-quote wrapping and
+            use *query* as a raw FTS5 expression.  Default ``False``.
 
         Returns
         -------
@@ -445,8 +455,8 @@ class LinkGraph:
             Matching artifacts ordered by relevance, or an empty list
             when nothing matches.
         """
-        # Escape any embedded double quotes then wrap for literal matching
-        safe_query = '"' + query.replace('"', '""') + '"'
+        # When raw=True, pass query as-is; otherwise escape for literal matching
+        match_expr = query if raw else '"' + query.replace('"', '""') + '"'
 
         rows = self._conn.execute(
             "SELECT a.id, a.path, a.kind, a.title, a.status, a.artifact_code "
@@ -455,7 +465,7 @@ class LinkGraph:
             "WHERE artifacts_fts MATCH ? "
             "ORDER BY f.rank "
             "LIMIT ?",
-            (safe_query, limit),
+            (match_expr, limit),
         ).fetchall()
 
         return [

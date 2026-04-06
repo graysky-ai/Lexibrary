@@ -43,6 +43,24 @@ class ConventionFile(BaseModel):
         """Return the convention scope from frontmatter."""
         return self.frontmatter.scope
 
+    @property
+    def scope_paths(self) -> list[str]:
+        """Return individual scope paths, splitting comma-separated values."""
+        return split_scope(self.frontmatter.scope)
+
+
+def split_scope(scope: str) -> list[str]:
+    """Split a scope string into individual directory paths.
+
+    Supports comma-separated multi-path scopes (e.g.
+    ``"src/lexibrary/cli/, src/lexibrary/services/"``).  Returns
+    ``["project"]`` unchanged.  Each path is stripped of surrounding
+    whitespace and trailing slashes.
+    """
+    if scope == "project":
+        return ["project"]
+    return [part.strip().rstrip("/") for part in scope.split(",") if part.strip()]
+
 
 # -- Slug / path helpers ----------------------------------------------------
 

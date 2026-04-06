@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import difflib
 import json as _json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -25,6 +27,7 @@ class SearchResults:
     design_files: list[_DesignFileResult] = field(default_factory=list)
     stack_posts: list[_StackResult] = field(default_factory=list)
     playbooks: list[_PlaybookResult] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
 
     def has_results(self) -> bool:
         """Return True if any group has results."""
@@ -98,12 +101,18 @@ class SearchResults:
                     "overview": pb.overview,
                 }
             )
-        info(_json.dumps(records))
+        if self.suggestions:
+            info(_json.dumps({"results": records, "suggestions": self.suggestions}))
+        else:
+            info(_json.dumps(records))
 
     # -- Plain (tab-separated) rendering ------------------------------------
 
     def _render_plain(self) -> None:
         """Emit tab-separated lines with no markdown formatting."""
+        if self.suggestions and not self.has_results():
+            info(f"No results. Did you mean: {', '.join(self.suggestions)}?")
+            return
         for c in self.concepts:
             info(f"{c.id}\t{c.name}\t{', '.join(c.tags)}\t{c.status}")
         for cv in self.conventions:
@@ -119,6 +128,9 @@ class SearchResults:
 
     def _render_markdown(self) -> None:
         """Render grouped results as plain Markdown tables."""
+        if self.suggestions and not self.has_results():
+            info(f"No results. Did you mean: {', '.join(self.suggestions)}?")
+            return
         if self.concepts:
             info("")
             info("## Concepts\n")
@@ -226,6 +238,15 @@ class _PlaybookResult:
     status: str
     tags: list[str]
     overview: str
+
+
+@dataclass
+class NormalizedQuery:
+    """Result of normalizing a raw search query into tokens."""
+
+    original: str  # "lookup_render"
+    tokens: list[str]  # ["lookup", "render"]
+    is_compound: bool  # True if tokens differ from original
 
 
 # Valid artifact type values for ``artifact_type`` parameter.
@@ -388,6 +409,40 @@ def _resolve_design_by_id(designs_dir: Path, artifact_id: str) -> SearchResults 
     return None
 
 
+# --- Query normalization helpers --------------------------------------------
+
+_CAMEL_RE = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+
+
+def _split_camel(s: str) -> list[str]:
+    return _CAMEL_RE.sub(" ", s).split()
+
+
+def _normalize_query(query: str) -> NormalizedQuery:
+    """Normalize a raw search query into lowercase tokens.
+
+    Splits on underscores, hyphens, dots, and slashes, then applies CamelCase
+    splitting to each part.  Empty tokens are discarded and all tokens are
+    lowercased.
+
+    Returns a :class:`NormalizedQuery` with ``is_compound=True`` when the
+    resulting tokens differ from the original query lowercased as a single
+    element.
+    """
+    parts = re.split(r"[_\-./]", query)
+    tokens: list[str] = []
+    for part in parts:
+        tokens.extend(_split_camel(part))
+    tokens = [t.lower() for t in tokens if t]
+    is_compound = tokens != [query.lower()]
+    return NormalizedQuery(original=query, tokens=tokens, is_compound=is_compound)
+
+
+def _escape_fts_token(token: str) -> str:
+    """Double-quote a token for safe use in FTS5 boolean expressions."""
+    return '"' + token.replace('"', '""') + '"'
+
+
 def unified_search(
     project_root: Path,
     *,
@@ -402,6 +457,8 @@ def unified_search(
     concept: str | None = None,
     resolution_type: str | None = None,
     include_stale: bool = False,
+    limit: int = 20,
+    suggest: bool = False,
 ) -> SearchResults:
     """Search across concepts, conventions, design files, and Stack posts.
 
@@ -432,6 +489,13 @@ def unified_search(
             type.
         include_stale: Stack-only: when ``True``, include stale posts
             (hidden by default).
+        limit: Maximum number of results returned from the FTS-accelerated
+            search path (default 20).  Not applied to file-scanning
+            fallback paths, which return all matches.
+        suggest: When ``True`` and the final results are empty and *query*
+            is not ``None``, populate ``results.suggestions`` with up to 3
+            close matches from concept names and tags (via
+            ``difflib.get_close_matches``).
 
     Returns:
         Grouped :class:`SearchResults`.
@@ -460,6 +524,9 @@ def unified_search(
     # additional tags are applied as post-filters).
     first_tag = resolved_tags[0] if resolved_tags else None
 
+    # --- Query normalization ---
+    normalized = _normalize_query(query) if query is not None else None
+
     # --- Index-accelerated tag search ---
     if link_graph is not None and first_tag is not None:
         return _tag_search_from_index(
@@ -475,7 +542,7 @@ def unified_search(
 
     # --- FTS-accelerated free-text search (index available, query without tag) ---
     if link_graph is not None and query is not None and first_tag is None:
-        return _fts_search(
+        results = _fts_search(
             link_graph,
             query=query,
             scope=scope,
@@ -483,7 +550,29 @@ def unified_search(
             status=status,
             include_deprecated=include_deprecated,
             include_stale=include_stale,
+            limit=limit,
+            normalized_query=normalized,
         )
+
+        # Zero-results concept fallback: when FTS returns nothing, try a
+        # concept-only search (which uses fuzzy matching internally) so
+        # that near-miss concept queries still surface useful results.
+        if not results.has_results():
+            results.concepts = _search_concepts(
+                project_root,
+                query=query,
+                tag=None,
+                extra_tags=[],
+                scope=scope,
+                status=status,
+                include_deprecated=include_deprecated,
+            )
+
+        # "Did you mean?" suggestions when all paths returned nothing.
+        if suggest and not results.has_results() and query is not None:
+            results.suggestions = _gather_suggestions(project_root, query)
+
+        return results
 
     # --- Fallback: file-scanning search ---
     results = SearchResults()
@@ -514,6 +603,7 @@ def unified_search(
             extra_tags=resolved_tags[1:] if resolved_tags else [],
             scope=scope,
             status=status,
+            normalized_query=normalized,
         )
 
     if search_stack:
@@ -527,6 +617,7 @@ def unified_search(
             concept=concept,
             resolution_type=resolution_type,
             include_stale=include_stale,
+            normalized_query=normalized,
         )
 
     if search_conventions:
@@ -538,6 +629,7 @@ def unified_search(
             scope=scope,
             status=status,
             include_deprecated=include_deprecated,
+            normalized_query=normalized,
         )
 
     if search_playbooks:
@@ -548,7 +640,12 @@ def unified_search(
             extra_tags=resolved_tags[1:] if resolved_tags else [],
             status=status,
             include_deprecated=include_deprecated,
+            normalized_query=normalized,
         )
+
+    # "Did you mean?" suggestions when all paths returned nothing.
+    if suggest and not results.has_results() and query is not None:
+        results.suggestions = _gather_suggestions(project_root, query)
 
     return results
 
@@ -556,6 +653,15 @@ def unified_search(
 # ---------------------------------------------------------------------------
 # Tag / tags normalisation helper
 # ---------------------------------------------------------------------------
+
+
+def _normalize_tag(tag: str) -> str:
+    """Normalize a tag for comparison by lowercasing and converting underscores to hyphens.
+
+    This ensures that ``error_handling`` and ``error-handling`` are treated as
+    equivalent when matching tags across artifact types.
+    """
+    return tag.strip().lower().replace("_", "-")
 
 
 def _resolve_tags(*, tag: str | None, tags: list[str] | None) -> list[str]:
@@ -572,6 +678,52 @@ def _resolve_tags(*, tag: str | None, tags: list[str] | None) -> list[str]:
             if norm and norm not in combined:
                 combined.append(norm)
     return combined
+
+
+def _gather_suggestions(project_root: Path, query: str) -> list[str]:
+    """Gather 'did you mean?' suggestions from concept names and tags.
+
+    Loads the :class:`ConceptIndex`, collects all concept titles and tags as
+    candidate strings, then uses :func:`difflib.get_close_matches` to find
+    up to 3 close matches for the query.
+
+    Returns a list of suggestion strings (may be empty).
+    """
+    from lexibrary.wiki.index import ConceptIndex  # noqa: PLC0415
+
+    concepts_dir = project_root / ".lexibrary" / "concepts"
+    index = ConceptIndex.load(concepts_dir)
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for name in index.names():
+        lower = name.lower()
+        if lower not in seen:
+            candidates.append(name)
+            seen.add(lower)
+
+    # Also include tags from all concepts as candidates.
+    for name in index.names():
+        concept = index.find(name)
+        if concept is not None:
+            for tag in concept.frontmatter.tags:
+                lower = tag.strip().lower()
+                if lower not in seen:
+                    candidates.append(tag.strip())
+                    seen.add(lower)
+
+    if not candidates:
+        return []
+
+    # Build a lowered list for matching, then map back to original-case strings.
+    lowered = [c.lower() for c in candidates]
+    lower_to_original: dict[str, str] = {}
+    for original, lower in zip(candidates, lowered, strict=True):
+        if lower not in lower_to_original:
+            lower_to_original[lower] = original
+
+    hits = difflib.get_close_matches(query.lower(), lowered, n=3, cutoff=0.6)
+    return [lower_to_original[h] for h in hits]
 
 
 # ---------------------------------------------------------------------------
@@ -766,6 +918,8 @@ def _fts_search(
     status: str | None,
     include_deprecated: bool,
     include_stale: bool,
+    limit: int = 20,
+    normalized_query: NormalizedQuery | None = None,
 ) -> SearchResults:
     """Perform full-text search using the link graph FTS5 index.
 
@@ -774,12 +928,29 @@ def _fts_search(
     directly from the ``artifacts`` table (via :class:`ArtifactResult`),
     so no additional file I/O is required.
 
+    When a *normalized_query* with ``is_compound=True`` is provided, the
+    function constructs a compound FTS5 MATCH expression that searches for
+    the original tokens as a phrase OR as individual AND-ed terms.  This
+    allows queries like ``"lookup_render"`` to match documents containing
+    both ``lookup`` and ``render`` even when they don't appear as a
+    contiguous phrase.
+
     When *scope* is provided, results are filtered to only include
     artifacts whose path starts with the scope prefix.  Concepts are
     never file-scoped, so when a scope filter is active concept results
     are omitted (consistent with the file-scanning fallback).
+
+    *limit* caps the maximum number of FTS results returned from the
+    link graph (default 20).
     """
-    hits = link_graph.full_text_search(query)
+    if normalized_query is not None and normalized_query.is_compound:
+        # Build a compound MATCH expression: phrase OR (token1 AND token2 ...)
+        phrase = '"' + " ".join(normalized_query.tokens) + '"'
+        and_clause = " AND ".join(_escape_fts_token(t) for t in normalized_query.tokens)
+        match_expr = f"{phrase} OR ({and_clause})"
+        hits = link_graph.full_text_search(match_expr, limit=limit, raw=True)
+    else:
+        hits = link_graph.full_text_search(query, limit=limit)
 
     results = SearchResults()
 
@@ -934,6 +1105,7 @@ def _search_design_files(
     extra_tags: list[str],
     scope: str | None,
     status: str | None,
+    normalized_query: NormalizedQuery | None = None,
 ) -> list[_DesignFileResult]:
     """Search design files by scanning YAML frontmatter and tags.
 
@@ -959,16 +1131,16 @@ def _search_design_files(
         if scope is not None and not design.source_path.startswith(scope):
             continue
 
-        # Apply tag filter
+        # Apply tag filter (underscore/hyphen normalised)
         if tag is not None:
-            tag_lower = tag.strip().lower()
-            if not any(t.lower() == tag_lower for t in design.tags):
+            tag_norm = _normalize_tag(tag)
+            if not any(_normalize_tag(t) == tag_norm for t in design.tags):
                 continue
 
-        # Multi-tag AND: all extra tags must match
+        # Multi-tag AND: all extra tags must match (normalised)
         if extra_tags:
-            design_tags_lower = {t.lower() for t in design.tags}
-            if not all(et in design_tags_lower for et in extra_tags):
+            design_tags_norm = {_normalize_tag(t) for t in design.tags}
+            if not all(_normalize_tag(et) in design_tags_norm for et in extra_tags):
                 continue
 
         # Apply free-text query filter
@@ -982,7 +1154,15 @@ def _search_design_files(
                 + " ".join(t.lower() for t in design.tags)
             )
             if needle not in searchable:
-                continue
+                # AND fallback: if compound query, check all tokens present
+                if (
+                    normalized_query is not None
+                    and normalized_query.is_compound
+                    and all(t in searchable for t in normalized_query.tokens)
+                ):
+                    pass  # AND match succeeded — do not skip
+                else:
+                    continue
 
         # Status filter
         if status is not None and design.frontmatter.status != status:
@@ -1011,6 +1191,7 @@ def _search_stack_posts(
     concept: str | None,
     resolution_type: str | None,
     include_stale: bool,
+    normalized_query: NormalizedQuery | None = None,
 ) -> list[_StackResult]:
     """Search Stack posts via StackIndex.
 
@@ -1026,16 +1207,50 @@ def _search_stack_posts(
     # Start with all posts or query results
     matches = idx.search(query) if query is not None else list(idx)
 
-    # Apply tag filter
-    if tag is not None:
-        tag_set = {p.frontmatter.id for p in idx.by_tag(tag)}
-        matches = [p for p in matches if p.frontmatter.id in tag_set]
+    # AND fallback: if exact substring returned nothing and query is
+    # compound, try matching all individual tokens.
+    if (
+        not matches
+        and query is not None
+        and normalized_query is not None
+        and normalized_query.is_compound
+    ):
+        for post in idx:
+            fm = post.frontmatter
+            searchable = (
+                fm.title.lower()
+                + " "
+                + post.problem.lower()
+                + " "
+                + (post.context.lower() if post.context else "")
+                + " "
+                + " ".join(a.lower() for a in post.attempts)
+                + " "
+                + " ".join(t.lower() for t in fm.tags)
+                + " "
+                + " ".join(f.body.lower() for f in post.findings)
+            )
+            if all(t in searchable for t in normalized_query.tokens):
+                matches.append(post)
 
-    # Multi-tag AND: filter for extra tags
+    # Apply tag filter (underscore/hyphen normalised)
+    if tag is not None:
+        tag_norm = _normalize_tag(tag)
+        matches = [
+            p
+            for p in matches
+            if any(_normalize_tag(t) == tag_norm for t in p.frontmatter.tags)
+        ]
+
+    # Multi-tag AND: filter for extra tags (normalised)
     if extra_tags:
         for et in extra_tags:
-            et_set = {p.frontmatter.id for p in idx.by_tag(et)}
-            matches = [p for p in matches if p.frontmatter.id in et_set]
+            et_norm = _normalize_tag(et)
+            matches = [
+                p
+                for p in matches
+                if any(_normalize_tag(t) == et_norm for t in p.frontmatter.tags)
+            ]
 
     # Apply scope filter
     if scope is not None:
@@ -1080,6 +1295,7 @@ def _search_conventions(
     scope: str | None,
     status: str | None,
     include_deprecated: bool,
+    normalized_query: NormalizedQuery | None = None,
 ) -> list[_ConventionResult]:
     """Search conventions via ConventionIndex (file-scanning fallback).
 
@@ -1104,25 +1320,47 @@ def _search_conventions(
 
     if query is not None:
         matches = index.search(query)
+        # AND fallback: if exact substring returned nothing and query is
+        # compound, try matching all individual tokens.
+        if (
+            not matches
+            and normalized_query is not None
+            and normalized_query.is_compound
+        ):
+            for conv in index.conventions:
+                searchable = (
+                    conv.frontmatter.title.lower()
+                    + " "
+                    + " ".join(a.lower() for a in conv.frontmatter.aliases)
+                    + " "
+                    + " ".join(t.lower() for t in conv.frontmatter.tags)
+                    + " "
+                    + conv.body.lower()
+                )
+                if all(t in searchable for t in normalized_query.tokens):
+                    matches.append(conv)
     elif tag is not None:
         matches = index.by_tag(tag)
     else:
         # List-all: return all conventions
         matches = list(index.conventions)
 
-    # Apply tag filter (even when query was the primary search)
+    # Apply tag filter (even when query was the primary search, normalised)
     if tag is not None and query is not None:
-        tag_lower = tag.strip().lower()
+        tag_norm = _normalize_tag(tag)
         matches = [
-            c for c in matches if any(t.strip().lower() == tag_lower for t in c.frontmatter.tags)
+            c for c in matches if any(_normalize_tag(t) == tag_norm for t in c.frontmatter.tags)
         ]
 
-    # Multi-tag AND: filter for extra tags
+    # Multi-tag AND: filter for extra tags (normalised)
     if extra_tags:
         matches = [
             c
             for c in matches
-            if all(any(t.strip().lower() == et for t in c.frontmatter.tags) for et in extra_tags)
+            if all(
+                any(_normalize_tag(t) == _normalize_tag(et) for t in c.frontmatter.tags)
+                for et in extra_tags
+            )
         ]
 
     # Apply scope filter: keep conventions whose scope is "project" or
@@ -1165,6 +1403,7 @@ def _search_playbooks(
     extra_tags: list[str],
     status: str | None,
     include_deprecated: bool,
+    normalized_query: NormalizedQuery | None = None,
 ) -> list[_PlaybookResult]:
     """Search playbooks via PlaybookIndex (file-scanning).
 
@@ -1186,25 +1425,49 @@ def _search_playbooks(
 
     if query is not None:
         matches = index.search(query)
+        # AND fallback: if exact substring returned nothing and query is
+        # compound, try matching all individual tokens.
+        if (
+            not matches
+            and normalized_query is not None
+            and normalized_query.is_compound
+        ):
+            for pb in index.playbooks:
+                searchable = (
+                    pb.frontmatter.title.lower()
+                    + " "
+                    + " ".join(a.lower() for a in pb.frontmatter.aliases)
+                    + " "
+                    + " ".join(t.lower() for t in pb.frontmatter.tags)
+                    + " "
+                    + pb.overview.lower()
+                )
+                if all(t in searchable for t in normalized_query.tokens):
+                    matches.append(pb)
     elif tag is not None:
         matches = index.by_tag(tag)
     else:
         # List-all: return all playbooks
         matches = list(index.playbooks)
 
-    # Apply tag filter (even when query was the primary search)
+    # Apply tag filter (even when query was the primary search, normalised)
     if tag is not None and query is not None:
-        tag_lower = tag.strip().lower()
+        tag_norm = _normalize_tag(tag)
         matches = [
-            pb for pb in matches if any(t.strip().lower() == tag_lower for t in pb.frontmatter.tags)
+            pb
+            for pb in matches
+            if any(_normalize_tag(t) == tag_norm for t in pb.frontmatter.tags)
         ]
 
-    # Multi-tag AND: filter for extra tags
+    # Multi-tag AND: filter for extra tags (normalised)
     if extra_tags:
         matches = [
             pb
             for pb in matches
-            if all(any(t.strip().lower() == et for t in pb.frontmatter.tags) for et in extra_tags)
+            if all(
+                any(_normalize_tag(t) == _normalize_tag(et) for t in pb.frontmatter.tags)
+                for et in extra_tags
+            )
         ]
 
     # Status filter
