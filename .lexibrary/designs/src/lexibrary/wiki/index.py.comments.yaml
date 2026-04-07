@@ -1,0 +1,8 @@
+comments:
+- body: 'Updated _normalize() to strip hyphens, underscores, and spaces in addition
+    to lowercasing. This makes PascalCase concept names match their kebab-case equivalents
+    (e.g. BottomUpDirectoryProcessing matches bottom-up-directory-processing). All
+    callers (find, search, by_tag, _matches_concept) benefit automatically. Note:
+    search._normalize_tag() in search.py uses a different strategy and was intentionally
+    left unchanged.'
+  date: '2026-04-07T21:14:43.332379Z'

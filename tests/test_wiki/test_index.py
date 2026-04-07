@@ -324,6 +324,112 @@ Short-named authentication concept.
 """
 
 
+PASCAL_CASE_CONCEPT = """\
+---
+title: BottomUpDirectoryProcessing
+id: CN-007
+aliases: []
+tags:
+  - indexing
+status: active
+---
+Processes directories from the bottom up.
+"""
+
+KEBAB_CASE_CONCEPT = """\
+---
+title: bottom-up-directory-processing
+id: CN-008
+aliases: []
+tags:
+  - indexing
+status: active
+---
+Processes directories from the bottom up (kebab-case variant).
+"""
+
+UNDERSCORE_CONCEPT = """\
+---
+title: some-underscored-name
+id: CN-009
+aliases: []
+tags:
+  - testing
+status: active
+---
+A concept with hyphens in its title.
+"""
+
+BILLBOARD_CONCEPT = """\
+---
+title: billboard-generation-tiers
+id: CN-010
+aliases: []
+tags:
+  - generation
+status: active
+---
+Describes how billboard summaries are generated at different tiers.
+"""
+
+
+class TestConceptIndexFindSeparatorInsensitive:
+    """Test that find() matches across separator styles (PascalCase, kebab-case, underscore)."""
+
+    def test_pascal_finds_kebab(self, tmp_path: Path) -> None:
+        """PascalCase query matches a kebab-case titled concept."""
+        _write_concept(tmp_path, "bottom-up.md", KEBAB_CASE_CONCEPT)
+        index = ConceptIndex.load(tmp_path)
+        result = index.find("BottomUpDirectoryProcessing")
+        assert result is not None
+        assert result.frontmatter.title == "bottom-up-directory-processing"
+
+    def test_kebab_finds_pascal(self, tmp_path: Path) -> None:
+        """Kebab-case query matches a PascalCase titled concept."""
+        _write_concept(tmp_path, "BottomUp.md", PASCAL_CASE_CONCEPT)
+        index = ConceptIndex.load(tmp_path)
+        result = index.find("bottom-up-directory-processing")
+        assert result is not None
+        assert result.frontmatter.title == "BottomUpDirectoryProcessing"
+
+    def test_underscore_finds_hyphenated(self, tmp_path: Path) -> None:
+        """Underscore query matches a hyphenated titled concept."""
+        _write_concept(tmp_path, "underscore.md", UNDERSCORE_CONCEPT)
+        index = ConceptIndex.load(tmp_path)
+        result = index.find("some_underscored_name")
+        assert result is not None
+        assert result.frontmatter.title == "some-underscored-name"
+
+    def test_existing_exact_match_still_works(self, tmp_path: Path) -> None:
+        """Exact match still works after normalization change."""
+        _write_concept(tmp_path, "JWTAuth.md", JWT_CONCEPT)
+        index = ConceptIndex.load(tmp_path)
+        result = index.find("JWT Auth")
+        assert result is not None
+        assert result.frontmatter.title == "JWT Auth"
+
+    def test_existing_case_insensitive_still_works(self, tmp_path: Path) -> None:
+        """Case-insensitive match still works after normalization change."""
+        _write_concept(tmp_path, "JWTAuth.md", JWT_CONCEPT)
+        index = ConceptIndex.load(tmp_path)
+        result = index.find("jwt auth")
+        assert result is not None
+        assert result.frontmatter.title == "JWT Auth"
+
+
+class TestConceptIndexSearchSeparatorInsensitive:
+    """Test that search() matches across separator styles."""
+
+    def test_pascal_query_finds_kebab_concept(self, tmp_path: Path) -> None:
+        """Searching 'BillboardGeneration' finds 'billboard-generation-tiers'."""
+        _write_concept(tmp_path, "billboard.md", BILLBOARD_CONCEPT)
+        index = ConceptIndex.load(tmp_path)
+        results = index.search("BillboardGeneration")
+        assert len(results) >= 1
+        titles = [r.frontmatter.title for r in results]
+        assert "billboard-generation-tiers" in titles
+
+
 class TestConceptIndexFuzzySearch:
     """Fuzzy matching fallback in ConceptIndex.search()."""
 

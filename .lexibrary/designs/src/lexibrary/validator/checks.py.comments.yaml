@@ -1,0 +1,6 @@
+comments:
+- body: Added _HTML_COMMENT_RE regex and HTML comment stripping in check_orphan_concepts().
+    All three scan blocks (design files, stack posts, concept files) now strip HTML
+    comments before wikilink extraction, preventing comment-embedded wikilinks from
+    inflating the referenced set.
+  date: '2026-04-07T21:18:51.178417Z'

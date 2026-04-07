@@ -1,0 +1,5 @@
+comments:
+- body: Added _HTML_COMMENT_RE regex and HTML comment stripping in _extract_wikilinks().
+    Wikilinks inside HTML comments (e.g. <!-- [[HiddenLink]] -->) are now excluded
+    from extraction. This prevents phantom index entries from comment-embedded wikilinks.
+  date: '2026-04-07T21:18:39.982192Z'

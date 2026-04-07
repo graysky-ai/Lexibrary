@@ -133,8 +133,13 @@ class ConceptIndex:
 
 
 def _normalize(text: str) -> str:
-    """Lowercase and strip whitespace for comparison."""
-    return text.strip().lower()
+    """Normalize text for comparison: lowercase and strip separators.
+
+    Note: search._normalize_tag() in src/lexibrary/search.py uses a different
+    strategy (replaces underscores with hyphens). The two serve different
+    purposes — wiki index matching vs tag filtering. Check both if changing either.
+    """
+    return text.strip().lower().replace("-", "").replace("_", "").replace(" ", "")
 
 
 def _matches_concept(concept: ConceptFile, needle: str) -> bool:

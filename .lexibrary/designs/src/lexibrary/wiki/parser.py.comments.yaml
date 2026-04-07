@@ -1,0 +1,7 @@
+comments:
+- body: Added _HTML_COMMENT_RE regex and HTML comment stripping before wikilink extraction
+    in parse_concept_file(). Uses a separate body_for_links variable so the original
+    body (with comments) is preserved in the returned ConceptFile. Only wikilink extraction
+    is affected -- summary, linked_files, and decision_log still use the original
+    body.
+  date: '2026-04-07T21:18:45.797995Z'

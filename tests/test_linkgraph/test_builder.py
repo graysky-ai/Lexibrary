@@ -100,6 +100,16 @@ class TestExtractWikilinks:
         result = _extract_wikilinks(text)
         assert result == ["Authentication", "Logging"]
 
+    def test_html_comment_wikilinks_ignored(self) -> None:
+        """Wikilinks inside HTML comments are stripped before extraction."""
+        result = _extract_wikilinks("<!-- [[Hidden]] --> [[Visible]]")
+        assert result == ["Visible"]
+
+    def test_html_comment_multiline_wikilinks_ignored(self) -> None:
+        """Wikilinks inside multiline HTML comments are stripped before extraction."""
+        result = _extract_wikilinks("<!--\n[[Hidden]]\n-->\n[[Visible]]")
+        assert result == ["Visible"]
+
 
 # ---------------------------------------------------------------------------
 # BuildResult tests

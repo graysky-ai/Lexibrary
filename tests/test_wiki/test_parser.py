@@ -151,3 +151,40 @@ class TestParseConceptFileEdgeCases:
         result = parse_concept_file(path)
         assert result is not None
         assert result.summary == "First paragraph."
+
+
+class TestParseConceptFileHtmlComments:
+    def test_wikilinks_inside_html_comments_ignored(self, tmp_path: Path) -> None:
+        """Wikilinks inside HTML comments are not extracted as related concepts."""
+        content = (
+            "---\n"
+            "title: CommentTest\n"
+            "id: CN-010\n"
+            "status: active\n"
+            "---\n"
+            "<!-- [[Hidden]] -->\n"
+            "See [[Visible]] for details.\n"
+        )
+        path = tmp_path / "comment_test.md"
+        path.write_text(content)
+        result = parse_concept_file(path)
+        assert result is not None
+        assert "Visible" in result.related_concepts
+        assert "Hidden" not in result.related_concepts
+
+    def test_body_preserves_html_comments(self, tmp_path: Path) -> None:
+        """The body field retains HTML comments even though wikilink extraction strips them."""
+        content = (
+            "---\n"
+            "title: BodyPreserve\n"
+            "id: CN-011\n"
+            "status: active\n"
+            "---\n"
+            "<!-- keep this comment -->\n"
+            "Some text with [[Visible]].\n"
+        )
+        path = tmp_path / "body_preserve.md"
+        path.write_text(content)
+        result = parse_concept_file(path)
+        assert result is not None
+        assert "<!-- keep this comment -->" in result.body

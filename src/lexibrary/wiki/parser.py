@@ -11,6 +11,7 @@ from lexibrary.artifacts.concept import ConceptFile, ConceptFileFrontmatter
 
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)
 _WIKILINK_RE = re.compile(r"\[\[(.+?)\]\]")
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # Backtick-delimited paths containing "/" and ending with a known extension
 _FILE_REF_RE = re.compile(
     r"`([^`]*?/[^`]+\.(?:py|ts|tsx|js|jsx|yaml|yml|toml|md|json|css|html|sql|sh|rs|go))`"
@@ -47,7 +48,8 @@ def parse_concept_file(path: Path) -> ConceptFile | None:
     body = text[fm_match.end() :]
 
     summary = _extract_summary(body)
-    related_concepts = _WIKILINK_RE.findall(body)
+    body_for_links = _HTML_COMMENT_RE.sub("", body)
+    related_concepts = _WIKILINK_RE.findall(body_for_links)
     linked_files = _FILE_REF_RE.findall(body)
     decision_log = _extract_decision_log(body)
 

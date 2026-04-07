@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _WIKILINK_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +90,7 @@ def _extract_wikilinks(text: str) -> list[str]:
     Returns:
         Deduplicated list of wikilink target names in order of first appearance.
     """
+    text = _HTML_COMMENT_RE.sub("", text)
     seen: set[str] = set()
     result: list[str] = []
     for match in _WIKILINK_RE.finditer(text):

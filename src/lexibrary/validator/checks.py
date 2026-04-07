@@ -59,6 +59,7 @@ logger = logging.getLogger(__name__)
 
 # Regex to extract wikilinks from markdown content
 _WIKILINK_RE = re.compile(r"\[\[(.+?)\]\]")
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 # Regex to match YAML frontmatter block
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)
@@ -1764,6 +1765,7 @@ def check_orphan_concepts(
                 text = md_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
+            text = _HTML_COMMENT_RE.sub("", text)
             for match in _WIKILINK_RE.findall(text):
                 referenced.add(match.strip().lower())
 
@@ -1775,6 +1777,7 @@ def check_orphan_concepts(
                 text = md_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
+            text = _HTML_COMMENT_RE.sub("", text)
             for match in _WIKILINK_RE.findall(text):
                 referenced.add(match.strip().lower())
 
@@ -1784,6 +1787,7 @@ def check_orphan_concepts(
             text = md_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        text = _HTML_COMMENT_RE.sub("", text)
         for match in _WIKILINK_RE.findall(text):
             referenced.add(match.strip().lower())
 
