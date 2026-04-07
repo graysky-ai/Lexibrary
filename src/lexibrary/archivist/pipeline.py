@@ -68,7 +68,7 @@ logger = logging.getLogger(__name__)
 _GENERATOR_ID = "lexibrary-v2"
 
 # Type for an optional progress callback: receives (file_path, change_level)
-ProgressCallback = Callable[[Path, ChangeLevel], None]
+ProgressCallback = Callable[[Path, ChangeLevel, str | None], None]
 
 
 @dataclass
@@ -119,6 +119,7 @@ class FileResult:
     skeleton: bool = False
     failed: bool = False
     failure_reason: str | None = None
+    skip_reason: str | None = None
 
 
 def _is_within_scope(
@@ -502,7 +503,7 @@ async def update_file(
     """
     # 1. Scope check
     if not _is_within_scope(source_path, project_root, config.scope_root):
-        return FileResult(change=ChangeLevel.UNCHANGED)
+        return FileResult(change=ChangeLevel.UNCHANGED, skip_reason="out of scope")
 
     # 1a. Force: preserve existing design content, then delete so check_change
     #     sees a NEW_FILE.  The preserved content is later passed as
@@ -532,7 +533,7 @@ async def update_file(
                     source_path.parent,
                     iwh_signal.body[:100] if iwh_signal.body else "(no body)",
                 )
-                return FileResult(change=ChangeLevel.UNCHANGED)
+                return FileResult(change=ChangeLevel.UNCHANGED, skip_reason="IWH blocked")
             if iwh_signal.scope == "incomplete":
                 logger.info(
                     "IWH incomplete signal in %s — proceeding with caution: %s",
@@ -549,7 +550,7 @@ async def update_file(
 
     # 4. UNCHANGED -- early return
     if change == ChangeLevel.UNCHANGED:
-        return FileResult(change=change)
+        return FileResult(change=change, skip_reason="unchanged")
 
     # 4b. SKELETON_ONLY -- skip in normal mode, proceed with unlimited
     if change == ChangeLevel.SKELETON_ONLY:
@@ -558,7 +559,7 @@ async def update_file(
                 "Skipping skeleton-only file %s (use --unlimited to re-enrich)",
                 source_path.name,
             )
-            return FileResult(change=ChangeLevel.UNCHANGED)
+            return FileResult(change=ChangeLevel.UNCHANGED, skip_reason="skeleton-only (use --unlimited)")
         # unlimited=True: treat as needing generation (fall through to LLM path)
         logger.info(
             "Re-enriching skeleton-only file %s (unlimited mode)",
@@ -1149,14 +1150,14 @@ async def update_files(
             stats.failed_files.append((str(source_path), str(exc)))
             stats.error_summary.add("archivist", exc, path=str(source_path))
             if progress_callback is not None:
-                progress_callback(source_path, ChangeLevel.UNCHANGED)
+                progress_callback(source_path, ChangeLevel.UNCHANGED, None)
             continue
 
         _accumulate_stats(stats, file_result, source_path=source_path)
         processed_paths.append(source_path)
 
         if progress_callback is not None:
-            progress_callback(source_path, file_result.change)
+            progress_callback(source_path, file_result.change, file_result.skip_reason)
 
     # Re-index directories containing changed files (plus ancestors up to
     # scope_root) so .aindex files stay fresh after hook-triggered updates.
@@ -1254,7 +1255,7 @@ async def update_directory(
             stats.error_summary.add("archivist", exc, path=str(source_path))
             changed_file_paths.append(source_path)
             if progress_callback is not None:
-                progress_callback(source_path, ChangeLevel.UNCHANGED)
+                progress_callback(source_path, ChangeLevel.UNCHANGED, None)
             continue
 
         _accumulate_stats(stats, file_result, source_path=source_path)
@@ -1263,7 +1264,7 @@ async def update_directory(
             changed_file_paths.append(source_path)
 
         if progress_callback is not None:
-            progress_callback(source_path, file_result.change)
+            progress_callback(source_path, file_result.change, file_result.skip_reason)
 
     if _has_meaningful_changes(stats) and changed_file_paths:
         affected_dirs = sorted({p.parent for p in changed_file_paths})
@@ -1357,7 +1358,7 @@ async def update_project(
             stats.error_summary.add("archivist", exc, path=str(source_path))
             changed_file_paths.append(source_path)
             if progress_callback is not None:
-                progress_callback(source_path, ChangeLevel.UNCHANGED)
+                progress_callback(source_path, ChangeLevel.UNCHANGED, None)
             continue
 
         _accumulate_stats(stats, file_result, source_path=source_path)
@@ -1367,7 +1368,7 @@ async def update_project(
             changed_file_paths.append(source_path)
 
         if progress_callback is not None:
-            progress_callback(source_path, file_result.change)
+            progress_callback(source_path, file_result.change, file_result.skip_reason)
 
     # Step 5: Re-index directories containing changed files (D-2, D-3).
     # Skipped when no files were actually created, updated, or failed (4.3).

@@ -674,10 +674,10 @@ class TestUpdateFiles:
         config = _make_config()
         archivist = _mock_archivist()
 
-        callback_calls: list[tuple[Path, ChangeLevel]] = []
+        callback_calls: list[tuple[Path, ChangeLevel, str | None]] = []
 
-        def callback(path: Path, change: ChangeLevel) -> None:
-            callback_calls.append((path, change))
+        def callback(path: Path, change: ChangeLevel, skip_reason: str | None = None) -> None:
+            callback_calls.append((path, change, skip_reason))
 
         async def fake_update_file(
             source_path: Path,

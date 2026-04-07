@@ -75,7 +75,7 @@ Update summary:
   Files updated:       42    # All files got new design files
 ```
 
-Note: Files where an agent has edited the design file (`updated_by: agent`) are classified as `AGENT_UPDATED` -- their footer hashes are refreshed but the LLM is not called, preserving agent edits. See [Design File Generation](design-file-generation.md#how-agent-edits-are-detected) for details.
+Note: Files where the design file body was modified since last generation are classified as `AGENT_UPDATED` -- their footer hashes are refreshed but the LLM is not called, preserving the modifications. See [Design File Generation](design-file-generation.md#how-manual-edits-are-detected) for details.
 
 ### New validation checks
 

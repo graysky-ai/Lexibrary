@@ -378,10 +378,13 @@ def update(
     stats = UpdateStats()
     _file_count = 0
 
-    def _progress_callback(file_path: Path, change_level: object) -> None:
+    def _progress_callback(file_path: Path, change_level: object, skip_reason: str | None = None) -> None:
         nonlocal _file_count
         _file_count += 1
-        info(f"  [{_file_count}] Processing {file_path.name}")
+        if skip_reason:
+            info(f"  [{_file_count}] Skipped {file_path.name} ({skip_reason})")
+        else:
+            info(f"  [{_file_count}] Processing {file_path.name}")
 
     if target is not None:
         stats = asyncio.run(

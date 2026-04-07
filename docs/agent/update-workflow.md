@@ -1,15 +1,29 @@
 # Update Workflow -- After Editing a File
 
-After making meaningful changes to a source file, update its design file in `.lexibrary/` so the next agent (or your future self) has accurate context.
+After making meaningful changes to a source file, update its design file so the next agent (or your future self) has accurate context. Design files are generated and maintained by the archivist pipeline -- agents trigger updates via CLI commands rather than editing design files directly.
 
-## When to Update
+## When to Run `lexi design update`
 
-Update the design file when your changes affect:
+Run `lexi design update <file>` after your changes affect:
 
 - **What the file does** -- new functionality, changed purpose, removed features
 - **The public interface** -- new functions, changed signatures, renamed classes, new constants
 - **Key implementation details** -- changed algorithms, new dependencies, architectural decisions
 - **Dependencies** -- new imports or removed imports
+
+Use `--force` to regenerate even when the file appears up-to-date (e.g. when you know the design file is stale but the hashes haven't changed). If the command fails, write an IWH signal noting the failure so the next agent or operator can investigate.
+
+## When to Run `lexi design comment`
+
+Run `lexi design comment <file> --body "..."` whenever your change affects:
+
+- **Behavior** -- the file does something differently at runtime
+- **Contracts** -- function signatures, return types, or error handling changed
+- **Cross-file responsibilities** -- the change shifts work to or from other modules
+
+The archivist captures structure (signatures, imports, class hierarchy). The agent captures intent -- **why** a change was made, what trade-offs were considered, and how the change interacts with the rest of the system. Comments are appended to the design file and preserved across regeneration.
+
+**Skip** `lexi design comment` for trivial or purely mechanical changes: renames, formatting, import reordering.
 
 ## When NOT to Update
 
@@ -17,70 +31,13 @@ Let the operator's `lexictl update` handle it instead when:
 
 - **Cosmetic changes** -- formatting, whitespace, comment rewording
 - **Bulk refactors** -- renaming a variable across many files (the operator can regenerate all design files at once)
-- **You are unsure what to write** -- an inaccurate design file is worse than a stale one
 
-## How to Update
+## What NOT to Touch
 
-### Step 1: Locate the Design File
+Do not manually edit design files. Specifically, do not modify:
 
-Design files live in a mirror tree under `.lexibrary/`. The path mirrors the source file path:
-
-| Source file | Design file |
-|-------------|-------------|
-| `src/lexibrary/config/schema.py` | `.lexibrary/src/lexibrary/config/schema.py.md` |
-| `tests/test_config/test_schema.py` | `.lexibrary/tests/test_config/test_schema.py.md` |
-
-### Step 2: Edit the Design File
-
-Open the design file and update the relevant sections. A design file has this structure:
-
-```markdown
----
-description: Short one-line description of what the file does
-updated_by: archivist
----
-
-## Summary
-
-Narrative description of the file's purpose and role.
-
-## Interface Contract
-
-Extracted function signatures, class definitions, constants.
-
-## Key Details
-
-Important implementation notes, design decisions.
-```
-
-You should update:
-
-- **`description`** in the frontmatter -- keep it a concise one-liner
-- **`updated_by`** in the frontmatter -- set this to `agent` (see below)
-- **Summary** -- update if the file's purpose or role changed
-- **Interface Contract** -- update if you added, removed, or changed public functions/classes
-- **Key Details** -- update if you changed important implementation details
-
-### Step 3: Set `updated_by: agent`
-
-Change the `updated_by` field in the YAML frontmatter from `archivist` to `agent`:
-
-```yaml
----
-description: Pydantic 2 configuration schema with validation
-updated_by: agent
----
-```
-
-This tells the system that the design file has been manually maintained. When the operator runs `lexictl update`, the system uses `ChangeLevel` classification to decide whether to overwrite:
-
-- If the source file has only cosmetic changes, the agent-maintained design file is preserved
-- If the source file has structural changes, the system may regenerate it (but the operator is warned)
-
-### What NOT to Touch
-
-Do not modify these parts of the design file:
-
+- **Design file body** -- the Summary, Interface Contract, and Key Details sections are managed by the archivist pipeline via `lexi design update`
+- **Frontmatter fields** -- do not set `updated_by` or other frontmatter values by hand
 - **Staleness metadata** -- the HTML comment block at the bottom containing `source`, `source_hash`, `interface_hash`, `design_hash`, `generated`, and `generator`. This is managed by `lexictl update`
 - **Generated timestamps** -- these track when the LLM last generated the file
 - **Source hashes** -- these are SHA-256 hashes used for change detection
@@ -91,42 +48,20 @@ Modifying these fields will confuse the change detection system and may cause un
 
 Suppose you add a new validation method to `src/lexibrary/config/schema.py`. After editing the source file:
 
-1. Open `.lexibrary/src/lexibrary/config/schema.py.md`
-2. Update the summary to mention the new validation
-3. Add the new method signature to the Interface Contract section
-4. Set `updated_by: agent` in the frontmatter
-5. Save the file
+1. Run `lexi design update src/lexibrary/config/schema.py` to regenerate the design file via the archivist pipeline. The pipeline reads the source, extracts the interface, and writes an updated design file at `.lexibrary/src/lexibrary/config/schema.py.md`.
 
-```yaml
----
-description: Pydantic 2 configuration schema with field validation and custom validators
-updated_by: agent
----
-```
+2. Run `lexi design comment src/lexibrary/config/schema.py --body "Added validate_token_budget() to enforce ceiling on per-file token allocation. This prevents runaway costs when the sweep encounters unexpectedly large files."` to capture the rationale for the new method.
 
-```markdown
-## Summary
-
-Defines the LexibraryConfig Pydantic model and all sub-models for
-.lexibrary/config.yaml. Includes field-level validation for paths,
-token budgets, and sweep settings.
-
-## Interface Contract
-
-class LexibraryConfig(BaseModel):
-    scope_root: str = "."
-    project_name: str = ""
-    ...
-```
+That's it. The archivist handles structure extraction, and the comment preserves your intent for future agents.
 
 ## Summary Checklist
 
 After editing a source file:
 
-1. Open the corresponding design file in `.lexibrary/`
-2. Update the description, summary, and interface contract as needed
-3. Set `updated_by: agent` in the frontmatter
-4. Do not touch staleness metadata, hashes, or timestamps
+1. Run `lexi design update <file>` to regenerate the design file
+2. Run `lexi design comment <file> --body "..."` if the change is non-trivial
+3. If `lexi design update` fails, write an IWH signal noting the failure
+4. Do not manually edit design files, frontmatter, or staleness metadata
 
 ## See Also
 

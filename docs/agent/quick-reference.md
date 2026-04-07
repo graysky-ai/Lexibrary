@@ -21,9 +21,8 @@ A single-page reference for everything an agent needs when working in a Lexibrar
 
 ## After Editing a File
 
-1. Update the design file in `.lexibrary/` -- update description, summary, and interface contract
-2. Set `updated_by: agent` in the design file frontmatter
-3. If the design file is stale or missing, run `lexi design update <file>` to regenerate it
+1. Run `lexi design update <file>` to regenerate the design file via the archivist pipeline. Use `--force` to regenerate even when the file appears up-to-date. If the command fails, write an IWH signal noting the failure.
+2. Run `lexi design comment <file> --body "..."` for non-trivial changes -- captures rationale for behavioral, contract, or cross-file changes. Skip only for purely mechanical edits (renames, formatting, import reordering).
 
 ---
 
@@ -114,7 +113,7 @@ A single-page reference for everything an agent needs when working in a Lexibrar
 lexi lookup src/lexibrary/config/schema.py
 # Read the design file, check conventions, note dependents
 # Make your edits
-# Update the design file in .lexibrary/
+# Run lexi design update <file> to regenerate the design file
 ```
 
 ### Debugging a problem

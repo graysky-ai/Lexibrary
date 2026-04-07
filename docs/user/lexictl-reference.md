@@ -129,7 +129,7 @@ Update summary:
 | Files unchanged | Files whose SHA-256 hash matched the existing design file |
 | Files created | New design files generated for previously unindexed files |
 | Files updated | Design files regenerated due to source changes |
-| Files agent-updated | Design files where `updated_by: agent` was preserved (not overwritten) |
+| Files agent-updated | Design files where body modifications were preserved (not overwritten) |
 | .aindex refreshed | Number of `.aindex` routing tables that were regenerated |
 | Token budget warnings | Files where generated content exceeded the configured token budget |
 

@@ -26,12 +26,14 @@ Do not create an IWH signal if all work is complete.
 
 ## After Editing Files
 
-- Update the corresponding design file if one exists (source files under
-  `src/`). Set `updated_by: agent` in the frontmatter and update relevant
-  sections to reflect your changes.
-- If the design file is stale or missing, run `lexi design update <file>` to
-  regenerate it via the archivist pipeline. Use `--force` to regenerate even
-  when the file appears up-to-date.
+- Run `lexi design update <file>` to regenerate the design file via the
+  archivist pipeline. Use `--force` to regenerate even when the file appears
+  up-to-date. If the command fails, write an IWH signal noting the failure.
+- Run `lexi design comment <file> --body "..."` whenever the change affects
+  behavior, contracts, or cross-file responsibilities. The archivist captures
+  structure; the agent captures intent. Skip only for trivial or purely
+  mechanical changes (renames, formatting, import reordering).
+- Do not manually edit design files or set `updated_by: agent` in frontmatter.
 - Run `lexi validate` after modifying or creating files under `.lexibrary/`,
   or after changing artifact metadata. Skip for pure code changes under
   `src/` that don't affect library artifacts.

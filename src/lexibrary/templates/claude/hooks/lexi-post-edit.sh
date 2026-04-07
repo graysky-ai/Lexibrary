@@ -51,7 +51,7 @@ BASE_MSG=""
 
 # If no project root found, just emit a reminder and exit
 if [ -z "$PROJECT_DIR" ] || [ ! -d "$PROJECT_DIR/.lexibrary" ]; then
-    BASE_MSG="Remember to update the corresponding design file after editing source files. Set updated_by: agent in the frontmatter."
+    BASE_MSG="Run \`lexi design update <file>\` to regenerate the design file. If the command fails, write an IWH signal. Use \`lexi design comment\` to add rationale for behavioral, contract, or cross-file changes."
     jq -n --arg ctx "$BASE_MSG" '{
       "hookSpecificOutput": {
         "hookEventName": "PostToolUse",
@@ -82,10 +82,10 @@ DESIGN_FILE="$PROJECT_DIR/.lexibrary/designs/$REL_PATH.md"
 
 if [ -f "$DESIGN_FILE" ]; then
     # Design file exists -- remind agent to keep it updated
-    BASE_MSG="Remember to update the corresponding design file after editing source files. Set updated_by: agent in the frontmatter. If the design file is stale, run: lexi design update $REL_PATH"
+    BASE_MSG="Run: lexi design update $REL_PATH -- to regenerate the design file. Use \`lexi design comment $REL_PATH --body \"...\"\` to add rationale for behavioral, contract, or cross-file changes."
 else
     # Design file missing -- suggest generating via lexi design update
-    BASE_MSG="No design file found for this source file. Run: lexi design update $REL_PATH -- this will generate a full design file via the archivist pipeline."
+    BASE_MSG="No design file found for this source file. Run: lexi design update $REL_PATH -- to generate a design file via the archivist pipeline."
 fi
 
 # --- Dependents warning via lexi impact ---

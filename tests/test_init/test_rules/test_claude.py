@@ -717,7 +717,7 @@ class TestPostEditHookDesignUpdateIntegration:
         """Post-edit hook emits update reminder when design file already exists."""
         _generate_hook_scripts(tmp_path)
         content = (tmp_path / ".claude" / "hooks" / "lexi-post-edit.sh").read_text(encoding="utf-8")
-        assert "Remember to update the corresponding design file" in content
+        assert "lexi design update" in content
 
     def test_post_edit_falls_back_without_lexibrary(self, tmp_path: Path) -> None:
         """Post-edit hook falls back gracefully when no .lexibrary directory exists."""

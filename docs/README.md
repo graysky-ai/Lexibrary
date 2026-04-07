@@ -87,7 +87,7 @@ Documentation for AI agents working within Lexibrary-managed codebases.
 | Document | Description |
 |----------|-------------|
 | [Lookup Workflow](agent/lookup-workflow.md) | Before-edit workflow -- run `lexi lookup`, understand design files, check conventions and dependents |
-| [Update Workflow](agent/update-workflow.md) | After-edit workflow -- update design files, set `updated_by: agent`, when to let `lexictl update` handle it |
+| [Update Workflow](agent/update-workflow.md) | After-edit workflow -- run `lexi design update`, add rationale with `lexi design comment` |
 | [Concepts](agent/concepts.md) | Using the concepts wiki -- searching, creating, and linking concepts |
 | [Stack Q&A](agent/stack.md) | Using Stack Q&A -- searching before debugging, posting after solving, voting and adding findings |
 | [Search](agent/search.md) | Unified cross-artifact search -- `lexi search`, filters, when to use search vs lookup |

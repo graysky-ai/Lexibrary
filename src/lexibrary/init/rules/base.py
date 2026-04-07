@@ -26,7 +26,7 @@ def get_core_rules() -> str:
     * Read ``.lexibrary/TOPOLOGY.md`` and run ``lexi iwh list`` at session start
     * Consume IWH signals if any are listed
     * Run ``lexi lookup <file>`` before editing
-    * Update design files after editing (set ``updated_by: agent``)
+    * Run ``lexi design update`` after editing source files
     * Run ``lexi validate`` after editing to check library health
     * Run ``lexi concepts <topic>`` before architectural decisions
     * Use ``lexi stack search`` before debugging, delegate complex

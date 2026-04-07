@@ -54,10 +54,11 @@ existing file.
 
 ## After Every Edit
 
-1. **Update the design file**: Edit `.lexibrary/designs/<rel-path>.md` to
-   reflect your changes. Set `updated_by: agent` in the frontmatter. Add a note
-   to the `authored_notes` section explaining *why* you made the change —
-   rationale, not just what changed. This is the most valuable thing you write.
+1. **Update the design file**: Run `lexi design update <rel-path>` to
+   regenerate the design file. If the command fails, write an IWH signal
+   noting the failure. Run `lexi design comment <rel-path> --body "..."` to
+   capture rationale for behavioral, contract, or cross-file changes.
+   Do not manually edit design files.
 2. **Run tests**: Run the relevant tests after each change. Fix failures before
    making further changes — do not accumulate failures.
 3. **Validate the library**: Run `lexi validate` after a batch of related changes

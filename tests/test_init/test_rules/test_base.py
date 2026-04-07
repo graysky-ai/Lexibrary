@@ -40,10 +40,9 @@ class TestGetCoreRules:
         assert "lexi lookup" in result
 
     def test_contains_design_file_updates(self) -> None:
-        """Core rules instruct agents to update design files."""
+        """Core rules instruct agents to run lexi design update after editing."""
         result = get_core_rules()
-        assert "design file" in result.lower()
-        assert "updated_by: agent" in result
+        assert "lexi design update" in result
 
     def test_contains_lexi_search_for_architectural_decisions(self) -> None:
         """Core rules instruct agents to run lexi search before architectural decisions."""

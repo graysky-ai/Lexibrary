@@ -57,13 +57,13 @@ When a source file has changed, Lexibrary classifies the type of change into one
 | Level | Meaning | Action |
 |-------|---------|--------|
 | `unchanged` | Source hash matches -- no changes detected | Skip |
-| `agent_updated` | An agent edited the design file directly (`updated_by: agent`) | Preserve agent's version |
+| `agent_updated` | The design file body was modified since last generation (e.g. by a maintainer) | Preserve modified version |
 | `content_only` | Internal implementation changed but the public interface is identical | Regenerate with lower priority |
 | `content_changed` | Content has changed in meaningful ways | Regenerate design file |
 | `interface_changed` | Public API, exports, or function signatures changed | Regenerate design file (high priority) |
 | `new_file` | No existing design file found | Generate new design file |
 
-The `agent_updated` level is important: when an AI agent manually updates a design file and sets `updated_by: agent` in the frontmatter, Lexibrary will not overwrite that agent's work during the next `lexictl update`. The agent's understanding is preserved.
+The `agent_updated` level is important: Lexibrary detects it by comparing a hash of the design file's body against the `design_hash` stored in frontmatter. If the body has been modified since the last generation -- whether by a maintainer, an agent, or any other process -- the design file is classified as `agent_updated` and its content is preserved during the next `lexictl update`. This ensures that manual edits are never silently overwritten.
 
 ### 4. LLM-powered generation
 
@@ -125,7 +125,7 @@ The operator-agent collaboration model follows a clear separation of concerns:
 
 - **Orienting** by reading `.lexibrary/TOPOLOGY.md` and running `lexi iwh list` at the start of every session.
 - **Looking up** design files before editing source code (`lexi lookup`).
-- **Updating** design files after editing source code (manual edits to `.lexibrary/` Markdown files).
+- **Updating** design files after editing source code by running `lexi design update` and adding rationale with `lexi design comment` for non-trivial changes.
 - **Creating** concepts when recurring patterns emerge (`lexi concept new`).
 - **Recording** solutions to problems in Stack Q&A (`lexi stack post`).
 - **Searching** across all artifacts for context (`lexi search`).
@@ -134,9 +134,9 @@ The operator-agent collaboration model follows a clear separation of concerns:
 
 1. The operator runs `lexictl update` to generate design files from source code.
 2. An agent reads design files via `lexi lookup` before making changes.
-3. The agent edits source code and updates the corresponding design file, setting `updated_by: agent`.
-4. The next time the operator runs `lexictl update`, the agent's design file edits are preserved (because of the `agent_updated` change level).
-5. If the source code's public interface changes in a way that makes the agent's description obsolete, the design file is regenerated.
+3. The agent edits source code and runs `lexi design update` to regenerate the design file, then uses `lexi design comment` to capture rationale for non-trivial changes.
+4. The next time the operator runs `lexictl update`, any design files whose body was modified since last generation are detected via design-hash mismatch and preserved (the `agent_updated` change level).
+5. If the source code's public interface changes enough to make the existing design file obsolete, the design file is regenerated with fresh content.
 
 This cycle ensures that knowledge accumulates over time. Agents contribute understanding through design file edits, concepts, and Stack posts. Operators keep the library healthy and up-to-date through periodic updates and validation.
 
