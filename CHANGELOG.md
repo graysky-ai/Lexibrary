@@ -2,6 +2,27 @@
 
 All notable changes to Lexibrary are documented in this file.
 
+## [0.4.0] - 2026-04-08
+
+### Added
+- **Search suggestions** — Fuzzy "did you mean?" suggestions when search returns no results
+- **Sweep service** — New `sweep.py` service for batch design file maintenance
+- **Bootstrap render service** — New `bootstrap_render.py` for initial design file generation
+- **Update render service** — New `update_render.py` for incremental design file updates
+- **Wikilink patterns module** — Extracted `wiki/patterns.py` with `extract_wikilinks` supporting HTML comment handling
+- **Convention scope splitting** — `split_scope()` helper and `scope_paths` property for multi-path convention scopes
+- **Validator lifecycle checks** — New validation checks for artifact lifecycle consistency
+- **Coverage baseline** — Recorded test coverage baseline for lexictl CLI decomposition
+
+### Changed
+- **Search engine** — Enhanced scoring, filtering, and output formatting across all render modes (JSON, plain, markdown)
+- **Design file pipeline** — Refactored archivist pipeline to use dedicated bootstrap/update render services
+- **Linkgraph builder** — Extracted wikilink logic to `wiki/patterns`, improved robustness
+- **Lexictl CLI** — Major refactoring for maintainability and decomposition readiness
+- **Validator checks** — Expanded and restructured validation with new check categories
+- **Wiki index** — Improved wikilink extraction and index building
+- **Documentation** — Updated agent docs, user docs, and templates to reflect new workflows
+
 ## [0.3.1] - 2026-04-02
 
 ### Removed
