@@ -1067,6 +1067,7 @@ async def update_files(
     archivist: ArchivistService,
     progress_callback: ProgressCallback | None = None,
     *,
+    force: bool = False,
     unlimited: bool = False,
 ) -> UpdateStats:
     """Process a specific list of source files through the pipeline.
@@ -1142,6 +1143,7 @@ async def update_files(
                 config,
                 archivist,
                 available_artifacts=available_artifacts,
+                force=force,
                 unlimited=unlimited,
             )
         except Exception as exc:
@@ -1195,6 +1197,7 @@ async def update_directory(
     archivist: ArchivistService,
     progress_callback: ProgressCallback | None = None,
     *,
+    force: bool = False,
     unlimited: bool = False,
 ) -> UpdateStats:
     """Update design files for source files within a directory subtree.
@@ -1203,6 +1206,10 @@ async def update_directory(
     regenerates ``TOPOLOGY.md``, re-indexes affected directories, and
     rebuilds the link graph.  Skips project-wide passes (deprecation
     lifecycle, enrichment queue) that only apply to full-project updates.
+
+    When *force* is True, every file is treated as if it is new regardless
+    of its current hash, so stale link-graph entries for deleted artifacts
+    get pruned on the next full rebuild.
     """
     stats = UpdateStats()
 
@@ -1246,6 +1253,7 @@ async def update_directory(
                 config,
                 archivist,
                 available_artifacts=available_artifacts,
+                force=force,
                 unlimited=unlimited,
             )
         except Exception as exc:
@@ -1301,12 +1309,18 @@ async def update_project(
     archivist: ArchivistService,
     progress_callback: ProgressCallback | None = None,
     *,
+    force: bool = False,
     unlimited: bool = False,
 ) -> UpdateStats:
     """Update all design files for the project.
 
     Discovers source files within scope_root, filters ignored and binary
     files, processes each sequentially, then returns accumulated stats.
+
+    When *force* is True, every file is treated as if it is new regardless
+    of its current hash.  This causes a full rebuild of all design files and
+    ensures the link-graph index is rebuilt from scratch, pruning any stale
+    entries left behind by deleted concept or convention files.
     """
     stats = UpdateStats()
 
@@ -1349,6 +1363,7 @@ async def update_project(
                 config,
                 archivist,
                 available_artifacts=available_artifacts,
+                force=force,
                 unlimited=unlimited,
             )
         except Exception as exc:

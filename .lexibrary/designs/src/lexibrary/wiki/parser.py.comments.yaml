@@ -5,3 +5,10 @@ comments:
     is affected -- summary, linked_files, and decision_log still use the original
     body.
   date: '2026-04-07T21:18:45.797995Z'
+- body: 'Wikilink regex consolidation (wikilink-regex change, group 3): Removed local
+    _WIKILINK_RE and _HTML_COMMENT_RE definitions. Wikilink extraction now delegates
+    to the shared extract_wikilinks() from wiki.patterns, which handles comment stripping
+    and deduplication internally. This is a behavioral change: related_concepts is
+    now deduplicated in first-appearance order, whereas previously findall could return
+    duplicates.'
+  date: '2026-04-07T22:13:44.224875Z'

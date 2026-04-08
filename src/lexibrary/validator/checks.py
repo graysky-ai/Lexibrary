@@ -53,13 +53,11 @@ from lexibrary.utils.paths import DESIGNS_DIR, aindex_path
 from lexibrary.validator.report import ValidationIssue
 from lexibrary.wiki.index import ConceptIndex
 from lexibrary.wiki.parser import parse_concept_file
+from lexibrary.wiki.patterns import HTML_COMMENT_RE as _HTML_COMMENT_RE
+from lexibrary.wiki.patterns import WIKILINK_RE as _WIKILINK_RE
 from lexibrary.wiki.resolver import UnresolvedLink, WikilinkResolver
 
 logger = logging.getLogger(__name__)
-
-# Regex to extract wikilinks from markdown content
-_WIKILINK_RE = re.compile(r"\[\[(.+?)\]\]")
-_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 # Regex to match YAML frontmatter block
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)

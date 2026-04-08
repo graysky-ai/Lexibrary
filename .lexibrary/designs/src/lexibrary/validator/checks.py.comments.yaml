@@ -4,3 +4,11 @@ comments:
     comments before wikilink extraction, preventing comment-embedded wikilinks from
     inflating the referenced set.
   date: '2026-04-07T21:18:51.178417Z'
+- body: Replaced local _WIKILINK_RE and _HTML_COMMENT_RE regex definitions with imports
+    from lexibrary.wiki.patterns. All six _WIKILINK_RE.findall() call sites and three
+    _HTML_COMMENT_RE.sub() call sites remain unchanged via import aliases. This is
+    a pure refactor with no behavioral change - the validator continues using raw
+    .findall() results rather than the higher-level extract_wikilinks() function because
+    it needs per-match processing (strip/lowercase) and in some cases all matches
+    including duplicates.
+  date: '2026-04-07T22:14:19.709865Z'

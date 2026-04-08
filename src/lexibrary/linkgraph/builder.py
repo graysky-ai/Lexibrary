@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import re
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -45,16 +44,9 @@ from lexibrary.stack.parser import parse_stack_post  # noqa: F401
 from lexibrary.utils.hashing import hash_file
 from lexibrary.utils.paths import DESIGNS_DIR, LEXIBRARY_DIR
 from lexibrary.wiki.parser import parse_concept_file  # noqa: F401
+from lexibrary.wiki.patterns import extract_wikilinks as _extract_wikilinks_impl
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Regex for extracting [[wikilinks]] from arbitrary text
-# ---------------------------------------------------------------------------
-
-_WIKILINK_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
-_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -76,29 +68,6 @@ class BuildResult:
 # ---------------------------------------------------------------------------
 # Utility functions
 # ---------------------------------------------------------------------------
-
-
-def _extract_wikilinks(text: str) -> list[str]:
-    """Extract ``[[wikilink]]`` targets from *text*, returning deduplicated names.
-
-    Matches ``[[...]]`` patterns where the content contains no nested brackets.
-    Duplicate names are removed while preserving first-occurrence order.
-
-    Args:
-        text: Arbitrary text that may contain ``[[WikilinkName]]`` patterns.
-
-    Returns:
-        Deduplicated list of wikilink target names in order of first appearance.
-    """
-    text = _HTML_COMMENT_RE.sub("", text)
-    seen: set[str] = set()
-    result: list[str] = []
-    for match in _WIKILINK_RE.finditer(text):
-        name = match.group(1).strip()
-        if name and name not in seen:
-            seen.add(name)
-            result.append(name)
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -474,7 +443,7 @@ class IndexBuilder:
             self._insert_alias(concept_id, alias, concept_relpath)
 
         # 3. Wikilinks from concept body -> other concepts/conventions
-        wikilink_names = _extract_wikilinks(concept_file.body)
+        wikilink_names = _extract_wikilinks_impl(concept_file.body)
         for wikilink_name in wikilink_names:
             target_path, target_kind = self._resolve_wikilink_target(wikilink_name)
             target_id = self._get_or_create_artifact(target_path, target_kind, title=wikilink_name)
@@ -1070,7 +1039,7 @@ class IndexBuilder:
         )
 
         # 3. Extract wikilinks and insert convention_concept_ref links
-        wikilink_names = _extract_wikilinks(conv_file.body)
+        wikilink_names = _extract_wikilinks_impl(conv_file.body)
         for wikilink_name in wikilink_names:
             concept_path = f".lexibrary/concepts/{wikilink_name}.md"
             concept_id = self._get_or_create_artifact(concept_path, "concept", title=wikilink_name)
@@ -1646,7 +1615,7 @@ class IndexBuilder:
             self._insert_alias(concept_id, alias, concept_relpath)
 
         # Re-insert wikilinks from concept body
-        wikilink_names = _extract_wikilinks(concept_file.body)
+        wikilink_names = _extract_wikilinks_impl(concept_file.body)
         for wikilink_name in wikilink_names:
             target_path, target_kind = self._resolve_wikilink_target(wikilink_name)
             target_id = self._get_or_create_artifact(target_path, target_kind, title=wikilink_name)
@@ -1981,7 +1950,7 @@ class IndexBuilder:
         )
 
         # Extract wikilinks and insert convention_concept_ref links
-        wikilink_names = _extract_wikilinks(conv_file.body)
+        wikilink_names = _extract_wikilinks_impl(conv_file.body)
         for wikilink_name in wikilink_names:
             concept_path = f".lexibrary/concepts/{wikilink_name}.md"
             concept_id = self._get_or_create_artifact(concept_path, "concept", title=wikilink_name)

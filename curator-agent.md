@@ -60,7 +60,7 @@ sibling `.comments.yaml`. Confirm policy:
 
 ### 2.3 Validation Sweep
 
-- Run the full `lexi validate` check suite (13 checks across error/warning/info).
+- Run the full `lexi validate` check suite (47 checks across error/warning/info).
 - Triage results by severity, grouping related issues into actionable work items.
 - Auto-fix trivially correctable issues (e.g. missing bidirectional dep entries).
 - Leverage actionable validator suggestions to self-correct — see
@@ -71,12 +71,16 @@ sibling `.comments.yaml`. Confirm policy:
 
 - **Hash freshness**: Lexibrary uses two-tier hashing — a **content hash**
   (SHA-256 of the full source file, stored as `source_hash` in design file
-  frontmatter) and an **interface hash** (Tree-sitter AST skeleton rendering,
-  stored as `interface_hash` in `.aindex` YAML). The Curator should use both:
+  footer metadata) and an **interface hash** (Tree-sitter AST skeleton rendering,
+  stored as `interface_hash` in footer metadata and `.aindex` YAML). The Curator should use both:
   a content-hash mismatch with a stable interface hash indicates an
   implementation-only change (lower impact), while an interface-hash mismatch
   signals a public API change (higher impact, more dependents affected).
   Rank staleness by age, hash tier, and downstream impact.
+- **Convention/playbook staleness**: Check conventions and playbooks for
+  staleness — convention bodies may reference patterns, file paths, or APIs
+  that have changed. Playbook steps may reference outdated commands or
+  workflows. Flag stale conventions/playbooks for review or update.
 - **Stack post decay**: Flag stack posts whose referenced code has changed
   substantially since posting.
 - **IWH signal cleanup**: Consume stale `incomplete`/`blocked` IWH signals that
@@ -99,10 +103,28 @@ sibling `.comments.yaml`. Confirm policy:
   Consistency Checker must understand these semantics to avoid introducing bugs.
   Full normalisation rules are documented in
   [spec-opportunities.md §Opportunity 9](spec-opportunities.md#opportunity-9-normalisation-rules-as-explicit-contracts).
+- **Wikilink hygiene sweep**: Strip unresolved wikilinks from design files.
+  Triage commonly co-occurring terms into concepts/conventions/playbooks or
+  discard. Runs as part of the Consistency Checker sub-agent.
+- **Wikilink suggestions**: During design file review, identify domain terms
+  that appear frequently across artifacts but lack a corresponding concept,
+  convention, or playbook. Surface these as suggestions for the user to
+  approve or reject. Replaces the originally-proposed `SuggestedArtifact`
+  BAML type approach — curation belongs in the Curator, not the archivist.
+- **Fuzzy match alias discovery**: After validation, analyze wikilinks that
+  fuzzy-match existing artifacts. Two actions: (a) if a near-miss term is a
+  natural alias, add it to the artifact's `aliases` list automatically;
+  (b) if a near-miss term represents a distinct concept, surface it as a
+  suggestion for a new artifact.
 
 ### 2.7 Index Health (Speculative)
 
 - **aindex coverage**: Identify source files missing from `.aindex` output.
+- **Orphaned aindex cleanup**: Detect and remove orphaned `.aindex` mirror
+  files under `.lexibrary/designs/` for source directories that have been
+  deleted. The fixer (`fix_orphaned_aindex`) exists in the validator but is
+  only invoked via `lexictl validate --fix` — the Curator should run this
+  proactively during health sweeps.
 - **Link graph integrity**: Verify SQLite index is consistent with on-disk
   artifacts.
 - **Alias collisions**: Detect duplicate or ambiguous aliases in the link graph.
@@ -249,12 +271,12 @@ Key entry points:
 | `reverse_deps(path, link_type)` | `linkgraph.query` | Inbound links to an artifact |
 | `resolve_alias(alias)` | `linkgraph.query` | Case-insensitive concept/convention lookup |
 | `search_by_tag(tag)` | `linkgraph.query` | Find artifacts by tag (exact match) |
-| `full_text_search(query, limit=20)` | `linkgraph.query` | FTS5 full-text search across artifacts |
-| `get_conventions(directory_paths)` | `linkgraph.query` | Conventions scoped to directories; root-to-leaf ordering |
-| `traverse(start_path, max_depth=3)` | `linkgraph.query` | Multi-hop graph traversal with cycle detection (max 10 depth) |
+| `full_text_search(query, limit=20, *, raw=False)` | `linkgraph.query` | FTS5 full-text search across artifacts |
+| `get_conventions(directory_paths, *, include_deprecated=False)` | `linkgraph.query` | Conventions scoped to directories; root-to-leaf ordering |
+| `traverse(start_path, max_depth=3, link_types=None, direction='outbound')` | `linkgraph.query` | Multi-hop graph traversal with cycle detection (max 10 depth) |
 | `build_summary()` | `linkgraph.query` | Aggregate build statistics from most recent index build |
 | `find_all_iwh(project_root)` | `iwh.reader` | Discover all IWH signals; returns `list[(dir, IWHFile)]` |
-| `validate_library(root, checks, severity)` | `validator` | Run validation; returns `ValidationReport` |
+| `validate_library(project_root, lexibrary_dir, *, severity_filter, check_filter)` | `validator` | Run validation; returns `ValidationReport` |
 | `parse_design_file(path)` | `artifacts.design_file_parser` | Full design file parse |
 | `parse_design_file_frontmatter(path)` | `artifacts.design_file_parser` | Lightweight frontmatter-only parse |
 | `WikilinkResolver` | `wiki.resolver` | Resolves `[[wikilinks]]` to concepts or Stack posts |
@@ -267,12 +289,12 @@ link graph systems:
 
 **Validation models** (`validator.report`):
 - `ValidationReport` — top-level container for a validation run
-- `ValidationIssue` — single issue: `path`, `severity`, `message`, `suggestions`
+- `ValidationIssue` — single issue: `severity`, `check`, `message`, `artifact`, `suggestion`
 - `ValidationSummary` — aggregate counts by severity
 
 **Link graph result types** (`linkgraph.query`):
 - `ArtifactResult` — lookup result: `id`, `path`, `kind`, `title`, `status`
-- `LinkResult` — inbound edge: `source_path`, `link_type`, `context`
+- `LinkResult` — inbound edge: `source_id`, `source_path`, `link_type`, `link_context`
 - `ConventionResult` — convention body scoped to a directory
 - `TraversalNode` — node in multi-hop graph traversal
 - `BuildSummaryEntry` — build statistics entry
@@ -283,7 +305,10 @@ link graph systems:
 - `wikilink` — `[[Concept]]` cross-reference
 - `concept_file_ref` — concept referencing a file
 - `stack_file_ref` — Stack post referencing a file
-- `convention` — scoped coding standard
+- `stack_concept_ref` — Stack post referencing a concept
+- `design_stack_ref` — design file referencing a Stack post
+- `design_source` — design file linked to its source file
+- `convention_concept_ref` — convention referencing a concept
 
 The `lexi curate` CLI command is a thin wrapper over these APIs — same pattern
 as `search.py` providing `SearchResults` that the CLI renders.
@@ -559,7 +584,10 @@ only the low-risk cases, `propose` flags everything for review.
 - Add `stale_agent_design` validation check to detect agent-edited files
   with outdated `source_hash`.
 - Design and implement `CuratorReconcileDesignFile` BAML prompt.
-- Implement Consistency Checker sub-agent.
+- Implement Consistency Checker sub-agent (includes wikilink hygiene sweep,
+  wikilink suggestions, and fuzzy match alias discovery — see §2.6).
+- Orphaned `.aindex` cleanup as part of index health checks (§2.7).
+- Convention/playbook staleness detection (§2.4).
 - `lexi curate` CLI command (on-demand).
 
 ### Phase 2: Deprecation Workflow

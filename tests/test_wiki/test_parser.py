@@ -153,6 +153,26 @@ class TestParseConceptFileEdgeCases:
         assert result.summary == "First paragraph."
 
 
+class TestParseConceptFileDeduplication:
+    def test_repeated_wikilinks_deduplicated(self, tmp_path: Path) -> None:
+        """Repeated wikilinks produce a deduplicated related_concepts list."""
+        content = (
+            "---\n"
+            "title: DedupTest\n"
+            "id: CN-020\n"
+            "status: active\n"
+            "---\n"
+            "See [[Alpha]] for context.\n"
+            "\n"
+            "More about [[Alpha]] and [[Beta]] and [[Alpha]] again.\n"
+        )
+        path = tmp_path / "dedup_test.md"
+        path.write_text(content)
+        result = parse_concept_file(path)
+        assert result is not None
+        assert result.related_concepts == ["Alpha", "Beta"]
+
+
 class TestParseConceptFileHtmlComments:
     def test_wikilinks_inside_html_comments_ignored(self, tmp_path: Path) -> None:
         """Wikilinks inside HTML comments are not extracted as related concepts."""

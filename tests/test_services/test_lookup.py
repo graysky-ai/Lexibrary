@@ -542,9 +542,7 @@ class TestBuildFileLookupSiblings:
         config = _make_config()
 
         with (
-            patch(
-                "lexibrary.artifacts.aindex_parser.parse_aindex", return_value=aindex
-            ),
+            patch("lexibrary.artifacts.aindex_parser.parse_aindex", return_value=aindex),
             patch(
                 "lexibrary.artifacts.design_file_parser.parse_design_file_frontmatter",
                 return_value=None,
@@ -666,9 +664,7 @@ class TestBuildFileLookupConcepts:
         mock_design_path = MagicMock(spec=Path)
         mock_design_path.exists.return_value = True
         mock_design_path.read_text.return_value = "# Design\nContent"
-        mock_design_path.relative_to.return_value = Path(
-            ".lexibrary/designs/src/pkg/mymodule.md"
-        )
+        mock_design_path.relative_to.return_value = Path(".lexibrary/designs/src/pkg/mymodule.md")
 
         # Create a mock link graph
         mock_link_graph = MagicMock()
@@ -712,9 +708,7 @@ class TestBuildFileLookupConcepts:
 
         mock_concept_index.find = MagicMock(side_effect=find_side_effect)
 
-        open_index_patch = patch(
-            "lexibrary.linkgraph.open_index", return_value=mock_link_graph
-        )
+        open_index_patch = patch("lexibrary.linkgraph.open_index", return_value=mock_link_graph)
 
         with (
             patch("lexibrary.artifacts.aindex_parser.parse_aindex", return_value=None),

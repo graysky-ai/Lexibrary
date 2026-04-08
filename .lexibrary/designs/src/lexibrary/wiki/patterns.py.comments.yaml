@@ -1,0 +1,7 @@
+comments:
+- body: Created as part of the wikilink-regex consolidation effort. This module is
+    the single source of truth for wikilink extraction regex. Four consuming modules
+    (linkgraph/builder, wiki/parser, validator/checks, lifecycle/concept_deprecation)
+    will import from here instead of defining local patterns. The module is intentionally
+    NOT re-exported from wiki/__init__.py -- it is internal.
+  date: '2026-04-07T22:09:46.076925Z'

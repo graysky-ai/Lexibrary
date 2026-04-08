@@ -125,14 +125,11 @@ def find_concept_references(
     list[str]
         Relative paths of artefacts that reference this concept.
     """
-    import re  # noqa: PLC0415
-
     from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
         parse_design_file,
     )
     from lexibrary.utils.paths import DESIGNS_DIR  # noqa: PLC0415
-
-    wikilink_re = re.compile(r"\[\[(.+?)\]\]")
+    from lexibrary.wiki.patterns import WIKILINK_RE as wikilink_re  # noqa: N811, PLC0415
 
     # Build a set of normalised names to match against
     names_to_match: set[str] = {concept_title.strip().lower()}

@@ -1,0 +1,6 @@
+comments:
+- body: Replaced local wikilink regex (re.compile(r"\[\[(.+?)\]\]")) with shared WIKILINK_RE
+    from wiki.patterns module. The shared pattern uses [^\[\]]+ instead of .+?, which
+    is stricter (rejects nested brackets). The import is kept lazy inside find_concept_references()
+    to preserve the existing import structure.
+  date: '2026-04-07T22:13:57.286109Z'

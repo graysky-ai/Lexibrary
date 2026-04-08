@@ -24,6 +24,10 @@ _METADATA_RE = re.compile(
 )
 
 
+# NOTE: This pattern is intentionally different from wiki.patterns.HTML_COMMENT_RE.
+# That pattern strips inline HTML comments from raw text before wikilink extraction
+# (multiline, dotall). This pattern strips comment-only lines from rendered output
+# (line-anchored, not dotall). They solve different problems.
 _HTML_COMMENT_RE = re.compile(r"^\s*<!--.*-->\s*$")
 
 

@@ -32,6 +32,40 @@ lexictl_app.add_typer(iwh_ctl_app, name="iwh")
 
 
 # ---------------------------------------------------------------------------
+# init — helpers
+# ---------------------------------------------------------------------------
+
+
+def _run_post_init_update(project_root: Path) -> None:
+    """Prompt the user to run ``lexictl update`` after init and execute if accepted."""
+    import asyncio  # noqa: PLC0415
+
+    from lexibrary.archivist.pipeline import update_project  # noqa: PLC0415
+    from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
+    from lexibrary.config.loader import load_config  # noqa: PLC0415
+    from lexibrary.llm.client_registry import build_client_registry  # noqa: PLC0415
+    from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
+
+    answer = input("\nRun `lexictl update` now to generate design files? [y/N] ")
+    if answer.strip().lower() not in ("y", "yes"):
+        info("Run `lexictl update` later to generate design files.")
+        return
+
+    info("Running lexictl update...")
+    config = load_config(project_root)
+    rate_limiter = RateLimiter()
+    registry = build_client_registry(config)
+    archivist = ArchivistService(rate_limiter=rate_limiter, client_registry=registry)
+    stats = asyncio.run(update_project(project_root, config, archivist))
+    info(
+        f"Update complete. "
+        f"{stats.files_scanned} files scanned, "
+        f"{stats.files_created} created, "
+        f"{stats.files_updated} updated."
+    )
+
+
+# ---------------------------------------------------------------------------
 # init — wizard-based project initialisation
 # ---------------------------------------------------------------------------
 
@@ -112,31 +146,7 @@ def init(
 
     # Post-init: offer to run lexictl update (skip in defaults mode)
     if not defaults:
-        answer = input("\nRun `lexictl update` now to generate design files? [y/N] ")
-        run_update = answer.strip().lower() in ("y", "yes")
-        if run_update:
-            info("Running lexictl update...")
-            import asyncio  # noqa: PLC0415
-
-            from lexibrary.archivist.pipeline import update_project  # noqa: PLC0415
-            from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
-            from lexibrary.config.loader import load_config  # noqa: PLC0415
-            from lexibrary.llm.client_registry import build_client_registry  # noqa: PLC0415
-            from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
-
-            config = load_config(project_root)
-            rate_limiter = RateLimiter()
-            registry = build_client_registry(config)
-            archivist = ArchivistService(rate_limiter=rate_limiter, client_registry=registry)
-            stats = asyncio.run(update_project(project_root, config, archivist))
-            info(
-                f"Update complete. "
-                f"{stats.files_scanned} files scanned, "
-                f"{stats.files_created} created, "
-                f"{stats.files_updated} updated."
-            )
-        else:
-            info("Run `lexictl update` later to generate design files.")
+        _run_post_init_update(project_root)
     else:
         info("Run `lexictl update` to generate design files.")
 
@@ -194,6 +204,18 @@ def update(
             ),
         ),
     ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help=(
+                "Force a full rebuild regardless of modification timestamps. "
+                "Treats every file as new so the pipeline regenerates all design files "
+                "and rebuilds the link-graph index from scratch, pruning stale entries "
+                "left behind by deleted concept or convention files."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Re-index changed files and regenerate design files."""
     import asyncio  # noqa: PLC0415
@@ -213,11 +235,15 @@ def update(
     from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
 
     # Mutual exclusivity checks — skeleton first (it subsumes the path argument)
-    if skeleton and (changed_only is not None or topology or dry_run or unlimited):
+    if skeleton and (changed_only is not None or topology or dry_run or unlimited or force):
         error(
             "--skeleton cannot be combined with"
-            " --changed-only, --topology, --dry-run, or --unlimited."
+            " --changed-only, --topology, --dry-run, --unlimited, or --force."
         )
+        raise typer.Exit(1)
+
+    if force and (topology or dry_run):
+        error("--force cannot be combined with --topology or --dry-run.")
         raise typer.Exit(1)
 
     if skeleton and path is None:
@@ -304,20 +330,9 @@ def update(
             return
 
         # Display results
-        counts: dict[str, int] = {}
-        for file_path, change_level in results:
-            label = change_level.value.upper()
-            counts[label] = counts.get(label, 0) + 1
-            rel_path = file_path.relative_to(project_root)
-            info(f"  {label:<20} {rel_path}")
+        from lexibrary.services.update_render import render_dry_run_results  # noqa: PLC0415
 
-        # Summary
-        info("")
-        total = len(results)
-        parts = [f"{total} file{'s' if total != 1 else ''}"]
-        for label, count in sorted(counts.items()):
-            parts.append(f"{count} {label.lower()}")
-        info("Summary: " + ", ".join(parts))
+        info(render_dry_run_results(results, project_root))
         return
 
     rate_limiter = RateLimiter()
@@ -330,24 +345,15 @@ def update(
         info(f"Updating {len(resolved_paths)} changed file(s)...")
 
         stats = asyncio.run(
-            update_files(resolved_paths, project_root, config, archivist, unlimited=unlimited)
+            update_files(
+                resolved_paths, project_root, config, archivist, force=force, unlimited=unlimited
+            )
         )
 
-        info("")
-        info("Update summary:")
-        info(f"  Files scanned:       {stats.files_scanned}")
-        info(f"  Files unchanged:     {stats.files_unchanged}")
-        info(f"  Files created:       {stats.files_created}")
-        info(f"  Files updated:       {stats.files_updated}")
-        info(f"  Files agent-updated: {stats.files_agent_updated}")
-        if stats.files_failed:
-            error(f"  Files failed:       {stats.files_failed}")
-            for failed_path, reason in stats.failed_files:
-                try:
-                    rel = Path(failed_path).relative_to(project_root)
-                except ValueError:
-                    rel = Path(failed_path)
-                error(f"    - {rel}: {reason}")
+        from lexibrary.services.update_render import render_update_summary  # noqa: PLC0415
+
+        for level, msg in render_update_summary(stats, project_root):
+            {"info": info, "warn": warn, "error": error}[level](msg)
 
         if stats.error_summary.has_errors():
             from lexibrary.errors import format_error_summary  # noqa: PLC0415
@@ -362,7 +368,7 @@ def update(
     if target is not None and target.is_file():
         info(f"Updating design file for {path}...")
         result = asyncio.run(
-            update_file(target, project_root, config, archivist, unlimited=unlimited)
+            update_file(target, project_root, config, archivist, force=force, unlimited=unlimited)
         )
         if result.failed:
             error(f"Failed to update design file for {path}")
@@ -378,7 +384,11 @@ def update(
     stats = UpdateStats()
     _file_count = 0
 
-    def _progress_callback(file_path: Path, change_level: object, skip_reason: str | None = None) -> None:
+    def _progress_callback(
+        file_path: Path,
+        change_level: object,
+        skip_reason: str | None = None,
+    ) -> None:
         nonlocal _file_count
         _file_count += 1
         if skip_reason:
@@ -394,6 +404,7 @@ def update(
                 config,
                 archivist,
                 progress_callback=_progress_callback,
+                force=force,
                 unlimited=unlimited,
             )
         )
@@ -404,6 +415,7 @@ def update(
                 config,
                 archivist,
                 progress_callback=_progress_callback,
+                force=force,
                 unlimited=unlimited,
             )
         )
@@ -415,68 +427,28 @@ def update(
         hint("Run /topology-builder to generate TOPOLOGY.md")
 
     # Print summary stats
-    info("")
-    info("Update summary:")
-    info(f"  Files scanned:       {stats.files_scanned}")
-    info(f"  Files unchanged:     {stats.files_unchanged}")
-    info(f"  Files created:       {stats.files_created}")
-    info(f"  Files updated:       {stats.files_updated}")
-    info(f"  Files agent-updated: {stats.files_agent_updated}")
-    if stats.files_failed:
-        error(f"  Files failed:       {stats.files_failed}")
-        for failed_path, reason in stats.failed_files:
-            try:
-                rel = Path(failed_path).relative_to(project_root)
-            except ValueError:
-                rel = Path(failed_path)
-            error(f"    - {rel}: {reason}")
-    if stats.aindex_refreshed:
-        info(f"  .aindex refreshed:   {stats.aindex_refreshed}")
-    if stats.token_budget_warnings:
-        warn(f"  Token budget warnings: {stats.token_budget_warnings}")
+    from lexibrary.services.update_render import (  # noqa: PLC0415
+        has_enrichment_queue,
+        has_lifecycle_stats,
+        render_enrichment_queue,
+        render_lifecycle_stats,
+        render_update_summary,
+    )
+
+    _dispatch = {"info": info, "warn": warn, "error": error}
+
+    for level, msg in render_update_summary(stats, project_root):
+        _dispatch[level](msg)
 
     # Deprecation lifecycle stats
-    has_lifecycle = (
-        stats.designs_deprecated
-        + stats.designs_unlinked
-        + stats.designs_deleted_ttl
-        + stats.concepts_deleted_ttl
-        + stats.concepts_skipped_referenced
-        + stats.conventions_deleted_ttl
-        + stats.renames_detected
-        + stats.renames_migrated
-    ) > 0
-    if has_lifecycle:
-        info("")
-        info("Lifecycle:")
-        if stats.renames_detected:
-            info(f"  Renames detected:    {stats.renames_detected}")
-        if stats.renames_migrated:
-            info(f"  Renames migrated:    {stats.renames_migrated}")
-        if stats.designs_deprecated:
-            info(f"  Designs deprecated:  {stats.designs_deprecated}")
-        if stats.designs_unlinked:
-            info(f"  Designs unlinked:    {stats.designs_unlinked}")
-        if stats.designs_deleted_ttl:
-            warn(f"  Designs TTL-deleted: {stats.designs_deleted_ttl}")
-        if stats.concepts_deleted_ttl:
-            warn(f"  Concepts TTL-deleted: {stats.concepts_deleted_ttl}")
-        if stats.concepts_skipped_referenced:
-            info(f"  Concepts skipped (referenced): {stats.concepts_skipped_referenced}")
-        if stats.conventions_deleted_ttl:
-            warn(f"  Conventions TTL-deleted: {stats.conventions_deleted_ttl}")
+    if has_lifecycle_stats(stats):
+        for level, msg in render_lifecycle_stats(stats):
+            _dispatch[level](msg)
 
     # Enrichment queue stats
-    has_queue = (stats.queue_processed + stats.queue_failed + stats.queue_remaining) > 0
-    if has_queue:
-        info("")
-        info("Enrichment queue:")
-        if stats.queue_processed:
-            info(f"  Enriched:            {stats.queue_processed}")
-        if stats.queue_failed:
-            error(f"  Failed:             {stats.queue_failed}")
-        if stats.queue_remaining:
-            info(f"  Remaining:           {stats.queue_remaining}")
+    if has_enrichment_queue(stats):
+        for level, msg in render_enrichment_queue(stats):
+            _dispatch[level](msg)
 
     if stats.error_summary.has_errors():
         from lexibrary.errors import format_error_summary  # noqa: PLC0415
@@ -589,12 +561,13 @@ def bootstrap(
         scope_dir, project_root, config, progress_callback=_index_progress
     )
 
-    info(
-        f"  Directories indexed: {index_stats.directories_indexed}, "
-        f"Files found: {index_stats.files_found}"
+    from lexibrary.services.bootstrap_render import (  # noqa: PLC0415
+        render_bootstrap_summary,
+        render_index_summary,
     )
-    if index_stats.errors:
-        error(f"  Errors: {index_stats.errors}")
+
+    for level, msg in render_index_summary(index_stats):
+        {"info": info, "error": error}[level](msg)
 
     if index_stats.error_summary.has_errors():
         from lexibrary.errors import format_error_summary  # noqa: PLC0415
@@ -632,20 +605,8 @@ def bootstrap(
         )
 
     # Report summary
-    info("")
-    info("Bootstrap summary:")
-    info(f"  Files scanned:  {design_stats.files_scanned}")
-    info(f"  Files created:  {design_stats.files_created}")
-    info(f"  Files updated:  {design_stats.files_updated}")
-    info(f"  Files skipped:  {design_stats.files_skipped}")
-    if design_stats.files_failed:
-        error(f"  Files failed:  {design_stats.files_failed}")
-
-    if design_stats.errors:
-        info("")
-        error("Errors:")
-        for err in design_stats.errors:
-            error(f"  {err}")
+    for level, msg in render_bootstrap_summary(design_stats):
+        {"info": info, "error": error}[level](msg)
 
     has_errors = index_stats.errors > 0 or design_stats.files_failed > 0
     if has_errors:
@@ -923,48 +884,6 @@ def setup(
     info(f"\nSetup complete. {total_files} rule file(s) updated.")
 
 
-def _has_changes(root: Path, last_sweep: float) -> bool:
-    """Check whether any file under *root* has mtime newer than *last_sweep*.
-
-    Uses ``os.scandir()`` for a fast stat walk.  Returns ``True`` on the
-    first file found with a newer mtime (short-circuit).  Skips the
-    ``.lexibrary/`` directory to avoid self-triggered loops.
-
-    If *last_sweep* is ``0.0`` (first run), always returns ``True``.
-    """
-    import os as _os  # noqa: PLC0415
-
-    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
-
-    if last_sweep == 0.0:
-        return True
-
-    lexibrary_abs = (root / LEXIBRARY_DIR).resolve()
-
-    def _scan(directory: Path) -> bool:
-        try:
-            with _os.scandir(directory) as it:
-                for entry in it:
-                    entry_path = Path(entry.path).resolve()
-
-                    if entry.is_dir(follow_symlinks=False):
-                        if entry_path == lexibrary_abs:
-                            continue
-                        if _scan(entry_path):
-                            return True
-                    elif entry.is_file(follow_symlinks=False):
-                        try:
-                            if entry.stat().st_mtime > last_sweep:
-                                return True
-                        except OSError:
-                            continue
-        except OSError:
-            pass
-        return False
-
-    return _scan(root)
-
-
 @lexictl_app.command()
 def sweep(
     *,
@@ -974,28 +893,22 @@ def sweep(
     ] = False,
 ) -> None:
     """Run a library update sweep (one-shot or watch mode)."""
-    import asyncio  # noqa: PLC0415
     import signal as _signal  # noqa: PLC0415
     import threading  # noqa: PLC0415
-    import time  # noqa: PLC0415
 
-    from lexibrary.archivist.pipeline import update_project  # noqa: PLC0415
-    from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
     from lexibrary.config.loader import load_config  # noqa: PLC0415
-    from lexibrary.llm.client_registry import build_client_registry  # noqa: PLC0415
-    from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
+    from lexibrary.services.sweep import (  # noqa: PLC0415
+        has_changes,
+        run_single_sweep,
+        run_sweep_watch,
+    )
 
     project_root = require_project_root()
     config = load_config(project_root)
 
-    last_sweep: float = 0.0
+    from lexibrary.archivist.pipeline import UpdateStats  # noqa: PLC0415
 
-    def _run_single_sweep() -> float:
-        """Execute one update_project() call and return the current time."""
-        rate_limiter = RateLimiter()
-        registry = build_client_registry(config)
-        archivist = ArchivistService(rate_limiter=rate_limiter, client_registry=registry)
-        stats = asyncio.run(update_project(project_root, config, archivist))
+    def _render_stats(stats: UpdateStats) -> None:
         info(
             f"Sweep complete: {stats.files_scanned} scanned, "
             f"{stats.files_updated} updated, "
@@ -1003,14 +916,14 @@ def sweep(
             f"{stats.files_unchanged} unchanged"
             + (f", {stats.files_failed} failed" if stats.files_failed else "")
         )
-        return time.time()
 
     if not watch:
         # One-shot mode
-        if config.sweep.sweep_skip_if_unchanged and not _has_changes(project_root, last_sweep):
+        if config.sweep.sweep_skip_if_unchanged and not has_changes(project_root, 0.0):
             info("No changes detected -- skipping sweep.")
             return
-        _run_single_sweep()
+        stats = run_single_sweep(project_root, config)
+        _render_stats(stats)
         return
 
     # Watch mode: periodic sweeps with threading.Event for clean shutdown
@@ -1025,16 +938,16 @@ def sweep(
 
     info(f"Watching {project_root} (sweep every {interval:.0f}s). Press Ctrl+C to stop.")
 
-    while not shutdown_event.is_set():
-        if config.sweep.sweep_skip_if_unchanged and not _has_changes(project_root, last_sweep):
-            info("No changes detected -- skipping sweep.")
-        else:
-            try:
-                last_sweep = _run_single_sweep()
-            except Exception as exc:
-                error(f"Sweep failed: {exc}")
-
-        shutdown_event.wait(timeout=interval)
+    run_sweep_watch(
+        project_root,
+        config,
+        interval=interval,
+        skip_unchanged=config.sweep.sweep_skip_if_unchanged,
+        on_complete=_render_stats,
+        on_skip=lambda: info("No changes detected -- skipping sweep."),
+        on_error=lambda exc: error(f"Sweep failed: {exc}"),
+        shutdown_event=shutdown_event,
+    )
 
     info("Sweep watch stopped.")
 
@@ -1125,45 +1038,27 @@ def iwh_clean(
     (config.iwh.ttl_hours). Use --older-than to override the TTL
     threshold, or --all to remove every signal regardless of age.
     """
-    from datetime import UTC, datetime  # noqa: PLC0415
-
     from lexibrary.config.loader import load_config  # noqa: PLC0415
-    from lexibrary.iwh.reader import IWH_FILENAME, find_all_iwh  # noqa: PLC0415
-    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+    from lexibrary.iwh.cleanup import iwh_cleanup  # noqa: PLC0415
 
     project_root = require_project_root()
-    results = find_all_iwh(project_root)
 
-    if not results:
+    # Determine TTL and mode, then delegate to iwh_cleanup()
+    if all_signals:
+        result = iwh_cleanup(project_root, ttl_hours=0, remove_all=True)
+    elif older_than is not None:
+        result = iwh_cleanup(project_root, ttl_hours=older_than)
+    else:
+        config = load_config(project_root)
+        result = iwh_cleanup(project_root, ttl_hours=config.iwh.ttl_hours)
+
+    removed = result.expired + result.orphaned
+    if not removed:
         info("No IWH signals to clean.")
         return
 
-    # Determine the TTL threshold to apply
-    if all_signals:
-        ttl_threshold: int | None = None  # bypass TTL — remove everything
-    elif older_than is not None:
-        ttl_threshold = older_than
-    else:
-        # Default: use config TTL
-        config = load_config(project_root)
-        ttl_threshold = config.iwh.ttl_hours
+    for sig in removed:
+        display_dir = f"{sig.source_dir}/" if str(sig.source_dir) != "." else "./"
+        info(f"  Removed {display_dir} ({sig.scope})")
 
-    now = datetime.now(tz=UTC)
-    removed = 0
-    for source_dir, iwh in results:
-        if ttl_threshold is not None:
-            created = iwh.created
-            if created.tzinfo is None:
-                created = created.replace(tzinfo=UTC)
-            age_hours = (now - created).total_seconds() / 3600
-            if age_hours < ttl_threshold:
-                continue
-
-        iwh_file = project_root / LEXIBRARY_DIR / source_dir / IWH_FILENAME
-        if iwh_file.exists():
-            iwh_file.unlink()
-            display_dir = f"{source_dir}/" if str(source_dir) != "." else "./"
-            info(f"  Removed {display_dir} ({iwh.scope})")
-            removed += 1
-
-    info(f"\nCleaned {removed} signal(s)")
+    info(f"\nCleaned {len(removed)} signal(s)")

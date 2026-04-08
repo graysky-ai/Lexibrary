@@ -3,3 +3,9 @@ comments:
     Wikilinks inside HTML comments (e.g. <!-- [[HiddenLink]] -->) are now excluded
     from extraction. This prevents phantom index entries from comment-embedded wikilinks.
   date: '2026-04-07T21:18:39.982192Z'
+- body: Removed local _WIKILINK_RE, _HTML_COMMENT_RE, and _extract_wikilinks() definitions.
+    Now imports extract_wikilinks from lexibrary.wiki.patterns (as _extract_wikilinks_impl).
+    The re module import was also removed as it is no longer needed. This is a pure
+    refactor with no behavioral change -- the shared function has identical behavior
+    to the local one it replaces.
+  date: '2026-04-07T22:14:55.141402Z'

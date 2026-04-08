@@ -1,0 +1,21 @@
+comments:
+- body: Extracted inline stat rendering from update() command into lexibrary.services.update_render
+    module. The update() command now delegates summary, lifecycle, enrichment queue,
+    and dry-run rendering to imported render functions. Render functions return (level,
+    message) tuples for CLI output dispatch. Progress callback, error summary, and
+    IWH cleanup remain inline.
+  date: '2026-04-08T07:52:35.008919Z'
+- body: 'Simplified iwh_clean() CLI command: replaced inline TTL calculation and file
+    deletion loop with delegation to iwh_cleanup() from lexibrary.iwh.cleanup. The
+    CLI handler now only handles rendering (printing removed signals and count). Removed
+    now-unused imports: datetime, UTC, IWH_FILENAME, find_all_iwh, LEXIBRARY_DIR.'
+  date: '2026-04-08T08:11:33.216094Z'
+- body: bootstrap() Phase 1 and Phase 2 stat rendering extracted to services/bootstrap_render.py
+    (Group 5 of decompose-lexictl-cli). Progress closures, error_summary block, and
+    Phase 3 topology remain inline.
+  date: '2026-04-08T08:20:43.276285Z'
+- body: Extracted post-init update logic (interactive prompt + update_project call)
+    from init() into _run_post_init_update() private helper. Part of decompose-lexictl-cli
+    change (Group 6). The helper encapsulates all deferred imports, the user prompt,
+    and update execution, keeping init() focused on wizard orchestration.
+  date: '2026-04-08T08:35:40.172551Z'

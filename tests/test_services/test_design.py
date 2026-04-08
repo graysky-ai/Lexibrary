@@ -41,9 +41,7 @@ def _create_design_file(
     source_hash_override: str | None = None,
 ) -> Path:
     """Create a design file in .lexibrary mirror tree with frontmatter and optional footer."""
-    content_hash = source_hash_override or hashlib.sha256(
-        source_content.encode()
-    ).hexdigest()
+    content_hash = source_hash_override or hashlib.sha256(source_content.encode()).hexdigest()
     design_path = project / ".lexibrary" / "designs" / f"{source_rel}.md"
     design_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -321,7 +319,9 @@ class TestCheckDesignUpdate:
         content = "def check(): ...\n"
         source = _write_source(project, "src/check.py", content)
         _create_design_file(
-            project, "src/check.py", content,
+            project,
+            "src/check.py",
+            content,
             updated_by="archivist",
             include_footer=False,
         )

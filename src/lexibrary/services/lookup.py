@@ -439,7 +439,8 @@ def build_file_lookup(
             # Exclude ast_import (shown in Dependents) and the file's own design file
             rel_design = str(design_path.relative_to(project_root))
             other_links = [
-                lnk for lnk in all_links
+                lnk
+                for lnk in all_links
                 if lnk.link_type != "ast_import"
                 and not (lnk.link_type == "design_source" and lnk.source_path == rel_design)
             ]
@@ -455,8 +456,7 @@ def build_file_lookup(
 
             # Gather concept names from link graph (wikilink + concept_file_ref)
             concept_links = [
-                lnk for lnk in all_links
-                if lnk.link_type in ("wikilink", "concept_file_ref")
+                lnk for lnk in all_links if lnk.link_type in ("wikilink", "concept_file_ref")
             ]
             seen_concept_names: set[str] = set()
             for lnk in concept_links:
@@ -497,9 +497,7 @@ def build_file_lookup(
                     )
                 )
             else:
-                concepts_list.append(
-                    ConceptSummary(name=name, status=None, summary=None)
-                )
+                concepts_list.append(ConceptSummary(name=name, status=None, summary=None))
     else:
         # Brief mode, or full mode without link graph: use design file wikilinks
         if full and link_graph is None:
@@ -514,12 +512,8 @@ def build_file_lookup(
         for name in wikilink_names:
             concept_file = concept_index.find(name)
             status = concept_file.frontmatter.status if concept_file is not None else None
-            summary = (
-                (concept_file.summary or None) if concept_file is not None and full else None
-            )
-            concepts_list.append(
-                ConceptSummary(name=name, status=status, summary=summary)
-            )
+            summary = (concept_file.summary or None) if concept_file is not None and full else None
+            concepts_list.append(ConceptSummary(name=name, status=status, summary=summary))
 
     # Apply display limit
     concepts_list = concepts_list[:concept_limit]

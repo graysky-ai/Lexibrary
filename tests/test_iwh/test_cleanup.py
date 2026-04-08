@@ -287,6 +287,126 @@ class TestIWHCleanupMixed:
         assert result.orphaned[0].source_dir == Path("src/gone")
 
 
+class TestIWHCleanupRemoveAll:
+    """Tests for the remove_all parameter in iwh_cleanup."""
+
+    def test_remove_all_removes_within_ttl(self, tmp_path: Path) -> None:
+        """remove_all=True removes signals that are within TTL."""
+        project = tmp_path / "project"
+        designs = project / ".lexibrary" / "designs"
+        source = project / "src" / "auth"
+        source.mkdir(parents=True)
+
+        # Signal is only 1 hour old -- well within a 72-hour TTL
+        recent_time = datetime.now(UTC) - timedelta(hours=1)
+        iwh_path = _write_iwh(designs, "src/auth", created=recent_time)
+
+        result = iwh_cleanup(project, ttl_hours=72, remove_all=True)
+
+        assert not iwh_path.exists()
+        assert len(result.expired) == 1
+        assert result.expired[0].source_dir == Path("src/auth")
+        assert result.expired[0].reason == "expired"
+        assert result.kept == 0
+
+    def test_remove_all_with_no_signals(self, tmp_path: Path) -> None:
+        """remove_all=True with no signals returns empty result."""
+        project = tmp_path / "project"
+        designs = project / ".lexibrary" / "designs"
+        designs.mkdir(parents=True)
+
+        result = iwh_cleanup(project, ttl_hours=72, remove_all=True)
+
+        assert result.expired == []
+        assert result.orphaned == []
+        assert result.kept == 0
+
+    def test_remove_all_still_detects_orphans(self, tmp_path: Path) -> None:
+        """remove_all=True still classifies orphaned signals as orphaned."""
+        project = tmp_path / "project"
+        designs = project / ".lexibrary" / "designs"
+        # Source directory does NOT exist
+        recent_time = datetime.now(UTC) - timedelta(hours=1)
+        iwh_path = _write_iwh(designs, "src/missing", created=recent_time, scope="blocked")
+
+        result = iwh_cleanup(project, ttl_hours=72, remove_all=True)
+
+        assert not iwh_path.exists()
+        assert len(result.orphaned) == 1
+        assert result.orphaned[0].source_dir == Path("src/missing")
+        assert result.orphaned[0].reason == "orphaned"
+        assert len(result.expired) == 0
+
+    def test_remove_all_multiple_signals(self, tmp_path: Path) -> None:
+        """remove_all=True removes all signals, categorising orphans correctly."""
+        project = tmp_path / "project"
+        designs = project / ".lexibrary" / "designs"
+
+        # Signal 1: within TTL, source exists -> expired (remove_all)
+        (project / "src" / "a").mkdir(parents=True)
+        recent = datetime.now(UTC) - timedelta(hours=5)
+        path_a = _write_iwh(designs, "src/a", created=recent)
+
+        # Signal 2: within TTL, source missing -> orphaned
+        path_b = _write_iwh(designs, "src/b", created=recent, scope="warning")
+
+        result = iwh_cleanup(project, ttl_hours=72, remove_all=True)
+
+        assert not path_a.exists()
+        assert not path_b.exists()
+        assert len(result.expired) == 1
+        assert len(result.orphaned) == 1
+        assert result.kept == 0
+
+    def test_default_preserves_ttl_behavior(self, tmp_path: Path) -> None:
+        """Default remove_all=False preserves existing TTL behavior."""
+        project = tmp_path / "project"
+        designs = project / ".lexibrary" / "designs"
+        source = project / "src" / "kept"
+        source.mkdir(parents=True)
+
+        recent_time = datetime.now(UTC) - timedelta(hours=10)
+        iwh_path = _write_iwh(designs, "src/kept", created=recent_time)
+
+        result = iwh_cleanup(project, ttl_hours=72)
+
+        assert iwh_path.exists()
+        assert result.kept == 1
+        assert len(result.expired) == 0
+
+    def test_custom_ttl_hours(self, tmp_path: Path) -> None:
+        """Custom ttl_hours value correctly controls expiry threshold."""
+        project = tmp_path / "project"
+        designs = project / ".lexibrary" / "designs"
+        source = project / "src" / "custom"
+        source.mkdir(parents=True)
+
+        # Signal is 5 hours old
+        five_hours_ago = datetime.now(UTC) - timedelta(hours=5)
+        iwh_path = _write_iwh(designs, "src/custom", created=five_hours_ago)
+
+        # With ttl_hours=4, the signal should be expired
+        result = iwh_cleanup(project, ttl_hours=4)
+        assert not iwh_path.exists()
+        assert len(result.expired) == 1
+
+    def test_custom_ttl_hours_keeps_young(self, tmp_path: Path) -> None:
+        """Custom ttl_hours keeps signals younger than the threshold."""
+        project = tmp_path / "project"
+        designs = project / ".lexibrary" / "designs"
+        source = project / "src" / "young"
+        source.mkdir(parents=True)
+
+        # Signal is 2 hours old
+        two_hours_ago = datetime.now(UTC) - timedelta(hours=2)
+        iwh_path = _write_iwh(designs, "src/young", created=two_hours_ago)
+
+        # With ttl_hours=4, the signal should be kept
+        result = iwh_cleanup(project, ttl_hours=4)
+        assert iwh_path.exists()
+        assert result.kept == 1
+
+
 class TestCleanupImports:
     """Verify that cleanup symbols are importable from the package."""
 

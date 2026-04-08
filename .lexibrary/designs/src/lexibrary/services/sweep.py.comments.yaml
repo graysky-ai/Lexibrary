@@ -1,0 +1,6 @@
+comments:
+- body: 'Extracted from lexictl_app.py as part of the decompose-lexictl-cli change
+    (Group 3). Three public functions: has_changes (filesystem change detection),
+    run_single_sweep (one-shot pipeline execution), run_sweep_watch (watch loop with
+    callbacks). The CLI handler retains signal setup and output rendering via callbacks.'
+  date: '2026-04-08T08:03:05.867160Z'

@@ -174,10 +174,7 @@ def check_design_update(
     if updated_by in _PROTECTED_UPDATERS:
         return DesignUpdateDecision(
             action="skip",
-            reason=(
-                f"Design file was last updated by {updated_by}. "
-                "Use --force / -f to override."
-            ),
+            reason=(f"Design file was last updated by {updated_by}. Use --force / -f to override."),
             skip_code="protected",
         )
 

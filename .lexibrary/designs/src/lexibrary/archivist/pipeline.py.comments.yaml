@@ -1,0 +1,7 @@
+comments:
+- body: Added force parameter to update_files(), update_directory(), and update_project().
+    When force=True, each function passes force=True to update_file(), which deletes
+    the existing design file before change detection so every file is treated as new.
+    This allows a full rebuild that prunes stale link-graph entries left behind by
+    deleted concept or convention files.
+  date: '2026-04-07T21:53:20.411707Z'

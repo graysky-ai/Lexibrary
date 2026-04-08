@@ -12,11 +12,11 @@ from lexibrary.linkgraph.builder import (
     _BUILDER_ID,
     BuildResult,
     IndexBuilder,
-    _extract_wikilinks,
     build_index,
     open_index,
 )
 from lexibrary.linkgraph.schema import ensure_schema, set_pragmas
+from lexibrary.wiki.patterns import extract_wikilinks as _extract_wikilinks
 
 # ---------------------------------------------------------------------------
 # _extract_wikilinks tests

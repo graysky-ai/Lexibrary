@@ -306,6 +306,90 @@ class TestInit:
         assert result.exit_code == 1
         assert "already initialised" in result.output
 
+    def test_init_post_update_yes(self, tmp_path: Path) -> None:
+        """When user answers 'y' to post-init update, ``update_project`` should be called."""
+        from lexibrary.init.wizard import WizardAnswers  # noqa: PLC0415
+
+        mock_answers = WizardAnswers(
+            project_name="test-project",
+            confirmed=True,
+        )
+        mock_stats = UpdateStats(
+            files_scanned=5,
+            files_created=3,
+            files_updated=1,
+        )
+        mock_update = AsyncMock(return_value=mock_stats)
+
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            with (
+                patch(
+                    "click.testing._NamedTextIOWrapper.isatty",
+                    return_value=True,
+                ),
+                patch(
+                    "lexibrary.init.wizard.run_wizard",
+                    return_value=mock_answers,
+                ),
+                patch(
+                    "lexibrary.init.scaffolder.create_lexibrary_from_wizard",
+                    return_value=[tmp_path / ".lexibrary"],
+                ),
+                patch("lexibrary.cli.banner.render_banner"),
+                patch("builtins.input", return_value="y"),
+                patch(
+                    "lexibrary.archivist.pipeline.update_project",
+                    mock_update,
+                ),
+            ):
+                result = runner.invoke(lexictl_app, ["init"])
+        finally:
+            os.chdir(old_cwd)
+
+        assert result.exit_code == 0, f"Exit code: {result.exit_code}, Output: {result.output}"
+        assert "Running lexictl update" in result.output
+        assert "Update complete" in result.output
+        assert "5 files scanned" in result.output
+        mock_update.assert_called_once()
+
+    def test_init_post_update_no(self, tmp_path: Path) -> None:
+        """When user answers 'n' to post-init update, update should be skipped."""
+        from lexibrary.init.wizard import WizardAnswers  # noqa: PLC0415
+
+        mock_answers = WizardAnswers(
+            project_name="test-project",
+            confirmed=True,
+        )
+
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            with (
+                patch(
+                    "click.testing._NamedTextIOWrapper.isatty",
+                    return_value=True,
+                ),
+                patch(
+                    "lexibrary.init.wizard.run_wizard",
+                    return_value=mock_answers,
+                ),
+                patch(
+                    "lexibrary.init.scaffolder.create_lexibrary_from_wizard",
+                    return_value=[tmp_path / ".lexibrary"],
+                ),
+                patch("lexibrary.cli.banner.render_banner"),
+                patch("builtins.input", return_value="n"),
+            ):
+                result = runner.invoke(lexictl_app, ["init"])
+        finally:
+            os.chdir(old_cwd)
+
+        assert result.exit_code == 0, f"Exit code: {result.exit_code}, Output: {result.output}"
+        assert "Run `lexictl update` later" in result.output
+        assert "Update complete" not in result.output
+
 
 # ---------------------------------------------------------------------------
 # Update command tests
@@ -1218,7 +1302,7 @@ class TestSweepCommand:
             os.chdir(old_cwd)
 
     def test_sweep_one_shot_calls_update_project(self, tmp_path: Path) -> None:
-        """``lexictl sweep`` calls update_project() directly."""
+        """``lexictl sweep`` calls run_single_sweep() via the service module."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
 
@@ -1230,7 +1314,7 @@ class TestSweepCommand:
             files_failed=0,
         )
         with patch(
-            "lexibrary.archivist.pipeline.update_project",
+            "lexibrary.services.sweep.update_project",
             new_callable=AsyncMock,
             return_value=mock_stats,
         ):
@@ -1245,7 +1329,7 @@ class TestSweepCommand:
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
 
         with (
-            patch("lexibrary.cli.lexictl_app._has_changes", return_value=False),
+            patch("lexibrary.services.sweep.has_changes", return_value=False),
             patch(
                 "lexibrary.config.loader.load_config",
                 return_value=MagicMock(
@@ -1260,7 +1344,7 @@ class TestSweepCommand:
         assert "No changes detected" in result.output  # type: ignore[union-attr]
 
     def test_sweep_watch_runs_loop(self, tmp_path: Path) -> None:
-        """``lexictl sweep --watch`` runs the inline watch loop."""
+        """``lexictl sweep --watch`` runs the watch loop via service module."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text("")
 
@@ -1284,7 +1368,7 @@ class TestSweepCommand:
             return mock_stats
 
         with patch(
-            "lexibrary.archivist.pipeline.update_project",
+            "lexibrary.services.sweep.update_project",
             new_callable=AsyncMock,
             side_effect=_side_effect,
         ):
@@ -1691,15 +1775,20 @@ class TestIWHClean:
         from lexibrary.iwh import write_iwh
 
         project = _setup_project(tmp_path)
-        (project / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
-        write_iwh(project / ".lexibrary" / "src", author="agent", scope="incomplete", body="wip")
-        write_iwh(project / ".lexibrary", author="agent", scope="warning", body="note")
+        # Create source directories so signals are not treated as orphans
+        (project / "src").mkdir(parents=True, exist_ok=True)
+        # Write signals into .lexibrary/designs/ (the canonical IWH location)
+        designs = project / ".lexibrary" / "designs"
+        (designs / "src").mkdir(parents=True, exist_ok=True)
+        designs.mkdir(parents=True, exist_ok=True)
+        write_iwh(designs / "src", author="agent", scope="incomplete", body="wip")
+        write_iwh(designs, author="agent", scope="warning", body="note")
 
         result = self._invoke(project, ["iwh", "clean", "--all"])
         assert result.exit_code == 0
         assert "2 signal(s)" in result.output
-        assert not (project / ".lexibrary" / "src" / ".iwh").exists()
-        assert not (project / ".lexibrary" / ".iwh").exists()
+        assert not (designs / "src" / ".iwh").exists()
+        assert not (designs / ".iwh").exists()
 
     def test_clean_empty_project(self, tmp_path: Path) -> None:
         project = _setup_project(tmp_path)
@@ -1713,36 +1802,39 @@ class TestIWHClean:
         from lexibrary.iwh import IWHFile, serialize_iwh
 
         project = _setup_project(tmp_path)
-        (project / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
+        designs = project / ".lexibrary" / "designs"
+        # Create source directories so signals are not treated as orphans
+        (project / "src").mkdir(parents=True, exist_ok=True)
+        (designs / "src").mkdir(parents=True, exist_ok=True)
 
-        # Write an old signal (48 hours ago)
+        # Write an old signal (very old timestamp)
         old_iwh = IWHFile(
             author="agent",
             created=datetime(2020, 1, 1, 0, 0, 0, tzinfo=UTC),
             scope="incomplete",
             body="old signal",
         )
-        (project / ".lexibrary" / "src" / ".iwh").write_text(
-            serialize_iwh(old_iwh), encoding="utf-8"
-        )
+        (designs / "src" / ".iwh").write_text(serialize_iwh(old_iwh), encoding="utf-8")
 
-        # Write a recent signal
+        # Write a recent signal at the designs root (project root mirror)
         from lexibrary.iwh import write_iwh
 
-        write_iwh(project / ".lexibrary", author="agent", scope="warning", body="new")
+        write_iwh(designs, author="agent", scope="warning", body="new")
 
         result = self._invoke(project, ["iwh", "clean", "--older-than", "1"])
         assert result.exit_code == 0
         assert "1 signal(s)" in result.output
         # Old signal should be removed, new one preserved
-        assert not (project / ".lexibrary" / "src" / ".iwh").exists()
-        assert (project / ".lexibrary" / ".iwh").exists()
+        assert not (designs / "src" / ".iwh").exists()
+        assert (designs / ".iwh").exists()
 
     def test_clean_shows_removed_count(self, tmp_path: Path) -> None:
         from lexibrary.iwh import write_iwh
 
         project = _setup_project(tmp_path)
-        write_iwh(project / ".lexibrary", author="agent", scope="blocked", body="stuck")
+        designs = project / ".lexibrary" / "designs"
+        designs.mkdir(parents=True, exist_ok=True)
+        write_iwh(designs, author="agent", scope="blocked", body="stuck")
 
         result = self._invoke(project, ["iwh", "clean", "--all"])
         assert result.exit_code == 0
@@ -2296,73 +2388,84 @@ class TestIWHCleanConfigAware:
         from lexibrary.iwh import IWHFile, serialize_iwh, write_iwh
 
         project = _setup_project(tmp_path)
+        designs = project / ".lexibrary" / "designs"
 
         # Set config with a short TTL (1 hour)
         (project / ".lexibrary" / "config.yaml").write_text(
             "iwh:\n  ttl_hours: 1\n", encoding="utf-8"
         )
 
+        # Create source directory so signal is not treated as orphan
+        (project / "src").mkdir(parents=True, exist_ok=True)
+
         # Write an old signal (2 hours ago) — should be removed
-        (project / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
+        (designs / "src").mkdir(parents=True, exist_ok=True)
         old_iwh = IWHFile(
             author="agent",
             created=datetime.now(tz=UTC) - timedelta(hours=2),
             scope="incomplete",
             body="old signal",
         )
-        (project / ".lexibrary" / "src" / ".iwh").write_text(
-            serialize_iwh(old_iwh), encoding="utf-8"
-        )
+        (designs / "src" / ".iwh").write_text(serialize_iwh(old_iwh), encoding="utf-8")
 
         # Write a recent signal (just now) — should be kept
-        write_iwh(project / ".lexibrary", author="agent", scope="warning", body="new")
+        designs.mkdir(parents=True, exist_ok=True)
+        write_iwh(designs, author="agent", scope="warning", body="new")
 
         result = self._invoke(project, ["iwh", "clean"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "1 signal(s)" in output
         # Old signal removed, new one preserved
-        assert not (project / ".lexibrary" / "src" / ".iwh").exists()
-        assert (project / ".lexibrary" / ".iwh").exists()
+        assert not (designs / "src" / ".iwh").exists()
+        assert (designs / ".iwh").exists()
 
     def test_clean_default_ttl_keeps_young_signals(self, tmp_path: Path) -> None:
         """With default config TTL (72h), recently created signals are kept."""
         from lexibrary.iwh import write_iwh
 
         project = _setup_project(tmp_path)
+        designs = project / ".lexibrary" / "designs"
         # Default config.yaml (empty) => ttl_hours defaults to 72
         (project / ".lexibrary" / "config.yaml").write_text("", encoding="utf-8")
 
         # Write a fresh signal
-        write_iwh(project / ".lexibrary", author="agent", scope="warning", body="fresh")
+        designs.mkdir(parents=True, exist_ok=True)
+        write_iwh(designs, author="agent", scope="warning", body="fresh")
 
         result = self._invoke(project, ["iwh", "clean"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
-        assert "0 signal(s)" in output
+        # Signal is kept (within TTL), so no signals cleaned => "No IWH signals to clean"
+        assert "No IWH signals to clean" in output
         # Signal should still exist
-        assert (project / ".lexibrary" / ".iwh").exists()
+        assert (designs / ".iwh").exists()
 
     def test_clean_all_bypasses_ttl(self, tmp_path: Path) -> None:
         """--all removes all signals regardless of age."""
         from lexibrary.iwh import write_iwh
 
         project = _setup_project(tmp_path)
+        designs = project / ".lexibrary" / "designs"
         (project / ".lexibrary" / "config.yaml").write_text(
             "iwh:\n  ttl_hours: 9999\n", encoding="utf-8"
         )
 
-        # Write a fresh signal (well within TTL)
-        (project / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
-        write_iwh(project / ".lexibrary" / "src", author="agent", scope="incomplete", body="wip")
-        write_iwh(project / ".lexibrary", author="agent", scope="warning", body="note")
+        # Create source directories so signals are not treated as orphans
+        (project / "src").mkdir(parents=True, exist_ok=True)
+
+        # Write fresh signals (well within TTL) to designs mirror
+        (designs / "src").mkdir(parents=True, exist_ok=True)
+        designs.mkdir(parents=True, exist_ok=True)
+        write_iwh(designs / "src", author="agent", scope="incomplete", body="wip")
+        write_iwh(designs, author="agent", scope="warning", body="note")
 
         result = self._invoke(project, ["iwh", "clean", "--all"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "2 signal(s)" in output
-        assert not (project / ".lexibrary" / "src" / ".iwh").exists()
-        assert not (project / ".lexibrary" / ".iwh").exists()
+        assert not (designs / "src" / ".iwh").exists()
+        assert not (designs / ".iwh").exists()
 
     def test_clean_older_than_overrides_config_ttl(self, tmp_path: Path) -> None:
         """--older-than takes precedence over config TTL."""
@@ -2371,33 +2474,36 @@ class TestIWHCleanConfigAware:
         from lexibrary.iwh import IWHFile, serialize_iwh, write_iwh
 
         project = _setup_project(tmp_path)
+        designs = project / ".lexibrary" / "designs"
         # Config TTL is very high — signals would normally be kept
         (project / ".lexibrary" / "config.yaml").write_text(
             "iwh:\n  ttl_hours: 9999\n", encoding="utf-8"
         )
 
+        # Create source directory so signal is not treated as orphan
+        (project / "src").mkdir(parents=True, exist_ok=True)
+
         # Write a 5-hour-old signal
-        (project / ".lexibrary" / "src").mkdir(parents=True, exist_ok=True)
+        (designs / "src").mkdir(parents=True, exist_ok=True)
         old_iwh = IWHFile(
             author="agent",
             created=datetime.now(tz=UTC) - timedelta(hours=5),
             scope="incomplete",
             body="old signal",
         )
-        (project / ".lexibrary" / "src" / ".iwh").write_text(
-            serialize_iwh(old_iwh), encoding="utf-8"
-        )
+        (designs / "src" / ".iwh").write_text(serialize_iwh(old_iwh), encoding="utf-8")
 
         # Write a fresh signal
-        write_iwh(project / ".lexibrary", author="agent", scope="warning", body="new")
+        designs.mkdir(parents=True, exist_ok=True)
+        write_iwh(designs, author="agent", scope="warning", body="new")
 
         # --older-than 1 should override the 9999h config TTL
         result = self._invoke(project, ["iwh", "clean", "--older-than", "1"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
         assert "1 signal(s)" in output
-        assert not (project / ".lexibrary" / "src" / ".iwh").exists()
-        assert (project / ".lexibrary" / ".iwh").exists()
+        assert not (designs / "src" / ".iwh").exists()
+        assert (designs / ".iwh").exists()
 
     def test_clean_all_on_empty_project(self, tmp_path: Path) -> None:
         """--all on a project with no signals shows 'no signals'."""
@@ -2544,3 +2650,133 @@ class TestUpdateUnlimited:
         assert result.exit_code == 0  # type: ignore[union-attr]
         _, kwargs = mock_build_registry.call_args
         assert kwargs.get("unlimited") is True
+
+
+# ---------------------------------------------------------------------------
+# Update --force tests
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateForce:
+    """Tests for the ``--force`` flag on ``lexictl update``."""
+
+    @staticmethod
+    def _invoke(project: Path, args: list[str]) -> object:
+        old_cwd = os.getcwd()
+        os.chdir(project)
+        try:
+            return runner.invoke(lexictl_app, args)
+        finally:
+            os.chdir(old_cwd)
+
+    def test_force_default_false(self, tmp_path: Path) -> None:
+        """--force defaults to False; update_project receives force=False."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=1, files_unchanged=1)
+        mock_update_project = AsyncMock(return_value=mock_stats)
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_project",
+            mock_update_project,
+        ):
+            result = self._invoke(project, ["update"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        _, kwargs = mock_update_project.call_args
+        assert kwargs.get("force") is False
+
+    def test_force_flag_accepted_project(self, tmp_path: Path) -> None:
+        """--force flag is accepted and passed through to update_project."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=1, files_unchanged=1)
+        mock_update_project = AsyncMock(return_value=mock_stats)
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_project",
+            mock_update_project,
+        ):
+            result = self._invoke(project, ["update", "--force"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        _, kwargs = mock_update_project.call_args
+        assert kwargs.get("force") is True
+
+    def test_force_single_file(self, tmp_path: Path) -> None:
+        """--force is threaded through to update_file for single file update."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_result = FileResult(change=ChangeLevel.NEW_FILE)
+        mock_update_file = AsyncMock(return_value=mock_result)
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_file",
+            mock_update_file,
+        ):
+            result = self._invoke(project, ["update", "--force", "src/main.py"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        _, kwargs = mock_update_file.call_args
+        assert kwargs.get("force") is True
+
+    def test_force_changed_only(self, tmp_path: Path) -> None:
+        """--force is threaded through to update_files for --changed-only."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=1, files_unchanged=1)
+        mock_update_files = AsyncMock(return_value=mock_stats)
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_files",
+            mock_update_files,
+        ):
+            result = self._invoke(project, ["update", "--force", "--changed-only", "src/main.py"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        _, kwargs = mock_update_files.call_args
+        assert kwargs.get("force") is True
+
+    def test_force_directory(self, tmp_path: Path) -> None:
+        """--force is threaded through to update_directory."""
+        project = _setup_archivist_project(tmp_path)
+
+        mock_stats = UpdateStats(files_scanned=1, files_unchanged=1)
+        mock_update_directory = AsyncMock(return_value=mock_stats)
+
+        with patch(
+            "lexibrary.archivist.pipeline.update_directory",
+            mock_update_directory,
+        ):
+            result = self._invoke(project, ["update", "--force", "src"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        _, kwargs = mock_update_directory.call_args
+        assert kwargs.get("force") is True
+
+    def test_force_skeleton_mutual_exclusion(self, tmp_path: Path) -> None:
+        """--force and --skeleton cannot be used together."""
+        project = _setup_archivist_project(tmp_path)
+
+        result = self._invoke(project, ["update", "--force", "--skeleton", "src/main.py"])
+
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "--skeleton cannot be combined" in result.output  # type: ignore[union-attr]
+
+    def test_force_topology_mutual_exclusion(self, tmp_path: Path) -> None:
+        """--force and --topology cannot be used together."""
+        project = _setup_archivist_project(tmp_path)
+
+        result = self._invoke(project, ["update", "--force", "--topology"])
+
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "--force cannot be combined" in result.output  # type: ignore[union-attr]
+
+    def test_force_dry_run_mutual_exclusion(self, tmp_path: Path) -> None:
+        """--force and --dry-run cannot be used together."""
+        project = _setup_archivist_project(tmp_path)
+
+        result = self._invoke(project, ["update", "--force", "--dry-run"])
+
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "--force cannot be combined" in result.output  # type: ignore[union-attr]

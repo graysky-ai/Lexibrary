@@ -41,13 +41,18 @@ class CleanupResult:
     """Count of signals that survived cleanup."""
 
 
-def iwh_cleanup(project_root: Path, ttl_hours: int) -> CleanupResult:
+def iwh_cleanup(
+    project_root: Path,
+    ttl_hours: int,
+    *,
+    remove_all: bool = False,
+) -> CleanupResult:
     """Perform a single-pass TTL expiry and orphan detection on IWH signals.
 
     Walks ``.lexibrary/designs/`` for ``.iwh`` files and:
 
     1. Deletes signals whose ``created`` timestamp is older than *ttl_hours*
-       from the current UTC time.
+       from the current UTC time (or all signals when *remove_all* is True).
     2. Deletes signals whose corresponding source directory no longer exists
        under *project_root*.
     3. Deletes unparseable signals (treated as expired since their TTL cannot
@@ -56,6 +61,8 @@ def iwh_cleanup(project_root: Path, ttl_hours: int) -> CleanupResult:
     Args:
         project_root: Absolute path to the project root.
         ttl_hours: Maximum age in hours before a signal is expired.
+        remove_all: When True, skip the TTL age check and treat all signals
+            as expired. Orphan detection still runs.
 
     Returns:
         A :class:`CleanupResult` summarising what was removed and kept.
@@ -99,6 +106,18 @@ def iwh_cleanup(project_root: Path, ttl_hours: int) -> CleanupResult:
                     source_dir=relative,
                     scope=parsed.scope,
                     reason="orphaned",
+                )
+            )
+            continue
+
+        # In remove_all mode, skip the TTL age check and treat as expired.
+        if remove_all:
+            _delete_iwh(iwh_file_path)
+            result.expired.append(
+                CleanedSignal(
+                    source_dir=relative,
+                    scope=parsed.scope,
+                    reason="expired",
                 )
             )
             continue

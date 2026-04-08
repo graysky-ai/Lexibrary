@@ -1,13 +1,13 @@
 # Decompose Lexictl CLI — Analysis
 
-**Date:** 2026-03-28
-**Status:** Analysis — decisions resolved.
+**Date:** 2026-03-28 (numbers updated 2026-04-08)
+**Status:** Analysis — decisions resolved, critic review applied.
 
 ---
 
 ## Problem
 
-The `lexictl` CLI (`lexictl_app.py`, 1,166 lines) contains inline stat rendering, orchestration logic, and domain utilities that could be extracted into service/render modules. While less severe than the `lexi` decomposition (most core business logic already delegates to `archivist.pipeline`, `indexer.orchestrator`, `lifecycle.bootstrap`, etc.), the remaining inline code has three problems:
+The `lexictl` CLI (`lexictl_app.py`, 1,189 lines) contains inline stat rendering, orchestration logic, and domain utilities that could be extracted into service/render modules. While less severe than the `lexi` decomposition (most core business logic already delegates to `archivist.pipeline`, `indexer.orchestrator`, `lifecycle.bootstrap`, etc.), the remaining inline code has three problems:
 
 - **Stat rendering duplication** — `update` and `bootstrap` both contain 50-90 line blocks of inline stat formatting that follow similar patterns but can't be reused or tested independently
 - **Domain logic in CLI handlers** — `_has_changes()` (filesystem scanning), `iwh_clean` (TTL cleanup), and `sweep` (watch loop) contain logic that belongs in service or domain modules
@@ -139,7 +139,7 @@ Only `lexictl_app` (the Typer instance) is imported by other production code (`c
 ### Test direct imports
 
 No test files directly import private functions from `lexictl_app.py`. All 129 tests use CliRunner. The only direct reference is a mock target:
-- `test_lexictl.py` line 1245: `patch("lexibrary.cli.lexictl_app._has_changes", return_value=False)` — must be updated when `_has_changes` moves.
+- `test_lexictl.py` line 1248: `patch("lexibrary.cli.lexictl_app._has_changes", return_value=False)` — must be updated when `_has_changes` moves.
 
 ### Duplication: `iwh_clean` CLI vs `iwh.cleanup.iwh_cleanup`
 
@@ -158,8 +158,8 @@ The CLI version is less robust (no orphan detection, no unparseable handling) an
 
 | Test file | Lines | Tests | Covers |
 |---|---|---|---|
-| `test_cli/test_lexictl.py` | 2,543 | 129 | All maintainer CLI commands (init, update, bootstrap, index, validate, status, setup, sweep, iwh clean, help) |
-| **Total** | **2,543** | **129** | |
+| `test_cli/test_lexictl.py` | 2,678 | 137 | All maintainer CLI commands (init, update, bootstrap, index, validate, status, setup, sweep, iwh clean, help) |
+| **Total** | **2,678** | **137** | |
 
 Testing approach: exclusively black-box via Typer's `CliRunner`. No direct imports of private functions.
 
@@ -172,6 +172,18 @@ Each phase extracts one logical unit, includes tests, and leaves the CLI fully f
 ### Phase 0: Already complete (from lexi decomposition)
 
 `src/lexibrary/services/__init__.py` and `tests/test_services/__init__.py` already exist.
+
+### Phase 0.5: Record coverage baseline
+
+**Risk: None** — observation only, no code changes
+
+Before starting any extraction, record per-module coverage to enable regression verification in Phase 6:
+
+```bash
+uv run pytest --cov=lexibrary --cov-report=term-missing > coverage-baseline.txt
+```
+
+Capture at minimum: `cli/lexictl_app.py`, `iwh/cleanup.py`, `services/` (aggregate). This baseline is what Phase 6's "no regression" check measures against.
 
 ### Phase 1: Extract update stat rendering → `services/update_render.py`
 
@@ -199,6 +211,8 @@ if has_enrichment_queue(stats):
 ```
 
 **Test:** `tests/test_services/test_update_render.py` — unit tests with mock `UpdateStats` instances verifying rendered string content. All existing CLI tests pass.
+
+**Progress closures:** `_progress_callback()` and similar closures that capture mutable state (e.g., `_file_count`) remain inline in CLI handlers — they manage display state, not business logic.
 
 **Lines moved:** ~105 lines out of `lexictl_app.py`
 
@@ -234,7 +248,13 @@ run_sweep_watch(
 )
 ```
 
-**Test:** `tests/test_services/test_sweep.py` — unit tests for `has_changes()` with temporary directories, mock tests for `run_single_sweep()`. Update mock target in `test_lexictl.py` from `lexibrary.cli.lexictl_app._has_changes` to `lexibrary.services.sweep.has_changes`.
+**Test:** `tests/test_services/test_sweep.py`:
+
+- `has_changes()` filesystem tests: empty dir, files with mtime older/newer than threshold, `.lexibrary/` exclusion, `OSError` during `os.scandir()`
+- `run_single_sweep()`: verify rate limiter + registry + archivist setup, mock `update_project()` call
+- `run_sweep_watch()`: test all three callback execution paths (`on_complete`, `on_skip`, `on_error`), verify `shutdown_event` terminates the loop
+
+Update mock target in `test_lexictl.py` from `lexibrary.cli.lexictl_app._has_changes` to `lexibrary.services.sweep.has_changes`. Audit all sweep tests for implicit `_has_changes` references — any test with `sweep_skip_if_unchanged=True` will call the relocated function at its new import path.
 
 **Lines moved:** ~112 lines out of `lexictl_app.py`
 
@@ -245,20 +265,20 @@ run_sweep_watch(
 The `iwh_clean` CLI command partially duplicates `iwh.cleanup.iwh_cleanup()` with a different discovery mechanism and fewer safety checks (no orphan detection, no unparseable handling). Rather than creating a new service module, extend the existing `iwh.cleanup` module.
 
 **Extend** `iwh/cleanup.py`:
-- Add `iwh_manual_clean(project_root, *, ttl_hours=None, remove_all=False) -> CleanupResult` — supports `--all` mode (bypass TTL) and custom `--older-than` threshold
-- Reuse `CleanupResult` and `CleanedSignal` dataclasses (add a `"manual"` reason value)
+- Extend existing `iwh_cleanup()` signature: `iwh_cleanup(project_root, ttl_hours, *, remove_all=False) -> CleanupResult` — the new `remove_all` flag bypasses TTL entirely (supports CLI `--all` mode). When `ttl_hours` is provided without `remove_all`, it serves the `--older-than` use case.
+- Reuse `CleanupResult` and `CleanedSignal` dataclasses unchanged — signals removed via `remove_all` use reason `"expired"` (they are TTL-expired with threshold=0, semantically equivalent)
 - Discovery via `find_all_iwh()` to match the CLI's current behaviour
 - Include orphan detection and unparseable handling (improving on current CLI behaviour)
 
 **CLI handler** (`lexictl_app.py iwh_clean()`) becomes:
 ```python
-result = iwh_manual_clean(project_root, ttl_hours=ttl_threshold, remove_all=all_signals)
+result = iwh_cleanup(project_root, ttl_hours=ttl_threshold, remove_all=all_signals)
 for signal in result.expired:
     info(f"  Removed {signal.source_dir}/ ({signal.scope})")
 info(f"\nCleaned {len(result.expired) + len(result.orphaned)} signal(s)")
 ```
 
-**Test:** Add tests to `tests/test_iwh/test_cleanup.py` for the new `iwh_manual_clean()` function. Existing `lexictl iwh clean` CLI tests pass.
+**Test:** Add tests to `tests/test_iwh/test_cleanup.py` for the extended `iwh_cleanup()` — specifically the `remove_all=True` branch and custom `ttl_hours` values. Existing `lexictl iwh clean` CLI tests pass.
 
 **Lines moved:** ~35 lines out of `lexictl_app.py` (CLI keeps arg handling + rendering). ~25 lines added to `iwh/cleanup.py`.
 
@@ -269,7 +289,8 @@ info(f"\nCleaned {len(result.expired) + len(result.orphaned)} signal(s)")
 **Render module** (`services/bootstrap_render.py`) — extract from `lexictl_app.py`:
 - `render_index_summary(index_stats)` → Phase 1 (indexing) summary
 - `render_bootstrap_summary(design_stats)` → Phase 2 (design files) summary with error list
-- Progress callback signature type for consistency
+
+**Progress closures:** `_index_progress()` and `_design_progress()` closures remain inline in the CLI handler (same rationale as Phase 1 — display state, not business logic).
 
 No new service module — `IndexStats` lives in `indexer.orchestrator`, `BootstrapStats` in `lifecycle.bootstrap`.
 
@@ -281,8 +302,13 @@ No new service module — `IndexStats` lives in `indexer.orchestrator`, `Bootstr
 
 **Risk: Low** — mechanical extraction of repeated patterns
 
+**Pre-condition:** Existing test coverage audit (completed during critic review):
+- **`setup`** is well-covered: 12 tests in `TestSetupCommand` + 3 tests in `TestSetupHooks` covering `--update`, `--env`, `--hooks`, rule generation, gitignore, error paths.
+- **`init`** has a gap: only 3 tests in `TestInit` covering the re-init guard and `--defaults` flag. The **post-init update block (lines 114-141) is untested** — no test mocks `input()` to exercise the interactive prompt or the asyncio pipeline setup. Non-TTY detection and the interactive wizard are also uncovered.
+
 **Init:** Extract the post-init update block (lines 114-141) into a helper. This block duplicates the archivist pipeline setup from `update`. Create:
 - `_run_post_init_update(project_root, config)` as a private function in `lexictl_app.py` (not a service — it's CLI-specific interactive logic with `input()`)
+- Add tests for the extracted helper: mock `input()` to exercise the "yes" path (asyncio setup + `update_project()`) and the "no" path (skip message). This closes the identified coverage gap.
 
 **Setup:** The `setup` command is orchestration of existing modules (`generate_rules`, `install_*_hook`, `ensure_iwh_gitignored`). No service extraction needed — the logic is already in domain modules. Minor cleanup only:
 - Extract the hook installation rendering pattern (shared between `init` and `setup`) into a small helper
@@ -297,9 +323,9 @@ No new service module — `IndexStats` lives in `indexer.orchestrator`, `Bootstr
 - Verify `lexictl_app.py` final structure: Typer app setup, thin command handlers
 - Remove the `_has_changes` private function (moved to `services/sweep.py` in Phase 2)
 - Update `plans/BACKLOG.md` to mark lexictl decomposition as resolved
-- Verify `_shared.py` is unchanged (retains `require_project_root`, `stub`, `load_dotenv_if_configured`, `_run_validate`)
+- Verify `_shared.py` is unchanged (retains `require_project_root`, `stub`, `load_dotenv_if_configured`, `_run_validate`, ~231 lines)
 
-**Test:** Full test suite (`uv run pytest --cov=lexibrary`). Verify no coverage regression.
+**Test:** Full test suite (`uv run pytest --cov=lexibrary --cov-report=term-missing`). Compare against the baseline recorded in Phase 0.5 — verify no per-module coverage regression.
 
 ---
 
@@ -320,9 +346,9 @@ Note: no new service data modules — `UpdateStats`, `IndexStats`, and `Bootstra
 
 Consistent with the lexi decomposition decision. It's a thin orchestrator, not business logic. Re-evaluate if/when a programmatic validation API is needed.
 
-### 3. `iwh_clean` → **Extend existing `iwh/cleanup.py`**, not new service module
+### 3. `iwh_clean` → **Extend existing `iwh_cleanup()` signature**, not new function or service module
 
-The cleanup logic belongs in the IWH domain package, not `services/`. The existing `iwh.cleanup` module already has the right dataclasses and patterns. Extending it is more natural than creating `services/iwh_clean.py`.
+The cleanup logic belongs in the IWH domain package, not `services/`. Rather than adding a separate `iwh_manual_clean()` function (which would diverge from the module's action-verb naming convention), extend the existing `iwh_cleanup()` with an optional `remove_all` parameter. This keeps the API surface minimal and follows the established IWH naming pattern (`parse_iwh`, `read_iwh`, `consume_iwh`, etc.).
 
 ### 4. `init` / `setup` → **Minimal extraction**
 
@@ -334,13 +360,29 @@ Unlike the lexi decomposition where each extraction produced a service + render 
 
 ---
 
+## Phase Dependencies
+
+Phases are presented sequentially but several can run in parallel:
+
+```
+Phase 0.5 (baseline) ──→ all other phases
+Phase 1 (update render) ⊥ Phase 4 (bootstrap render)  — independent, can run in parallel
+Phase 2 (sweep)         ──→ Phase 6 (cleanup)          — Phase 2 moves _has_changes; Phase 6 deletes it
+Phase 3 (iwh)           ⊥ all others                   — orthogonal change to iwh/cleanup.py
+Phase 5 (init/setup)    ⊥ all others                   — internal reorganisation only
+```
+
+The minimum critical path is: 0.5 → {1 ∥ 2 ∥ 3 ∥ 4 ∥ 5} → 6.
+
+---
+
 ## Risk Mitigation
 
 - **Phase boundaries are test boundaries** — full `pytest` run after each phase before starting the next
 - **No behaviour changes** — each phase is a pure refactor; CLI output must be identical before and after
 - **Smaller blast radius than lexi decomposition** — fewer lines moved, no test import rewiring (only one mock target update in Phase 2)
 - **Existing modules extended, not replaced** — Phase 3 extends `iwh/cleanup.py` rather than creating a parallel implementation
-- **129 CLI tests are the safety net** — all via CliRunner, so internal reorganisation is invisible to them
+- **137 CLI tests are the safety net** — all via CliRunner, so internal reorganisation is invisible to them
 
 ---
 
@@ -349,11 +391,12 @@ Unlike the lexi decomposition where each extraction produced a service + render 
 | Phase | Lines moved | New files created | Existing files modified | Risk |
 |-------|-------------|-------------------|------------------------|------|
 | 0. scaffold | 0 | — (already done) | — | None |
+| 0.5 baseline | 0 | `coverage-baseline.txt` | — | None |
 | 1. update render | ~105 | `services/update_render.py`, `tests/test_services/test_update_render.py` | `lexictl_app.py` | Low |
-| 2. sweep | ~112 | `services/sweep.py`, `tests/test_services/test_sweep.py` | `lexictl_app.py`, `test_lexictl.py` (1 mock target) | Low |
-| 3. iwh consolidation | ~35 | `tests/test_iwh/test_cleanup.py` (extend) | `iwh/cleanup.py`, `lexictl_app.py` | Low |
+| 2. sweep | ~112 | `services/sweep.py`, `tests/test_services/test_sweep.py` | `lexictl_app.py`, `test_lexictl.py` (mock targets) | Low |
+| 3. iwh consolidation | ~35 | — | `iwh/cleanup.py` (extend `iwh_cleanup()` signature), `lexictl_app.py`, `tests/test_iwh/test_cleanup.py` | Low |
 | 4. bootstrap render | ~45 | `services/bootstrap_render.py`, `tests/test_services/test_bootstrap_render.py` | `lexictl_app.py` | Low |
-| 5. init/setup cleanup | ~30 | — | `lexictl_app.py` (internal helpers) | Low |
+| 5. init/setup cleanup | ~30 | — | `lexictl_app.py` (internal helpers), `test_lexictl.py` (new init tests) | Low |
 | 6. cleanup | 0 (deletes) | — | `lexictl_app.py`, `BACKLOG.md` | Low |
 
 **Total:** ~327 lines extracted. 5 new files (2 render modules + 1 service module + 3 test files).
@@ -365,9 +408,9 @@ Unlike the lexi decomposition where each extraction produced a service + render 
 - `maintainer_help` — static text, no logic
 
 **Post-decomposition file sizes:**
-- `lexictl_app.py`: ~840 lines (down from 1,166) — Typer setup, thin command handlers, internal helpers for init/setup
+- `lexictl_app.py`: ~862 lines (down from 1,189) — Typer setup, thin command handlers, internal helpers for init/setup
 - `iwh/cleanup.py`: ~170 lines (up from 134) — extended with `iwh_manual_clean()`
-- `_shared.py`: unchanged (~170 lines)
+- `_shared.py`: unchanged (~231 lines)
 
 **Files modified (not created):**
 - `src/lexibrary/cli/lexictl_app.py` — remove extracted logic, add service/render imports
@@ -381,12 +424,12 @@ Unlike the lexi decomposition where each extraction produced a service + render 
 
 | Dimension | Lexi decomposition | Lexictl decomposition |
 |---|---|---|
-| Starting size | 1,308 lines | 1,166 lines |
-| Post-decomposition | ~300-350 lines | ~840 lines |
+| Starting size | 1,308 lines | 1,189 lines (as of 2026-04-08) |
+| Post-decomposition | ~300-350 lines | ~862 lines |
 | Lines extracted | ~1,205 | ~327 |
 | New service modules | 5 (lookup, orient, impact, status, describe) | 1 (sweep) |
 | New render modules | 4 (lookup, orient, impact, status) | 2 (update, bootstrap) |
-| Test import rewiring | 4 direct imports | 1 mock target |
+| Test import rewiring | 4 direct imports | mock targets + new init tests |
 | Core issue | Business logic inline in CLI | Stat rendering + domain utilities inline |
 
 The asymmetry is expected. Lexi commands perform data gathering and analysis — that logic belonged in service modules. Lexictl commands orchestrate existing pipeline/indexer/bootstrap modules — the core logic is already extracted. What remains is rendering and infrastructure, which produces a smaller but still valuable decomposition.
