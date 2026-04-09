@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from lexibrary.curator.risk_taxonomy import (
+    _ACTION_KEY_TO_ARTIFACT_KIND,
     RISK_TAXONOMY,
     ActionRisk,
     get_risk_level,
@@ -38,6 +39,15 @@ EXPECTED_LOW_KEYS = {
     "consume_superseded_iwh",
     "write_reactive_iwh",
     "flag_unresolvable_agent_design",
+    # Deprecation lifecycle (Phase 2)
+    "hard_delete_concept_past_ttl",
+    "hard_delete_convention_past_ttl",
+    "hard_delete_playbook_past_ttl",
+    "delete_comments_sidecar",
+    "concept_draft_to_active",
+    "convention_draft_to_active",
+    "playbook_draft_to_active",
+    "stack_post_transition",
 }
 
 EXPECTED_MEDIUM_KEYS = {
@@ -47,10 +57,16 @@ EXPECTED_MEDIUM_KEYS = {
     "flag_conflicting_conventions",
     "suggest_new_concept",
     "promote_blocked_iwh",
+    # Deprecation lifecycle (Phase 2)
+    "deprecate_convention",
+    "deprecate_playbook",
+    "apply_migration_edits",
 }
 
 EXPECTED_HIGH_KEYS = {
     "reconcile_agent_extensive_content",
+    # Deprecation lifecycle (Phase 2)
+    "deprecate_concept",
 }
 
 
@@ -92,15 +108,15 @@ class TestRiskTaxonomy:
 
     def test_low_risk_count(self) -> None:
         low_keys = {k for k, v in RISK_TAXONOMY.items() if v.level == "low"}
-        assert len(low_keys) == 22
+        assert len(low_keys) == 30
 
     def test_medium_risk_count(self) -> None:
         medium_keys = {k for k, v in RISK_TAXONOMY.items() if v.level == "medium"}
-        assert len(medium_keys) == 6
+        assert len(medium_keys) == 9
 
     def test_high_risk_count(self) -> None:
         high_keys = {k for k, v in RISK_TAXONOMY.items() if v.level == "high"}
-        assert len(high_keys) == 1
+        assert len(high_keys) == 2
 
     def test_low_keys_match_spec(self) -> None:
         actual_low = {k for k, v in RISK_TAXONOMY.items() if v.level == "low"}
@@ -129,7 +145,7 @@ class TestRiskTaxonomy:
             assert risk.function_ref, f"{key} has empty function_ref"
 
     def test_total_action_count(self) -> None:
-        assert len(RISK_TAXONOMY) == 29  # 22 + 6 + 1
+        assert len(RISK_TAXONOMY) == 41  # 30 + 9 + 2
 
 
 # ---------------------------------------------------------------------------
@@ -257,3 +273,175 @@ class TestShouldDispatch:
             assert should_dispatch(key, "auto_low", {}) is expected, (
                 f"{key} (level={risk.level}): expected dispatch={expected}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Deprecation action keys — completeness and risk level accuracy
+# ---------------------------------------------------------------------------
+
+# All 13 deprecation action keys with their expected risk levels.
+DEPRECATION_ACTION_KEYS_WITH_LEVELS: dict[str, str] = {
+    "deprecate_concept": "high",
+    "deprecate_convention": "medium",
+    "deprecate_playbook": "medium",
+    "deprecate_design_file": "medium",
+    "hard_delete_concept_past_ttl": "low",
+    "hard_delete_convention_past_ttl": "low",
+    "hard_delete_playbook_past_ttl": "low",
+    "delete_comments_sidecar": "low",
+    "apply_migration_edits": "medium",
+    "concept_draft_to_active": "low",
+    "convention_draft_to_active": "low",
+    "playbook_draft_to_active": "low",
+    "stack_post_transition": "low",
+}
+
+
+class TestDeprecationActionKeys:
+    """All 13 deprecation action keys are present with correct risk levels."""
+
+    def test_all_13_deprecation_keys_present(self) -> None:
+        for key in DEPRECATION_ACTION_KEYS_WITH_LEVELS:
+            assert key in RISK_TAXONOMY, f"Missing deprecation key: {key!r}"
+
+    def test_deprecation_key_count(self) -> None:
+        assert len(DEPRECATION_ACTION_KEYS_WITH_LEVELS) == 13
+
+    def test_deprecation_risk_levels_match(self) -> None:
+        for key, expected_level in DEPRECATION_ACTION_KEYS_WITH_LEVELS.items():
+            actual = RISK_TAXONOMY[key].level
+            assert actual == expected_level, (
+                f"{key}: expected level={expected_level!r}, got {actual!r}"
+            )
+
+    def test_all_deprecation_entries_have_rationale(self) -> None:
+        for key in DEPRECATION_ACTION_KEYS_WITH_LEVELS:
+            assert RISK_TAXONOMY[key].rationale, f"{key} has empty rationale"
+
+    def test_all_deprecation_entries_have_function_ref(self) -> None:
+        for key in DEPRECATION_ACTION_KEYS_WITH_LEVELS:
+            assert RISK_TAXONOMY[key].function_ref, f"{key} has empty function_ref"
+
+    def test_deprecation_function_refs_use_correct_modules(self) -> None:
+        """Verify function_refs point to appropriate curator sub-modules."""
+        for key in DEPRECATION_ACTION_KEYS_WITH_LEVELS:
+            ref = RISK_TAXONOMY[key].function_ref
+            assert ref.startswith("curator."), (
+                f"{key}: function_ref {ref!r} should start with 'curator.'"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Confirmation overrides — should_dispatch with confirmation_overrides
+# ---------------------------------------------------------------------------
+
+
+class TestConfirmationOverrides:
+    """should_dispatch respects confirmation_overrides for deprecation actions."""
+
+    def test_confirmation_override_blocks_full_for_concept(self) -> None:
+        """Concept deprecation blocked under full when confirmation required."""
+        result = should_dispatch(
+            "deprecate_concept",
+            "full",
+            {},
+            confirmation_overrides={"concept": True},
+        )
+        assert result is False
+
+    def test_confirmation_override_blocks_full_for_convention(self) -> None:
+        """Convention deprecation blocked under full when confirmation required."""
+        result = should_dispatch(
+            "deprecate_convention",
+            "full",
+            {},
+            confirmation_overrides={"convention": True},
+        )
+        assert result is False
+
+    def test_no_confirmation_override_allows_full_for_concept(self) -> None:
+        """Concept deprecation dispatched under full without confirmation override."""
+        result = should_dispatch(
+            "deprecate_concept",
+            "full",
+            {},
+            confirmation_overrides=None,
+        )
+        assert result is True
+
+    def test_no_confirmation_override_allows_full_for_convention(self) -> None:
+        """Convention deprecation dispatched under full without override."""
+        result = should_dispatch(
+            "deprecate_convention",
+            "full",
+            {},
+            confirmation_overrides=None,
+        )
+        assert result is True
+
+    def test_confirmation_false_allows_full(self) -> None:
+        """Confirmation override set to False does not block dispatch."""
+        result = should_dispatch(
+            "deprecate_concept",
+            "full",
+            {},
+            confirmation_overrides={"concept": False},
+        )
+        assert result is True
+
+    def test_confirmation_override_empty_dict_allows_full(self) -> None:
+        """Empty confirmation overrides dict does not block dispatch."""
+        result = should_dispatch(
+            "deprecate_concept",
+            "full",
+            {},
+            confirmation_overrides={},
+        )
+        assert result is True
+
+    def test_confirmation_override_unrelated_kind_allows_full(self) -> None:
+        """Override for a different kind does not block concept deprecation."""
+        result = should_dispatch(
+            "deprecate_concept",
+            "full",
+            {},
+            confirmation_overrides={"convention": True},
+        )
+        assert result is True
+
+    def test_confirmation_override_with_propose_still_blocks(self) -> None:
+        """Propose mode blocks even without confirmation override."""
+        result = should_dispatch(
+            "deprecate_concept",
+            "propose",
+            {},
+            confirmation_overrides={"concept": True},
+        )
+        assert result is False
+
+    def test_confirmation_override_with_auto_low_still_blocks_high(self) -> None:
+        """auto_low blocks high-risk actions regardless of confirmation overrides."""
+        result = should_dispatch(
+            "deprecate_concept",
+            "auto_low",
+            {},
+            confirmation_overrides={"concept": True},
+        )
+        assert result is False
+
+    def test_non_deprecation_action_unaffected_by_confirmation(self) -> None:
+        """Actions not in _ACTION_KEY_TO_ARTIFACT_KIND are unaffected."""
+        result = should_dispatch(
+            "regenerate_stale_design",
+            "full",
+            {},
+            confirmation_overrides={"concept": True},
+        )
+        assert result is True
+
+    def test_action_key_to_artifact_kind_mapping(self) -> None:
+        """The mapping covers exactly the expected deprecation actions."""
+        assert _ACTION_KEY_TO_ARTIFACT_KIND == {
+            "deprecate_concept": "concept",
+            "deprecate_convention": "convention",
+        }

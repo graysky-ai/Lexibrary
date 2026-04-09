@@ -3,3 +3,9 @@ comments:
     TriageItem, TriageResult, SubAgentResult, DispatchResult, CuratorReport) exchanged
     between the four coordinator phases. No external dependencies -- pure domain model.'
   date: '2026-04-09T05:24:41.580126Z'
+- body: 'Extended models for deprecation workflow (Phase 2, Group 7): added DeprecationCollectItem
+    dataclass for deprecation candidates, added ''deprecation'' to CollectItem.source
+    and TriageItem.issue_type literals, added deprecation_items list to CollectResult,
+    added deprecation_item field to TriageItem, added deprecated/hard_deleted/migrations_applied/migrations_proposed
+    counters to CuratorReport.'
+  date: '2026-04-09T07:39:50.860829Z'

@@ -161,6 +161,7 @@ class ConventionConfig(BaseModel):
 
     lookup_display_limit: int = 5
     deprecation_confirm: Literal["human", "maintainer"] = "human"
+    curator_deprecation_confirm: bool = False
 
 
 class ConventionDeclaration(BaseModel):
@@ -183,6 +184,7 @@ class ConceptConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     deprecation_confirm: Literal["human", "maintainer"] = "human"
+    curator_deprecation_confirm: bool = False
     lookup_display_limit: int = 10
 
 

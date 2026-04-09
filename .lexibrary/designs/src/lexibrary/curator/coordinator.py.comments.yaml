@@ -22,3 +22,12 @@ comments:
     stability and agent content volume. Wired reconciliation dispatch to new reconciliation
     sub-agent module.
   date: '2026-04-09T06:14:06.684601Z'
+- body: 'Extended coordinator for deprecation workflow (Phase 2, Group 7): added _collect_deprecation_candidates
+    with 4 sub-collectors (orphan artifacts, deleted source designs, TTL-expired,
+    stale resolved stack posts), _classify_deprecation for triage with risk-based
+    ranking, deprecation dispatch routing (_dispatch_deprecation, _dispatch_hard_delete,
+    _dispatch_soft_deprecation, _dispatch_stack_transition) with confirmation overrides
+    and IWH signal generation for gated actions, migration dispatch cycle (_dispatch_migrations),
+    and extended _report with deprecated/hard_deleted/migrations_applied/migrations_proposed
+    counts.'
+  date: '2026-04-09T07:39:43.692193Z'

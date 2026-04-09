@@ -1,0 +1,10 @@
+comments:
+- body: >-
+    Deprecated this concept as the legacy caching strategy has been fully
+    replaced by the new session-based approach. All dependent artifacts
+    have been migrated.
+  date: '2025-01-15T10:00:00+00:00'
+- body: >-
+    Verified no remaining references to this concept. Ready for hard
+    deletion once TTL expires.
+  date: '2025-02-01T14:30:00+00:00'

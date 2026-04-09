@@ -30,6 +30,7 @@ class SessionManager:
 
 - [[Authentication]]
 - [[Session Management]]
+- [[Deprecated Target Concept]]
 
 ## Tags
 

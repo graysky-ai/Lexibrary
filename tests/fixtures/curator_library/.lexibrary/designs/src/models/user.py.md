@@ -29,6 +29,10 @@ class User:
 
 - src/auth/login.py
 
+## Wikilinks
+
+- [[Deprecated Target Concept]]
+
 ## Tags
 
 - models

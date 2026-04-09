@@ -1,0 +1,9 @@
+comments:
+- body: >-
+    Deprecated this convention because the src/legacy/ directory has been
+    removed from the codebase. No modules are affected.
+  date: '2025-01-10T08:00:00+00:00'
+- body: >-
+    Confirmed zero references remain. This convention can be hard-deleted
+    once the TTL period elapses.
+  date: '2025-01-20T11:00:00+00:00'

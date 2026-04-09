@@ -28,6 +28,7 @@ def truncate(text: str, max_length: int = 100) -> str: ...
 
 - [[NonexistentConcept]]
 - [[Authentcation]]
+- [[Superseded Concept]]
 
 ## Tags
 

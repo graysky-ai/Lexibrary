@@ -23,7 +23,7 @@ class ActionRisk:
 
 # ---------------------------------------------------------------------------
 # Canonical risk taxonomy — every action the curator may perform.
-# 22 Low  ·  6 Medium  ·  1 High
+# 30 Low  ·  9 Medium  ·  2 High
 # ---------------------------------------------------------------------------
 
 RISK_TAXONOMY: dict[str, ActionRisk] = {
@@ -142,7 +142,7 @@ RISK_TAXONOMY: dict[str, ActionRisk] = {
     "deprecate_design_file": ActionRisk(
         level="medium",
         rationale="Cascade may affect dependents",
-        function_ref="curator.consistency.deprecate_design_file",
+        function_ref="curator.deprecation.deprecate_design_file",
     ),
     "reconcile_agent_interface_changed": ActionRisk(
         level="medium",
@@ -169,11 +169,73 @@ RISK_TAXONOMY: dict[str, ActionRisk] = {
         rationale="Creates persistent searchable artifact",
         function_ref="curator.consistency.promote_blocked_iwh",
     ),
-    # --- High-risk actions (1) -------------------------------------------
+    # --- Deprecation lifecycle: low-risk actions ---------------------------
+    "hard_delete_concept_past_ttl": ActionRisk(
+        level="low",
+        rationale="TTL expired and zero inbound references",
+        function_ref="curator.lifecycle.hard_delete",
+    ),
+    "hard_delete_convention_past_ttl": ActionRisk(
+        level="low",
+        rationale="TTL expired and zero inbound references",
+        function_ref="curator.lifecycle.hard_delete",
+    ),
+    "hard_delete_playbook_past_ttl": ActionRisk(
+        level="low",
+        rationale="TTL expired and zero inbound references",
+        function_ref="curator.lifecycle.hard_delete",
+    ),
+    "delete_comments_sidecar": ActionRisk(
+        level="low",
+        rationale="Parent artifact already deprecated or deleted",
+        function_ref="curator.deprecation.delete_comments_sidecar",
+    ),
+    "concept_draft_to_active": ActionRisk(
+        level="low",
+        rationale="Promotion from draft; no existing content modified",
+        function_ref="curator.lifecycle.draft_to_active",
+    ),
+    "convention_draft_to_active": ActionRisk(
+        level="low",
+        rationale="Promotion from draft; no existing content modified",
+        function_ref="curator.lifecycle.draft_to_active",
+    ),
+    "playbook_draft_to_active": ActionRisk(
+        level="low",
+        rationale="Promotion from draft; no existing content modified",
+        function_ref="curator.lifecycle.draft_to_active",
+    ),
+    "stack_post_transition": ActionRisk(
+        level="low",
+        rationale="Lifecycle state change on resolved or stale post",
+        function_ref="curator.lifecycle.stack_post_transition",
+    ),
+    # --- Deprecation lifecycle: medium-risk actions ----------------------
+    "deprecate_convention": ActionRisk(
+        level="medium",
+        rationale="Cascade may affect convention consumers",
+        function_ref="curator.deprecation.deprecate_convention",
+    ),
+    "deprecate_playbook": ActionRisk(
+        level="medium",
+        rationale="Cascade may affect playbook consumers",
+        function_ref="curator.deprecation.deprecate_playbook",
+    ),
+    "apply_migration_edits": ActionRisk(
+        level="medium",
+        rationale="Modifies dependent artifacts post-deprecation",
+        function_ref="curator.migration.apply_migration_edits",
+    ),
+    # --- High-risk actions (2) -------------------------------------------
     "reconcile_agent_extensive_content": ActionRisk(
         level="high",
         rationale="Lossy merge possible; agent insights at risk",
         function_ref="curator.reconciliation.reconcile_extensive_content",
+    ),
+    "deprecate_concept": ActionRisk(
+        level="high",
+        rationale="Concepts are high-value knowledge; cascade may be extensive",
+        function_ref="curator.deprecation.deprecate_concept",
     ),
 }
 
@@ -197,10 +259,21 @@ def get_risk_level(
     return RISK_TAXONOMY[action_key].level
 
 
+# Mapping from deprecation action keys to artifact kinds for confirmation
+# override lookup.  When a confirmation override maps a kind to ``True``,
+# the action is blocked even under ``full`` autonomy.
+_ACTION_KEY_TO_ARTIFACT_KIND: dict[str, str] = {
+    "deprecate_concept": "concept",
+    "deprecate_convention": "convention",
+}
+
+
 def should_dispatch(
     action_key: str,
     autonomy: str,
     overrides: dict[str, str],
+    *,
+    confirmation_overrides: dict[str, bool] | None = None,
 ) -> bool:
     """Decide whether *action_key* should be dispatched under *autonomy*.
 
@@ -211,7 +284,18 @@ def should_dispatch(
 
     The effective risk level is resolved via :func:`get_risk_level`, which
     respects user-configured *overrides*.
+
+    When *confirmation_overrides* maps an artifact kind (e.g. ``"concept"``)
+    to ``True``, the corresponding deprecation action is blocked even under
+    ``full`` autonomy.  The mapping from action key to artifact kind is
+    defined in ``_ACTION_KEY_TO_ARTIFACT_KIND``.
     """
+    # Check confirmation overrides first — these block regardless of autonomy.
+    if confirmation_overrides:
+        kind = _ACTION_KEY_TO_ARTIFACT_KIND.get(action_key)
+        if kind is not None and confirmation_overrides.get(kind, False):
+            return False
+
     level = get_risk_level(action_key, overrides)
     if autonomy == "auto_low":
         return level == "low"

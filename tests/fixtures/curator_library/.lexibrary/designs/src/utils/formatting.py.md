@@ -24,6 +24,10 @@ def code_block(text: str, lang: str = "") -> str: ...
 
 (none)
 
+## Wikilinks
+
+- [[Superseded Concept]]
+
 ## Tags
 
 - utils

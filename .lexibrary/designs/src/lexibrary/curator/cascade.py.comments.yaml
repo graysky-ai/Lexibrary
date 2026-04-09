@@ -1,0 +1,9 @@
+comments:
+- body: 'Cascade analysis module created for curator-2 Phase 2. Key design decisions:
+    (1) build_cascade() uses direction=''inbound'' for traverse() to find who depends
+    on the target artifact transitively, matching reverse_deps() semantics. (2) LinkGraphSnapshot
+    provides run-scoped caching so the coordinator sees a consistent view even as
+    deprecations modify the underlying artifacts. (3) Graceful degradation returns
+    empty CascadeResult when link graph is None, allowing the coordinator to proceed
+    without graph-dependent analysis.'
+  date: '2026-04-09T07:03:49.809139Z'

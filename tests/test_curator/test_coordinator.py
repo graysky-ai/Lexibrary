@@ -556,13 +556,9 @@ class TestDispatchPhase:
 
         # Create real source and design files so reconciliation can succeed
         source_a = _make_source_file(project, "src/a.py", "def a(): pass\n")
-        _make_design_file(
-            project, "src/a.py", source_hash="old_a", updated_by="agent"
-        )
+        _make_design_file(project, "src/a.py", source_hash="old_a", updated_by="agent")
         source_b = _make_source_file(project, "src/b.py", "def b(): pass\n")
-        _make_design_file(
-            project, "src/b.py", source_hash="old_b", updated_by="agent"
-        )
+        _make_design_file(project, "src/b.py", source_hash="old_b", updated_by="agent")
 
         triage = TriageResult(
             items=[
@@ -1042,3 +1038,628 @@ class TestEndToEnd:
 
         assert report.fixed == 0
         assert report.errored == 0
+
+
+# ---------------------------------------------------------------------------
+# Deprecation dispatch flow (Phase 2 — Group 7)
+# ---------------------------------------------------------------------------
+
+
+class TestDeprecationCollect:
+    """Collect phase detects deprecation candidates."""
+
+    @patch("lexibrary.curator.coordinator._uncommitted_files", return_value=set())
+    @patch("lexibrary.curator.coordinator._active_iwh_dirs", return_value=set())
+    def test_collect_deleted_source_design(
+        self, _mock_iwh: MagicMock, _mock_uncommitted: MagicMock, tmp_path: Path
+    ) -> None:
+        """Design file whose source is deleted is flagged as deprecation candidate."""
+        project = _setup_minimal_project(tmp_path)
+        # Create design file but no source file
+        _make_design_file(project, "src/deleted.py", source_hash="abc")
+
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        with (
+            patch("lexibrary.linkgraph.query.LinkGraph.open", return_value=None),
+            patch("lexibrary.linkgraph.query.open_index", return_value=None),
+        ):
+            result = coord._collect()
+
+        dep_items = result.deprecation_items
+        deleted_items = [d for d in dep_items if d.reason == "source_deleted"]
+        assert len(deleted_items) >= 1
+        assert deleted_items[0].artifact_kind == "design_file"
+
+    @patch("lexibrary.curator.coordinator._uncommitted_files", return_value=set())
+    @patch("lexibrary.curator.coordinator._active_iwh_dirs", return_value=set())
+    def test_collect_orphan_concept(
+        self, _mock_iwh: MagicMock, _mock_uncommitted: MagicMock, tmp_path: Path
+    ) -> None:
+        """Active concept with zero inbound refs is flagged as orphan."""
+        project = _setup_minimal_project(tmp_path)
+        concepts_dir = project / ".lexibrary" / "concepts"
+        concepts_dir.mkdir(parents=True)
+        concept_file = concepts_dir / "orphan-concept.md"
+        content = (
+            "---\ntitle: Orphan Concept\nid: orphan-concept\n"
+            "status: active\ntags: [test]\n---\nBody\n"
+        )
+        concept_file.write_text(content, encoding="utf-8")
+
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        # Mock link graph that returns empty reverse_deps
+        mock_graph = MagicMock()
+        mock_graph.reverse_deps.return_value = []
+        mock_graph.traverse.return_value = []
+
+        with (
+            patch("lexibrary.linkgraph.query.LinkGraph.open", return_value=None),
+            patch("lexibrary.linkgraph.query.open_index", return_value=mock_graph),
+        ):
+            result = coord._collect()
+
+        orphan_items = [d for d in result.deprecation_items if d.reason == "orphan_zero_refs"]
+        assert len(orphan_items) >= 1
+        assert orphan_items[0].artifact_kind == "concept"
+
+
+class TestDeprecationTriage:
+    """Triage phase classifies deprecation candidates."""
+
+    def test_triage_deprecation_orphan_concept(self, tmp_path: Path) -> None:
+        """Orphan concept gets classified with deprecate_concept action key."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        from lexibrary.curator.models import DeprecationCollectItem
+
+        collect = CollectResult(
+            deprecation_items=[
+                DeprecationCollectItem(
+                    artifact_path=Path(".lexibrary/concepts/test.md"),
+                    artifact_kind="concept",
+                    current_status="active",
+                    reason="orphan_zero_refs",
+                ),
+            ]
+        )
+
+        result = coord._triage(collect)
+        dep_items = [t for t in result.items if t.issue_type == "deprecation"]
+        assert len(dep_items) == 1
+        assert dep_items[0].action_key == "deprecate_concept"
+        assert dep_items[0].deprecation_item is not None
+
+    def test_triage_deprecation_hard_delete(self, tmp_path: Path) -> None:
+        """TTL-expired concept classified with hard_delete action key."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        from lexibrary.curator.models import DeprecationCollectItem
+
+        collect = CollectResult(
+            deprecation_items=[
+                DeprecationCollectItem(
+                    artifact_path=Path(".lexibrary/concepts/expired.md"),
+                    artifact_kind="concept",
+                    current_status="deprecated",
+                    reason="ttl_expired_zero_refs",
+                    commits_since_deprecation=60,
+                ),
+            ]
+        )
+
+        result = coord._triage(collect)
+        dep_items = [t for t in result.items if t.issue_type == "deprecation"]
+        assert len(dep_items) == 1
+        assert dep_items[0].action_key == "hard_delete_concept_past_ttl"
+
+    def test_triage_deprecation_ranking_by_risk(self, tmp_path: Path) -> None:
+        """Deprecation items ranked: low risk first, then higher risk."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        from lexibrary.curator.models import DeprecationCollectItem
+
+        collect = CollectResult(
+            deprecation_items=[
+                DeprecationCollectItem(
+                    artifact_path=Path(".lexibrary/concepts/high.md"),
+                    artifact_kind="concept",
+                    current_status="active",
+                    reason="orphan_zero_refs",
+                ),
+                DeprecationCollectItem(
+                    artifact_path=Path(".lexibrary/concepts/low.md"),
+                    artifact_kind="concept",
+                    current_status="deprecated",
+                    reason="ttl_expired_zero_refs",
+                    commits_since_deprecation=60,
+                ),
+            ]
+        )
+
+        result = coord._triage(collect)
+        dep_items = [t for t in result.items if t.issue_type == "deprecation"]
+        assert len(dep_items) == 2
+        # High-risk (deprecate_concept) should have higher priority than low-risk
+        high_item = next(t for t in dep_items if t.action_key == "deprecate_concept")
+        low_item = next(t for t in dep_items if t.action_key == "hard_delete_concept_past_ttl")
+        assert high_item.priority > low_item.priority
+
+
+class TestDeprecationDispatch:
+    """Dispatch phase routes deprecation candidates correctly."""
+
+    def test_dispatch_auto_low_allows_hard_delete(self, tmp_path: Path) -> None:
+        """Under auto_low, hard deletion (low risk) is dispatched."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()  # auto_low by default
+        coord = Coordinator(project, config)
+
+        from lexibrary.curator.models import DeprecationCollectItem
+
+        dep_item = DeprecationCollectItem(
+            artifact_path=project / ".lexibrary" / "concepts" / "expired.md",
+            artifact_kind="concept",
+            current_status="deprecated",
+            reason="ttl_expired_zero_refs",
+            commits_since_deprecation=60,
+        )
+
+        triage = TriageResult(
+            items=[
+                TriageItem(
+                    source_item=CollectItem(
+                        source="deprecation",
+                        path=dep_item.artifact_path,
+                        severity="warning",
+                        message="Deprecation candidate",
+                        check="deprecation",
+                    ),
+                    issue_type="deprecation",
+                    action_key="hard_delete_concept_past_ttl",
+                    priority=20.0,
+                    deprecation_item=dep_item,
+                    risk_level="low",
+                ),
+            ]
+        )
+
+        # Mock the hard_delete to avoid actual file operations
+        with patch("lexibrary.curator.coordinator.Coordinator._dispatch_hard_delete") as mock_hd:
+            mock_hd.return_value = SubAgentResult(
+                success=True,
+                action_key="hard_delete_concept_past_ttl",
+                path=dep_item.artifact_path,
+                message="Hard-deleted concept",
+                llm_calls=0,
+            )
+            result = coord._dispatch(triage)
+
+        assert len(result.dispatched) == 1
+        assert result.dispatched[0].success
+        assert len(result.deferred) == 0
+
+    def test_dispatch_auto_low_defers_high_risk_deprecation(self, tmp_path: Path) -> None:
+        """Under auto_low, concept deprecation (high risk) is deferred."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()  # auto_low by default
+        coord = Coordinator(project, config)
+
+        from lexibrary.curator.models import DeprecationCollectItem
+
+        dep_item = DeprecationCollectItem(
+            artifact_path=project / ".lexibrary" / "concepts" / "orphan.md",
+            artifact_kind="concept",
+            current_status="active",
+            reason="orphan_zero_refs",
+        )
+
+        triage = TriageResult(
+            items=[
+                TriageItem(
+                    source_item=CollectItem(
+                        source="deprecation",
+                        path=dep_item.artifact_path,
+                        severity="warning",
+                        message="Deprecation candidate",
+                        check="deprecation",
+                    ),
+                    issue_type="deprecation",
+                    action_key="deprecate_concept",
+                    priority=100.0,
+                    deprecation_item=dep_item,
+                    risk_level="high",
+                ),
+            ]
+        )
+
+        result = coord._dispatch(triage)
+        assert len(result.dispatched) == 0
+        assert len(result.deferred) == 1
+
+    def test_dispatch_full_allows_concept_deprecation(self, tmp_path: Path) -> None:
+        """Under full autonomy, concept deprecation is dispatched."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig.model_validate({"curator": {"autonomy": "full"}})
+        coord = Coordinator(project, config)
+
+        from lexibrary.curator.models import DeprecationCollectItem
+
+        dep_item = DeprecationCollectItem(
+            artifact_path=project / ".lexibrary" / "concepts" / "orphan.md",
+            artifact_kind="concept",
+            current_status="active",
+            reason="orphan_zero_refs",
+        )
+
+        triage = TriageResult(
+            items=[
+                TriageItem(
+                    source_item=CollectItem(
+                        source="deprecation",
+                        path=dep_item.artifact_path,
+                        severity="warning",
+                        message="Deprecation candidate",
+                        check="deprecation",
+                    ),
+                    issue_type="deprecation",
+                    action_key="deprecate_concept",
+                    priority=100.0,
+                    deprecation_item=dep_item,
+                    risk_level="high",
+                ),
+            ]
+        )
+
+        # Mock the deprecation to avoid actual file operations
+        with patch(
+            "lexibrary.curator.coordinator.Coordinator._dispatch_soft_deprecation"
+        ) as mock_dep:
+            mock_dep.return_value = SubAgentResult(
+                success=True,
+                action_key="deprecate_concept",
+                path=dep_item.artifact_path,
+                message="Deprecated concept",
+                llm_calls=1,
+            )
+            result = coord._dispatch(triage)
+
+        assert len(result.dispatched) == 1
+        assert result.dispatched[0].success
+        assert len(result.deferred) == 0
+
+    def test_dispatch_confirmation_override_blocks_deprecation(self, tmp_path: Path) -> None:
+        """With curator_deprecation_confirm=True, concept deprecation is deferred."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig.model_validate(
+            {
+                "curator": {"autonomy": "full"},
+                "concepts": {"curator_deprecation_confirm": True},
+            }
+        )
+        coord = Coordinator(project, config)
+
+        from lexibrary.curator.models import DeprecationCollectItem
+
+        dep_item = DeprecationCollectItem(
+            artifact_path=project / ".lexibrary" / "concepts" / "orphan.md",
+            artifact_kind="concept",
+            current_status="active",
+            reason="orphan_zero_refs",
+        )
+
+        triage = TriageResult(
+            items=[
+                TriageItem(
+                    source_item=CollectItem(
+                        source="deprecation",
+                        path=dep_item.artifact_path,
+                        severity="warning",
+                        message="Deprecation candidate",
+                        check="deprecation",
+                    ),
+                    issue_type="deprecation",
+                    action_key="deprecate_concept",
+                    priority=100.0,
+                    deprecation_item=dep_item,
+                    risk_level="high",
+                ),
+            ]
+        )
+
+        result = coord._dispatch(triage)
+        # Confirmation override should block even under full autonomy
+        assert len(result.dispatched) == 0
+        assert len(result.deferred) == 1
+
+    def test_dispatch_llm_cap_defers_deprecation(self, tmp_path: Path) -> None:
+        """LLM cap enforcement defers deprecation actions."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig.model_validate(
+            {"curator": {"autonomy": "full", "max_llm_calls_per_run": 1}}
+        )
+        coord = Coordinator(project, config)
+
+        from lexibrary.curator.models import DeprecationCollectItem
+
+        dep_item_a = DeprecationCollectItem(
+            artifact_path=project / ".lexibrary" / "concepts" / "first.md",
+            artifact_kind="concept",
+            current_status="active",
+            reason="orphan_zero_refs",
+        )
+        dep_item_b = DeprecationCollectItem(
+            artifact_path=project / ".lexibrary" / "concepts" / "second.md",
+            artifact_kind="concept",
+            current_status="active",
+            reason="orphan_zero_refs",
+        )
+
+        triage = TriageResult(
+            items=[
+                TriageItem(
+                    source_item=CollectItem(
+                        source="deprecation",
+                        path=dep_item_a.artifact_path,
+                        severity="warning",
+                        message="Deprecation candidate",
+                        check="deprecation",
+                    ),
+                    issue_type="deprecation",
+                    action_key="deprecate_concept",
+                    priority=100.0,
+                    deprecation_item=dep_item_a,
+                    risk_level="high",
+                ),
+                TriageItem(
+                    source_item=CollectItem(
+                        source="deprecation",
+                        path=dep_item_b.artifact_path,
+                        severity="warning",
+                        message="Deprecation candidate",
+                        check="deprecation",
+                    ),
+                    issue_type="deprecation",
+                    action_key="deprecate_concept",
+                    priority=90.0,
+                    deprecation_item=dep_item_b,
+                    risk_level="high",
+                ),
+            ]
+        )
+
+        # Mock the soft deprecation to return 1 LLM call
+        with patch(
+            "lexibrary.curator.coordinator.Coordinator._dispatch_soft_deprecation"
+        ) as mock_dep:
+            mock_dep.return_value = SubAgentResult(
+                success=True,
+                action_key="deprecate_concept",
+                path=dep_item_a.artifact_path,
+                message="Deprecated concept",
+                llm_calls=1,
+            )
+            result = coord._dispatch(triage)
+
+        # First item dispatched, second deferred due to LLM cap
+        assert len(result.dispatched) == 1
+        assert len(result.deferred) == 1
+        assert result.llm_cap_reached
+
+    def test_dispatch_dry_run_records_deprecation(self, tmp_path: Path) -> None:
+        """Dry-run mode records deprecation candidates without executing."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig.model_validate({"curator": {"autonomy": "full"}})
+        coord = Coordinator(project, config)
+
+        from lexibrary.curator.models import DeprecationCollectItem
+
+        dep_item = DeprecationCollectItem(
+            artifact_path=project / ".lexibrary" / "concepts" / "orphan.md",
+            artifact_kind="concept",
+            current_status="active",
+            reason="orphan_zero_refs",
+        )
+
+        triage = TriageResult(
+            items=[
+                TriageItem(
+                    source_item=CollectItem(
+                        source="deprecation",
+                        path=dep_item.artifact_path,
+                        severity="warning",
+                        message="Deprecation candidate",
+                        check="deprecation",
+                    ),
+                    issue_type="deprecation",
+                    action_key="deprecate_concept",
+                    priority=100.0,
+                    deprecation_item=dep_item,
+                    risk_level="high",
+                ),
+            ]
+        )
+
+        result = coord._dispatch(triage, dry_run=True)
+        assert len(result.dispatched) == 1
+        assert "dry-run" in result.dispatched[0].message
+        assert result.dispatched[0].llm_calls == 0
+
+    def test_dispatch_iwh_signal_for_proposed_deprecation(self, tmp_path: Path) -> None:
+        """IWH signal written when deprecation is gated by autonomy."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()  # auto_low -- blocks high risk
+        coord = Coordinator(project, config)
+
+        from lexibrary.curator.models import DeprecationCollectItem
+
+        dep_item = DeprecationCollectItem(
+            artifact_path=project / ".lexibrary" / "concepts" / "orphan.md",
+            artifact_kind="concept",
+            current_status="active",
+            reason="orphan_zero_refs",
+        )
+
+        triage = TriageResult(
+            items=[
+                TriageItem(
+                    source_item=CollectItem(
+                        source="deprecation",
+                        path=dep_item.artifact_path,
+                        severity="warning",
+                        message="Deprecation candidate",
+                        check="deprecation",
+                    ),
+                    issue_type="deprecation",
+                    action_key="deprecate_concept",
+                    priority=100.0,
+                    deprecation_item=dep_item,
+                    risk_level="high",
+                ),
+            ]
+        )
+
+        iwh_patch = "lexibrary.curator.coordinator.Coordinator._write_deprecation_proposal_iwh"
+        with patch(iwh_patch) as mock_iwh:
+            coord._dispatch(triage)
+            # IWH should have been called for the deferred deprecation
+            mock_iwh.assert_called_once()
+
+
+class TestDeprecationReport:
+    """Report phase includes deprecation and migration counts."""
+
+    def test_report_includes_deprecation_counts(self, tmp_path: Path) -> None:
+        """Report includes deprecated and hard_deleted counts."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        collect = CollectResult()
+        triage = TriageResult(
+            items=[
+                TriageItem(
+                    source_item=CollectItem(
+                        source="deprecation",
+                        path=Path(".lexibrary/concepts/a.md"),
+                        severity="warning",
+                        message="test",
+                        check="deprecation",
+                    ),
+                    issue_type="deprecation",
+                    action_key="deprecate_concept",
+                    priority=100.0,
+                ),
+                TriageItem(
+                    source_item=CollectItem(
+                        source="deprecation",
+                        path=Path(".lexibrary/concepts/b.md"),
+                        severity="warning",
+                        message="test",
+                        check="deprecation",
+                    ),
+                    issue_type="deprecation",
+                    action_key="hard_delete_concept_past_ttl",
+                    priority=20.0,
+                ),
+            ]
+        )
+        dispatch = DispatchResult(
+            dispatched=[
+                SubAgentResult(
+                    success=True,
+                    action_key="deprecate_concept",
+                    path=Path(".lexibrary/concepts/a.md"),
+                    message="Deprecated concept",
+                    llm_calls=1,
+                ),
+                SubAgentResult(
+                    success=True,
+                    action_key="hard_delete_concept_past_ttl",
+                    path=Path(".lexibrary/concepts/b.md"),
+                    message="Hard-deleted concept",
+                    llm_calls=0,
+                ),
+            ],
+        )
+
+        report = coord._report(
+            collect,
+            triage,
+            dispatch,
+            migrations_applied=1,
+            migrations_proposed=2,
+        )
+        assert report.deprecated == 1
+        assert report.hard_deleted == 1
+        assert report.migrations_applied == 1
+        assert report.migrations_proposed == 2
+        assert report.fixed == 2
+
+    def test_report_dry_run_no_deprecation_counts(self, tmp_path: Path) -> None:
+        """Dry-run dispatches do not count as deprecated/hard_deleted."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        collect = CollectResult()
+        triage = TriageResult(items=[])
+        dispatch = DispatchResult(
+            dispatched=[
+                SubAgentResult(
+                    success=True,
+                    action_key="deprecate_concept",
+                    path=Path(".lexibrary/concepts/a.md"),
+                    message="dry-run: would dispatch",
+                    llm_calls=0,
+                ),
+            ],
+        )
+
+        report = coord._report(collect, triage, dispatch)
+        assert report.deprecated == 0
+        assert report.hard_deleted == 0
+        assert report.fixed == 0
+
+    def test_report_json_includes_new_fields(self, tmp_path: Path) -> None:
+        """JSON report file includes deprecation and migration fields."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        collect = CollectResult()
+        triage = TriageResult(items=[])
+        dispatch = DispatchResult(
+            dispatched=[
+                SubAgentResult(
+                    success=True,
+                    action_key="deprecate_concept",
+                    path=Path(".lexibrary/concepts/a.md"),
+                    message="Deprecated concept",
+                    llm_calls=1,
+                ),
+            ],
+        )
+
+        report = coord._report(
+            collect,
+            triage,
+            dispatch,
+            migrations_applied=3,
+            migrations_proposed=1,
+        )
+        assert report.report_path is not None
+        data = json.loads(report.report_path.read_text(encoding="utf-8"))
+        assert data["deprecated"] == 1
+        assert data["hard_deleted"] == 0
+        assert data["migrations_applied"] == 3
+        assert data["migrations_proposed"] == 1

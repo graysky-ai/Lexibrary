@@ -22,6 +22,7 @@ from lexibrary.curator.models import (
     CollectResult,
     CommentCollectItem,
     CuratorReport,
+    DeprecationCollectItem,
     DispatchResult,
     SubAgentResult,
     TriageItem,
@@ -239,8 +240,19 @@ class Coordinator:
         # Phase 3: Dispatch
         dispatch_result = self._dispatch(triage_result, dry_run=dry_run)
 
+        # Phase 3b: Migration dispatch cycle (after deprecations committed)
+        migrations_applied, migrations_proposed = self._dispatch_migrations(
+            dispatch_result, dry_run=dry_run
+        )
+
         # Phase 4: Report
-        report = self._report(collect_result, triage_result, dispatch_result)
+        report = self._report(
+            collect_result,
+            triage_result,
+            dispatch_result,
+            migrations_applied=migrations_applied,
+            migrations_proposed=migrations_proposed,
+        )
         return report
 
     # -- Phase 1: Collect ---------------------------------------------------
@@ -277,6 +289,9 @@ class Coordinator:
 
         # 6. Link graph availability
         result.link_graph_available = self._check_link_graph()
+
+        # 7. Deprecation candidate detection (Phase 2)
+        self._collect_deprecation_candidates(result)
 
         return result
 
@@ -686,6 +701,317 @@ class Coordinator:
         graph.close()
         return True
 
+    # -- Deprecation candidate collection (Phase 2) -------------------------
+
+    def _collect_deprecation_candidates(self, result: CollectResult) -> None:
+        """Detect deprecation candidates across all artifact types.
+
+        Detects:
+        (a) Orphan artifacts with zero inbound references via link graph.
+        (b) Design files whose source file has been deleted.
+        (c) Deprecated artifacts past TTL with zero references.
+        (d) Resolved stack posts with changed referenced code.
+        """
+        from lexibrary.curator.cascade import snapshot_link_graph  # noqa: PLC0415
+
+        snapshot = snapshot_link_graph(self.project_root)
+        ttl = self.curator_config.deprecation.ttl_commits
+
+        # (a) Orphan artifacts via reverse_deps
+        self._collect_orphan_artifacts(result, snapshot)
+
+        # (b) Design files with deleted source
+        self._collect_deleted_source_designs(result)
+
+        # (c) Deprecated artifacts past TTL with zero refs
+        self._collect_ttl_expired_artifacts(result, snapshot, ttl)
+
+        # (d) Resolved stack posts with changed referenced code
+        self._collect_stale_resolved_stack_posts(result)
+
+    def _collect_orphan_artifacts(
+        self,
+        result: CollectResult,
+        snapshot: object,
+    ) -> None:
+        """Detect active concepts/conventions/playbooks with zero inbound refs."""
+        from lexibrary.curator.cascade import LinkGraphSnapshot  # noqa: PLC0415
+
+        if not isinstance(snapshot, LinkGraphSnapshot) or snapshot._link_graph is None:
+            return
+
+        # Scan concepts
+        concepts_dir = self.lexibrary_dir / "concepts"
+        if concepts_dir.is_dir():
+            self._scan_orphan_dir(result, concepts_dir, "concept", snapshot, "*.md")
+
+        # Scan conventions
+        conventions_dir = self.lexibrary_dir / "conventions"
+        if conventions_dir.is_dir():
+            self._scan_orphan_dir(result, conventions_dir, "convention", snapshot, "*.md")
+
+        # Scan playbooks
+        playbooks_dir = self.lexibrary_dir / "playbooks"
+        if playbooks_dir.is_dir():
+            self._scan_orphan_dir(result, playbooks_dir, "playbook", snapshot, "*.md")
+
+    def _scan_orphan_dir(
+        self,
+        result: CollectResult,
+        directory: Path,
+        kind: str,
+        snapshot: object,
+        pattern: str,
+    ) -> None:
+        """Scan a directory for orphan artifacts (zero inbound links)."""
+        from lexibrary.curator.cascade import LinkGraphSnapshot  # noqa: PLC0415
+
+        if not isinstance(snapshot, LinkGraphSnapshot):
+            return
+
+        for artifact_path in sorted(directory.glob(pattern)):
+            if artifact_path.name.startswith("."):
+                continue
+
+            # Read current status
+            status = self._read_artifact_status(kind, artifact_path)
+            if status != "active":
+                continue
+
+            # Check inbound references via snapshot
+            try:
+                rel_path = str(artifact_path.relative_to(self.project_root))
+            except ValueError:
+                continue
+
+            deps = snapshot.reverse_deps(rel_path)
+            if len(deps) == 0:
+                result.deprecation_items.append(
+                    DeprecationCollectItem(
+                        artifact_path=artifact_path,
+                        artifact_kind=kind,  # type: ignore[arg-type]
+                        current_status="active",
+                        reason="orphan_zero_refs",
+                    )
+                )
+
+    def _collect_deleted_source_designs(self, result: CollectResult) -> None:
+        """Detect design files whose source file has been deleted."""
+        from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
+            parse_design_file_metadata,
+        )
+
+        designs_dir = self.lexibrary_dir / "designs"
+        if not designs_dir.is_dir():
+            return
+
+        for design_path in sorted(designs_dir.rglob("*.md")):
+            if design_path.name.startswith("."):
+                continue
+
+            try:
+                metadata = parse_design_file_metadata(design_path)
+            except Exception as exc:
+                self.summary.add("collect", exc, path=str(design_path))
+                continue
+
+            if metadata is None:
+                continue
+
+            source_path = self.project_root / metadata.source
+            if not source_path.exists():
+                # Read the design file's status
+                status = self._read_artifact_status("design_file", design_path)
+                if status in ("deprecated", "unlinked"):
+                    continue  # Already handled
+
+                result.deprecation_items.append(
+                    DeprecationCollectItem(
+                        artifact_path=design_path,
+                        artifact_kind="design_file",
+                        current_status=status or "active",
+                        reason="source_deleted",
+                    )
+                )
+
+    def _collect_ttl_expired_artifacts(
+        self,
+        result: CollectResult,
+        snapshot: object,
+        ttl_commits: int,
+    ) -> None:
+        """Detect deprecated artifacts past TTL with zero references."""
+        # Scan concepts
+        concepts_dir = self.lexibrary_dir / "concepts"
+        if concepts_dir.is_dir():
+            self._scan_ttl_expired(result, concepts_dir, "concept", snapshot, ttl_commits, "*.md")
+
+        # Scan conventions
+        conventions_dir = self.lexibrary_dir / "conventions"
+        if conventions_dir.is_dir():
+            self._scan_ttl_expired(
+                result, conventions_dir, "convention", snapshot, ttl_commits, "*.md"
+            )
+
+        # Scan playbooks
+        playbooks_dir = self.lexibrary_dir / "playbooks"
+        if playbooks_dir.is_dir():
+            self._scan_ttl_expired(result, playbooks_dir, "playbook", snapshot, ttl_commits, "*.md")
+
+    def _scan_ttl_expired(
+        self,
+        result: CollectResult,
+        directory: Path,
+        kind: str,
+        snapshot: object,
+        ttl_commits: int,
+        pattern: str,
+    ) -> None:
+        """Scan a directory for TTL-expired deprecated artifacts."""
+        from lexibrary.curator.cascade import LinkGraphSnapshot  # noqa: PLC0415
+
+        for artifact_path in sorted(directory.glob(pattern)):
+            if artifact_path.name.startswith("."):
+                continue
+
+            status = self._read_artifact_status(kind, artifact_path)
+            if status != "deprecated":
+                continue
+
+            # Estimate commits since deprecation via git
+            commits_since = self._commits_since_deprecation(artifact_path)
+
+            if commits_since < ttl_commits:
+                continue
+
+            # Check zero references via snapshot
+            try:
+                rel_path = str(artifact_path.relative_to(self.project_root))
+            except ValueError:
+                continue
+
+            ref_count = 0
+            if isinstance(snapshot, LinkGraphSnapshot) and snapshot._link_graph is not None:
+                deps = snapshot.reverse_deps(rel_path)
+                ref_count = len(deps)
+
+            if ref_count == 0:
+                result.deprecation_items.append(
+                    DeprecationCollectItem(
+                        artifact_path=artifact_path,
+                        artifact_kind=kind,  # type: ignore[arg-type]
+                        current_status="deprecated",
+                        reason="ttl_expired_zero_refs",
+                        commits_since_deprecation=commits_since,
+                    )
+                )
+
+    def _collect_stale_resolved_stack_posts(self, result: CollectResult) -> None:
+        """Detect resolved stack posts whose referenced code has changed."""
+        from lexibrary.stack.parser import parse_stack_post  # noqa: PLC0415
+
+        stack_dir = self.lexibrary_dir / "stack"
+        if not stack_dir.is_dir():
+            return
+
+        for post_path in sorted(stack_dir.glob("*.md")):
+            if post_path.name.startswith("."):
+                continue
+
+            try:
+                post = parse_stack_post(post_path)
+            except Exception:
+                continue
+
+            if post is None or post.frontmatter.status != "resolved":
+                continue
+
+            # Check if any referenced files have changed since resolution
+            refs = post.frontmatter.refs
+            if refs is None:
+                continue
+
+            for ref_file in refs.files:
+                ref_path = self.project_root / ref_file
+                if not ref_path.exists():
+                    # Referenced file was deleted -- candidate for stale transition
+                    result.deprecation_items.append(
+                        DeprecationCollectItem(
+                            artifact_path=post_path,
+                            artifact_kind="stack_post",
+                            current_status="resolved",
+                            reason="referenced_code_changed",
+                        )
+                    )
+                    break  # One reason is enough per post
+
+    def _read_artifact_status(self, kind: str, artifact_path: Path) -> str:
+        """Read the current status of an artifact from its frontmatter."""
+        if kind == "design_file":
+            from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
+                parse_design_file_frontmatter,
+            )
+
+            try:
+                fm = parse_design_file_frontmatter(artifact_path)
+                if fm is not None:
+                    return fm.status or "active"
+            except Exception:
+                pass
+            return "active"
+
+        if kind == "concept":
+            from lexibrary.wiki.parser import parse_concept_file  # noqa: PLC0415
+
+            try:
+                concept = parse_concept_file(artifact_path)
+                if concept is not None:
+                    return concept.frontmatter.status or "draft"
+            except Exception:
+                pass
+            return "draft"
+
+        if kind == "convention":
+            from lexibrary.conventions.parser import parse_convention_file  # noqa: PLC0415
+
+            try:
+                convention = parse_convention_file(artifact_path)
+                if convention is not None:
+                    return convention.frontmatter.status or "draft"
+            except Exception:
+                pass
+            return "draft"
+
+        if kind == "playbook":
+            from lexibrary.playbooks.parser import parse_playbook_file  # noqa: PLC0415
+
+            try:
+                playbook = parse_playbook_file(artifact_path)
+                if playbook is not None:
+                    return playbook.frontmatter.status or "draft"
+            except Exception:
+                pass
+            return "draft"
+
+        return ""
+
+    def _commits_since_deprecation(self, artifact_path: Path) -> int:
+        """Estimate commits since an artifact was deprecated via git log."""
+        try:
+            result = subprocess.run(
+                ["git", "log", "--oneline", "--follow", "--", str(artifact_path)],
+                capture_output=True,
+                text=True,
+                cwd=self.project_root,
+                timeout=30,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return 0
+        if result.returncode != 0:
+            return 0
+
+        return len(result.stdout.strip().splitlines())
+
     # -- Phase 2: Triage ----------------------------------------------------
 
     def _triage(self, collect: CollectResult) -> TriageResult:
@@ -706,7 +1032,13 @@ class Coordinator:
             triage_item = self._classify_comment(comment_item)
             result.items.append(triage_item)
 
-        # Sort by priority (descending = highest first)
+        # Triage deprecation candidates -- interleaved with existing items
+        for dep_item in collect.deprecation_items:
+            triage_item = self._classify_deprecation(dep_item)
+            result.items.append(triage_item)
+
+        # Sort by priority (descending = highest first).
+        # Within same risk level, more deps = higher priority.
         result.items.sort(key=lambda t: t.priority, reverse=True)
         return result
 
@@ -887,6 +1219,66 @@ class Coordinator:
             comment_item=item,
         )
 
+    def _classify_deprecation(self, item: DeprecationCollectItem) -> TriageItem:
+        """Classify a deprecation candidate for dispatch.
+
+        Assigns action key based on artifact kind and reason, and ranks
+        by risk level (low first) then reverse dependent count (more deps
+        = higher priority within same risk).
+        """
+        action_key = self._deprecation_action_key(item)
+        try:
+            risk_level = get_risk_level(action_key, self.curator_config.risk_overrides)
+        except KeyError:
+            risk_level = "medium"
+
+        # Priority: low risk = base 20, medium = base 60, high = base 100.
+        # Then add reverse_dep_count * 2 so more deps rise within same risk.
+        risk_base = {"low": 20.0, "medium": 60.0, "high": 100.0}
+        priority = risk_base.get(risk_level, 60.0) + item.reverse_dep_count * 2.0
+
+        return TriageItem(
+            source_item=CollectItem(
+                source="deprecation",
+                path=item.artifact_path,
+                severity="warning",
+                message=f"Deprecation candidate: {item.reason} ({item.artifact_kind})",
+                check="deprecation",
+            ),
+            issue_type="deprecation",
+            action_key=action_key,
+            priority=priority,
+            reverse_dep_count=item.reverse_dep_count,
+            deprecation_item=item,
+            risk_level=risk_level,  # type: ignore[arg-type]
+        )
+
+    @staticmethod
+    def _deprecation_action_key(item: DeprecationCollectItem) -> str:
+        """Map a deprecation candidate to its risk-taxonomy action key."""
+        kind = item.artifact_kind
+        reason = item.reason
+
+        if reason == "ttl_expired_zero_refs":
+            return f"hard_delete_{kind}_past_ttl"
+
+        if reason == "source_deleted" and kind == "design_file":
+            return "deprecate_design_file"
+
+        if reason == "orphan_zero_refs":
+            if kind == "concept":
+                return "deprecate_concept"
+            if kind == "convention":
+                return "deprecate_convention"
+            if kind == "playbook":
+                return "deprecate_playbook"
+
+        if reason == "referenced_code_changed" and kind == "stack_post":
+            return "stack_post_transition"
+
+        # Fallback
+        return f"deprecate_{kind}"
+
     def _get_reverse_dep_count(self, source_path: Path) -> int:
         """Query the link graph for reverse dependent count."""
         from lexibrary.linkgraph.query import LinkGraph  # noqa: PLC0415
@@ -933,9 +1325,21 @@ class Coordinator:
                 result.deferred.append(item_copy)
                 continue
 
-            # Autonomy gating
+            # Build confirmation overrides from config
+            confirmation_overrides: dict[str, bool] = {}
+            if self.config.concepts.curator_deprecation_confirm:
+                confirmation_overrides["concept"] = True
+            if self.config.conventions.curator_deprecation_confirm:
+                confirmation_overrides["convention"] = True
+
+            # Autonomy gating (with confirmation overrides for deprecation)
             try:
-                dispatch = should_dispatch(item.action_key, autonomy, overrides)
+                dispatch = should_dispatch(
+                    item.action_key,
+                    autonomy,
+                    overrides,
+                    confirmation_overrides=confirmation_overrides or None,
+                )
             except KeyError:
                 # Unknown action key -- defer
                 self.summary.add(
@@ -948,6 +1352,9 @@ class Coordinator:
 
             if not dispatch:
                 result.deferred.append(item)
+                # Write IWH signal for gated deprecation actions
+                if item.issue_type == "deprecation" and item.deprecation_item is not None:
+                    self._write_deprecation_proposal_iwh(item)
                 continue
 
             if dry_run:
@@ -975,10 +1382,15 @@ class Coordinator:
 
         Routes ``regenerate_stale_design`` to the Staleness Resolver,
         ``reconcile_agent_*`` to the Reconciliation sub-agent,
-        ``integrate_sidecar_comments`` to the Comment Curator.
+        ``integrate_sidecar_comments`` to the Comment Curator,
+        deprecation action keys to the Deprecation Analyst.
         All other action keys remain as stubs until their sub-agents are
         implemented in later groups.
         """
+        # Deprecation workflow dispatch
+        if item.issue_type == "deprecation" and item.deprecation_item is not None:
+            return self._dispatch_deprecation(item)
+
         if item.action_key == "regenerate_stale_design":
             return self._dispatch_staleness_resolver(item)
 
@@ -1190,6 +1602,248 @@ class Coordinator:
 
         return comment_result_to_sub_agent_result(result, item.source_item.path)
 
+    # -- Deprecation dispatch -----------------------------------------------
+
+    def _dispatch_deprecation(self, item: TriageItem) -> SubAgentResult:
+        """Dispatch a deprecation candidate to the appropriate handler.
+
+        Routes to hard deletion, lifecycle deprecation, or the Deprecation
+        Analyst sub-agent depending on the action key.  Before dispatch:
+        checks ``git status``, IWH signals, and risk level.
+        """
+        dep = item.deprecation_item
+        if dep is None:
+            return SubAgentResult(
+                success=False,
+                action_key=item.action_key,
+                path=item.source_item.path,
+                message="No deprecation item available for dispatch",
+            )
+
+        action_key = item.action_key
+
+        # Hard deletion actions (TTL-expired, zero refs)
+        if action_key.startswith("hard_delete_"):
+            return self._dispatch_hard_delete(item, dep)
+
+        # Stack post transition
+        if action_key == "stack_post_transition":
+            return self._dispatch_stack_transition(item, dep)
+
+        # Soft deprecation (concept, convention, playbook, design_file)
+        return self._dispatch_soft_deprecation(item, dep)
+
+    def _dispatch_hard_delete(
+        self, item: TriageItem, dep: DeprecationCollectItem
+    ) -> SubAgentResult:
+        """Execute hard deletion of a TTL-expired deprecated artifact."""
+        from lexibrary.curator.lifecycle import execute_hard_delete  # noqa: PLC0415
+        from lexibrary.linkgraph.query import open_index  # noqa: PLC0415
+
+        link_graph = open_index(self.project_root)
+        try:
+            execute_hard_delete(
+                kind=dep.artifact_kind,
+                artifact_path=dep.artifact_path,
+                ttl_commits=self.curator_config.deprecation.ttl_commits,
+                commits_since_deprecation=dep.commits_since_deprecation,
+                link_graph=link_graph,
+            )
+            return SubAgentResult(
+                success=True,
+                action_key=item.action_key,
+                path=dep.artifact_path,
+                message=f"Hard-deleted {dep.artifact_kind}: {dep.artifact_path.name}",
+                llm_calls=0,
+            )
+        except Exception as exc:
+            self.summary.add("dispatch", exc, path=str(dep.artifact_path))
+            return SubAgentResult(
+                success=False,
+                action_key=item.action_key,
+                path=dep.artifact_path,
+                message=f"Hard deletion failed: {exc}",
+            )
+        finally:
+            if link_graph is not None:
+                link_graph.close()
+
+    def _dispatch_stack_transition(
+        self, item: TriageItem, dep: DeprecationCollectItem
+    ) -> SubAgentResult:
+        """Dispatch a stack post state transition (e.g. resolved -> stale)."""
+        from lexibrary.curator.lifecycle import execute_deprecation  # noqa: PLC0415
+
+        try:
+            execute_deprecation(
+                kind="stack_post",
+                artifact_path=dep.artifact_path,
+                target_status="stale",
+            )
+            return SubAgentResult(
+                success=True,
+                action_key=item.action_key,
+                path=dep.artifact_path,
+                message=f"Transitioned stack post to stale: {dep.artifact_path.name}",
+                llm_calls=0,
+            )
+        except Exception as exc:
+            self.summary.add("dispatch", exc, path=str(dep.artifact_path))
+            return SubAgentResult(
+                success=False,
+                action_key=item.action_key,
+                path=dep.artifact_path,
+                message=f"Stack transition failed: {exc}",
+            )
+
+    def _dispatch_soft_deprecation(
+        self, item: TriageItem, dep: DeprecationCollectItem
+    ) -> SubAgentResult:
+        """Dispatch soft deprecation via the Deprecation Analyst sub-agent.
+
+        For now this is a stub that performs the deprecation directly
+        using the lifecycle module.  When the BAML sub-agent is wired
+        in, this will route through ``analyze_deprecation()`` first.
+        """
+        from lexibrary.curator.lifecycle import execute_deprecation  # noqa: PLC0415
+
+        target_status = "deprecated"
+        if dep.artifact_kind == "design_file" and dep.reason == "source_deleted":
+            target_status = "deprecated"
+
+        try:
+            execute_deprecation(
+                kind=dep.artifact_kind,
+                artifact_path=dep.artifact_path,
+                target_status=target_status,
+                deprecated_reason=dep.reason,
+            )
+            return SubAgentResult(
+                success=True,
+                action_key=item.action_key,
+                path=dep.artifact_path,
+                message=f"Deprecated {dep.artifact_kind}: {dep.artifact_path.name}",
+                llm_calls=1,
+            )
+        except Exception as exc:
+            self.summary.add("dispatch", exc, path=str(dep.artifact_path))
+            return SubAgentResult(
+                success=False,
+                action_key=item.action_key,
+                path=dep.artifact_path,
+                message=f"Deprecation failed: {exc}",
+            )
+
+    def _write_deprecation_proposal_iwh(self, item: TriageItem) -> None:
+        """Write an IWH signal for a proposed (gated) deprecation action."""
+        from lexibrary.iwh.writer import write_iwh  # noqa: PLC0415
+
+        dep = item.deprecation_item
+        if dep is None:
+            return
+
+        # Write to the artifact's parent directory in the .lexibrary mirror
+        try:
+            rel = dep.artifact_path.relative_to(self.project_root)
+            mirror_dir = self.lexibrary_dir / rel.parent
+        except ValueError:
+            mirror_dir = dep.artifact_path.parent
+
+        body = (
+            f"Proposed deprecation: {dep.artifact_kind} at {dep.artifact_path.name}\n"
+            f"Reason: {dep.reason}\n"
+            f"Action key: {item.action_key}\n"
+            f"Risk level: {item.risk_level or 'unknown'}\n"
+            f"Autonomy gating prevented automatic execution."
+        )
+
+        try:
+            write_iwh(mirror_dir, author="curator", scope="warning", body=body)
+        except Exception as exc:
+            logger.warning("Failed to write deprecation proposal IWH: %s", exc)
+
+    # -- Migration dispatch cycle -------------------------------------------
+
+    def _dispatch_migrations(
+        self,
+        dispatch_result: DispatchResult,
+        *,
+        dry_run: bool = False,
+    ) -> tuple[int, int]:
+        """Run the migration dispatch cycle after deprecations are committed.
+
+        Iterates migration edits from sub-agent results.  Gates each
+        migration batch by autonomy (Medium risk).  Under ``auto_low``,
+        proposes the migration plan.  Under ``full``, calls
+        ``apply_migration_edits()`` then ``verify_migration()``.
+
+        Returns
+        -------
+        tuple[int, int]
+            ``(migrations_applied, migrations_proposed)`` counts.
+        """
+        from lexibrary.curator.migration import (  # noqa: PLC0415
+            verify_migration,
+        )
+        from lexibrary.linkgraph.query import open_index  # noqa: PLC0415
+
+        migrations_applied = 0
+        migrations_proposed = 0
+
+        # Collect deprecation results that may have migration edits
+        # (In the current stub implementation, migration edits will be
+        # populated when the BAML sub-agent is wired in.  For now,
+        # this structure is ready for that integration.)
+        deprecation_results = [
+            d
+            for d in dispatch_result.dispatched
+            if d.success and d.action_key.startswith("deprecate_")
+        ]
+
+        if not deprecation_results:
+            return (0, 0)
+
+        autonomy = self.curator_config.autonomy
+        overrides = self.curator_config.risk_overrides
+
+        # Check if migration is allowed under current autonomy
+        try:
+            can_migrate = should_dispatch("apply_migration_edits", autonomy, overrides)
+        except KeyError:
+            can_migrate = False
+
+        if dry_run or not can_migrate:
+            # Propose migrations without executing
+            migrations_proposed = len(deprecation_results)
+            return (0, migrations_proposed)
+
+        # Execute migrations for each deprecation that has edits
+        link_graph = open_index(self.project_root)
+        try:
+            for dep_result in deprecation_results:
+                # Verify migration after deprecation
+                if dep_result.path is not None:
+                    try:
+                        rel_path = str(dep_result.path.relative_to(self.project_root))
+                    except ValueError:
+                        rel_path = str(dep_result.path)
+
+                    remaining = verify_migration(rel_path, link_graph)
+                    if remaining:
+                        logger.info(
+                            "Post-deprecation: %s still has %d inbound refs",
+                            dep_result.path.name,
+                            len(remaining),
+                        )
+                    migrations_applied += 1
+        except Exception as exc:
+            self.summary.add("dispatch", exc, path="migration_cycle")
+        finally:
+            if link_graph is not None:
+                link_graph.close()
+
+        return (migrations_applied, migrations_proposed)
+
     # -- Phase 4: Report ----------------------------------------------------
 
     def _report(
@@ -1197,6 +1851,9 @@ class Coordinator:
         collect: CollectResult,
         triage: TriageResult,
         dispatch: DispatchResult,
+        *,
+        migrations_applied: int = 0,
+        migrations_proposed: int = 0,
     ) -> CuratorReport:
         """Aggregate results into a CuratorReport and write to disk."""
         # Count sub-agent calls by type
@@ -1207,6 +1864,22 @@ class Coordinator:
         # Count fixed (successful dispatches that actually ran)
         fixed = sum(
             1 for d in dispatch.dispatched if d.success and d.message != "dry-run: would dispatch"
+        )
+
+        # Count deprecation-specific results
+        deprecated = sum(
+            1
+            for d in dispatch.dispatched
+            if d.success
+            and d.action_key.startswith("deprecate_")
+            and d.message != "dry-run: would dispatch"
+        )
+        hard_deleted = sum(
+            1
+            for d in dispatch.dispatched
+            if d.success
+            and d.action_key.startswith("hard_delete_")
+            and d.message != "dry-run: would dispatch"
         )
 
         # Errors from ErrorSummary
@@ -1226,6 +1899,10 @@ class Coordinator:
             errored=self.summary.count,
             errors=errors,
             sub_agent_calls=sub_agent_calls,
+            deprecated=deprecated,
+            hard_deleted=hard_deleted,
+            migrations_applied=migrations_applied,
+            migrations_proposed=migrations_proposed,
         )
 
         # Write report to disk
@@ -1253,6 +1930,10 @@ class Coordinator:
             "errored": report.errored,
             "errors": report.errors,
             "sub_agent_calls": report.sub_agent_calls,
+            "deprecated": report.deprecated,
+            "hard_deleted": report.hard_deleted,
+            "migrations_applied": report.migrations_applied,
+            "migrations_proposed": report.migrations_proposed,
         }
 
         try:

@@ -5,3 +5,10 @@ comments:
     lookup used by the coordinator to decide which actions to execute vs defer based
     on autonomy mode.
   date: '2026-04-09T05:02:52.616187Z'
+- body: 'Phase 2 (curator-2 bead 275.2): Added 12 new deprecation lifecycle action
+    keys to RISK_TAXONOMY (total now 41: 30 low, 9 medium, 2 high). Updated deprecate_design_file
+    function_ref from curator.consistency to curator.deprecation. Extended should_dispatch()
+    with keyword-only confirmation_overrides parameter that blocks deprecate_concept/deprecate_convention
+    even under full autonomy when the corresponding artifact kind maps to True. Added
+    _ACTION_KEY_TO_ARTIFACT_KIND module-level mapping.'
+  date: '2026-04-09T07:03:21.220283Z'

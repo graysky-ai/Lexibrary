@@ -19,7 +19,7 @@ from typing import Literal
 class CollectItem:
     """A single signal discovered during the collect phase."""
 
-    source: Literal["validation", "staleness", "iwh", "agent_edit"]
+    source: Literal["validation", "staleness", "iwh", "agent_edit", "deprecation"]
     path: Path | None
     severity: Literal["error", "warning", "info"]
     message: str
@@ -44,11 +44,24 @@ class CommentCollectItem:
 
 
 @dataclass
+class DeprecationCollectItem:
+    """A deprecation candidate discovered during the collect phase."""
+
+    artifact_path: Path
+    artifact_kind: Literal["concept", "convention", "design_file", "playbook", "stack_post"]
+    current_status: str
+    reason: str
+    commits_since_deprecation: int = 0
+    reverse_dep_count: int = 0
+
+
+@dataclass
 class CollectResult:
     """Aggregated output of the collect phase."""
 
     items: list[CollectItem] = field(default_factory=list)
     comment_items: list[CommentCollectItem] = field(default_factory=list)
+    deprecation_items: list[DeprecationCollectItem] = field(default_factory=list)
     link_graph_available: bool = False
     validation_error: str | None = None
 
@@ -63,12 +76,15 @@ class TriageItem:
     """A collected item enriched with classification and priority."""
 
     source_item: CollectItem
-    issue_type: Literal["staleness", "consistency", "comment", "orphan", "reconciliation"]
+    issue_type: Literal[
+        "staleness", "consistency", "comment", "orphan", "reconciliation", "deprecation"
+    ]
     action_key: str
     priority: float = 0.0
     agent_edited: bool = False
     reverse_dep_count: int = 0
     comment_item: CommentCollectItem | None = None
+    deprecation_item: DeprecationCollectItem | None = None
     risk_level: Literal["low", "medium", "high"] | None = None
 
 
@@ -121,3 +137,8 @@ class CuratorReport:
     errors: list[dict[str, str]] = field(default_factory=list)
     sub_agent_calls: dict[str, int] = field(default_factory=dict)
     report_path: Path | None = None
+    # Deprecation / migration counters (Phase 2)
+    deprecated: int = 0
+    hard_deleted: int = 0
+    migrations_applied: int = 0
+    migrations_proposed: int = 0

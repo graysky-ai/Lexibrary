@@ -26,6 +26,7 @@ def authenticate(username: str, password: str) -> bool: ...
 ## Wikilinks
 
 - [[Authentication]]
+- [[Deprecated Target Concept]]
 
 ## Tags
 
