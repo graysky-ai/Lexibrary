@@ -443,7 +443,8 @@ class TestTriagePhase:
 class TestDispatchPhase:
     """Dispatch phase applies autonomy gating and calls sub-agents."""
 
-    def test_dispatch_auto_low_dispatches_low(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_auto_low_dispatches_low(self, tmp_path: Path) -> None:
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig()
         coord = Coordinator(project, config)
@@ -465,11 +466,12 @@ class TestDispatchPhase:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         assert len(result.dispatched) == 1
         assert len(result.deferred) == 0
 
-    def test_dispatch_auto_low_defers_medium(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_auto_low_defers_medium(self, tmp_path: Path) -> None:
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig()
         coord = Coordinator(project, config)
@@ -491,11 +493,12 @@ class TestDispatchPhase:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         assert len(result.dispatched) == 0
         assert len(result.deferred) == 1
 
-    def test_dispatch_full_dispatches_all(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_full_dispatches_all(self, tmp_path: Path) -> None:
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig.model_validate({"curator": {"autonomy": "full"}})
         coord = Coordinator(project, config)
@@ -517,11 +520,12 @@ class TestDispatchPhase:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         assert len(result.dispatched) == 1
         assert len(result.deferred) == 0
 
-    def test_dispatch_propose_defers_all(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_propose_defers_all(self, tmp_path: Path) -> None:
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig.model_validate({"curator": {"autonomy": "propose"}})
         coord = Coordinator(project, config)
@@ -543,11 +547,12 @@ class TestDispatchPhase:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         assert len(result.dispatched) == 0
         assert len(result.deferred) == 1
 
-    def test_dispatch_llm_cap_reached(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_llm_cap_reached(self, tmp_path: Path) -> None:
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig.model_validate(
             {"curator": {"autonomy": "full", "max_llm_calls_per_run": 1}}
@@ -593,13 +598,14 @@ class TestDispatchPhase:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         # First dispatches (1 LLM call from reconciliation), second deferred
         assert len(result.dispatched) == 1
         assert len(result.deferred) == 1
         assert result.llm_cap_reached is True
 
-    def test_dispatch_dry_run(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_dry_run(self, tmp_path: Path) -> None:
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig()
         coord = Coordinator(project, config)
@@ -621,7 +627,7 @@ class TestDispatchPhase:
             ]
         )
 
-        result = coord._dispatch(triage, dry_run=True)
+        result = await coord._dispatch(triage, dry_run=True)
         assert len(result.dispatched) == 1
         assert "dry-run" in result.dispatched[0].message
 
@@ -1198,7 +1204,8 @@ class TestDeprecationTriage:
 class TestDeprecationDispatch:
     """Dispatch phase routes deprecation candidates correctly."""
 
-    def test_dispatch_auto_low_allows_hard_delete(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_auto_low_allows_hard_delete(self, tmp_path: Path) -> None:
         """Under auto_low, hard deletion (low risk) is dispatched."""
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig()  # auto_low by default
@@ -1242,13 +1249,14 @@ class TestDeprecationDispatch:
                 message="Hard-deleted concept",
                 llm_calls=0,
             )
-            result = coord._dispatch(triage)
+            result = await coord._dispatch(triage)
 
         assert len(result.dispatched) == 1
         assert result.dispatched[0].success
         assert len(result.deferred) == 0
 
-    def test_dispatch_auto_low_defers_high_risk_deprecation(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_auto_low_defers_high_risk_deprecation(self, tmp_path: Path) -> None:
         """Under auto_low, concept deprecation (high risk) is deferred."""
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig()  # auto_low by default
@@ -1282,11 +1290,12 @@ class TestDeprecationDispatch:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         assert len(result.dispatched) == 0
         assert len(result.deferred) == 1
 
-    def test_dispatch_full_allows_concept_deprecation(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_full_allows_concept_deprecation(self, tmp_path: Path) -> None:
         """Under full autonomy, concept deprecation is dispatched."""
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig.model_validate({"curator": {"autonomy": "full"}})
@@ -1331,13 +1340,14 @@ class TestDeprecationDispatch:
                 message="Deprecated concept",
                 llm_calls=1,
             )
-            result = coord._dispatch(triage)
+            result = await coord._dispatch(triage)
 
         assert len(result.dispatched) == 1
         assert result.dispatched[0].success
         assert len(result.deferred) == 0
 
-    def test_dispatch_confirmation_override_blocks_deprecation(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_confirmation_override_blocks_deprecation(self, tmp_path: Path) -> None:
         """With curator_deprecation_confirm=True, concept deprecation is deferred."""
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig.model_validate(
@@ -1376,12 +1386,13 @@ class TestDeprecationDispatch:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         # Confirmation override should block even under full autonomy
         assert len(result.dispatched) == 0
         assert len(result.deferred) == 1
 
-    def test_dispatch_llm_cap_defers_deprecation(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_llm_cap_defers_deprecation(self, tmp_path: Path) -> None:
         """LLM cap enforcement defers deprecation actions."""
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig.model_validate(
@@ -1448,14 +1459,15 @@ class TestDeprecationDispatch:
                 message="Deprecated concept",
                 llm_calls=1,
             )
-            result = coord._dispatch(triage)
+            result = await coord._dispatch(triage)
 
         # First item dispatched, second deferred due to LLM cap
         assert len(result.dispatched) == 1
         assert len(result.deferred) == 1
         assert result.llm_cap_reached
 
-    def test_dispatch_dry_run_records_deprecation(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_dry_run_records_deprecation(self, tmp_path: Path) -> None:
         """Dry-run mode records deprecation candidates without executing."""
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig.model_validate({"curator": {"autonomy": "full"}})
@@ -1489,12 +1501,13 @@ class TestDeprecationDispatch:
             ]
         )
 
-        result = coord._dispatch(triage, dry_run=True)
+        result = await coord._dispatch(triage, dry_run=True)
         assert len(result.dispatched) == 1
         assert "dry-run" in result.dispatched[0].message
         assert result.dispatched[0].llm_calls == 0
 
-    def test_dispatch_iwh_signal_for_proposed_deprecation(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_dispatch_iwh_signal_for_proposed_deprecation(self, tmp_path: Path) -> None:
         """IWH signal written when deprecation is gated by autonomy."""
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig()  # auto_low -- blocks high risk
@@ -1530,7 +1543,7 @@ class TestDeprecationDispatch:
 
         iwh_patch = "lexibrary.curator.coordinator.Coordinator._write_deprecation_proposal_iwh"
         with patch(iwh_patch) as mock_iwh:
-            coord._dispatch(triage)
+            await coord._dispatch(triage)
             # IWH should have been called for the deferred deprecation
             mock_iwh.assert_called_once()
 

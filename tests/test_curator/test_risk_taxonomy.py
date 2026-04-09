@@ -48,6 +48,8 @@ EXPECTED_LOW_KEYS = {
     "convention_draft_to_active",
     "playbook_draft_to_active",
     "stack_post_transition",
+    # Budget trimming (Phase 3)
+    "shorten_description",
 }
 
 EXPECTED_MEDIUM_KEYS = {
@@ -61,12 +63,20 @@ EXPECTED_MEDIUM_KEYS = {
     "deprecate_convention",
     "deprecate_playbook",
     "apply_migration_edits",
+    # Budget trimming (Phase 3)
+    "propose_condensation",
+    # Comment auditing (Phase 3)
+    "flag_stale_comment",
+    "audit_description",
+    "audit_summary",
 }
 
 EXPECTED_HIGH_KEYS = {
     "reconcile_agent_extensive_content",
     # Deprecation lifecycle (Phase 2)
     "deprecate_concept",
+    # Budget trimming (Phase 3)
+    "condense_file",
 }
 
 
@@ -108,15 +118,15 @@ class TestRiskTaxonomy:
 
     def test_low_risk_count(self) -> None:
         low_keys = {k for k, v in RISK_TAXONOMY.items() if v.level == "low"}
-        assert len(low_keys) == 30
+        assert len(low_keys) == 31
 
     def test_medium_risk_count(self) -> None:
         medium_keys = {k for k, v in RISK_TAXONOMY.items() if v.level == "medium"}
-        assert len(medium_keys) == 9
+        assert len(medium_keys) == 13
 
     def test_high_risk_count(self) -> None:
         high_keys = {k for k, v in RISK_TAXONOMY.items() if v.level == "high"}
-        assert len(high_keys) == 2
+        assert len(high_keys) == 3
 
     def test_low_keys_match_spec(self) -> None:
         actual_low = {k for k, v in RISK_TAXONOMY.items() if v.level == "low"}
@@ -145,7 +155,7 @@ class TestRiskTaxonomy:
             assert risk.function_ref, f"{key} has empty function_ref"
 
     def test_total_action_count(self) -> None:
-        assert len(RISK_TAXONOMY) == 41  # 30 + 9 + 2
+        assert len(RISK_TAXONOMY) == 47  # 31 Low + 13 Medium + 3 High
 
 
 # ---------------------------------------------------------------------------
@@ -445,3 +455,184 @@ class TestConfirmationOverrides:
             "deprecate_concept": "concept",
             "deprecate_convention": "convention",
         }
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Budget trimming and comment auditing action keys
+# ---------------------------------------------------------------------------
+
+# All 6 Phase 3 action keys with their expected risk levels.
+PHASE3_ACTION_KEYS_WITH_LEVELS: dict[str, str] = {
+    "condense_file": "high",
+    "shorten_description": "low",
+    "propose_condensation": "medium",
+    "flag_stale_comment": "medium",
+    "audit_description": "medium",
+    "audit_summary": "medium",
+}
+
+# Expected function_ref values for Phase 3 action keys.
+PHASE3_FUNCTION_REFS: dict[str, str] = {
+    "condense_file": "curator.budget.condense_file",
+    "shorten_description": "curator.budget.shorten_description",
+    "propose_condensation": "curator.budget.propose_condensation",
+    "flag_stale_comment": "curator.auditing.flag_stale_comment",
+    "audit_description": "curator.auditing.audit_description",
+    "audit_summary": "curator.auditing.audit_summary",
+}
+
+
+class TestPhase3ActionKeys:
+    """All 6 Phase 3 action keys are present with correct risk levels."""
+
+    def test_all_6_phase3_keys_present(self) -> None:
+        for key in PHASE3_ACTION_KEYS_WITH_LEVELS:
+            assert key in RISK_TAXONOMY, f"Missing Phase 3 key: {key!r}"
+
+    def test_phase3_key_count(self) -> None:
+        assert len(PHASE3_ACTION_KEYS_WITH_LEVELS) == 6
+
+    def test_phase3_risk_levels_match(self) -> None:
+        for key, expected_level in PHASE3_ACTION_KEYS_WITH_LEVELS.items():
+            actual = RISK_TAXONOMY[key].level
+            assert actual == expected_level, (
+                f"{key}: expected level={expected_level!r}, got {actual!r}"
+            )
+
+    def test_phase3_function_refs_match(self) -> None:
+        for key, expected_ref in PHASE3_FUNCTION_REFS.items():
+            actual = RISK_TAXONOMY[key].function_ref
+            assert actual == expected_ref, (
+                f"{key}: expected function_ref={expected_ref!r}, got {actual!r}"
+            )
+
+    def test_phase3_entries_have_rationale(self) -> None:
+        for key in PHASE3_ACTION_KEYS_WITH_LEVELS:
+            assert RISK_TAXONOMY[key].rationale, f"{key} has empty rationale"
+
+    def test_phase3_function_refs_use_correct_modules(self) -> None:
+        """Budget trimming refs use curator.budget, auditing uses curator.auditing."""
+        budget_keys = {"condense_file", "shorten_description", "propose_condensation"}
+        auditing_keys = {"flag_stale_comment", "audit_description", "audit_summary"}
+
+        for key in budget_keys:
+            ref = RISK_TAXONOMY[key].function_ref
+            assert ref.startswith("curator.budget."), (
+                f"{key}: function_ref {ref!r} should start with 'curator.budget.'"
+            )
+
+        for key in auditing_keys:
+            ref = RISK_TAXONOMY[key].function_ref
+            assert ref.startswith("curator.auditing."), (
+                f"{key}: function_ref {ref!r} should start with 'curator.auditing.'"
+            )
+
+
+class TestPhase3ShouldDispatch:
+    """should_dispatch for Phase 3 action keys under all autonomy modes."""
+
+    # --- condense_file (high) ---
+
+    def test_condense_file_blocked_auto_low(self) -> None:
+        assert should_dispatch("condense_file", "auto_low", {}) is False
+
+    def test_condense_file_dispatched_full(self) -> None:
+        assert should_dispatch("condense_file", "full", {}) is True
+
+    def test_condense_file_blocked_propose(self) -> None:
+        assert should_dispatch("condense_file", "propose", {}) is False
+
+    # --- shorten_description (low) ---
+
+    def test_shorten_description_dispatched_auto_low(self) -> None:
+        assert should_dispatch("shorten_description", "auto_low", {}) is True
+
+    def test_shorten_description_dispatched_full(self) -> None:
+        assert should_dispatch("shorten_description", "full", {}) is True
+
+    def test_shorten_description_blocked_propose(self) -> None:
+        assert should_dispatch("shorten_description", "propose", {}) is False
+
+    # --- propose_condensation (medium) ---
+
+    def test_propose_condensation_blocked_auto_low(self) -> None:
+        assert should_dispatch("propose_condensation", "auto_low", {}) is False
+
+    def test_propose_condensation_dispatched_full(self) -> None:
+        assert should_dispatch("propose_condensation", "full", {}) is True
+
+    def test_propose_condensation_blocked_propose(self) -> None:
+        assert should_dispatch("propose_condensation", "propose", {}) is False
+
+    # --- flag_stale_comment (medium) ---
+
+    def test_flag_stale_comment_blocked_auto_low(self) -> None:
+        assert should_dispatch("flag_stale_comment", "auto_low", {}) is False
+
+    def test_flag_stale_comment_dispatched_full(self) -> None:
+        assert should_dispatch("flag_stale_comment", "full", {}) is True
+
+    def test_flag_stale_comment_blocked_propose(self) -> None:
+        assert should_dispatch("flag_stale_comment", "propose", {}) is False
+
+    # --- audit_description (medium) ---
+
+    def test_audit_description_blocked_auto_low(self) -> None:
+        assert should_dispatch("audit_description", "auto_low", {}) is False
+
+    def test_audit_description_dispatched_full(self) -> None:
+        assert should_dispatch("audit_description", "full", {}) is True
+
+    def test_audit_description_blocked_propose(self) -> None:
+        assert should_dispatch("audit_description", "propose", {}) is False
+
+    # --- audit_summary (medium) ---
+
+    def test_audit_summary_blocked_auto_low(self) -> None:
+        assert should_dispatch("audit_summary", "auto_low", {}) is False
+
+    def test_audit_summary_dispatched_full(self) -> None:
+        assert should_dispatch("audit_summary", "full", {}) is True
+
+    def test_audit_summary_blocked_propose(self) -> None:
+        assert should_dispatch("audit_summary", "propose", {}) is False
+
+
+class TestPhase3GetRiskLevel:
+    """get_risk_level for Phase 3 action keys, with and without overrides."""
+
+    def test_condense_file_default_high(self) -> None:
+        assert get_risk_level("condense_file", {}) == "high"
+
+    def test_shorten_description_default_low(self) -> None:
+        assert get_risk_level("shorten_description", {}) == "low"
+
+    def test_propose_condensation_default_medium(self) -> None:
+        assert get_risk_level("propose_condensation", {}) == "medium"
+
+    def test_flag_stale_comment_default_medium(self) -> None:
+        assert get_risk_level("flag_stale_comment", {}) == "medium"
+
+    def test_audit_description_default_medium(self) -> None:
+        assert get_risk_level("audit_description", {}) == "medium"
+
+    def test_audit_summary_default_medium(self) -> None:
+        assert get_risk_level("audit_summary", {}) == "medium"
+
+    def test_override_condense_file_to_low(self) -> None:
+        overrides = {"condense_file": "low"}
+        assert get_risk_level("condense_file", overrides) == "low"
+
+    def test_override_shorten_description_to_high(self) -> None:
+        overrides = {"shorten_description": "high"}
+        assert get_risk_level("shorten_description", overrides) == "high"
+
+    def test_override_changes_dispatch_for_condense_file(self) -> None:
+        """Overriding condense_file from high to low enables auto_low dispatch."""
+        overrides = {"condense_file": "low"}
+        assert should_dispatch("condense_file", "auto_low", overrides) is True
+
+    def test_override_elevates_shorten_description_blocks_auto_low(self) -> None:
+        """Overriding shorten_description from low to medium blocks auto_low."""
+        overrides = {"shorten_description": "medium"}
+        assert should_dispatch("shorten_description", "auto_low", overrides) is False

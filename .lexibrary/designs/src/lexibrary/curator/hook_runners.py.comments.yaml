@@ -1,0 +1,5 @@
+comments:
+- body: 'Phase 3 hook runners: Thin synchronous wrappers that discover project root,
+    load config, and delegate to hooks.py. Intended as Claude Code PostToolUse hook
+    targets. All output goes to stderr, not stdout.'
+  date: '2026-04-09T11:53:22.499590Z'

@@ -1,0 +1,6 @@
+comments:
+- body: 'Phase 3: Added BudgetTokenLimits, BudgetConfig, AuditingConfig, and ReactiveConfig
+    sub-models. CuratorConfig now exposes budget, auditing, and reactive fields for
+    the Budget Trimmer, Comment Auditing, and Reactive Hooks sub-agents. All sub-models
+    use extra=ignore for forward compatibility.'
+  date: '2026-04-09T11:08:19.487733Z'

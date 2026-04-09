@@ -1,0 +1,7 @@
+comments:
+- body: Phase 3 Budget Trimmer sub-agent. scan_token_budgets() scans .lexibrary/ for
+    design files, START_HERE.md, and HANDOFF.md that exceed configured token limits.
+    condense_file() calls the CuratorCondenseFile BAML function to produce condensed
+    content. Neither function writes files -- the coordinator handles all writes.
+    The baml_client parameter follows the same pattern as auditing.py for testability.
+  date: '2026-04-09T11:22:09.871634Z'

@@ -733,7 +733,8 @@ class TestTriageStalenessRanking:
 class TestDispatchStalenessResolver:
     """Coordinator dispatches stale non-agent files to the resolver."""
 
-    def test_non_agent_file_dispatched_to_resolver(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_non_agent_file_dispatched_to_resolver(self, tmp_path: Path) -> None:
         """Non-agent stale file is dispatched through the staleness resolver."""
         project = _setup_minimal_project(tmp_path)
         source = _make_source_file(project, "src/foo.py", "# updated\ndef bar(): pass\n")
@@ -761,13 +762,14 @@ class TestDispatchStalenessResolver:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         assert len(result.dispatched) == 1
         assert result.dispatched[0].success is True
         assert result.dispatched[0].action_key == "regenerate_stale_design"
         assert result.dispatched[0].llm_calls == 1
 
-    def test_agent_file_deferred_not_dispatched(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_agent_file_deferred_not_dispatched(self, tmp_path: Path) -> None:
         """Agent-edited files are deferred by autonomy gating (medium risk)."""
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig()  # default autonomy = auto_low
@@ -794,7 +796,7 @@ class TestDispatchStalenessResolver:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         # reconcile_agent_interface_changed is Medium risk, auto_low defers it
         assert len(result.dispatched) == 0
         assert len(result.deferred) == 1

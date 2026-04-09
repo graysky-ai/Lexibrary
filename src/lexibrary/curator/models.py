@@ -56,12 +56,41 @@ class DeprecationCollectItem:
 
 
 @dataclass
+class BudgetCollectItem:
+    """A knowledge-layer file that exceeds its token budget.
+
+    Wraps a ``BudgetIssue`` from the budget sub-agent for coordinator use.
+    """
+
+    path: Path
+    current_tokens: int
+    budget_target: int
+    file_type: str  # "design_file", "start_here", or "handoff"
+
+
+@dataclass
+class CommentAuditCollectItem:
+    """A TODO/FIXME/HACK marker found in a source file.
+
+    Wraps a ``CommentAuditIssue`` from the auditing sub-agent for coordinator use.
+    """
+
+    path: Path
+    line_number: int
+    comment_text: str
+    code_context: str
+    marker_type: str  # "TODO", "FIXME", or "HACK"
+
+
+@dataclass
 class CollectResult:
     """Aggregated output of the collect phase."""
 
     items: list[CollectItem] = field(default_factory=list)
     comment_items: list[CommentCollectItem] = field(default_factory=list)
     deprecation_items: list[DeprecationCollectItem] = field(default_factory=list)
+    budget_items: list[BudgetCollectItem] = field(default_factory=list)
+    comment_audit_items: list[CommentAuditCollectItem] = field(default_factory=list)
     link_graph_available: bool = False
     validation_error: str | None = None
 
@@ -77,7 +106,16 @@ class TriageItem:
 
     source_item: CollectItem
     issue_type: Literal[
-        "staleness", "consistency", "comment", "orphan", "reconciliation", "deprecation"
+        "staleness",
+        "consistency",
+        "comment",
+        "orphan",
+        "reconciliation",
+        "deprecation",
+        "budget",
+        "comment_audit",
+        "description_audit",
+        "summary_audit",
     ]
     action_key: str
     priority: float = 0.0
@@ -85,6 +123,8 @@ class TriageItem:
     reverse_dep_count: int = 0
     comment_item: CommentCollectItem | None = None
     deprecation_item: DeprecationCollectItem | None = None
+    budget_item: BudgetCollectItem | None = None
+    comment_audit_item: CommentAuditCollectItem | None = None
     risk_level: Literal["low", "medium", "high"] | None = None
 
 
@@ -142,3 +182,16 @@ class CuratorReport:
     hard_deleted: int = 0
     migrations_applied: int = 0
     migrations_proposed: int = 0
+    # Phase 3: Budget trimming and comment auditing counters
+    budget_condensed: int = 0
+    budget_proposed: int = 0
+    comments_flagged: int = 0
+    descriptions_audited: int = 0
+    summaries_audited: int = 0
+    trigger: Literal[
+        "on_demand",
+        "reactive_post_edit",
+        "reactive_post_bead_close",
+        "reactive_validation_failure",
+        "scheduled",
+    ] = "on_demand"

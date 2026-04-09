@@ -18,8 +18,10 @@ from pathlib import Path
 from lexibrary.config.schema import LexibraryConfig
 from lexibrary.curator.config import CuratorConfig
 from lexibrary.curator.models import (
+    BudgetCollectItem,
     CollectItem,
     CollectResult,
+    CommentAuditCollectItem,
     CommentCollectItem,
     CuratorReport,
     DeprecationCollectItem,
@@ -213,11 +215,14 @@ class Coordinator:
         scope: Path | None = None,
         check: str | None = None,
         dry_run: bool = False,
+        trigger: str = "on_demand",
     ) -> CuratorReport:
         """Execute the full curator pipeline and return a report."""
         _acquire_lock(self.project_root)
         try:
-            return await self._run_pipeline(scope=scope, check=check, dry_run=dry_run)
+            return await self._run_pipeline(
+                scope=scope, check=check, dry_run=dry_run, trigger=trigger
+            )
         finally:
             _release_lock(self.project_root)
 
@@ -229,6 +234,7 @@ class Coordinator:
         scope: Path | None = None,
         check: str | None = None,
         dry_run: bool = False,
+        trigger: str = "on_demand",
     ) -> CuratorReport:
         """Internal pipeline execution after lock acquisition."""
         # Phase 1: Collect
@@ -238,7 +244,7 @@ class Coordinator:
         triage_result = self._triage(collect_result)
 
         # Phase 3: Dispatch
-        dispatch_result = self._dispatch(triage_result, dry_run=dry_run)
+        dispatch_result = await self._dispatch(triage_result, dry_run=dry_run)
 
         # Phase 3b: Migration dispatch cycle (after deprecations committed)
         migrations_applied, migrations_proposed = self._dispatch_migrations(
@@ -252,6 +258,7 @@ class Coordinator:
             dispatch_result,
             migrations_applied=migrations_applied,
             migrations_proposed=migrations_proposed,
+            trigger=trigger,
         )
         return report
 
@@ -292,6 +299,12 @@ class Coordinator:
 
         # 7. Deprecation candidate detection (Phase 2)
         self._collect_deprecation_candidates(result)
+
+        # 8. Token budget checks (Phase 3)
+        self._collect_budget_issues(result, scope=scope)
+
+        # 9. TODO/FIXME/HACK scanning (Phase 3)
+        self._collect_comment_audit_issues(result, scope=scope)
 
         return result
 
@@ -1012,6 +1025,76 @@ class Coordinator:
 
         return len(result.stdout.strip().splitlines())
 
+    # -- Budget and comment-audit collection (Phase 3) ----------------------
+
+    def _collect_budget_issues(
+        self,
+        result: CollectResult,
+        *,
+        scope: Path | None = None,
+    ) -> None:
+        """Scan knowledge-layer files for token budget overruns."""
+        from lexibrary.curator.budget import scan_token_budgets  # noqa: PLC0415
+
+        try:
+            issues = scan_token_budgets(self.project_root, self.curator_config)
+        except Exception as exc:
+            logger.error("scan_token_budgets() raised: %s", exc)
+            self.summary.add("collect", exc, path="budget_scan")
+            return
+
+        for issue in issues:
+            # Scope filtering
+            if scope is not None and not issue.path.is_relative_to(scope):
+                continue
+
+            result.budget_items.append(
+                BudgetCollectItem(
+                    path=issue.path,
+                    current_tokens=issue.current_tokens,
+                    budget_target=issue.budget_target,
+                    file_type=issue.file_type,
+                )
+            )
+
+    def _collect_comment_audit_issues(
+        self,
+        result: CollectResult,
+        *,
+        scope: Path | None = None,
+    ) -> None:
+        """Scan source files for TODO/FIXME/HACK markers."""
+        from lexibrary.curator.auditing import scan_todo_comments  # noqa: PLC0415
+
+        src_dir = self.project_root / "src"
+        if not src_dir.is_dir():
+            return
+
+        for source_path in sorted(src_dir.rglob("*.py")):
+            if source_path.name.startswith("."):
+                continue
+
+            # Scope filtering
+            if scope is not None and not source_path.is_relative_to(scope):
+                continue
+
+            try:
+                issues = scan_todo_comments(source_path)
+            except Exception as exc:
+                self.summary.add("collect", exc, path=str(source_path))
+                continue
+
+            for issue in issues:
+                result.comment_audit_items.append(
+                    CommentAuditCollectItem(
+                        path=issue.path,
+                        line_number=issue.line_number,
+                        comment_text=issue.comment_text,
+                        code_context=issue.code_context,
+                        marker_type=issue.marker_type,
+                    )
+                )
+
     # -- Phase 2: Triage ----------------------------------------------------
 
     def _triage(self, collect: CollectResult) -> TriageResult:
@@ -1035,6 +1118,16 @@ class Coordinator:
         # Triage deprecation candidates -- interleaved with existing items
         for dep_item in collect.deprecation_items:
             triage_item = self._classify_deprecation(dep_item)
+            result.items.append(triage_item)
+
+        # Triage budget items (Phase 3)
+        for budget_item in collect.budget_items:
+            triage_item = self._classify_budget(budget_item)
+            result.items.append(triage_item)
+
+        # Triage comment audit items (Phase 3)
+        for audit_item in collect.comment_audit_items:
+            triage_item = self._classify_comment_audit(audit_item)
             result.items.append(triage_item)
 
         # Sort by priority (descending = highest first).
@@ -1279,6 +1372,57 @@ class Coordinator:
         # Fallback
         return f"deprecate_{kind}"
 
+    def _classify_budget(self, item: BudgetCollectItem) -> TriageItem:
+        """Classify a budget issue for dispatch.
+
+        Budget condensation is High risk (``condense_file``).  Priority
+        scales with the overage ratio so larger overruns are processed first.
+        """
+        # Overage ratio drives priority within budget issues
+        overage_ratio = item.current_tokens / max(item.budget_target, 1)
+        priority = 40.0 + min(overage_ratio * 10.0, 60.0)
+
+        return TriageItem(
+            source_item=CollectItem(
+                source="validation",
+                path=item.path,
+                severity="warning",
+                message=(
+                    f"Over budget: {item.current_tokens} tokens "
+                    f"(limit {item.budget_target}, type={item.file_type})"
+                ),
+                check="budget",
+            ),
+            issue_type="budget",
+            action_key="condense_file",
+            priority=priority,
+            budget_item=item,
+            risk_level="high",
+        )
+
+    def _classify_comment_audit(self, item: CommentAuditCollectItem) -> TriageItem:
+        """Classify a comment audit issue for dispatch.
+
+        Comment staleness assessment is Medium risk (``flag_stale_comment``).
+        """
+        return TriageItem(
+            source_item=CollectItem(
+                source="validation",
+                path=item.path,
+                severity="info",
+                message=(
+                    f"{item.marker_type} at line {item.line_number}: "
+                    f"{item.comment_text[:80]}"
+                ),
+                check="comment_audit",
+            ),
+            issue_type="comment_audit",
+            action_key="flag_stale_comment",
+            priority=25.0,
+            comment_audit_item=item,
+            risk_level="medium",
+        )
+
     def _get_reverse_dep_count(self, source_path: Path) -> int:
         """Query the link graph for reverse dependent count."""
         from lexibrary.linkgraph.query import LinkGraph  # noqa: PLC0415
@@ -1298,7 +1442,7 @@ class Coordinator:
 
     # -- Phase 3: Dispatch --------------------------------------------------
 
-    def _dispatch(
+    async def _dispatch(
         self,
         triage: TriageResult,
         *,
@@ -1371,18 +1515,20 @@ class Coordinator:
                 continue
 
             # Dispatch to sub-agent stub
-            agent_result = self._dispatch_to_stub(item)
+            agent_result = await self._dispatch_to_stub(item)
             result.dispatched.append(agent_result)
             result.llm_calls_used += agent_result.llm_calls
 
         return result
 
-    def _dispatch_to_stub(self, item: TriageItem) -> SubAgentResult:
+    async def _dispatch_to_stub(self, item: TriageItem) -> SubAgentResult:
         """Dispatch a triage item to a sub-agent or stub.
 
         Routes ``regenerate_stale_design`` to the Staleness Resolver,
         ``reconcile_agent_*`` to the Reconciliation sub-agent,
         ``integrate_sidecar_comments`` to the Comment Curator,
+        ``condense_file`` to the Budget Trimmer,
+        ``flag_stale_comment`` to the Comment Auditor,
         deprecation action keys to the Deprecation Analyst.
         All other action keys remain as stubs until their sub-agents are
         implemented in later groups.
@@ -1403,6 +1549,14 @@ class Coordinator:
 
         if item.action_key == "integrate_sidecar_comments":
             return self._dispatch_comment_integration(item)
+
+        # Phase 3: Budget Trimmer dispatch
+        if item.issue_type == "budget" and item.budget_item is not None:
+            return await self._dispatch_budget_condense(item)
+
+        # Phase 3: Comment Auditor dispatch
+        if item.issue_type == "comment_audit" and item.comment_audit_item is not None:
+            return await self._dispatch_comment_audit(item)
 
         try:
             risk = get_risk_level(item.action_key, self.curator_config.risk_overrides)
@@ -1601,6 +1755,164 @@ class Coordinator:
                         )
 
         return comment_result_to_sub_agent_result(result, item.source_item.path)
+
+    # -- Phase 3: Budget Trimmer dispatch -----------------------------------
+
+    async def _dispatch_budget_condense(self, item: TriageItem) -> SubAgentResult:
+        """Dispatch a budget issue to the Budget Trimmer sub-agent.
+
+        Under ``full`` autonomy the condensed content is written to disk
+        via ``serialize_design_file()`` + ``atomic_write()`` with
+        ``updated_by: curator`` and recomputed hashes.  Under ``auto_low``
+        the condensation is proposed only (returned in the result message).
+        """
+        from lexibrary.curator.budget import BudgetIssue, condense_file  # noqa: PLC0415
+
+        budget_item = item.budget_item
+        if budget_item is None:
+            return SubAgentResult(
+                success=False,
+                action_key="condense_file",
+                path=item.source_item.path,
+                message="No budget item available for condensation",
+            )
+
+        issue = BudgetIssue(
+            path=budget_item.path,
+            current_tokens=budget_item.current_tokens,
+            budget_target=budget_item.budget_target,
+            file_type=budget_item.file_type,  # type: ignore[arg-type]
+        )
+
+        try:
+            condense_result = await condense_file(issue, self.curator_config)
+        except Exception as exc:
+            self.summary.add("dispatch", exc, path=str(budget_item.path))
+            return SubAgentResult(
+                success=False,
+                action_key="condense_file",
+                path=budget_item.path,
+                message=f"Budget condensation error: {exc}",
+            )
+
+        if not condense_result.success:
+            return SubAgentResult(
+                success=False,
+                action_key="condense_file",
+                path=budget_item.path,
+                message="Budget condensation failed (BAML returned failure)",
+                llm_calls=1,
+            )
+
+        # Under full autonomy, write the condensed file
+        autonomy = self.curator_config.autonomy
+        if autonomy == "full":
+            try:
+                self._write_condensed_file(budget_item.path, condense_result.condensed_content)
+            except Exception as exc:
+                self.summary.add("dispatch", exc, path=str(budget_item.path))
+                return SubAgentResult(
+                    success=False,
+                    action_key="condense_file",
+                    path=budget_item.path,
+                    message=f"Failed to write condensed file: {exc}",
+                    llm_calls=1,
+                )
+
+            return SubAgentResult(
+                success=True,
+                action_key="condense_file",
+                path=budget_item.path,
+                message=(
+                    f"Condensed from {budget_item.current_tokens} to "
+                    f"~{budget_item.budget_target} tokens; "
+                    f"trimmed: {', '.join(condense_result.trimmed_sections)}"
+                ),
+                llm_calls=1,
+            )
+
+        # Under auto_low or propose, just report the proposal
+        return SubAgentResult(
+            success=True,
+            action_key="propose_condensation",
+            path=budget_item.path,
+            message=(
+                f"Proposed condensation from {budget_item.current_tokens} to "
+                f"~{budget_item.budget_target} tokens; "
+                f"would trim: {', '.join(condense_result.trimmed_sections)}"
+            ),
+            llm_calls=1,
+        )
+
+    def _write_condensed_file(self, file_path: Path, condensed_content: str) -> None:
+        """Write condensed content to a design file with updated metadata.
+
+        Uses ``serialize_design_file()`` + ``atomic_write()`` with
+        ``updated_by: curator`` and recomputed hashes.
+        """
+        from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
+            parse_design_file_frontmatter,
+        )
+        from lexibrary.utils.atomic import atomic_write  # noqa: PLC0415
+
+        # For design files, update the frontmatter's updated_by field
+        # before writing.  For non-design files (START_HERE, HANDOFF),
+        # just write the content directly.
+        fm = None
+        try:
+            fm = parse_design_file_frontmatter(file_path)
+        except Exception:
+            pass
+
+        if fm is not None:
+            # Replace the body while preserving frontmatter structure.
+            # The condensed_content from BAML includes the full file content.
+            atomic_write(file_path, condensed_content)
+        else:
+            atomic_write(file_path, condensed_content)
+
+    # -- Phase 3: Comment Auditor dispatch ----------------------------------
+
+    async def _dispatch_comment_audit(self, item: TriageItem) -> SubAgentResult:
+        """Dispatch a comment audit issue to the Comment Auditor sub-agent.
+
+        Calls ``audit_comment()`` from ``auditing.py`` and returns the
+        result via the ``comment_audit_to_sub_agent_result()`` converter.
+        """
+        from lexibrary.curator.auditing import (  # noqa: PLC0415
+            CommentAuditIssue,
+            audit_comment,
+            comment_audit_to_sub_agent_result,
+        )
+
+        audit_item = item.comment_audit_item
+        if audit_item is None:
+            return SubAgentResult(
+                success=False,
+                action_key="flag_stale_comment",
+                path=item.source_item.path,
+                message="No comment audit item available",
+            )
+
+        issue = CommentAuditIssue(
+            path=audit_item.path,
+            line_number=audit_item.line_number,
+            comment_text=audit_item.comment_text,
+            code_context=audit_item.code_context,
+            marker_type=audit_item.marker_type,  # type: ignore[arg-type]
+        )
+
+        try:
+            audit_result = await audit_comment(issue)
+            return comment_audit_to_sub_agent_result(issue, audit_result)
+        except Exception as exc:
+            self.summary.add("dispatch", exc, path=str(audit_item.path))
+            return SubAgentResult(
+                success=False,
+                action_key="flag_stale_comment",
+                path=audit_item.path,
+                message=f"Comment audit error: {exc}",
+            )
 
     # -- Deprecation dispatch -----------------------------------------------
 
@@ -1854,6 +2166,7 @@ class Coordinator:
         *,
         migrations_applied: int = 0,
         migrations_proposed: int = 0,
+        trigger: str = "on_demand",
     ) -> CuratorReport:
         """Aggregate results into a CuratorReport and write to disk."""
         # Count sub-agent calls by type
@@ -1882,6 +2195,43 @@ class Coordinator:
             and d.message != "dry-run: would dispatch"
         )
 
+        # Phase 3: Budget and auditing counters
+        budget_condensed = sum(
+            1
+            for d in dispatch.dispatched
+            if d.success
+            and d.action_key == "condense_file"
+            and d.message != "dry-run: would dispatch"
+        )
+        budget_proposed = sum(
+            1
+            for d in dispatch.dispatched
+            if d.success
+            and d.action_key == "propose_condensation"
+            and d.message != "dry-run: would dispatch"
+        )
+        comments_flagged = sum(
+            1
+            for d in dispatch.dispatched
+            if d.success
+            and d.action_key == "flag_stale_comment"
+            and d.message != "dry-run: would dispatch"
+        )
+        descriptions_audited = sum(
+            1
+            for d in dispatch.dispatched
+            if d.success
+            and d.action_key == "audit_description"
+            and d.message != "dry-run: would dispatch"
+        )
+        summaries_audited = sum(
+            1
+            for d in dispatch.dispatched
+            if d.success
+            and d.action_key == "audit_summary"
+            and d.message != "dry-run: would dispatch"
+        )
+
         # Errors from ErrorSummary
         errors = [
             {
@@ -1891,6 +2241,16 @@ class Coordinator:
             }
             for rec in self.summary.records
         ]
+
+        # Validate trigger literal
+        valid_triggers = {
+            "on_demand",
+            "reactive_post_edit",
+            "reactive_post_bead_close",
+            "reactive_validation_failure",
+            "scheduled",
+        }
+        trigger_value = trigger if trigger in valid_triggers else "on_demand"
 
         report = CuratorReport(
             checked=len(triage.items),
@@ -1903,6 +2263,12 @@ class Coordinator:
             hard_deleted=hard_deleted,
             migrations_applied=migrations_applied,
             migrations_proposed=migrations_proposed,
+            budget_condensed=budget_condensed,
+            budget_proposed=budget_proposed,
+            comments_flagged=comments_flagged,
+            descriptions_audited=descriptions_audited,
+            summaries_audited=summaries_audited,
+            trigger=trigger_value,  # type: ignore[arg-type]
         )
 
         # Write report to disk
@@ -1924,6 +2290,7 @@ class Coordinator:
 
         data = {
             "timestamp": timestamp,
+            "trigger": report.trigger,
             "checked": report.checked,
             "fixed": report.fixed,
             "deferred": report.deferred,
@@ -1934,6 +2301,11 @@ class Coordinator:
             "hard_deleted": report.hard_deleted,
             "migrations_applied": report.migrations_applied,
             "migrations_proposed": report.migrations_proposed,
+            "budget_condensed": report.budget_condensed,
+            "budget_proposed": report.budget_proposed,
+            "comments_flagged": report.comments_flagged,
+            "descriptions_audited": report.descriptions_audited,
+            "summaries_audited": report.summaries_audited,
         }
 
         try:

@@ -70,6 +70,11 @@ Do not create an IWH signal if all work is complete.
 - Run `lexi design update <file>` to regenerate the design file via the
   archivist pipeline. Use `--force` to regenerate even when the file appears
   up-to-date. If the command fails, write an IWH signal noting the failure.
+  - **Sandbox note:** `lexi design update` and `lexi design comment` invoke
+    BAML (Rust runtime) which requires macOS `SCDynamicStore` access. In
+    Claude Code, these commands must run with `dangerouslyDisableSandbox: true`
+    or they will panic with a NULL object error in
+    `system-configuration/dynamic_store.rs`.
 - Run `lexi design comment <file> --body "..."` whenever the change affects
   behavior, contracts, or cross-file responsibilities. The archivist captures
   structure; the agent captures intent. Skip only for trivial or purely
@@ -189,10 +194,14 @@ before making changes.
    - **Known Issues** — open Stack posts referencing this file (status, attempts, votes)
    - **IWH signals** — "I Was Here" signals for this file's directory (peek mode, not consumed)
    - **Cross-references** — reverse dependency links from the link graph
+   - **Sibling files** — other files in the same directory with descriptions (brief: names only; full: with descriptions)
+   - **Related concepts** — concepts linked to this file (brief: names and status; full: with summaries from the link graph)
 
 3. **Run directory lookup** — `lexi lookup <directory>` returns:
    - **AIndex content** — the directory's file map and entry descriptions
    - **Applicable conventions** — coding standards scoped to this directory
+   - **Triggered playbooks** — playbooks whose trigger globs match this directory
+   - **Inbound import summary** — count of ast_import links targeting files in this directory
    - **IWH signals** — any signals left in this directory (peek mode)
 
 4. **Act on what you find** — read any flagged Known Issues before writing
@@ -205,13 +214,15 @@ before making changes.
 lexi lookup src/lexibrary/archivist/service.py
 ```
 Returns the design file for `service.py`, conventions that apply to it,
-any open Stack posts that reference it, and IWH signals for `archivist/`.
+any open Stack posts that reference it, sibling files in `archivist/`,
+related concepts, and IWH signals for `archivist/`.
 
 ```
 lexi lookup src/lexibrary/archivist/
 ```
 Returns the AIndex file map for the `archivist/` directory, directory-scoped
-conventions, and any IWH signals present there.
+conventions, triggered playbooks, an inbound import summary, and any IWH
+signals present there.
 
 ## Edge cases
 
@@ -219,7 +230,8 @@ conventions, and any IWH signals present there.
   Edit or Write tool call. You do not need to invoke it manually before every
   single edit, but run it manually when planning changes before touching files.
 - **Directory vs file scope** — directory lookup gives a broader picture
-  (module map, all conventions) but omits the per-file design details and
+  (module map, all conventions, triggered playbooks, inbound import counts) but
+  omits the per-file design details, sibling context, related concepts, and
   Stack post cross-references that file lookup provides. Use both when starting
   work in an unfamiliar module.
 - **IWH peek mode** — lookup never consumes IWH signals. Call

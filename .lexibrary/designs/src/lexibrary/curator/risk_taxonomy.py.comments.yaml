@@ -12,3 +12,8 @@ comments:
     even under full autonomy when the corresponding artifact kind maps to True. Added
     _ACTION_KEY_TO_ARTIFACT_KIND module-level mapping.'
   date: '2026-04-09T07:03:21.220283Z'
+- body: "Phase 3: Added 6 new risk taxonomy entries \u2014 budget trimming (condense_file:\
+    \ high, shorten_description: low, propose_condensation: medium) and comment auditing\
+    \ (flag_stale_comment: medium, audit_description: medium, audit_summary: medium).\
+    \ Totals now 31 Low, 13 Medium, 3 High = 47 entries."
+  date: '2026-04-09T11:08:25.637703Z'

@@ -23,7 +23,7 @@ class ActionRisk:
 
 # ---------------------------------------------------------------------------
 # Canonical risk taxonomy — every action the curator may perform.
-# 30 Low  ·  9 Medium  ·  2 High
+# 31 Low  ·  13 Medium  ·  3 High
 # ---------------------------------------------------------------------------
 
 RISK_TAXONOMY: dict[str, ActionRisk] = {
@@ -168,6 +168,38 @@ RISK_TAXONOMY: dict[str, ActionRisk] = {
         level="medium",
         rationale="Creates persistent searchable artifact",
         function_ref="curator.consistency.promote_blocked_iwh",
+    ),
+    # --- Budget trimming actions (Phase 3) ---------------------------------
+    "shorten_description": ActionRisk(
+        level="low",
+        rationale="Summary-level compression only",
+        function_ref="curator.budget.shorten_description",
+    ),
+    "propose_condensation": ActionRisk(
+        level="medium",
+        rationale="LLM suggests; human approves",
+        function_ref="curator.budget.propose_condensation",
+    ),
+    "condense_file": ActionRisk(
+        level="high",
+        rationale="Lossy transformation; may remove needed detail",
+        function_ref="curator.budget.condense_file",
+    ),
+    # --- Comment auditing actions (Phase 3) --------------------------------
+    "flag_stale_comment": ActionRisk(
+        level="medium",
+        rationale="Requires understanding of original intent",
+        function_ref="curator.auditing.flag_stale_comment",
+    ),
+    "audit_description": ActionRisk(
+        level="medium",
+        rationale="LLM judgment on clarity and accuracy",
+        function_ref="curator.auditing.audit_description",
+    ),
+    "audit_summary": ActionRisk(
+        level="medium",
+        rationale="LLM must extract intent from source",
+        function_ref="curator.auditing.audit_summary",
     ),
     # --- Deprecation lifecycle: low-risk actions ---------------------------
     "hard_delete_concept_past_ttl": ActionRisk(

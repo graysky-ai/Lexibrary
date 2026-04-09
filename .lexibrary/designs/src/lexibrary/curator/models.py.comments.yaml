@@ -9,3 +9,10 @@ comments:
     added deprecation_item field to TriageItem, added deprecated/hard_deleted/migrations_applied/migrations_proposed
     counters to CuratorReport.'
   date: '2026-04-09T07:39:50.860829Z'
+- body: 'Phase 3 extensions: Added BudgetCollectItem and CommentAuditCollectItem to
+    CollectResult. Expanded TriageItem.issue_type Literal with budget, comment_audit,
+    description_audit, summary_audit. Added budget_item and comment_audit_item optional
+    fields to TriageItem. Added Phase 3 counters (budget_condensed, budget_proposed,
+    comments_flagged, descriptions_audited, summaries_audited) and trigger Literal
+    to CuratorReport.'
+  date: '2026-04-09T11:45:16.293965Z'

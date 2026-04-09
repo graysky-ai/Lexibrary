@@ -1,0 +1,6 @@
+comments:
+- body: 'Phase 3 reactive hooks: Three async entry points (post_edit_hook, post_bead_close_hook,
+    validation_failure_hook) that trigger scoped coordinator runs. Each checks ReactiveConfig
+    toggles and gracefully handles CuratorLockError. The validation_failure_hook deduplicates
+    scopes and filters by severity threshold. Sync wrappers provided for hook_runners.'
+  date: '2026-04-09T11:53:17.590233Z'

@@ -31,3 +31,11 @@ comments:
     and extended _report with deprecated/hard_deleted/migrations_applied/migrations_proposed
     counts.'
   date: '2026-04-09T07:39:43.692193Z'
+- body: 'Phase 3 extensions: (1) _dispatch is now async to support awaiting BAML-based
+    sub-agents (budget trimmer, comment auditor). (2) Collect phase adds _collect_budget_issues()
+    and _collect_comment_audit_issues() steps. (3) Triage adds _classify_budget()
+    and _classify_comment_audit() classifiers. (4) Dispatch adds _dispatch_budget_condense()
+    and _dispatch_comment_audit() routers. (5) run() now accepts a trigger parameter
+    that flows through to CuratorReport. (6) _write_report() now serializes Phase
+    3 counters and trigger to JSON.'
+  date: '2026-04-09T11:45:06.399882Z'

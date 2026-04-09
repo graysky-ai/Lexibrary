@@ -12,8 +12,12 @@ from lexibrary.config.loader import load_config
 from lexibrary.config.schema import ConceptConfig, ConventionConfig, LexibraryConfig
 from lexibrary.curator.config import (
     DEPRECATION_ACTION_KEYS,
+    AuditingConfig,
+    BudgetConfig,
+    BudgetTokenLimits,
     CuratorConfig,
     CuratorDeprecationConfig,
+    ReactiveConfig,
 )
 
 # --- CuratorConfig model tests ---
@@ -397,3 +401,319 @@ class TestPhase2YAMLRoundTrip:
         assert config.curator.deprecation.ttl_commits == 75
         assert config.concepts.curator_deprecation_confirm is True
         assert config.conventions.curator_deprecation_confirm is True
+
+
+# --- Phase 3: BudgetTokenLimits tests ---
+
+
+class TestBudgetTokenLimitsDefaults:
+    """Default values for BudgetTokenLimits."""
+
+    def test_default_design_file(self) -> None:
+        limits = BudgetTokenLimits()
+        assert limits.design_file == 4000
+
+    def test_default_start_here(self) -> None:
+        limits = BudgetTokenLimits()
+        assert limits.start_here == 3000
+
+    def test_default_handoff(self) -> None:
+        limits = BudgetTokenLimits()
+        assert limits.handoff == 2000
+
+    def test_custom_overrides(self) -> None:
+        limits = BudgetTokenLimits(design_file=5000, start_here=4000, handoff=3000)
+        assert limits.design_file == 5000
+        assert limits.start_here == 4000
+        assert limits.handoff == 3000
+
+    def test_minimum_value_accepted(self) -> None:
+        limits = BudgetTokenLimits(design_file=100, start_here=100, handoff=100)
+        assert limits.design_file == 100
+        assert limits.start_here == 100
+        assert limits.handoff == 100
+
+    def test_below_minimum_design_file_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="design_file"):
+            BudgetTokenLimits(design_file=99)
+
+    def test_below_minimum_start_here_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="start_here"):
+            BudgetTokenLimits(start_here=50)
+
+    def test_below_minimum_handoff_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="handoff"):
+            BudgetTokenLimits(handoff=0)
+
+    def test_extra_fields_ignored(self) -> None:
+        limits = BudgetTokenLimits.model_validate(
+            {"design_file": 5000, "unknown_field": True}
+        )
+        assert limits.design_file == 5000
+        assert not hasattr(limits, "unknown_field")
+
+
+# --- Phase 3: BudgetConfig tests ---
+
+
+class TestBudgetConfigDefaults:
+    """Default values for BudgetConfig."""
+
+    def test_default_token_limits(self) -> None:
+        config = BudgetConfig()
+        assert isinstance(config.token_limits, BudgetTokenLimits)
+        assert config.token_limits.design_file == 4000
+        assert config.token_limits.start_here == 3000
+        assert config.token_limits.handoff == 2000
+
+    def test_custom_token_limits_from_dict(self) -> None:
+        config = BudgetConfig.model_validate(
+            {"token_limits": {"design_file": 6000, "start_here": 5000}}
+        )
+        assert config.token_limits.design_file == 6000
+        assert config.token_limits.start_here == 5000
+        assert config.token_limits.handoff == 2000  # default preserved
+
+    def test_extra_fields_ignored(self) -> None:
+        config = BudgetConfig.model_validate({"unknown_field": True})
+        assert not hasattr(config, "unknown_field")
+
+
+# --- Phase 3: AuditingConfig tests ---
+
+
+class TestAuditingConfigDefaults:
+    """Default values for AuditingConfig."""
+
+    def test_default_quality_threshold(self) -> None:
+        config = AuditingConfig()
+        assert config.quality_threshold == 0.7
+
+    def test_custom_quality_threshold(self) -> None:
+        config = AuditingConfig(quality_threshold=0.9)
+        assert config.quality_threshold == 0.9
+
+    def test_quality_threshold_minimum(self) -> None:
+        config = AuditingConfig(quality_threshold=0.0)
+        assert config.quality_threshold == 0.0
+
+    def test_quality_threshold_maximum(self) -> None:
+        config = AuditingConfig(quality_threshold=1.0)
+        assert config.quality_threshold == 1.0
+
+    def test_quality_threshold_above_max_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="quality_threshold"):
+            AuditingConfig(quality_threshold=1.1)
+
+    def test_quality_threshold_below_min_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="quality_threshold"):
+            AuditingConfig(quality_threshold=-0.1)
+
+    def test_extra_fields_ignored(self) -> None:
+        config = AuditingConfig.model_validate(
+            {"quality_threshold": 0.5, "unknown_field": True}
+        )
+        assert config.quality_threshold == 0.5
+        assert not hasattr(config, "unknown_field")
+
+
+# --- Phase 3: ReactiveConfig tests ---
+
+
+class TestReactiveConfigDefaults:
+    """Default values for ReactiveConfig."""
+
+    def test_default_enabled(self) -> None:
+        config = ReactiveConfig()
+        assert config.enabled is False
+
+    def test_default_post_edit(self) -> None:
+        config = ReactiveConfig()
+        assert config.post_edit is True
+
+    def test_default_post_bead_close(self) -> None:
+        config = ReactiveConfig()
+        assert config.post_bead_close is True
+
+    def test_default_validation_failure(self) -> None:
+        config = ReactiveConfig()
+        assert config.validation_failure is True
+
+    def test_default_severity_threshold(self) -> None:
+        config = ReactiveConfig()
+        assert config.severity_threshold == "error"
+
+    def test_custom_overrides(self) -> None:
+        config = ReactiveConfig(
+            enabled=True,
+            post_edit=False,
+            post_bead_close=False,
+            validation_failure=False,
+            severity_threshold="warning",
+        )
+        assert config.enabled is True
+        assert config.post_edit is False
+        assert config.post_bead_close is False
+        assert config.validation_failure is False
+        assert config.severity_threshold == "warning"
+
+    @pytest.mark.parametrize("level", ["error", "warning", "critical"])
+    def test_valid_severity_threshold_accepted(self, level: str) -> None:
+        config = ReactiveConfig(severity_threshold=level)  # type: ignore[arg-type]
+        assert config.severity_threshold == level
+
+    def test_invalid_severity_threshold_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="severity_threshold"):
+            ReactiveConfig(severity_threshold="info")  # type: ignore[arg-type]
+
+    def test_extra_fields_ignored(self) -> None:
+        config = ReactiveConfig.model_validate(
+            {"enabled": True, "unknown_field": True}
+        )
+        assert config.enabled is True
+        assert not hasattr(config, "unknown_field")
+
+
+# --- Phase 3: CuratorConfig integration with new sub-models ---
+
+
+class TestCuratorConfigPhase3Integration:
+    """CuratorConfig includes budget, auditing, and reactive sub-models."""
+
+    def test_default_budget_present(self) -> None:
+        config = CuratorConfig()
+        assert isinstance(config.budget, BudgetConfig)
+        assert config.budget.token_limits.design_file == 4000
+
+    def test_default_auditing_present(self) -> None:
+        config = CuratorConfig()
+        assert isinstance(config.auditing, AuditingConfig)
+        assert config.auditing.quality_threshold == 0.7
+
+    def test_default_reactive_present(self) -> None:
+        config = CuratorConfig()
+        assert isinstance(config.reactive, ReactiveConfig)
+        assert config.reactive.enabled is False
+
+    def test_custom_budget_from_dict(self) -> None:
+        config = CuratorConfig.model_validate(
+            {"budget": {"token_limits": {"design_file": 8000}}}
+        )
+        assert config.budget.token_limits.design_file == 8000
+        assert config.budget.token_limits.start_here == 3000  # default
+
+    def test_custom_auditing_from_dict(self) -> None:
+        config = CuratorConfig.model_validate(
+            {"auditing": {"quality_threshold": 0.85}}
+        )
+        assert config.auditing.quality_threshold == 0.85
+
+    def test_custom_reactive_from_dict(self) -> None:
+        config = CuratorConfig.model_validate(
+            {"reactive": {"enabled": True, "severity_threshold": "warning"}}
+        )
+        assert config.reactive.enabled is True
+        assert config.reactive.severity_threshold == "warning"
+
+    def test_missing_phase3_sections_use_defaults(self) -> None:
+        config = CuratorConfig.model_validate({"autonomy": "full"})
+        assert config.budget.token_limits.design_file == 4000
+        assert config.auditing.quality_threshold == 0.7
+        assert config.reactive.enabled is False
+
+    def test_no_curator_section_produces_valid_defaults(self) -> None:
+        """CuratorConfig with no args produces valid Phase 3 defaults."""
+        config = CuratorConfig()
+        assert config.budget.token_limits.design_file == 4000
+        assert config.budget.token_limits.start_here == 3000
+        assert config.budget.token_limits.handoff == 2000
+        assert config.auditing.quality_threshold == 0.7
+        assert config.reactive.enabled is False
+        assert config.reactive.post_edit is True
+        assert config.reactive.post_bead_close is True
+        assert config.reactive.validation_failure is True
+        assert config.reactive.severity_threshold == "error"
+
+
+class TestLexibraryConfigPhase3Integration:
+    """LexibraryConfig with Phase 3 curator fields."""
+
+    def test_missing_curator_uses_phase3_defaults(self) -> None:
+        config = LexibraryConfig.model_validate({})
+        assert config.curator.budget.token_limits.design_file == 4000
+        assert config.curator.auditing.quality_threshold == 0.7
+        assert config.curator.reactive.enabled is False
+
+    def test_partial_curator_preserves_phase3_defaults(self) -> None:
+        config = LexibraryConfig.model_validate(
+            {"curator": {"autonomy": "full"}}
+        )
+        assert config.curator.autonomy == "full"
+        assert config.curator.budget.token_limits.design_file == 4000
+        assert config.curator.auditing.quality_threshold == 0.7
+        assert config.curator.reactive.enabled is False
+
+    def test_full_phase3_config_round_trip(self) -> None:
+        original = LexibraryConfig.model_validate(
+            {
+                "curator": {
+                    "budget": {"token_limits": {"design_file": 6000}},
+                    "auditing": {"quality_threshold": 0.85},
+                    "reactive": {
+                        "enabled": True,
+                        "severity_threshold": "warning",
+                    },
+                }
+            }
+        )
+        dumped = original.model_dump()
+        restored = LexibraryConfig.model_validate(dumped)
+
+        assert restored.curator.budget.token_limits.design_file == 6000
+        assert restored.curator.auditing.quality_threshold == 0.85
+        assert restored.curator.reactive.enabled is True
+        assert restored.curator.reactive.severity_threshold == "warning"
+
+
+class TestConfigLoaderPhase3:
+    """Config loader with Phase 3 curator YAML fields."""
+
+    def test_phase3_config_from_yaml(self, tmp_path: Path) -> None:
+        (tmp_path / ".lexibrary").mkdir()
+        (tmp_path / ".lexibrary" / "config.yaml").write_text(
+            "curator:\n"
+            "  budget:\n"
+            "    token_limits:\n"
+            "      design_file: 5000\n"
+            "      start_here: 4000\n"
+            "  auditing:\n"
+            "    quality_threshold: 0.9\n"
+            "  reactive:\n"
+            "    enabled: true\n"
+            "    post_edit: false\n"
+            "    severity_threshold: critical\n"
+        )
+        config = load_config(
+            project_root=tmp_path,
+            global_config_path=tmp_path / "nonexistent_global.yaml",
+        )
+        assert config.curator.budget.token_limits.design_file == 5000
+        assert config.curator.budget.token_limits.start_here == 4000
+        assert config.curator.budget.token_limits.handoff == 2000  # default
+        assert config.curator.auditing.quality_threshold == 0.9
+        assert config.curator.reactive.enabled is True
+        assert config.curator.reactive.post_edit is False
+        assert config.curator.reactive.severity_threshold == "critical"
+
+    def test_missing_phase3_in_yaml_uses_defaults(self, tmp_path: Path) -> None:
+        (tmp_path / ".lexibrary").mkdir()
+        (tmp_path / ".lexibrary" / "config.yaml").write_text(
+            "curator:\n  autonomy: full\n"
+        )
+        config = load_config(
+            project_root=tmp_path,
+            global_config_path=tmp_path / "nonexistent_global.yaml",
+        )
+        assert config.curator.budget.token_limits.design_file == 4000
+        assert config.curator.auditing.quality_threshold == 0.7
+        assert config.curator.reactive.enabled is False

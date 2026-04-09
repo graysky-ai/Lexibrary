@@ -54,6 +54,44 @@ def _known_action_keys() -> frozenset[str]:
     return _KNOWN_KEYS_CACHE
 
 
+class BudgetTokenLimits(BaseModel):
+    """Per-file-type token budgets for the Budget Trimmer sub-agent."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    design_file: int = Field(default=4000, ge=100)
+    start_here: int = Field(default=3000, ge=100)
+    handoff: int = Field(default=2000, ge=100)
+
+
+class BudgetConfig(BaseModel):
+    """Configuration for the Budget Trimmer sub-agent."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    token_limits: BudgetTokenLimits = Field(default_factory=BudgetTokenLimits)
+
+
+class AuditingConfig(BaseModel):
+    """Configuration for the Comment Auditing sub-agent."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    quality_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+
+
+class ReactiveConfig(BaseModel):
+    """Configuration for reactive hooks (post-edit, post-bead-close, validation-failure)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = False
+    post_edit: bool = True
+    post_bead_close: bool = True
+    validation_failure: bool = True
+    severity_threshold: Literal["error", "warning", "critical"] = "error"
+
+
 class CuratorDeprecationConfig(BaseModel):
     """Deprecation-specific settings nested under ``curator.deprecation``."""
 
@@ -75,6 +113,9 @@ class CuratorConfig(BaseModel):
     max_llm_calls_per_run: int = Field(default=50, ge=1)
     risk_overrides: dict[str, Literal["low", "medium", "high"]] = Field(default_factory=dict)
     deprecation: CuratorDeprecationConfig = Field(default_factory=CuratorDeprecationConfig)
+    budget: BudgetConfig = Field(default_factory=BudgetConfig)
+    auditing: AuditingConfig = Field(default_factory=AuditingConfig)
+    reactive: ReactiveConfig = Field(default_factory=ReactiveConfig)
 
     @model_validator(mode="after")
     def _warn_unknown_risk_overrides(self) -> CuratorConfig:

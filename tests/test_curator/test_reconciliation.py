@@ -344,7 +344,8 @@ class TestRiskClassification:
 class TestAutonomyGating:
     """Test autonomy gating for reconciliation actions."""
 
-    def test_auto_low_dispatches_low_risk(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_auto_low_dispatches_low_risk(self, tmp_path: Path) -> None:
         """auto_low dispatches Low-risk reconciliation items."""
         project = _setup_minimal_project(tmp_path)
         source = _make_source_file(project, "src/foo.py", "def foo(): pass\n")
@@ -372,11 +373,12 @@ class TestAutonomyGating:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         assert len(result.dispatched) == 1
         assert len(result.deferred) == 0
 
-    def test_auto_low_defers_medium_risk(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_auto_low_defers_medium_risk(self, tmp_path: Path) -> None:
         """auto_low defers Medium-risk reconciliation items."""
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig.model_validate({"curator": {"autonomy": "auto_low"}})
@@ -401,11 +403,12 @@ class TestAutonomyGating:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         assert len(result.dispatched) == 0
         assert len(result.deferred) == 1
 
-    def test_auto_low_defers_high_risk(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_auto_low_defers_high_risk(self, tmp_path: Path) -> None:
         """auto_low defers High-risk reconciliation items."""
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig.model_validate({"curator": {"autonomy": "auto_low"}})
@@ -430,11 +433,12 @@ class TestAutonomyGating:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         assert len(result.dispatched) == 0
         assert len(result.deferred) == 1
 
-    def test_full_dispatches_all(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_full_dispatches_all(self, tmp_path: Path) -> None:
         """full autonomy dispatches all risk levels."""
         project = _setup_minimal_project(tmp_path)
         source = _make_source_file(project, "src/foo.py", "def foo(): pass\n")
@@ -462,11 +466,12 @@ class TestAutonomyGating:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         assert len(result.dispatched) == 1
         assert len(result.deferred) == 0
 
-    def test_propose_defers_all(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_propose_defers_all(self, tmp_path: Path) -> None:
         """propose autonomy defers all reconciliation items."""
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig.model_validate({"curator": {"autonomy": "propose"}})
@@ -491,7 +496,7 @@ class TestAutonomyGating:
             ]
         )
 
-        result = coord._dispatch(triage)
+        result = await coord._dispatch(triage)
         assert len(result.dispatched) == 0
         assert len(result.deferred) == 1
 
@@ -983,7 +988,8 @@ class TestFallbackBehavior:
 class TestCoordinatorReconciliationIntegration:
     """Integration tests for reconciliation through the full coordinator pipeline."""
 
-    def test_agent_stale_file_reconciled_via_coordinator(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_agent_stale_file_reconciled_via_coordinator(self, tmp_path: Path) -> None:
         """Agent-edited stale file is detected, triaged, and dispatched for reconciliation."""
         project = _setup_minimal_project(tmp_path)
         _make_source_file(project, "src/foo.py", "def foo(): pass\n")
@@ -1001,7 +1007,7 @@ class TestCoordinatorReconciliationIntegration:
         ):
             collect_result = coord._collect()
             triage_result = coord._triage(collect_result)
-            dispatch_result = coord._dispatch(triage_result)
+            dispatch_result = await coord._dispatch(triage_result)
 
         # The agent-edited file should be detected and dispatched
         reconciliation_dispatched = [
@@ -1011,7 +1017,8 @@ class TestCoordinatorReconciliationIntegration:
         ]
         assert len(reconciliation_dispatched) >= 1
 
-    def test_full_pipeline_with_reconciliation(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_full_pipeline_with_reconciliation(self, tmp_path: Path) -> None:
         """Full pipeline run with agent-edited file produces a valid report."""
         project = _setup_minimal_project(tmp_path)
         _make_source_file(project, "src/foo.py", "def foo(): pass\n")
@@ -1027,7 +1034,7 @@ class TestCoordinatorReconciliationIntegration:
             patch.object(coord, "_collect_comments"),
             patch.object(coord, "_check_link_graph", return_value=False),
         ):
-            report = asyncio.run(coord.run())
+            report = await coord.run()
 
         assert report.checked >= 1
         assert report.errored == 0

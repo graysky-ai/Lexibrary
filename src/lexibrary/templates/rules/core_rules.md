@@ -29,6 +29,11 @@ Do not create an IWH signal if all work is complete.
 - Run `lexi design update <file>` to regenerate the design file via the
   archivist pipeline. Use `--force` to regenerate even when the file appears
   up-to-date. If the command fails, write an IWH signal noting the failure.
+  - **Sandbox note:** `lexi design update` and `lexi design comment` invoke
+    BAML (Rust runtime) which requires macOS `SCDynamicStore` access. In
+    Claude Code, these commands must run with `dangerouslyDisableSandbox: true`
+    or they will panic with a NULL object error in
+    `system-configuration/dynamic_store.rs`.
 - Run `lexi design comment <file> --body "..."` whenever the change affects
   behavior, contracts, or cross-file responsibilities. The archivist captures
   structure; the agent captures intent. Skip only for trivial or purely
