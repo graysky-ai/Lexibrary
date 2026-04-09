@@ -1,0 +1,7 @@
+comments:
+- body: New module implementing reconciliation sub-agent for agent-edited design files.
+    Preserves agent-authored sections (Dragons, Key Concepts, Insights, Custom Notes)
+    while regenerating mechanical sections from source. Includes confidence threshold
+    check, IWH signal creation for low-confidence output, and full_regen recommendation
+    path. Uses BAML stub for now.
+  date: '2026-04-09T06:14:14.167777Z'

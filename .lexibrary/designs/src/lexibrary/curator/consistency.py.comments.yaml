@@ -1,0 +1,7 @@
+comments:
+- body: 'Phase 1b implementation: Consistency Checker sub-agent. Returns structured
+    FixInstruction objects for wikilink hygiene, bidirectional dependency repair,
+    orphaned artifact cleanup, concept/convention/playbook staleness detection, and
+    blocked IWH promotion. All mutations delegated to coordinator -- this module is
+    read-only analysis.'
+  date: '2026-04-09T05:39:25.699757Z'

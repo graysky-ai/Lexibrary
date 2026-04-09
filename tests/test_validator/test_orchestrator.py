@@ -504,6 +504,7 @@ class TestCheckFilter:
             "playbook_staleness",
             "playbook_deprecated_ttl",
             "artifact_id_uniqueness",
+            "stale_agent_design",
         }
         assert set(AVAILABLE_CHECKS.keys()) == expected
 
@@ -542,8 +543,8 @@ class TestAllChecksRegistered:
     link-graph checks degrade gracefully when index.db is absent."""
 
     def test_available_checks_count_is_47(self) -> None:
-        """AVAILABLE_CHECKS should contain exactly 47 entries."""
-        assert len(AVAILABLE_CHECKS) == 47
+        """AVAILABLE_CHECKS should contain exactly 48 entries."""
+        assert len(AVAILABLE_CHECKS) == 48
 
     def test_validate_library_runs_all_13_checks_without_filters(self, tmp_path: Path) -> None:
         """With no severity or check filters, all 15 checks should be invoked.

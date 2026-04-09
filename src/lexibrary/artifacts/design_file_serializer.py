@@ -117,6 +117,14 @@ def serialize_design_file(data: DesignFile) -> str:
         parts.append("(none)")
     parts.append("")
 
+    # --- Preserved sections (agent-authored content) ---
+    # Preserved sections go after standard sections but before optional metadata
+    for heading, body in data.preserved_sections.items():
+        parts.append(f"## {heading}")
+        parts.append("")
+        parts.append(body)
+        parts.append("")
+
     # --- Optional sections ---
     if data.tests is not None:
         parts.append("## Tests")

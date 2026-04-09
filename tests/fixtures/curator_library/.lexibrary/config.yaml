@@ -1,0 +1,5 @@
+project:
+  name: curator-test-library
+  type: application
+  source_roots:
+    - src

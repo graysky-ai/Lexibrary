@@ -1,0 +1,4 @@
+comments:
+- body: Registered stale_agent_design check in AVAILABLE_CHECKS with warning severity.
+    Import added for check_stale_agent_design from checks module.
+  date: '2026-04-09T05:05:03.632877Z'

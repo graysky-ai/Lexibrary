@@ -30,6 +30,10 @@ lexictl_app = typer.Typer(
 iwh_ctl_app = typer.Typer(help="IWH signal maintenance commands.", rich_markup_mode=None)
 lexictl_app.add_typer(iwh_ctl_app, name="iwh")
 
+from lexibrary.cli.curate import curate  # noqa: E402
+
+lexictl_app.command("curate")(curate)
+
 
 # ---------------------------------------------------------------------------
 # init — helpers

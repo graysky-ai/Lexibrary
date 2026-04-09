@@ -15,6 +15,7 @@ from lexibrary.stack.models import (
 from lexibrary.stack.mutations import (
     accept_finding,
     add_finding,
+    create_stack_post,
     mark_duplicate,
     mark_outdated,
     mark_stale,
@@ -35,6 +36,7 @@ __all__ = [
     "StackStatus",
     "accept_finding",
     "add_finding",
+    "create_stack_post",
     "find_post_path",
     "mark_duplicate",
     "mark_outdated",

@@ -1,0 +1,7 @@
+comments:
+- body: New CLI handler for the curator pipeline. Implements lexictl curate with --scope,
+    --check, --dry-run, and --last-run options. Follows the service extraction convention
+    with rendering delegated to curate_render.py. Heavy imports (coordinator, config
+    loader, validator) are deferred inside the function body per CLI module structure
+    convention.
+  date: '2026-04-09T05:57:22.958799Z'

@@ -1,0 +1,24 @@
+comments:
+- body: 'New file: implements the Coordinator class with four-phase pipeline (collect,
+    triage, dispatch, report). Collect integrates validate_library, hash-based staleness
+    detection, and IWH signal scanning. Dispatch uses sub-agent stubs (BAML wired
+    in later groups). Includes PID-file concurrency lock and scope isolation via git
+    status and IWH signal detection. ErrorSummary accumulates errors across phases
+    without aborting.'
+  date: '2026-04-09T05:24:53.164307Z'
+- body: 'Phase 1a: _dispatch_to_stub now routes regenerate_stale_design to _dispatch_staleness_resolver
+    which calls the Staleness Resolver sub-agent. Non-agent files are regenerated
+    via resolve_stale_design(); agent-edited files remain deferred through the reconciliation
+    action key.'
+  date: '2026-04-09T05:42:45.170837Z'
+- body: Added comment detection to collect phase (_collect_comments) and comment integration
+    dispatch (_dispatch_comment_integration). Comment items are triaged with issue_type='comment'
+    and action_key='integrate_sidecar_comments'. The collect phase sorts comment items
+    by count descending for priority.
+  date: '2026-04-09T05:45:36.138476Z'
+- body: Added agent-edit detection to collect phase via change_checker AGENT_UPDATED
+    classification. Enhanced staleness triage to carry risk_level. Added three-tier
+    risk classification (Low/Medium/High) for reconciliation based on interface hash
+    stability and agent content volume. Wired reconciliation dispatch to new reconciliation
+    sub-agent module.
+  date: '2026-04-09T06:14:06.684601Z'

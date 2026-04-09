@@ -1,0 +1,5 @@
+comments:
+- body: 'Added ''curator'' to updated_by Literal (6 total values). Added preserved_sections:
+    dict[str, str] field to DesignFile model for storing section content that survives
+    regeneration (e.g., Insights). Part of curator-1 group 3.'
+  date: '2026-04-09T05:09:59.819078Z'

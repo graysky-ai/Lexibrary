@@ -1,0 +1,123 @@
+"""Data models for the curator coordinator pipeline.
+
+Defines the typed results exchanged between the four coordinator phases
+(collect, triage, dispatch, report) and the sub-agent stubs.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Literal
+
+# ---------------------------------------------------------------------------
+# Collect phase
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class CollectItem:
+    """A single signal discovered during the collect phase."""
+
+    source: Literal["validation", "staleness", "iwh", "agent_edit"]
+    path: Path | None
+    severity: Literal["error", "warning", "info"]
+    message: str
+    check: str = ""
+    # Staleness-specific metadata
+    source_hash_stale: bool = False
+    interface_hash_stale: bool = False
+    updated_by: str = ""
+    # Agent-edit detection metadata
+    agent_edit_reason: str = ""
+    design_body_length: int = 0
+
+
+@dataclass
+class CommentCollectItem:
+    """A design file with unprocessed sidecar comments."""
+
+    design_path: Path
+    source_path: Path
+    comment_count: int
+    comments_path: Path
+
+
+@dataclass
+class CollectResult:
+    """Aggregated output of the collect phase."""
+
+    items: list[CollectItem] = field(default_factory=list)
+    comment_items: list[CommentCollectItem] = field(default_factory=list)
+    link_graph_available: bool = False
+    validation_error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Triage phase
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TriageItem:
+    """A collected item enriched with classification and priority."""
+
+    source_item: CollectItem
+    issue_type: Literal["staleness", "consistency", "comment", "orphan", "reconciliation"]
+    action_key: str
+    priority: float = 0.0
+    agent_edited: bool = False
+    reverse_dep_count: int = 0
+    comment_item: CommentCollectItem | None = None
+    risk_level: Literal["low", "medium", "high"] | None = None
+
+
+@dataclass
+class TriageResult:
+    """Sorted list of triaged items ready for dispatch."""
+
+    items: list[TriageItem] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Dispatch phase
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SubAgentResult:
+    """Result returned by a sub-agent stub (or real BAML call later)."""
+
+    success: bool
+    action_key: str
+    path: Path | None = None
+    message: str = ""
+    llm_calls: int = 0
+
+
+@dataclass
+class DispatchResult:
+    """Aggregated output of the dispatch phase."""
+
+    dispatched: list[SubAgentResult] = field(default_factory=list)
+    deferred: list[TriageItem] = field(default_factory=list)
+    llm_calls_used: int = 0
+    llm_cap_reached: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Report phase
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class CuratorReport:
+    """Final report summarising a curator run."""
+
+    checked: int = 0
+    fixed: int = 0
+    deferred: int = 0
+    errored: int = 0
+    errors: list[dict[str, str]] = field(default_factory=list)
+    sub_agent_calls: dict[str, int] = field(default_factory=dict)
+    report_path: Path | None = None

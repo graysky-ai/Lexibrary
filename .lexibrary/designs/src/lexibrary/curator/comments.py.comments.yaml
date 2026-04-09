@@ -1,0 +1,7 @@
+comments:
+- body: 'Comment Curator sub-agent: classifies sidecar comments as durable (integrate
+    into Insights), ephemeral (prune after TTL), or actionable (promote to Stack post).
+    Stack post dedup uses SHA-256 fingerprint of (source_path, problem_category, normalised_title).
+    The BAML stub uses keyword heuristics; production will use CuratorIntegrateComments
+    BAML function.'
+  date: '2026-04-09T05:45:42.543409Z'

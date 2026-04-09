@@ -12,3 +12,12 @@ comments:
     it needs per-match processing (strip/lowercase) and in some cases all matches
     including duplicates.
   date: '2026-04-07T22:14:19.709865Z'
+- body: "Added check_stale_agent_design: iterates design files, filters to those where\
+    \ updated_by is 'agent' or 'maintainer', and produces warning-severity issues\
+    \ when source_hash no longer matches the current file hash. Archivist-owned files\
+    \ are skipped (they are covered by check_hash_freshness). Missing source files\
+    \ are also skipped (covered by check_file_existence). The distinction matters\
+    \ because agent/maintainer edits capture human-authored rationale that can silently\
+    \ become inaccurate when source code changes \u2014 the remediation path (lexictl\
+    \ curate) prompts human review rather than a mechanical regeneration."
+  date: '2026-04-09T06:22:10.619521Z'

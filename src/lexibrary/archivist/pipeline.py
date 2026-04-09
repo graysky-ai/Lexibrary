@@ -146,6 +146,70 @@ def _estimate_tokens(text: str) -> int:
     return len(text.split())
 
 
+_VALID_UPDATED_BY: frozenset[str] = frozenset({
+    "archivist",
+    "agent",
+    "bootstrap-quick",
+    "maintainer",
+    "curator",
+    "skeleton-fallback",
+})
+
+
+def _check_invalid_updated_by(
+    design_path: Path,
+    valid_values: set[str] | frozenset[str],
+) -> str | None:
+    """Check whether a design file's ``updated_by`` frontmatter field is valid.
+
+    Returns the offending value string if the field exists and is NOT in
+    *valid_values*, or ``None`` in all other cases (missing file, no
+    frontmatter, no field, or a valid value).
+
+    This guard prevents the archivist from clobbering design files that were
+    last touched by an unrecognised tool.  The Curator is the canonical
+    authority for resolving such conflicts.
+
+    Reads raw YAML directly rather than delegating to parse_design_file_frontmatter
+    because that function silently returns None (or falls back to defaults) when
+    the Pydantic model rejects an invalid updated_by value — exactly the case we
+    need to detect.
+    """
+    if not design_path.exists():
+        return None
+
+    try:
+        raw = design_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    # Extract YAML frontmatter block between the first two "---" delimiters.
+    import re  # noqa: PLC0415
+
+    fm_match = re.match(r"^---\n(.*?)\n---", raw, re.DOTALL)
+    if not fm_match:
+        return None
+
+    import yaml  # noqa: PLC0415
+
+    try:
+        fm_data = yaml.safe_load(fm_match.group(1))
+    except yaml.YAMLError:
+        return None
+
+    if not isinstance(fm_data, dict):
+        return None
+
+    if "updated_by" not in fm_data:
+        return None
+
+    value = fm_data["updated_by"]
+    if value in valid_values:
+        return None
+
+    return str(value)
+
+
 def _refresh_footer_hashes(
     design_path: Path,
     content_hash: str,
@@ -595,6 +659,29 @@ async def update_file(
             failure_reason="unresolved merge conflict markers",
         )
 
+    # 4c. Frontmatter guard — reject invalid updated_by without an LLM call.
+    #     An unrecognised updated_by value means an external tool (not the
+    #     archivist, agent, or Curator) last touched the design file.
+    #     The Curator must review and correct the file before the archivist
+    #     is allowed to regenerate it.
+    if design_path.exists():
+        bad_value = _check_invalid_updated_by(design_path, _VALID_UPDATED_BY)
+        if bad_value is not None:
+            logger.error(
+                "Rejecting %s: design file has invalid updated_by=%r — "
+                "review with Curator",
+                source_path.name,
+                bad_value,
+            )
+            return FileResult(
+                change=change,
+                failed=True,
+                failure_reason=(
+                    f"invalid updated_by '{bad_value}' in design file — "
+                    "review and correct with the Curator before regenerating"
+                ),
+            )
+
     # 6. LLM generation: NEW_FILE, CONTENT_ONLY, CONTENT_CHANGED, INTERFACE_CHANGED,
     #    or SKELETON_ONLY (with unlimited=True)
     rel_path = str(source_path.relative_to(project_root))
@@ -696,6 +783,24 @@ async def update_file(
     designs_dir = project_root / LEXIBRARY_DIR / DESIGNS_DIR
     design_id = next_design_id(designs_dir)
 
+    # 7b. Preserved sections passthrough — carry over non-standard sections
+    #     (e.g. ## Insights, ## Notes) from the pre-regeneration design file.
+    #     These sections are curator-authored and must not be lost on archivist
+    #     regen.  We parse the existing on-disk file (before we overwrite it)
+    #     rather than the force-preserved copy so the design_hash re-check
+    #     above already guards against concurrent edits.
+    preserved_sections: dict[str, str] = {}
+    if design_path.exists():
+        existing_parsed = parse_design_file(design_path)
+        if existing_parsed is not None and existing_parsed.preserved_sections:
+            preserved_sections = existing_parsed.preserved_sections
+            logger.debug(
+                "Carrying over %d preserved section(s) from %s: %s",
+                len(preserved_sections),
+                design_path.name,
+                list(preserved_sections.keys()),
+            )
+
     design_file = DesignFile(
         source_path=rel_path,
         frontmatter=DesignFileFrontmatter(
@@ -712,6 +817,7 @@ async def update_file(
         wikilinks=list(output.wikilinks) if output.wikilinks else [],
         tags=list(output.tags) if output.tags else [],
         stack_refs=[],
+        preserved_sections=preserved_sections,
         metadata=StalenessMetadata(
             source=rel_path,
             source_hash=content_hash,

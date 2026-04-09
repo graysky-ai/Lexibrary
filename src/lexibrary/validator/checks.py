@@ -697,7 +697,10 @@ def check_design_frontmatter(
         return issues
 
     valid_statuses = {"active", "unlinked", "deprecated"}
-    valid_updated_by = {"archivist", "agent", "bootstrap-quick", "skeleton-fallback", "maintainer"}
+    valid_updated_by = {
+        "archivist", "agent", "bootstrap-quick", "maintainer",
+        "curator", "skeleton-fallback",
+    }
 
     for md_path in sorted(designs_dir.rglob("*.md")):
         rel_path = _rel(md_path, project_root)
@@ -1639,6 +1642,76 @@ def check_hash_freshness(
                     ),
                 )
             )
+
+    return issues
+
+
+def check_stale_agent_design(
+    project_root: Path,
+    lexibrary_dir: Path,
+) -> list[ValidationIssue]:
+    """Check that agent- or maintainer-edited design files have fresh source hashes.
+
+    Iterates all design files, filters to those where ``updated_by`` is
+    ``"agent"`` or ``"maintainer"``, and compares the stored ``source_hash``
+    against the current SHA-256 of the source file.  Returns warning-severity
+    issues for every mismatch so that human-authored design notes are not
+    silently left pointing at stale code.
+
+    Archivist-owned files (``updated_by`` is ``"archivist"``,
+    ``"bootstrap-quick"``, ``"skeleton-fallback"``, etc.) are intentionally
+    skipped — those are already covered by ``check_hash_freshness``, and the
+    remediation path (``lexictl update``) is different.
+
+    Skips design files whose source no longer exists on disk (that is handled
+    by the ``file_existence`` check).
+    """
+    issues: list[ValidationIssue] = []
+
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+    if not designs_dir.is_dir():
+        return issues
+
+    for design_path in sorted(designs_dir.rglob("*.md")):
+        # Read frontmatter to determine who last edited this design file
+        frontmatter = parse_design_file_frontmatter(design_path)
+        if frontmatter is None:
+            continue
+        if frontmatter.updated_by not in ("agent", "maintainer"):
+            continue
+
+        # Read the staleness metadata block for source path and stored hash
+        metadata = parse_design_file_metadata(design_path)
+        if metadata is None:
+            continue
+
+        source_path = project_root / metadata.source
+        if not source_path.is_file():
+            # Missing source is handled by check_file_existence, not here
+            continue
+
+        current_hash = hash_file(source_path)
+        if current_hash == metadata.source_hash:
+            continue
+
+        rel_design = str(design_path.relative_to(lexibrary_dir))
+        issues.append(
+            ValidationIssue(
+                severity="warning",
+                check="stale_agent_design",
+                message=(
+                    f"Design file last edited by {frontmatter.updated_by!r} is stale: "
+                    f"source has changed since the design was written "
+                    f"(stored {metadata.source_hash[:12]}... "
+                    f"vs current {current_hash[:12]}...)"
+                ),
+                artifact=rel_design,
+                suggestion=(
+                    f"Run: lexictl curate {metadata.source} to regenerate the design "
+                    f"file, then review agent-authored notes to ensure they still apply."
+                ),
+            )
+        )
 
     return issues
 

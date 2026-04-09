@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from lexibrary.curator.config import CuratorConfig
+
 
 class CrawlConfig(BaseModel):
     """Crawl behaviour configuration."""
@@ -254,3 +256,4 @@ class LexibraryConfig(BaseModel):
     sweep: SweepConfig = Field(default_factory=SweepConfig)
     crawl: CrawlConfig = Field(default_factory=CrawlConfig)
     ast: ASTConfig = Field(default_factory=ASTConfig)
+    curator: CuratorConfig = Field(default_factory=CuratorConfig)

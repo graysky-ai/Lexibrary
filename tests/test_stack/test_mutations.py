@@ -10,6 +10,7 @@ import pytest
 from lexibrary.stack.mutations import (
     accept_finding,
     add_finding,
+    create_stack_post,
     mark_duplicate,
     mark_outdated,
     mark_stale,
@@ -538,3 +539,120 @@ class TestAppendOnlyInvariant:
 
         assert result.problem == original.problem
         assert result.evidence == original.evidence
+
+
+# ---------------------------------------------------------------------------
+# create_stack_post
+# ---------------------------------------------------------------------------
+
+
+class TestCreateStackPost:
+    """Tests for create_stack_post()."""
+
+    def test_creates_file_in_stack_dir(self, tmp_path: Path) -> None:
+        """File is written inside the given stack_dir."""
+        sd = tmp_path / "stack"
+        sd.mkdir()
+        post_path = create_stack_post(sd, title="My Issue", tags=["bug"], author="agent-1")
+
+        assert post_path.exists()
+        assert post_path.parent == sd
+
+    def test_filename_starts_with_id(self, tmp_path: Path) -> None:
+        """Filename begins with ST-001 for first post."""
+        sd = tmp_path / "stack"
+        sd.mkdir()
+        post_path = create_stack_post(sd, title="Some Issue", tags=["bug"], author="agent-1")
+
+        assert post_path.name.startswith("ST-001-")
+
+    def test_filename_includes_slug(self, tmp_path: Path) -> None:
+        """Filename includes a slugified form of the title."""
+        sd = tmp_path / "stack"
+        sd.mkdir()
+        post_path = create_stack_post(
+            sd, title="Date Parsing Fails", tags=["bug"], author="agent-1"
+        )
+
+        assert "date-parsing-fails" in post_path.name
+
+    def test_sequential_ids(self, tmp_path: Path) -> None:
+        """Second post gets ST-002."""
+        sd = tmp_path / "stack"
+        sd.mkdir()
+        first = create_stack_post(sd, title="First Issue", tags=["bug"], author="agent-1")
+        second = create_stack_post(sd, title="Second Issue", tags=["bug"], author="agent-1")
+
+        assert first.name.startswith("ST-001-")
+        assert second.name.startswith("ST-002-")
+
+    def test_post_is_parseable(self, tmp_path: Path) -> None:
+        """Created file can be parsed back into a StackPost."""
+        sd = tmp_path / "stack"
+        sd.mkdir()
+        post_path = create_stack_post(
+            sd,
+            title="Parseable Issue",
+            tags=["test"],
+            author="agent-42",
+        )
+
+        post = parse_stack_post(post_path)
+        assert post is not None
+        assert post.frontmatter.title == "Parseable Issue"
+        assert post.frontmatter.author == "agent-42"
+        assert post.frontmatter.tags == ["test"]
+        assert post.frontmatter.status == "open"
+        assert post.frontmatter.votes == 0
+
+    def test_frontmatter_id_matches_filename(self, tmp_path: Path) -> None:
+        """Frontmatter id field matches the ST-NNN prefix in the filename."""
+        sd = tmp_path / "stack"
+        sd.mkdir()
+        post_path = create_stack_post(sd, title="ID Check", tags=["test"], author="agent-1")
+
+        post = parse_stack_post(post_path)
+        assert post is not None
+        assert post_path.name.startswith(post.frontmatter.id)
+
+    def test_problem_in_body(self, tmp_path: Path) -> None:
+        """Provided problem text appears in the post body."""
+        sd = tmp_path / "stack"
+        sd.mkdir()
+        post_path = create_stack_post(
+            sd,
+            title="Problem Post",
+            tags=["bug"],
+            author="agent-1",
+            problem="Something is broken.",
+        )
+
+        post = parse_stack_post(post_path)
+        assert post is not None
+        assert "Something is broken." in post.problem
+
+    def test_refs_files_in_frontmatter(self, tmp_path: Path) -> None:
+        """refs_files list is included in post frontmatter."""
+        sd = tmp_path / "stack"
+        sd.mkdir()
+        post_path = create_stack_post(
+            sd,
+            title="Ref Files Post",
+            tags=["bug"],
+            author="agent-1",
+            refs_files=["src/lexibrary/stack/mutations.py"],
+        )
+
+        post = parse_stack_post(post_path)
+        assert post is not None
+        assert "src/lexibrary/stack/mutations.py" in post.frontmatter.refs.files
+
+    def test_stack_dir_created_if_missing(self, tmp_path: Path) -> None:
+        """stack_dir is created automatically if it does not exist."""
+        sd = tmp_path / "nonexistent" / "stack"
+        assert not sd.exists()
+
+        post_path = create_stack_post(sd, title="Auto Dir", tags=["test"], author="agent-1")
+
+        assert sd.exists()
+        assert post_path.exists()

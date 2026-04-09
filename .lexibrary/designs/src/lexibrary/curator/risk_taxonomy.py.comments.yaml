@@ -1,0 +1,7 @@
+comments:
+- body: New module implementing the curator risk taxonomy. Contains 29 action keys
+    (22 Low, 6 Medium, 1 High) as frozen dataclasses, plus get_risk_level() with override
+    support and should_dispatch() for autonomy gating. This is the central policy
+    lookup used by the coordinator to decide which actions to execute vs defer based
+    on autonomy mode.
+  date: '2026-04-09T05:02:52.616187Z'

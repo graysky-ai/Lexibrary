@@ -14,7 +14,7 @@ class DesignFileFrontmatter(BaseModel):
     description: str
     id: str
     updated_by: Literal[
-        "archivist", "agent", "bootstrap-quick", "skeleton-fallback", "maintainer"
+        "archivist", "agent", "bootstrap-quick", "maintainer", "curator", "skeleton-fallback"
     ] = "archivist"
     status: Literal["active", "unlinked", "deprecated"] = "active"
     deprecated_at: datetime | None = None
@@ -46,4 +46,5 @@ class DesignFile(BaseModel):
     wikilinks: list[str] = []
     tags: list[str] = []
     stack_refs: list[str] = []
+    preserved_sections: dict[str, str] = {}
     metadata: StalenessMetadata

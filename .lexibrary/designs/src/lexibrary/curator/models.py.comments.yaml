@@ -1,0 +1,5 @@
+comments:
+- body: 'New file: defines the typed dataclass pipeline models (CollectItem, CollectResult,
+    TriageItem, TriageResult, SubAgentResult, DispatchResult, CuratorReport) exchanged
+    between the four coordinator phases. No external dependencies -- pure domain model.'
+  date: '2026-04-09T05:24:41.580126Z'

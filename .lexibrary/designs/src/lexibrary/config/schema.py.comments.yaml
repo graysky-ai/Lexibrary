@@ -1,0 +1,7 @@
+comments:
+- body: 'Added CuratorConfig import and curator field to LexibraryConfig. This enables
+    the curator subsystem to be configured via the standard project config YAML with
+    a curator: section. Follows the established Config Schema Extension convention
+    with model_config=ConfigDict(extra=''ignore'') and Field(default_factory=...)
+    pattern.'
+  date: '2026-04-09T05:03:26.652650Z'

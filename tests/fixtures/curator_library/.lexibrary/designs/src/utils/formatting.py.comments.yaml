@@ -1,0 +1,15 @@
+comments:
+- body: >-
+    The bold() function should document that it uses Markdown-style bold markers
+    (**text**) rather than HTML <b> tags. This is a deliberate design choice to
+    keep output compatible with Markdown renderers used downstream.
+  date: '2026-03-25T09:00:00+00:00'
+- body: >-
+    Finished reviewing formatting utilities, all looks good for now.
+    Moving on to other modules.
+  date: '2026-03-26T10:30:00+00:00'
+- body: >-
+    BUG: code_block() does not escape backticks within the text parameter.
+    If the input contains triple backticks, the output will have broken
+    fenced code blocks. This needs a fix before the next release.
+  date: '2026-03-28T14:15:00+00:00'

@@ -212,6 +212,28 @@ def parse_design_file(path: Path) -> DesignFile | None:
     # Recognize both "## Stack" (new) and "## Guardrails" (legacy) for backward compat
     stack_refs = _bullet_list("Stack") or _bullet_list("Guardrails")
 
+    # --- Preserved (non-standard) sections ---
+    _standard_sections = {
+        "Interface Contract",
+        "Dependencies",
+        "Dependents",
+        "Tests",
+        "Complexity Warning",
+        "Wikilinks",
+        "Tags",
+        "Stack",
+        "Guardrails",
+    }
+    preserved_sections: dict[str, str] = {}
+    for sec_name in section_starts:
+        if sec_name not in _standard_sections:
+            content_text = _section_text(sec_name)
+            if content_text:
+                # Strip any metadata footer that may have been captured
+                content_text = _FOOTER_RE.sub("", content_text).strip()
+                if content_text:
+                    preserved_sections[sec_name] = content_text
+
     # --- Metadata footer ---
     footer_match = _FOOTER_RE.search(text)
     if not footer_match:
@@ -222,7 +244,7 @@ def parse_design_file(path: Path) -> DesignFile | None:
 
     # Use section text for summary (first non-empty paragraph after H1, before first H2)
     # For simplicity: summary = interface_contract section is mandatory; there's no
-    # separate "summary" section in the spec. We store summary as empty string —
+    # separate "summary" section in the spec. We store summary as empty string --
     # the serializer doesn't emit a "Summary" section. Callers set summary before
     # constructing DesignFile. During parsing, summary is derived from frontmatter description.
     summary = frontmatter.description
@@ -239,5 +261,6 @@ def parse_design_file(path: Path) -> DesignFile | None:
         wikilinks=wikilinks,
         tags=tags,
         stack_refs=stack_refs,
+        preserved_sections=preserved_sections,
         metadata=metadata,
     )

@@ -5,9 +5,72 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from lexibrary.artifacts.ids import next_artifact_id
+from lexibrary.artifacts.slugs import slugify
 from lexibrary.stack.models import StackFinding, StackPost
 from lexibrary.stack.parser import parse_stack_post
 from lexibrary.stack.serializer import serialize_stack_post
+from lexibrary.stack.template import render_post_template
+from lexibrary.utils.atomic import atomic_write
+
+
+def create_stack_post(
+    stack_dir: Path,
+    *,
+    title: str,
+    tags: list[str],
+    author: str,
+    bead: str | None = None,
+    problem: str | None = None,
+    context: str | None = None,
+    evidence: list[str] | None = None,
+    attempts: list[str] | None = None,
+    refs_files: list[str] | None = None,
+    refs_concepts: list[str] | None = None,
+) -> Path:
+    """Create a new Stack post file and return its path.
+
+    Generates the next sequential ID (e.g. ``ST-001``), derives a filesystem-safe
+    slug from the title, renders the post template, and writes the file atomically
+    to *stack_dir*.
+
+    Args:
+        stack_dir: Directory where Stack post files are stored (typically
+            ``.lexibrary/stack/``).  Created if it does not exist.
+        title: Human-readable title for the post.
+        tags: One or more tag strings to categorise the post.
+        author: Identifier of the author creating the post.
+        bead: Optional bead ID to associate with the post.
+        problem: Optional problem description body text.
+        context: Optional context section text.
+        evidence: Optional list of evidence items.
+        attempts: Optional list of attempted solutions.
+        refs_files: Optional list of source file references.
+        refs_concepts: Optional list of concept references.
+
+    Returns:
+        The :class:`~pathlib.Path` of the newly created post file.
+    """
+    post_id = next_artifact_id("ST", stack_dir, "ST-*-*.md")
+    slug = slugify(title)
+    filename = f"{post_id}-{slug}.md"
+    post_path = stack_dir / filename
+
+    content = render_post_template(
+        post_id=post_id,
+        title=title,
+        tags=tags,
+        author=author,
+        bead=bead,
+        refs_files=refs_files,
+        refs_concepts=refs_concepts,
+        problem=problem,
+        context=context,
+        evidence=evidence,
+        attempts=attempts,
+    )
+    atomic_write(post_path, content)
+    return post_path
 
 
 def _load_post(post_path: Path) -> StackPost:
