@@ -59,6 +59,7 @@ env/
 htmlcov/
 *.cover
 .hypothesis/
+tmp/
 
 # Type checking
 .mypy_cache/

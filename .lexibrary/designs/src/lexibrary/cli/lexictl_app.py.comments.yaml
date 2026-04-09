@@ -19,3 +19,15 @@ comments:
     change (Group 6). The helper encapsulates all deferred imports, the user prompt,
     and update execution, keeping init() focused on wizard orchestration.
   date: '2026-04-08T08:35:40.172551Z'
+- body: Added --reindex flag to the update() command with mutual exclusivity enforcement.
+    The flag follows the existing early-exit pattern (like --topology and --skeleton)
+    but is checked last in the guard chain so earlier, more specific guards (like
+    skeleton+path) still fire first. The skeleton guard was also updated to reject
+    --skeleton --reindex combinations.
+  date: '2026-04-09T12:36:20.672969Z'
+- body: Added --reindex early-exit handler between the --topology and --dry-run handlers.
+    When reindex=True, lazily imports build_index from linkgraph.builder, runs a full
+    index rebuild, and returns before any LLM infrastructure (RateLimiter, ArchivistService,
+    build_client_registry) is instantiated. Reports artifact/link counts and duration
+    on success; warns about parse errors; exits 1 on exception.
+  date: '2026-04-09T12:40:39.425381Z'

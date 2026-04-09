@@ -184,3 +184,7 @@ uv run mypy src/                     # type check (strict)
 ## License
 
 MIT
+
+## Contributing
+
+This project is not accepting external contributions at this time.

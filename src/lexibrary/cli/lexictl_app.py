@@ -220,6 +220,16 @@ def update(
             ),
         ),
     ] = False,
+    reindex: Annotated[
+        bool,
+        typer.Option(
+            "--reindex",
+            help=(
+                "Rebuild the link graph index from existing artifacts on disk. "
+                "Does not regenerate design files or invoke the LLM."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Re-index changed files and regenerate design files."""
     import asyncio  # noqa: PLC0415
@@ -239,7 +249,9 @@ def update(
     from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
 
     # Mutual exclusivity checks — skeleton first (it subsumes the path argument)
-    if skeleton and (changed_only is not None or topology or dry_run or unlimited or force):
+    if skeleton and (
+        changed_only is not None or topology or dry_run or unlimited or force or reindex
+    ):
         error(
             "--skeleton cannot be combined with"
             " --changed-only, --topology, --dry-run, --unlimited, or --force."
@@ -260,6 +272,18 @@ def update(
 
     if topology and (changed_only is not None or path is not None):
         error("--topology cannot be combined with path or --changed-only.")
+        raise typer.Exit(1)
+
+    if reindex and (
+        path is not None
+        or changed_only is not None
+        or dry_run
+        or topology
+        or skeleton
+        or force
+        or unlimited
+    ):
+        error("--reindex cannot be combined with any other update flags.")
         raise typer.Exit(1)
 
     project_root = require_project_root()
@@ -310,6 +334,29 @@ def update(
             hint("Run /topology-builder to generate TOPOLOGY.md")
         except Exception as exc:
             error(f"Failed to generate raw topology: {exc}")
+            raise typer.Exit(1) from None
+        return
+
+    # --reindex: rebuild link graph index from existing artifacts
+    if reindex:
+        from lexibrary.linkgraph.builder import build_index  # noqa: PLC0415
+
+        info("Rebuilding link graph index...")
+        try:
+            build_result = build_index(project_root)
+            info(
+                f"Link graph rebuilt: "
+                f"{build_result.artifact_count} artifacts, "
+                f"{build_result.link_count} links "
+                f"({build_result.duration_ms / 1000:.1f}s)"
+            )
+            if build_result.errors:
+                warn(
+                    f"  {len(build_result.errors)} artifact(s) had parse errors"
+                    " (see log for details)"
+                )
+        except Exception as exc:
+            error(f"Failed to rebuild link graph: {exc}")
             raise typer.Exit(1) from None
         return
 
@@ -988,6 +1035,7 @@ Indexing & Updates
                                          Generate .aindex file(s)
   lexictl update [path] [--changed-only PATH] [--dry-run] [--topology] [--skeleton]
                                          Re-index and regenerate design files
+  lexictl update --reindex              Rebuild link graph from existing artifacts
 
 Validation & Status
   lexictl validate [--severity LEVEL] [--check NAME] [--json] [--ci] [--fix]

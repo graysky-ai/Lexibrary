@@ -11,7 +11,7 @@ Directory descriptions in the tree below are synthesised keyword fragments drawn
 | Command / Import | Role | Entry File |
 |-----------------|------|-----------|
 | `lexi` | Agent-facing CLI -- lookups, search, orientation, validation, Stack/convention/design helpers | `src/lexibrary/cli/lexi_app.py` |
-| `lexictl` | Maintainer-facing CLI -- init, bootstrap, index, update, validate, sweep, agent-rules management | `src/lexibrary/cli/lexictl_app.py` |
+| `lexictl` | Maintainer-facing CLI -- init, bootstrap, index, update, validate, sweep, curate, agent-rules management | `src/lexibrary/cli/lexictl_app.py` |
 | `python -m lexibrary` | Module entry point, starts the agent-facing CLI (`lexi_app`) | `src/lexibrary/__main__.py` |
 
 Registered via `[project.scripts]` in `pyproject.toml`. Both entry points are re-exported from `src/lexibrary/cli/__init__.py`.
@@ -37,14 +37,15 @@ Lexibrarian/
     agent/                   -- Agent-facing docs: CLI reference, workflows, prohibited commands
     user/                    -- User-facing docs: getting-started, configuration, troubleshooting
   src/
-    lexibrary/               -- Main package: error aggregation; package metadata; exception hierarchy
-      archivist/             -- Non-LLM skeleton generator; archivist facade; deterministic topology generator from .aindex summaries
-      artifacts/             -- Pydantic models for convention frontmatter; design-file schemas; atomic file writer
+    lexibrary/               -- Main package: cross-artifact search; error aggregation; package metadata
+      archivist/             -- Non-LLM skeleton generator; archivist facade; deterministic topology generator from .aindex summaries; import-target resolver
+      artifacts/             -- Pydantic models for convention frontmatter; design-file schemas; artifact ID registry; duplicate-title detector; atomic file writer
       ast_parser/            -- Tree-sitter extractors (Python/JS/TS); interface skeleton serializer; canonical schemas
-      cli/                   -- Modular CLI layer: lexi_app (agent), lexictl_app (maintainer), plus per-domain subcommand modules (concepts, conventions, design, iwh, playbooks, stack)
+      cli/                   -- Modular CLI layer: lexi_app (agent), lexictl_app (maintainer), plus per-domain subcommand modules (concepts, conventions, curate, design, iwh, playbooks, stack)
       config/                -- Config namespace re-exports; two-tier YAML config loader; Pydantic v2 config schema
       conventions/           -- Convention subsystem API; markdown serializer; scope-aware convention index
       crawler/               -- Bottom-up crawl engine with LLM summarization; safe text extraction; directory discovery with ignore filtering
+      curator/               -- Autonomous maintenance agent: coordinator, risk taxonomy, budget tracking, hook runners, reconciliation, staleness/consistency/deprecation/migration actions, fingerprinting for dedup
       hooks/                 -- Git hook installers (pre-commit, post-commit)
       ignore/                -- Ignore matcher factory; unified matcher; small adapter
       indexer/               -- Package init; in-memory AIndexFile builder; end-to-end .aindex orchestrator
@@ -55,56 +56,53 @@ Lexibrarian/
       linkgraph/             -- SQLite link-graph: health metadata; read-only query API; schema/DDL management
       llm/                   -- Async BAML adapter; client-registry factory; async rate limiter
       playbooks/             -- Playbook parser; in-memory index with trigger-glob matching; public API re-exports
-      services/              -- Domain logic extracted from CLI: lookup, orient, impact, status, describe -- each with a paired render module
+      services/              -- Domain logic extracted from CLI: lookup, design, impact, status, describe, sweep, view -- each with a paired render module
       stack/                 -- Stack post template generator; Pydantic models; filename helpers; public API re-exports
       templates/             -- Template loader utility
         claude/agents/       -- Agent workflow templates; reusable prompt templates
         claude/hooks/        -- Post-edit hook; PreToolUse hook
         config/              -- Default project config template (created by lexictl init)
-          skills/            -- Skill templates: lexi-concepts, lexi-lookup, lexi-orient, lexi-search, lexi-stack, topology-builder
+          skills/            -- Skill templates: lexi-concept, lexi-lookup, lexi-search, lexi-stack, topology-builder
         hooks/               -- Git post-commit hook template; pre-commit validation hook template
         scaffolder/          -- Comment header template; .lexignore header template
       tokenizer/             -- Token counter factory; API re-exports; chars/4 heuristic fallback
       utils/                 -- Source-to-designs path mapping; language detection; merge-conflict detection
-      validator/             -- Validation check coordinator; result models; individual check functions
+      validator/             -- Validation check coordinator; result models; auto-fix implementations
       wiki/                  -- Wikilink resolver; concept file creator; concept serializer
-  tests/                     -- Mirror of src/ layout, plus fixtures in tests/fixtures/sample_project/
+  tests/                     -- Mirror of src/ layout, plus fixtures in tests/fixtures/
 ```
 
 ## Key Architectural Insights
 
 ### Two-CLI Design
 
-Lexibrary exposes two separate CLIs from the same package. `lexi` (defined in `src/lexibrary/cli/lexi_app.py`) is the agent-facing CLI for lookups, search, orientation, and artifact management -- agents may run it freely. `lexictl` (defined in `src/lexibrary/cli/lexictl_app.py`) handles destructive or expensive operations: init, bootstrap, update (LLM calls), sweep, and agent-rule generation. Agents must never run `lexictl` commands. Both are Typer apps sharing common helpers from `src/lexibrary/cli/_shared.py` and registered via `[project.scripts]` in `pyproject.toml`.
+Lexibrary exposes two separate CLIs from the same package. `lexi` (defined in `src/lexibrary/cli/lexi_app.py`) is the agent-facing CLI for lookups, search, orientation, and artifact management -- agents may run it freely. `lexictl` (defined in `src/lexibrary/cli/lexictl_app.py`) handles destructive or expensive operations: init, bootstrap, update (LLM calls), sweep, curate, and agent-rule generation. Agents must never run `lexictl` commands. Both are Typer apps sharing common helpers from `src/lexibrary/cli/_shared.py` and registered via `[project.scripts]` in `pyproject.toml`.
 
 ### CLI / Services Separation
 
-The CLI layer (`src/lexibrary/cli/`) is split into thin command handlers and a `src/lexibrary/services/` layer that holds the domain logic. Each major `lexi` command (lookup, orient, impact, status, describe) has a service module containing the core logic and a paired `*_render.py` module that formats results for terminal output. CLI handlers call into services and renderers but contain no business logic themselves. This separation means domain logic can be tested and reused without invoking Typer, and new output formats only require a new renderer.
+The CLI layer (`src/lexibrary/cli/`) is split into thin command handlers and a `src/lexibrary/services/` layer that holds the domain logic. Each major command has a service module containing the core logic and a paired `*_render.py` module that formats results for terminal output. CLI handlers call into services and renderers but contain no business logic themselves. This separation means domain logic can be tested and reused without invoking Typer, and new output formats only require a new renderer.
 
 ### Artifact Mirror Layout
 
 Every source file under `src/` can have a corresponding design file under `.lexibrary/designs/` that mirrors the source tree structure. The path mapping is handled by `src/lexibrary/utils/paths.py`. Design files contain YAML frontmatter with metadata and a markdown body describing the file's role, interface, and dependencies. When editing a source file, the corresponding design file should be updated if it exists.
 
-### Pipeline as Coordination Point
+### Curator Subsystem
 
-The archivist pipeline (`src/lexibrary/archivist/pipeline.py`) orchestrates the full update cycle: diff detection, LLM-based design-file generation (or skeleton fallback), then post-processing (indexing, topology generation, deprecation, link-graph rebuild). Individual subsystems (indexer, topology, linkgraph) are designed to be called from the pipeline rather than invoked directly.
+The curator (`src/lexibrary/curator/`) is an autonomous maintenance agent that runs via `lexictl curate`. It uses a collect/triage/dispatch architecture coordinated by `coordinator.py`: the coordinator collects maintenance signals (staleness, consistency, deprecation, migration), triages them through a risk taxonomy (`risk_taxonomy.py`), and dispatches actions within configurable LLM call budgets (`budget.py`). Actions are gated by an autonomy level (full, assisted, supervised) defined in `config.py`. The reconciliation module (`reconciliation.py`) merges agent-edited design files with current source, and `fingerprint.py` deduplicates Stack posts. Hook integration is via `hook_runners.py` and `hooks.py`.
 
 ## Core Modules
 
 ### CLI Layer
 
-*Thin command handlers wiring Typer to the services layer. All CLI output goes through `_output.py` helpers -- no bare `print()` allowed. Each subcommand domain (concepts, conventions, etc.) lives in its own module.*
+*Thin command handlers wiring Typer to the services layer. All CLI output goes through `_output.py` helpers -- no bare `print()` allowed. Each subcommand domain lives in its own module.*
 
 | Module | Purpose |
 |--------|---------|
-| `src/lexibrary/cli/lexi_app.py` | Agent-facing CLI root: registers subcommand groups and top-level commands (lookup, orient, search, validate, status, impact, describe) |
-| `src/lexibrary/cli/lexictl_app.py` | Maintainer CLI: init, bootstrap, update, index, validate, sweep, rules, status, IWH management |
+| `src/lexibrary/cli/lexi_app.py` | Agent-facing CLI root: registers subcommand groups and top-level commands (lookup, search, validate, status, impact, describe) |
+| `src/lexibrary/cli/lexictl_app.py` | Maintainer CLI: init, bootstrap, update, index, validate, sweep, curate, rules, status, IWH management |
 | `src/lexibrary/cli/_shared.py` | Shared helpers: project-root resolution, env loading, common status/validate logic |
 | `src/lexibrary/cli/_output.py` | Plain-text output helpers (`info`, `warn`, `error`, `hint`, `markdown_table`) used by all commands |
-| `src/lexibrary/cli/concepts.py` | Concept subcommand group: create, link, comment, deprecate |
-| `src/lexibrary/cli/conventions.py` | Convention subcommand group: lifecycle management |
-| `src/lexibrary/cli/stack.py` | Stack subcommand group: post, search, view, edit, close |
-| `src/lexibrary/cli/playbooks.py` | Playbook subcommand group: list, view, search |
+| `src/lexibrary/cli/curate.py` | Curator CLI entry point: argument validation, lifecycle concerns, report rendering |
 
 ### Services Layer
 
@@ -113,14 +111,28 @@ The archivist pipeline (`src/lexibrary/archivist/pipeline.py`) orchestrates the 
 | Module | Purpose |
 |--------|---------|
 | `src/lexibrary/services/lookup.py` | Core lookup logic: resolves file/directory context, design files, IWH signals, and conventions |
-| `src/lexibrary/services/lookup_render.py` | Formats `LookupResult` into plain-text terminal output |
-| `src/lexibrary/services/orient.py` | Aggregates project orientation: topology, file descriptions, library counts, IWH previews |
-| `src/lexibrary/services/orient_render.py` | Formats `OrientResult` with character-budgeted truncation |
+| `src/lexibrary/services/design.py` | Pre-flight decision logic for whether a design file should be (re)generated |
 | `src/lexibrary/services/impact.py` | Computes reverse dependents of a source file from the link graph |
-| `src/lexibrary/services/impact_render.py` | Formats impact results for terminal display |
 | `src/lexibrary/services/status.py` | Collects library health: staleness counts, artifact stats, validation summary |
-| `src/lexibrary/services/status_render.py` | Renders status as a multi-line dashboard or one-line quiet summary |
+| `src/lexibrary/services/sweep.py` | Sweep logic for bulk maintenance operations |
+| `src/lexibrary/services/view.py` | View service for rendering artifact content |
 | `src/lexibrary/services/describe.py` | Updates billboard descriptions in `.aindex` files |
+
+### Curator
+
+*Autonomous maintenance pipeline: collects signals, triages by risk, dispatches actions within budgets.*
+
+| Module | Purpose |
+|--------|---------|
+| `src/lexibrary/curator/coordinator.py` | Orchestrates the collect/triage/dispatch cycle for all maintenance actions |
+| `src/lexibrary/curator/config.py` | Runtime configuration: autonomy level, LLM budgets, per-action risk overrides |
+| `src/lexibrary/curator/risk_taxonomy.py` | Classifies maintenance actions by risk level for autonomy gating |
+| `src/lexibrary/curator/budget.py` | Tracks and enforces LLM call budgets during a curator run |
+| `src/lexibrary/curator/reconciliation.py` | Merges agent-edited design files with current source, preserving agent knowledge |
+| `src/lexibrary/curator/staleness.py` | Detects stale design files that need regeneration |
+| `src/lexibrary/curator/consistency.py` | Checks consistency between source and design artifacts |
+| `src/lexibrary/curator/deprecation.py` | Manages artifact deprecation workflows |
+| `src/lexibrary/curator/fingerprint.py` | SHA-256 dedup for Stack posts; avoids creating duplicate findings |
 
 ### Domain Models and Artifacts
 
@@ -134,12 +146,11 @@ The archivist pipeline (`src/lexibrary/archivist/pipeline.py`) orchestrates the 
 | `src/lexibrary/artifacts/convention.py` | Models for convention files (`ConventionFrontmatter`, `ConventionFile`) |
 | `src/lexibrary/artifacts/playbook.py` | Models for playbook files (`PlaybookFrontmatter`, `PlaybookFile`) |
 
-### Services and Orchestration
+### Orchestration
 
 | Module | Purpose |
 |--------|---------|
 | `src/lexibrary/archivist/pipeline.py` | End-to-end update pipeline: diff detection, LLM generation, post-processing |
-| `src/lexibrary/archivist/service.py` | Async LLM service for design-file generation via BAML |
 | `src/lexibrary/archivist/skeleton.py` | Non-LLM fallback: generates lightweight design files from AST analysis |
 | `src/lexibrary/archivist/topology.py` | Generates raw topology from `.aindex` billboard summaries for the topology-builder skill |
 | `src/lexibrary/lifecycle/bootstrap.py` | Batch design-file creation (quick heuristic or full LLM mode) |
@@ -162,7 +173,6 @@ The archivist pipeline (`src/lexibrary/archivist/pipeline.py`) orchestrates the 
 | `src/lexibrary/utils/atomic.py` | Atomic file writes via temp-file-then-rename |
 | `src/lexibrary/utils/root.py` | Discovers project root by walking up to find `.lexibrary/` |
 | `src/lexibrary/ignore/matcher.py` | Unified ignore matcher combining config, `.gitignore`, and `.lexignore` |
-| `src/lexibrary/stack/helpers.py` | Stack filename conventions: `stack_dir()`, `next_stack_id()` |
 
 ## Test Structure
 
@@ -177,6 +187,7 @@ Tests mirror the source layout under `tests/`. Each `tests/test_<subpackage>/` d
 | `tests/test_config/` | `src/lexibrary/config/` |
 | `tests/test_conventions/` | `src/lexibrary/conventions/` |
 | `tests/test_crawler/` | `src/lexibrary/crawler/` |
+| `tests/test_curator/` | `src/lexibrary/curator/` |
 | `tests/test_hooks/` | `src/lexibrary/hooks/` |
 | `tests/test_ignore/` | `src/lexibrary/ignore/` |
 | `tests/test_indexer/` | `src/lexibrary/indexer/` |
@@ -193,8 +204,8 @@ Tests mirror the source layout under `tests/`. Each `tests/test_<subpackage>/` d
 | `tests/test_validator/` | `src/lexibrary/validator/` |
 | `tests/test_wiki/` | `src/lexibrary/wiki/` |
 
-Top-level test files: `tests/test_errors.py`, `tests/test_exceptions.py`, `tests/test_search.py`, `tests/test_playbook_cli.py`, `tests/test_playbook_index.py`, `tests/test_playbook_model.py`, `tests/test_playbook_parser.py`, `tests/test_playbook_search.py`, `tests/test_playbook_serializer.py`, `tests/test_playbook_validation.py`, `tests/test_skills_mirror.py`.
+Top-level test files in `tests/`: `test_errors.py`, `test_exceptions.py`, `test_search.py`, `test_playbook_cli.py`, `test_playbook_index.py`, `test_playbook_model.py`, `test_playbook_parser.py`, `test_playbook_search.py`, `test_playbook_serializer.py`, `test_playbook_validation.py`, `test_skills_mirror.py`.
 
-Test fixtures live in `tests/fixtures/sample_project/`. Shared helpers are in `tests/conftest.py`.
+Test fixtures live in `tests/fixtures/` (including `tests/fixtures/sample_project/` and `tests/fixtures/curator_library/`). Shared helpers are in `tests/conftest.py`.
 
 Convention: When adding tests for a module that already has a test file, add new test cases to the existing file rather than creating a new one. Create a new test file only when covering a module that has no existing test file.
