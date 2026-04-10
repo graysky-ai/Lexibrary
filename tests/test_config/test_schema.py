@@ -750,8 +750,8 @@ def test_topology_config_defaults() -> None:
 
 def test_topology_config_custom_detail_dirs() -> None:
     """TopologyConfig accepts custom detail_dirs from YAML."""
-    config = TopologyConfig.model_validate({"detail_dirs": ["baml_src/", "docs/agent/"]})
-    assert config.detail_dirs == ["baml_src/", "docs/agent/"]
+    config = TopologyConfig.model_validate({"detail_dirs": ["baml_src/", "docs/"]})
+    assert config.detail_dirs == ["baml_src/", "docs/"]
 
 
 def test_topology_config_extra_fields_ignored() -> None:

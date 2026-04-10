@@ -80,7 +80,7 @@ Lexibrary is designed to slot into an AI coding agent's workflow. The typical se
 8. lexi iwh write <dir>            # If stopping early — leave a breadcrumb for the next agent
 ```
 
-Agents also have access to `concept`, `convention`, `design`, and `stack` subcommand groups for managing those artifact types. See the full reference at [docs/agent/lexi-reference.md](docs/agent/lexi-reference.md).
+Agents also have access to `concept`, `convention`, `design`, and `stack` subcommand groups for managing those artifact types. See the full reference at [docs/cli-reference.md](docs/cli-reference.md).
 
 ## Quick Start
 
@@ -145,7 +145,7 @@ Environment variables override values from `.lexibrary/config.yaml`. The `.env` 
 | `status` | Library health and staleness summary |
 | **Subcommand groups** | `stack`, `concept`, `convention`, `design`, `iwh` |
 
-Full reference: [docs/agent/lexi-reference.md](docs/agent/lexi-reference.md)
+Full reference: [docs/cli-reference.md](docs/cli-reference.md)
 
 ### lexictl (maintenance)
 
@@ -159,7 +159,7 @@ Full reference: [docs/agent/lexi-reference.md](docs/agent/lexi-reference.md)
 | `setup` | Install/update agent rules and hooks |
 | `sweep` | One-shot or watch-mode library update |
 
-Full reference: [docs/user/lexictl-reference.md](docs/user/lexictl-reference.md)
+Full reference: [docs/cli-reference.md](docs/cli-reference.md)
 
 ## Development
 

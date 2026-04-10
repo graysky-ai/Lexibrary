@@ -121,16 +121,54 @@ class IgnoreConfig(BaseModel):
     use_gitignore: bool = True
     additional_patterns: list[str] = Field(
         default_factory=lambda: [
+            # Lexibrary internals
             ".lexibrary/",
+            # Dev/build directories
             "node_modules/",
             "__pycache__/",
             ".git/",
             ".venv/",
             "venv/",
+            # Lock files
             "*.lock",
+            # Environment files
             ".env",
             ".env.*",
             "*.env",
+            # Private keys & certificates
+            "*.pem",
+            "*.key",
+            "*.p12",
+            "*.pfx",
+            "*.jks",
+            "*.keystore",
+            "id_rsa",
+            "id_dsa",
+            "id_ed25519",
+            "id_ecdsa",
+            # Cloud provider credentials
+            ".aws/",
+            ".azure/",
+            # Package manager credentials
+            ".npmrc",
+            ".pypirc",
+            # Docker registry auth
+            ".dockercfg",
+            ".docker/config.json",
+            # Terraform state & vars
+            "*.tfvars",
+            "*.tfstate",
+            "*.tfstate.backup",
+            # Vault / secrets
+            ".vault-password*",
+            # Auth & credential files
+            "credentials.json",
+            ".git-credentials",
+            ".htpasswd",
+            ".netrc",
+            # Database files
+            "*.sqlite",
+            "*.sqlite3",
         ]
     )
 

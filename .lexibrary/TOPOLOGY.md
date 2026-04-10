@@ -33,9 +33,7 @@ Registered via `[project.scripts]` in `pyproject.toml`. Both entry points are re
 ```
 Lexibrarian/
   baml_src/                  -- LLM prompt definitions (BAML DSL): archivist, summarizer, types
-  docs/
-    agent/                   -- Agent-facing docs: CLI reference, workflows, prohibited commands
-    user/                    -- User-facing docs: getting-started, configuration, troubleshooting
+  docs/                        -- Flat documentation: CLI reference, design files, concepts, conventions, stack, playbooks, configuration, getting-started, troubleshooting
   src/
     lexibrary/               -- Main package: cross-artifact search; error aggregation; package metadata
       archivist/             -- Non-LLM skeleton generator; archivist facade; deterministic topology generator from .aindex summaries; import-target resolver
