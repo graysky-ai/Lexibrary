@@ -2,6 +2,36 @@
 
 All notable changes to Lexibrary are documented in this file.
 
+## [0.5.0] - 2026-04-10
+
+### Added
+- **Curator agent subsystem** — New `src/lexibrary/curator/` package with coordinator, auditing, budget, cascade, comments, consistency, deprecation, fingerprint, hooks, lifecycle, migration, reconciliation, risk taxonomy, and staleness modules for autonomous library maintenance
+- **`lexi curate` CLI command** — New command surface for running curator workflows (audit, reconcile, deprecate, sweep)
+- **Curator BAML functions** — Seven new BAML functions: `curator_budget_trimmer`, `curator_comment_auditing`, `curator_comment_integration`, `curator_consistency_checker`, `curator_deprecation`, `curator_reconcile_design_file`, `curator_staleness_resolver`
+- **Curate render service** — New `services/curate_render.py` for curator output formatting
+- **Stack mutations module** — New `stack/mutations.py` exposing stack mutation helpers
+- **Curator config schema** — New configuration fields on the config schema for curator tuning
+- **Archivist pipeline section preservation** — Pipeline now preserves curator-authored sections in design files across regeneration
+- **Design file comment metadata** — Parser and serializer support for `.comments.yaml` sidecar files
+- **Validator checks** — New checks for curator-managed artifact consistency
+- **Curator test suite** — Comprehensive test coverage for curator subsystem (~15k lines across `tests/test_curator/`)
+- **Curator fixtures library** — New `tests/fixtures/curator_library/` with concepts, conventions, designs, and source files for integration testing
+- **CI integration guide** — New `docs/ci-integration.md`
+
+### Changed
+- **Documentation restructure** — Flattened `docs/user/` and `docs/agent/` into top-level `docs/`; consolidated agent reference into unified user-facing docs (`concepts.md`, `configuration.md`, `conventions.md`, `design-files.md`, `iwh.md`, `playbooks.md`, `search.md`, `stack.md`)
+- **Archivist pipeline** — Refactored to integrate curator comment preservation and section merging
+- **Design file parser/serializer** — Extended to round-trip curator comment metadata
+- **`lexictl` app** — Updated to expose curator maintenance operations
+- **Topology** — Updated `.lexibrary/TOPOLOGY.md` and topology template to reflect the curator subsystem
+- **Rules template** — Updated `core_rules.md` with curator-related guidance
+- **Agent rules** — Updated `AGENTS.md` and `README.md` to reference the new docs layout
+
+### Removed
+- **Obsolete planning and analysis files** — Removed `architecture-analysis.md`, `curator-agent.md`, `decompose-lexictl-cli-analysis.md`, `harness-opportunities.md`, `harness-opportunities-status.md`, `harness-update-plan.md`, `oai-harness-engineering-analysis.md`, `spec-opportunities.md`, `symphony-spec-analysis.md`, `coverage-baseline.txt`
+- **Legacy agent docs** — Removed `docs/agent/concepts.md`, `docs/agent/iwh.md`, `docs/agent/lexi-reference.md`, `docs/agent/lookup-workflow.md`, `docs/agent/prohibited-commands.md`, `docs/agent/quick-reference.md`, `docs/agent/stack.md`, `docs/agent/update-workflow.md`, `docs/agent/README.md` (content migrated to flattened docs layout)
+- **Legacy user docs** — Removed `docs/user/artefact-lifecycle.md`, `docs/user/configuration.md`, `docs/user/conventions-concepts-exploration.md`, `docs/user/design-file-generation.md`, `docs/user/lexictl-reference.md` (content migrated or consolidated)
+
 ## [0.4.0] - 2026-04-08
 
 ### Added
