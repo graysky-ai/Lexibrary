@@ -1,7 +1,0 @@
-comments:
-- body: 'curator-fix Phase 1: added --verbose flag. When set without --last-run, passes
-    stubbed/verbose/dispatched_details through to render_summary() for per-dispatch
-    detail lines. When combined with --last-run, forwards verbose=True to render_last_run()
-    which walks the persisted dispatched list from the JSON report. _handle_last_run()
-    now takes an optional verbose keyword.'
-  date: '2026-04-10T20:51:32.862988Z'

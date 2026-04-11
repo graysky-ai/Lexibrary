@@ -192,6 +192,109 @@ def seed_phase2_fixture(project_root: Path) -> dict[str, Any]:
     }
 
 
+def seed_phase3_class_fixture(project_root: Path) -> dict[str, Any]:
+    """Seed ``symbols.db`` with a minimal Phase 3 class hierarchy corpus.
+
+    One file ``src/pkg.py`` carrying four symbols and four class edges:
+
+    - ``class Base`` at line 1 — the canonical base with one resolved
+      subclass and one instantiation site.
+    - ``class Derived(Base)`` at line 5 — inherits from ``Base`` and is
+      instantiated by ``main``.
+    - ``class Thing(BaseModel, Enum)`` at line 10 — inherits from two
+      out-of-scope external bases that both land in
+      ``class_edges_unresolved``.
+    - ``def main()`` at line 13 — the instantiation site for
+      ``Derived``.
+
+    Two resolved edges land in ``class_edges``:
+
+    - ``Derived → Base`` (``inherits``).
+    - ``main → Derived`` (``instantiates``).
+
+    Two unresolved edges land in ``class_edges_unresolved``:
+
+    - ``Thing → BaseModel`` (``inherits``).
+    - ``Thing → Enum`` (``inherits``).
+
+    Returns a dict of ids keyed by symbol name for use in assertions.
+    The on-disk source file is written with a placeholder so
+    ``files.last_hash`` matches the hash :func:`hash_file` computes —
+    staleness checks against the seeded fixture therefore pass by
+    default.
+    """
+    src = write_source_file(project_root, "src/pkg.py", "# phase 3 class fixture\n")
+    src_hash = hash_file(src)
+
+    graph = open_symbol_graph(project_root)
+    conn = graph._conn
+    try:
+        cur = conn.execute(
+            "INSERT INTO files (path, language, last_hash) VALUES (?, ?, ?)",
+            ("src/pkg.py", "python", src_hash),
+        )
+        file_id = int(cur.lastrowid or 0)
+
+        def _add_symbol(
+            name: str,
+            qualified_name: str | None,
+            symbol_type: str,
+            line_start: int,
+            line_end: int,
+        ) -> int:
+            cur = conn.execute(
+                "INSERT INTO symbols "
+                "(file_id, name, qualified_name, symbol_type, line_start, "
+                "line_end, visibility, parent_class) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+                (file_id, name, qualified_name, symbol_type, line_start, line_end, "public"),
+            )
+            return int(cur.lastrowid or 0)
+
+        base_id = _add_symbol("Base", "pkg.Base", "class", 1, 3)
+        derived_id = _add_symbol("Derived", "pkg.Derived", "class", 5, 8)
+        thing_id = _add_symbol("Thing", "pkg.Thing", "class", 10, 11)
+        main_id = _add_symbol("main", "pkg.main", "function", 13, 15)
+
+        # class_edges: Derived inherits Base; main instantiates Derived.
+        conn.execute(
+            "INSERT INTO class_edges (source_id, target_id, edge_type, line, context) "
+            "VALUES (?, ?, ?, ?, NULL)",
+            (derived_id, base_id, "inherits", 5),
+        )
+        conn.execute(
+            "INSERT INTO class_edges (source_id, target_id, edge_type, line, context) "
+            "VALUES (?, ?, ?, ?, NULL)",
+            (main_id, derived_id, "instantiates", 14),
+        )
+
+        # class_edges_unresolved: Thing inherits BaseModel and Enum
+        # (both out-of-scope — the "Unresolved bases" row exercises the
+        # multi-target join path).
+        conn.execute(
+            "INSERT INTO class_edges_unresolved "
+            "(source_id, target_name, edge_type, line) VALUES (?, ?, ?, ?)",
+            (thing_id, "BaseModel", "inherits", 10),
+        )
+        conn.execute(
+            "INSERT INTO class_edges_unresolved "
+            "(source_id, target_name, edge_type, line) VALUES (?, ?, ?, ?)",
+            (thing_id, "Enum", "inherits", 10),
+        )
+
+        conn.commit()
+    finally:
+        graph.close()
+
+    return {
+        "file_id": file_id,
+        "base_id": base_id,
+        "derived_id": derived_id,
+        "thing_id": thing_id,
+        "main_id": main_id,
+    }
+
+
 @pytest.fixture
 def phase2_project(tmp_path: Path) -> tuple[Path, dict[str, Any]]:
     """Pytest-style wrapper around :func:`seed_phase2_fixture`.

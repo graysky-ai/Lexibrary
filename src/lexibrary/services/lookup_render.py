@@ -364,6 +364,49 @@ def render_key_symbols(
     return "\n".join(lines)
 
 
+def render_class_hierarchy(classes: Sequence[object]) -> str:
+    """Render a ``### Class hierarchy`` section for a file lookup.
+
+    *classes* should be a list of :class:`ClassHierarchyEntry` instances
+    (order preserved — typically source order). The renderer emits a
+    markdown table with columns ``Class | Bases | Subclasses | Methods |
+    Line``. ``Bases`` joins the resolved base-class names with ``, ``
+    then appends each unresolved base name with a trailing ``*`` marker;
+    rows with neither resolved nor unresolved bases render ``—``.
+
+    Returns an empty string when *classes* is empty so the CLI can omit
+    the whole section.
+    """
+    from lexibrary.cli._output import markdown_table  # noqa: PLC0415
+    from lexibrary.services.lookup import ClassHierarchyEntry  # noqa: PLC0415
+
+    typed: list[ClassHierarchyEntry] = [c for c in classes if isinstance(c, ClassHierarchyEntry)]
+    if not typed:
+        return ""
+
+    rows: list[list[str]] = []
+    for entry in typed:
+        base_parts: list[str] = list(entry.bases)
+        base_parts.extend(f"{name}*" for name in entry.unresolved_bases)
+        bases_display = ", ".join(base_parts) if base_parts else "—"
+        rows.append(
+            [
+                entry.class_name,
+                bases_display,
+                str(entry.subclass_count),
+                str(entry.method_count),
+                str(entry.line_start),
+            ]
+        )
+
+    table = markdown_table(
+        ["Class", "Bases", "Subclasses", "Methods", "Line"],
+        rows,
+    )
+    lines: list[str] = ["\n### Class hierarchy\n", table, ""]
+    return "\n".join(lines)
+
+
 def render_directory_link_summary(
     import_count: int,
     imported_file_count: int,

@@ -1,9 +1,0 @@
-comments:
-- body: 'curator-fix-2 group 3 (CUR-09/PRE-01 follow-up): detect_promotable_iwh()
-    now uses lexibrary.utils.paths.iwh_path() to compute the mirror .iwh location.
-    Previously it reconstructed the path via self.lexibrary_dir / rel_dir / ''.iwh''
-    which produced the wrong location (e.g. .lexibrary/src/auth/.iwh instead of .lexibrary/designs/src/auth/.iwh)
-    because find_all_iwh now returns source-relative paths without the ''designs/''
-    prefix. The fix ensures apply_promote_blocked_iwh sees a target_path that _write_flag_iwh
-    can correctly translate to a mirror write location.'
-  date: '2026-04-11T07:38:19.305207Z'

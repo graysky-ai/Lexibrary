@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 from lexibrary.ast_parser.models import (
     CallSite,
+    ClassEdgeSite,
     ClassSig,
     ConstantSig,
     FunctionSig,
@@ -168,7 +169,7 @@ def extract_symbols_from_tree(
     source_bytes: bytes,
     file_path: Path,
 ) -> SymbolExtract | None:
-    """Extract symbol definitions and call sites from a pre-parsed JS tree.
+    """Extract symbol definitions, call sites and class edges from a JS tree.
 
     Mirrors the TypeScript extractor: ``function_declaration``,
     ``class_declaration``, ``method_definition`` inside classes and
@@ -177,6 +178,11 @@ def extract_symbols_from_tree(
     become :class:`CallSite` rows. ``this.method()`` is the JS analog of
     Python's ``self.method()`` — the receiver is the literal string
     ``"this"``.
+
+    Class edges include ``inherits`` edges from every ``extends`` clause
+    on a ``class_declaration`` and ``instantiates`` edges from every
+    ``new_expression`` with a bare ``identifier`` constructor. JavaScript
+    has no ``implements`` clause, so there is no interface fan-out.
     """
     del source_bytes  # Reserved for future walkers.
 
@@ -197,12 +203,14 @@ def extract_symbols_from_tree(
         )
 
     calls = _collect_js_calls(def_nodes)
+    class_edges = _collect_js_class_edges(def_nodes)
 
     return SymbolExtract(
         file_path=str(file_path),
         language="javascript",
         definitions=definitions,
         calls=calls,
+        class_edges=class_edges,
     )
 
 
@@ -429,6 +437,140 @@ def _collect_js_calls(
 
     calls.sort(key=lambda c: (c.line, c.callee_name, c.caller_name))
     return calls
+
+
+def _collect_js_class_edges(
+    def_nodes: list[tuple[object, SymbolDefinition]],
+) -> list[ClassEdgeSite]:
+    """Emit ``ClassEdgeSite`` entries for JS definitions.
+
+    JavaScript has only ``extends`` heritage (no ``implements``). Each
+    ``class_declaration`` with a ``class_heritage`` child contributes one
+    ``inherits`` edge per ``identifier`` or ``member_expression`` inside
+    the heritage node. ``new_expression`` descendants with bare
+    ``identifier`` constructors contribute ``instantiates`` edges.
+    """
+    if not def_nodes:
+        return []
+
+    definition_spans: list[tuple[SymbolDefinition, int, int]] = []
+    class_defs_by_qualified: dict[str, tuple[object, SymbolDefinition]] = {}
+    for def_node, definition in def_nodes:
+        start_row, end_row = _node_row_span(def_node)
+        definition_spans.append((definition, start_row, end_row))
+        if definition.symbol_type == "class":
+            class_defs_by_qualified[definition.qualified_name] = (
+                def_node,
+                definition,
+            )
+
+    definition_spans.sort(key=lambda item: (-item[1], item[2]))
+
+    edges: list[ClassEdgeSite] = []
+
+    # ---- inherits edges ----
+    for class_node, class_def in class_defs_by_qualified.values():
+        heritage_node = _sym_find_child_by_type(class_node, "class_heritage")
+        if heritage_node is None:
+            continue
+        for base_name in _iter_js_heritage_names(heritage_node):
+            edges.append(
+                ClassEdgeSite(
+                    source_name=class_def.qualified_name,
+                    target_name=base_name,
+                    edge_type="inherits",
+                    line=class_def.line_start,
+                ),
+            )
+
+    # ---- instantiates edges ----
+    seen_new_keys: set[tuple[int, int]] = set()
+    for def_node, _definition in def_nodes:
+        for new_node in _iter_js_new_expression_descendants(def_node):
+            key = _node_byte_key(new_node)
+            if key in seen_new_keys:
+                continue
+            seen_new_keys.add(key)
+
+            constructor_name = _js_bare_new_constructor(new_node)
+            if constructor_name is None:
+                continue
+
+            call_row = _node_row_span(new_node)[0]
+            owner: SymbolDefinition | None = None
+            for candidate, start_row, end_row in definition_spans:
+                if start_row <= call_row <= end_row:
+                    owner = candidate
+                    break
+            if owner is None:
+                continue
+
+            edges.append(
+                ClassEdgeSite(
+                    source_name=owner.qualified_name,
+                    target_name=constructor_name,
+                    edge_type="instantiates",
+                    line=call_row + 1,
+                ),
+            )
+
+    edges.sort(key=lambda e: (e.line, e.target_name, e.source_name, e.edge_type))
+    return edges
+
+
+def _iter_js_heritage_names(heritage_node: object) -> list[str]:
+    """Return base-class names from a ``class_heritage`` node.
+
+    Skips the ``extends`` keyword and any commas. ``identifier`` and
+    ``member_expression`` entries are emitted verbatim.
+    """
+    names: list[str] = []
+    for child in getattr(heritage_node, "children", []):
+        child_type = getattr(child, "type", "")
+        if child_type in ("identifier", "member_expression"):
+            text = _sym_node_text(child)
+            if text:
+                names.append(text)
+    return names
+
+
+def _iter_js_new_expression_descendants(node: object) -> list[object]:
+    """Return every ``new_expression`` descendant of ``node``."""
+    results: list[object] = []
+    stack: list[object] = list(getattr(node, "children", []))
+    while stack:
+        current = stack.pop(0)
+        if getattr(current, "type", "") == "new_expression":
+            results.append(current)
+        stack = list(getattr(current, "children", [])) + stack
+    return results
+
+
+def _js_bare_new_constructor(new_node: object) -> str | None:
+    """Return the bare constructor name of a ``new_expression``, or ``None``.
+
+    Only bare ``identifier`` constructors are returned.
+    ``new mod.Foo()`` (a ``member_expression`` constructor) and chained
+    expressions return ``None`` — Phase 3 resolution only handles bare
+    names.
+    """
+    getter = getattr(new_node, "child_by_field_name", None)
+    constructor_node: object | None = None
+    if getter is not None:
+        constructor_node = cast("object | None", getter("constructor"))
+    if constructor_node is None:
+        for child in getattr(new_node, "children", []):
+            child_type = getattr(child, "type", "")
+            if child_type in ("new", "arguments"):
+                continue
+            constructor_node = child
+            break
+    if constructor_node is None:
+        return None
+    if getattr(constructor_node, "type", "") != "identifier":
+        return None
+    text = _sym_node_text(constructor_node)
+    return text or None
 
 
 def _node_byte_key(node: object) -> tuple[int, int]:

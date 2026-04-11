@@ -7,11 +7,14 @@ as a sibling database to the link graph's ``index.db``. See
 ``CN-021 Symbol Graph`` and ``docs/symbol-graph.md`` for the concept.
 
 Phase 2 (symbol-graph-2) fills in real SQL for every ``symbols``,
-``calls``, and ``unresolved_calls`` query. ``class_edges_from``,
-``class_edges_to``, and ``members_of`` remain placeholders until Phase 3
-and Phase 4 populate the corresponding tables. Row shapes and public
-method signatures are stable — downstream callers (``services/symbols.py``,
-``services/lookup.py``, the CLI) import and call these directly.
+``calls``, and ``unresolved_calls`` query. Phase 3 completion
+(symbol-graph-3, group 1) adds real SQL for ``class_edges_from``,
+``class_edges_to``, and ``members_of`` — the class-edges and member
+queries now execute against their tables even though the tables only
+become populated once the Phase 3 builder pass 3 and Phase 4 extractor
+run. Row shapes and public method signatures are stable — downstream
+callers (``services/symbols.py``, ``services/lookup.py``, the CLI)
+import and call these directly.
 
 Contract summary
 ----------------
@@ -36,7 +39,7 @@ import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from lexibrary.symbolgraph.schema import ensure_schema, set_pragmas
 from lexibrary.utils.paths import symbols_db_path
@@ -104,6 +107,53 @@ Used by :meth:`SymbolGraph.unresolved_callees_of`. Joins
 no callee join exists. Eleven columns in total: the first eight match
 the ``_SELECT_SYMBOL`` caller projection, followed by ``callee_name``,
 ``line``, and ``call_context``.
+"""
+
+_SELECT_CLASS_EDGE = (
+    "SELECT "
+    "source_s.id, source_f.path, source_s.name, source_s.qualified_name, "
+    "source_s.symbol_type, source_s.line_start, source_s.line_end, "
+    "source_s.visibility, "
+    "target_s.id, target_f.path, target_s.name, target_s.qualified_name, "
+    "target_s.symbol_type, target_s.line_start, target_s.line_end, "
+    "target_s.visibility, "
+    "ce.edge_type, ce.line, ce.context "
+    "FROM class_edges ce "
+    "JOIN symbols source_s ON source_s.id = ce.source_id "
+    "JOIN files source_f ON source_f.id = source_s.file_id "
+    "JOIN symbols target_s ON target_s.id = ce.target_id "
+    "JOIN files target_f ON target_f.id = target_s.file_id "
+)
+"""Shared projection + joins for class relationship edges.
+
+Used by :meth:`SymbolGraph.class_edges_from` and
+:meth:`SymbolGraph.class_edges_to`. Joins ``class_edges`` to ``symbols``
+and ``files`` twice — once aliased as ``source_s`` / ``source_f`` for
+the source endpoint, once as ``target_s`` / ``target_f`` for the target
+endpoint — so a single SQL round trip returns both endpoints' full
+metadata. Nineteen columns in total: eight source fields, eight target
+fields, then ``ce.edge_type``, ``ce.line``, and ``ce.context``.
+:func:`_row_to_class_edge` depends on this exact order.
+"""
+
+_SELECT_SYMBOL_MEMBER = (
+    "SELECT "
+    "parent_s.id, parent_f.path, parent_s.name, parent_s.qualified_name, "
+    "parent_s.symbol_type, parent_s.line_start, parent_s.line_end, "
+    "parent_s.visibility, "
+    "sm.name, sm.value, sm.ordinal "
+    "FROM symbol_members sm "
+    "JOIN symbols parent_s ON parent_s.id = sm.symbol_id "
+    "JOIN files parent_f ON parent_f.id = parent_s.file_id "
+)
+"""Shared projection + joins for symbol members.
+
+Used by :meth:`SymbolGraph.members_of`. Joins ``symbol_members`` to the
+parent's ``symbols`` and ``files`` rows (aliased as ``parent_s`` /
+``parent_f``). Eleven columns in total: the first eight match the
+``_SELECT_SYMBOL`` parent projection, followed by ``sm.name``,
+``sm.value``, and ``sm.ordinal``. :func:`_row_to_member` depends on
+this exact order.
 """
 
 
@@ -185,6 +235,26 @@ class ClassEdgeRow:
     context: str | None
 
 
+class UnresolvedClassEdgeRow(NamedTuple):
+    """A class edge whose target could not be resolved to a known symbol.
+
+    Unresolved class edges appear when the builder's pass 3 sees a base
+    class or instantiation target that is not in the symbols table — for
+    example a Pydantic ``BaseModel`` reference in a project that does not
+    index Pydantic itself, or an intra-project name that imports fail to
+    resolve. The target is recorded as a plain string name in
+    ``target_name``; ``edge_type`` mirrors the ``class_edges`` edge type
+    (``'inherits'`` / ``'instantiates'`` / ``'composes'``); ``line`` is
+    the source-file line of the edge when captured, or ``None``.
+
+    Returned by :meth:`SymbolGraph.class_edges_unresolved_from`.
+    """
+
+    target_name: str
+    edge_type: str
+    line: int | None
+
+
 @dataclass(frozen=True)
 class SymbolMemberRow:
     """A member of a parent symbol (enum variant, class constant, etc.).
@@ -261,6 +331,42 @@ def _row_to_unresolved_call(row: Sequence[Any]) -> UnresolvedCallRow:
     )
 
 
+def _row_to_class_edge(row: Sequence[Any]) -> ClassEdgeRow:
+    """Convert a positional ``_SELECT_CLASS_EDGE`` row into a :class:`ClassEdgeRow`.
+
+    The ``_SELECT_CLASS_EDGE`` projection yields nineteen columns: eight
+    source fields, eight target fields, then ``edge_type``, ``line``,
+    and ``context``. Source and target subranges are unpacked via
+    :func:`_row_to_symbol` so the single-symbol column ordering is
+    defined in exactly one place.
+    """
+    source = _row_to_symbol(row[0:8])
+    target = _row_to_symbol(row[8:16])
+    return ClassEdgeRow(
+        source=source,
+        target=target,
+        edge_type=str(row[16]),
+        line=None if row[17] is None else int(row[17]),
+        context=None if row[18] is None else str(row[18]),
+    )
+
+
+def _row_to_member(row: Sequence[Any]) -> SymbolMemberRow:
+    """Convert a positional ``_SELECT_SYMBOL_MEMBER`` row into a :class:`SymbolMemberRow`.
+
+    The projection yields eleven columns: the first eight match the
+    single-symbol parent subrange, followed by ``name``, ``value``, and
+    ``ordinal``.
+    """
+    parent = _row_to_symbol(row[0:8])
+    return SymbolMemberRow(
+        parent=parent,
+        name=str(row[8]),
+        value=None if row[9] is None else str(row[9]),
+        ordinal=None if row[10] is None else int(row[10]),
+    )
+
+
 # ---------------------------------------------------------------------------
 # SymbolGraph — read-only query surface
 # ---------------------------------------------------------------------------
@@ -278,8 +384,8 @@ class SymbolGraph:
     underlying connection; any further query attempts raise
     :class:`sqlite3.ProgrammingError`.
 
-    Phase 2 query coverage
-    ----------------------
+    Query coverage
+    --------------
 
     - :meth:`symbols_by_name`, :meth:`symbols_by_qualified_name`,
       :meth:`symbols_in_file` — symbol lookups over ``symbols ⋈ files``.
@@ -291,9 +397,17 @@ class SymbolGraph:
       ``lexi lookup``'s "Key symbols" section.
     - :meth:`query_raw` — ad-hoc ``SELECT`` escape hatch for services
       that don't yet have a dedicated method (prefer dedicated methods).
-    - :meth:`class_edges_from`, :meth:`class_edges_to`, :meth:`members_of`
-      remain placeholders until Phase 3 / Phase 4 populate the
-      corresponding tables.
+    - :meth:`class_edges_from`, :meth:`class_edges_to` — resolved
+      class-hierarchy edges joining ``class_edges`` to its source /
+      target endpoints. Populated once the Phase 3 builder pass 3 has
+      run; returns an empty list before then.
+    - :meth:`class_edges_unresolved_from` — unresolved outbound class
+      edges (e.g. external bases like ``BaseModel``) read from the
+      ``class_edges_unresolved`` table. Populated by the same pass 3
+      run; returns an empty list before then.
+    - :meth:`members_of` — members (enum variants, class constants)
+      joining ``symbol_members`` to the parent symbol. Populated once
+      the Phase 4 extractor has run; returns an empty list before then.
     """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -455,33 +569,98 @@ class SymbolGraph:
     def class_edges_from(self, symbol_id: int) -> list[ClassEdgeRow]:
         """Return class edges whose *source* is *symbol_id*.
 
-        Placeholder — the ``class_edges`` table is populated by
-        ``symbol-graph-3`` (inheritance) and ``symbol-graph-4``
-        (composition). This method will gain a real body at that time.
+        Single SQL query against :data:`_SELECT_CLASS_EDGE` filtered by
+        ``ce.source_id``; both endpoints come back fully populated.
+        Ordered by ``edge_type`` then target file path then call-site
+        line so inheritance edges render before instantiation edges and
+        the output is deterministic for tests and display.
+
+        The ``class_edges`` table is populated by the symbol graph
+        builder's pass 3 (``symbol-graph-3``). This method returns an
+        empty list when the table is empty (e.g. before pass 3 has run
+        for any file).
         """
-        # TODO(symbol-graph-3): implement
-        return []
+        sql = (
+            _SELECT_CLASS_EDGE
+            + "WHERE ce.source_id = ? "
+            + "ORDER BY ce.edge_type, target_f.path, ce.line"
+        )
+        rows = self._conn.execute(sql, (symbol_id,)).fetchall()
+        return [_row_to_class_edge(row) for row in rows]
 
     def class_edges_to(self, symbol_id: int) -> list[ClassEdgeRow]:
         """Return class edges whose *target* is *symbol_id*.
 
-        Placeholder — matching inbound half of :meth:`class_edges_from`;
-        Phase 3 / Phase 4 will populate the underlying table.
+        Matching inbound half of :meth:`class_edges_from`: same
+        :data:`_SELECT_CLASS_EDGE` join, filtered on ``ce.target_id``.
+        Ordered by ``edge_type`` then source file path then call-site
+        line so the results render deterministically — all inbound
+        ``inherits`` (subclasses) before inbound ``instantiates``
+        (instantiation sites).
         """
-        # TODO(symbol-graph-3): implement
-        return []
+        sql = (
+            _SELECT_CLASS_EDGE
+            + "WHERE ce.target_id = ? "
+            + "ORDER BY ce.edge_type, source_f.path, ce.line"
+        )
+        rows = self._conn.execute(sql, (symbol_id,)).fetchall()
+        return [_row_to_class_edge(row) for row in rows]
+
+    def class_edges_unresolved_from(self, symbol_id: int) -> list[UnresolvedClassEdgeRow]:
+        """Return unresolved class edges whose *source* is *symbol_id*.
+
+        Reads rows from ``class_edges_unresolved`` whose ``source_id``
+        matches *symbol_id*. Each row describes an inheritance or
+        instantiation target that the builder's pass 3 could not resolve
+        to a known symbol — typically a third-party base class like
+        ``pydantic.BaseModel`` or ``enum.Enum`` in a project that does
+        not index its dependencies.
+
+        Ordered by ``edge_type`` then ``target_name`` then ``line`` so
+        inheritance rows render before instantiation rows and the output
+        is deterministic for tests and display. Returns an empty list
+        when the source has no unresolved edges (including when the
+        ``class_edges_unresolved`` table is empty).
+        """
+        sql = (
+            "SELECT target_name, edge_type, line "
+            "FROM class_edges_unresolved "
+            "WHERE source_id = ? "
+            "ORDER BY edge_type, target_name, line"
+        )
+        rows = self._conn.execute(sql, (symbol_id,)).fetchall()
+        return [
+            UnresolvedClassEdgeRow(
+                target_name=str(row[0]),
+                edge_type=str(row[1]),
+                line=None if row[2] is None else int(row[2]),
+            )
+            for row in rows
+        ]
 
     # -- members ------------------------------------------------------------
 
     def members_of(self, symbol_id: int) -> list[SymbolMemberRow]:
         """Return the members of a parent symbol (enum variants, etc.).
 
-        Placeholder — ``symbol_members`` population is deferred to
-        ``symbol-graph-4``. The table is already part of the schema so
-        this method can be filled in without another DDL change.
+        Single SQL query against :data:`_SELECT_SYMBOL_MEMBER` filtered
+        by ``sm.symbol_id``. Results are ordered by ``ordinal`` (NULLs
+        last) and then ``name`` so source-order iteration is preserved
+        for enums while still yielding a deterministic ordering when
+        the extractor did not capture ordinals.
+
+        The ``symbol_members`` table is populated by
+        ``symbol-graph-4``. This method returns an empty list when the
+        table is empty for a given parent (e.g. classes and functions
+        that have no recorded members).
         """
-        # TODO(symbol-graph-4): implement
-        return []
+        sql = (
+            _SELECT_SYMBOL_MEMBER
+            + "WHERE sm.symbol_id = ? "
+            + "ORDER BY sm.ordinal IS NULL, sm.ordinal, sm.name"
+        )
+        rows = self._conn.execute(sql, (symbol_id,)).fetchall()
+        return [_row_to_member(row) for row in rows]
 
     # -- raw escape hatch ---------------------------------------------------
 

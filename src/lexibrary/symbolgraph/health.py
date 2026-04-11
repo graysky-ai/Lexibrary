@@ -67,6 +67,10 @@ class SymbolGraphHealth:
         Number of rows in ``unresolved_calls``.
     class_edge_count:
         Number of rows in ``class_edges``.
+    class_edge_unresolved_count:
+        Number of rows in ``class_edges_unresolved``. ``0`` when the
+        database is absent, corrupt, or when Phase 3's builder pass 3
+        has not yet run for any file.
     member_count:
         Number of rows in ``symbol_members``.
     """
@@ -79,6 +83,7 @@ class SymbolGraphHealth:
     call_count: int
     unresolved_call_count: int
     class_edge_count: int
+    class_edge_unresolved_count: int
     member_count: int
 
 
@@ -93,6 +98,7 @@ def _safe_default(*, exists: bool) -> SymbolGraphHealth:
         call_count=0,
         unresolved_call_count=0,
         class_edge_count=0,
+        class_edge_unresolved_count=0,
         member_count=0,
     )
 
@@ -131,7 +137,7 @@ def read_symbol_graph_health(project_root: Path) -> SymbolGraphHealth:
     - ``schema_version`` and ``built_at`` from the ``meta`` table.
     - ``SELECT COUNT(*)`` over every DDL table: ``files``,
       ``symbols``, ``calls``, ``unresolved_calls``, ``class_edges``,
-      and ``symbol_members``.
+      ``class_edges_unresolved``, and ``symbol_members``.
 
     The function never creates the database, never calls
     :func:`~lexibrary.symbolgraph.schema.ensure_schema`, and never
@@ -167,6 +173,7 @@ def read_symbol_graph_health(project_root: Path) -> SymbolGraphHealth:
         call_count = _count_rows(conn, "calls")
         unresolved_call_count = _count_rows(conn, "unresolved_calls")
         class_edge_count = _count_rows(conn, "class_edges")
+        class_edge_unresolved_count = _count_rows(conn, "class_edges_unresolved")
         member_count = _count_rows(conn, "symbol_members")
     except sqlite3.Error as exc:
         logger.warning("Cannot read symbol graph health from %s: %s", db_path, exc)
@@ -185,5 +192,6 @@ def read_symbol_graph_health(project_root: Path) -> SymbolGraphHealth:
         call_count=call_count,
         unresolved_call_count=unresolved_call_count,
         class_edge_count=class_edge_count,
+        class_edge_unresolved_count=class_edge_unresolved_count,
         member_count=member_count,
     )

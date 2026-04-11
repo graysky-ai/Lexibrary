@@ -20,10 +20,10 @@ llm:
 token_budgets:
   design_file_tokens: 2500
   design_file_abridged_tokens: 100
-  aindex_tokens: 1000
-  concept_file_tokens: 1200
+  aindex_tokens: 3000
+  concept_file_tokens: 2000
   convention_file_tokens: 500
-  lookup_total_tokens: 1500
+  lookup_total_tokens: 2000
   summarize_max_tokens: 200
   archivist_max_tokens: 5000
   playbook_tokens: 500

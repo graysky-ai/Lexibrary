@@ -56,6 +56,11 @@ Do not create an IWH signal if all work is complete.
   signature, or remove it. The symbol graph is refreshed per-file by
   `lexi design update <file>` (run after every source edit) and fully
   rebuilt on maintainer-only `lexictl update`.
+- When renaming or removing a class, run `lexi trace <ClassName>` first.
+  The trace now shows every subclass, every instantiation site, and
+  unresolved external bases (e.g. Pydantic `BaseModel`). Treat unresolved
+  bases as out-of-scope — they are not refactoring risks from lexi's
+  point of view.
 
 ## Debugging and Problem Solving
 

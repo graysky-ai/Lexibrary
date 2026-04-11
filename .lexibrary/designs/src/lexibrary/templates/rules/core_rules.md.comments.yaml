@@ -1,0 +1,7 @@
+comments:
+- body: 'Phase 3 (symbol-graph-3): added an Architectural Decisions bullet requiring
+    ''lexi trace <ClassName>'' before renaming or removing a class. The rule captures
+    the new class-edge coverage of the trace command (subclasses, instantiation sites,
+    unresolved external bases) so agents know to use it as the pre-refactor blast-radius
+    check for classes, parallel to the existing per-function trace rule.'
+  date: '2026-04-11T17:16:09.430781Z'

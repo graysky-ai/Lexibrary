@@ -1,0 +1,6 @@
+comments:
+- body: "Phase 3 (symbol-graph-3) widens the SymbolResolver protocol with resolve_class_name\
+    \ so the builder's pass 3 can dispatch class-name resolution uniformly across\
+    \ languages. FallbackResolver.resolve_class_name returns None for every target\
+    \ \u2014 real TS/JS class resolution lands in Phase 6."
+  date: '2026-04-11T10:59:02.066060Z'

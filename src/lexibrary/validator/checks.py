@@ -39,6 +39,7 @@ from lexibrary.artifacts.design_file_parser import (
 from lexibrary.config.loader import load_config
 from lexibrary.conventions.index import ConventionIndex
 from lexibrary.conventions.parser import parse_convention_file
+from lexibrary.ignore import create_ignore_matcher
 from lexibrary.lifecycle.comments import comment_count
 from lexibrary.lifecycle.convention_comments import convention_comment_count
 from lexibrary.lifecycle.deprecation import _count_commits_since, check_ttl_expiry
@@ -1795,8 +1796,10 @@ def check_token_budgets(
                     message=(f"Over budget: {tokens} tokens (limit {budgets.aindex_tokens})"),
                     artifact=rel_path,
                     suggestion=(
-                        "Ask the user to run `lexictl update` to regenerate the .aindex, "
-                        "or increase token_budgets.aindex_tokens in .lexibrary/config.yaml."
+                        "Raise `token_budgets.aindex_tokens` in `.lexibrary/config.yaml`, "
+                        "or shorten the per-child billboard descriptions in this directory's "
+                        "source design files (each child's description is sourced from its "
+                        "design file's `description` frontmatter field)."
                     ),
                 )
             )
@@ -3656,7 +3659,11 @@ def check_design_deps_existence(
 
     Parses each design file and checks that every entry in the
     ``## Dependencies`` and ``## Dependents`` sections points to an
-    existing design file on disk.
+    existing design file on disk.  Entries whose source path is matched
+    by the project's ignore patterns (e.g. gitignored generated code like
+    ``baml_client/``) are silently skipped — the archivist intentionally
+    omits design files for ignored sources, so missing design files for
+    those paths are not a library health issue.
 
     Args:
         project_root: Root directory of the project.
@@ -3666,6 +3673,11 @@ def check_design_deps_existence(
         List of warning-severity ValidationIssues for broken deps.
     """
     issues: list[ValidationIssue] = []
+
+    # Build ignore matcher once for the whole check so we don't re-read
+    # .gitignore files on every design file iteration.
+    config = load_config(project_root)
+    matcher = create_ignore_matcher(config, project_root)
 
     for design_path in _iter_design_files(lexibrary_dir):
         design = parse_design_file(design_path)
@@ -3682,6 +3694,11 @@ def check_design_deps_existence(
             # Dependencies are project-relative source paths; look for their design file
             dep_design = lexibrary_dir / DESIGNS_DIR / f"{dep_stripped}.md"
             if not dep_design.exists():
+                # Skip entries whose source file is gitignored / lexignored —
+                # the archivist won't create design files for those paths.
+                source_path = project_root / dep_stripped
+                if matcher.is_ignored(source_path):
+                    continue
                 issues.append(
                     ValidationIssue(
                         severity="warning",
@@ -3702,6 +3719,10 @@ def check_design_deps_existence(
                 continue
             dep_design = lexibrary_dir / DESIGNS_DIR / f"{dep_stripped}.md"
             if not dep_design.exists():
+                # Skip entries whose source file is gitignored / lexignored.
+                source_path = project_root / dep_stripped
+                if matcher.is_ignored(source_path):
+                    continue
                 issues.append(
                     ValidationIssue(
                         severity="warning",

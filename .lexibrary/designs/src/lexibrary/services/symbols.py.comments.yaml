@@ -14,3 +14,8 @@ comments:
     \ go through SymbolGraph.query_raw \u2014 never through _conn directly \u2014\
     \ so the service respects the read-only facade."
   date: '2026-04-11T03:58:45.672040Z'
+- body: 'symbol-graph-3 group 5: TraceResult now has unresolved_parents: list[UnresolvedClassEdgeRow];
+    SymbolQueryService.trace() populates parents, children, and unresolved_parents
+    via class_edges_from/to/unresolved_from. Enables rendering base classes, subclasses,
+    instantiation sites, and external (unresolved) bases in lexi trace output.'
+  date: '2026-04-11T11:15:19.666227Z'

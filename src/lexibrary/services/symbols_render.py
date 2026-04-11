@@ -7,10 +7,11 @@ instances for terminal display. Unlike most render modules in
 composed from multiple blocks (header, file:line line, and one table per
 edge category) with blank-line separators between results.
 
-Phase 3 (``symbol-graph-3``) will extend :func:`render_trace` to render
-class edges; Phase 4 will add enum/constant members. Both extensions
-plug in under the ``callees`` / ``unresolved_callees`` sections so the
-public contract stays the same.
+Phase 3 (``symbol-graph-3``) extends :func:`render_trace` with class
+hierarchy sections (``Base classes``, ``Subclasses and instantiation
+sites``, and a trailing ``Unresolved bases`` line). Phase 4 will add
+enum/constant members. Both extensions plug in after the existing call
+sections so the public contract stays stable.
 """
 
 from __future__ import annotations
@@ -34,6 +35,15 @@ def render_trace(query: str, results: list[TraceResult]) -> None:
     - ``### Unresolved callees (external or dynamic)`` — a Markdown
       table of outbound unresolved edges, omitted when
       ``unresolved_callees`` is empty.
+    - ``### Base classes`` — a Markdown table of resolved outbound
+      class edges (the symbol's base classes), omitted when ``parents``
+      is empty.
+    - ``### Subclasses and instantiation sites`` — a Markdown table of
+      resolved inbound class edges (subclasses plus instantiation sites),
+      omitted when ``children`` is empty.
+    - ``Unresolved bases: ...`` — a trailing line listing every
+      unresolved outbound class edge target (e.g. ``BaseModel``,
+      ``Enum``), omitted when ``unresolved_parents`` is empty.
 
     Results are separated by a blank line. *query* is accepted for
     forward compatibility (future renderers may echo it back) but is
@@ -83,5 +93,33 @@ def render_trace(query: str, results: list[TraceResult]) -> None:
             info("### Unresolved callees (external or dynamic)")
             unresolved_rows = [[u.callee_name, str(u.line)] for u in result.unresolved_callees]
             info(markdown_table(["Name", "Line"], unresolved_rows))
-        # Phase 3 extends this to render class edges.
+
+        if result.parents:
+            info("")
+            info("### Base classes")
+            parent_rows = [
+                [
+                    p.target.qualified_name or p.target.name,
+                    f"{p.target.file_path}:{p.line if p.line is not None else p.target.line_start}",
+                ]
+                for p in result.parents
+            ]
+            info(markdown_table(["Base", "Location"], parent_rows))
+
+        if result.children:
+            info("")
+            info("### Subclasses and instantiation sites")
+            child_rows = [
+                [
+                    c.edge_type,
+                    c.source.qualified_name or c.source.name,
+                    f"{c.source.file_path}:{c.line if c.line is not None else c.source.line_start}",
+                ]
+                for c in result.children
+            ]
+            info(markdown_table(["Type", "Source", "Location"], child_rows))
+
+        if result.unresolved_parents:
+            info("")
+            info("Unresolved bases: " + ", ".join(u.target_name for u in result.unresolved_parents))
         # Phase 4 extends this to render enum members.

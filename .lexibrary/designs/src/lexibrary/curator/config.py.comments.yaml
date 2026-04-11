@@ -1,10 +1,4 @@
 comments:
-- body: "curator-fix Phase 5 (group 10): added verify_after_sweep flag. Strictly an\
-    \ observability toggle \u2014 does NOT affect which fixes run. When True, Coordinator\
-    \ re-runs validate_library() after dispatch to compute a before/after/delta block\
-    \ in the JSON report. Default False preserves the 'exactly one validator call\
-    \ per run' contract."
-  date: '2026-04-11T01:16:59.234764Z'
 - body: 'curator-fix-2 group 3 (CUR-05): consistency_collect docstring updated to
     reflect the new scope/full split. ''promotable blocked IWH'' detection moved from
     the ''full'' bucket to the ''scope'' bucket so the default run surfaces blocked

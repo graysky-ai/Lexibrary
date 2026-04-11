@@ -3,3 +3,15 @@ comments:
     models. SymbolDefinition validates symbol_type (function/method/class) and visibility
     (public/private). See specs/symbol-extractor for field semantics.'
   date: '2026-04-10T19:44:33.766379Z'
+- body: 'Added ClassEdgeSite Pydantic model (symbol-graph-3 phase 3, group 2). The
+    model represents a class-level edge (inherits or instantiates) emitted from the
+    parse tree of a source file. Fields: source_name (qualified name of the owning
+    class/function), target_name (raw textual name of the base/instantiated class
+    before resolution), edge_type (''inherits'' | ''instantiates''), and line (source
+    line). The edge is the AST-level ancestor of a row in the class_edges or class_edges_unresolved
+    table of .lexibrary/symbols.db; pass 3 of the symbol-graph builder resolves target_name
+    to a symbols.id and persists the result. Also extended SymbolExtract with a class_edges:
+    list[ClassEdgeSite] field (defaults to []) so call and class-edge extraction can
+    share a single parse tree. Downstream groups 3 and 4 will populate and resolve
+    these edges.'
+  date: '2026-04-11T10:23:49.260781Z'

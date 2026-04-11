@@ -10,3 +10,9 @@ comments:
     \ Phase 4 will add enum/constant members. Both extensions plug in as additional\
     \ ### sections under the same output contract."
   date: '2026-04-11T05:13:11.369911Z'
+- body: "symbol-graph-3 group 5: render_trace now emits three extra blocks after the\
+    \ call sections \u2014 '### Base classes' (parents table), '### Subclasses and\
+    \ instantiation sites' (children table with edge_type column), and a trailing\
+    \ 'Unresolved bases: ...' line for unresolved_parents. Each block is omitted when\
+    \ its data is empty, preserving the existing public contract for non-class symbols."
+  date: '2026-04-11T11:15:22.527786Z'

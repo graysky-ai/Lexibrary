@@ -50,6 +50,14 @@ _AUTO_GENERATED_UPDATERS = frozenset({"skeleton-fallback", "bootstrap-quick"})
 # Values of ``updated_by`` that receive protection (skip unless --force).
 _PROTECTED_UPDATERS = frozenset({"agent", "maintainer"})
 
+# Values of ``updated_by`` that the archivist owns and may freely regenerate
+# subject to the staleness check (hash comparison).  Curator uses the shared
+# write contract (curator/write_contract.py), which recomputes
+# source_hash/interface_hash and re-serializes to refresh design_hash, so
+# curator-stamped files are just as hash-fresh as archivist-stamped files and
+# are safe to route through the same staleness path.
+_ARCHIVIST_OWNED_UPDATERS = frozenset({"archivist", "curator"})
+
 
 # ---------------------------------------------------------------------------
 # Service function
@@ -178,8 +186,10 @@ def check_design_update(
             skip_code="protected",
         )
 
-    # Unknown updated_by value -- treat as protected
-    if updated_by != "archivist":
+    # Unknown updated_by value -- treat as protected.
+    # Archivist and curator are both hash-fresh (curator via write_contract)
+    # and fall through to the staleness check below.
+    if updated_by not in _ARCHIVIST_OWNED_UPDATERS:
         return DesignUpdateDecision(
             action="skip",
             reason=(
@@ -190,7 +200,7 @@ def check_design_update(
         )
 
     # ------------------------------------------------------------------
-    # 6. Staleness via metadata footer hash (archivist-updated files)
+    # 6. Staleness via metadata footer hash (archivist-owned files)
     # ------------------------------------------------------------------
     metadata = parse_design_file_metadata(design_path)
     if metadata is None:

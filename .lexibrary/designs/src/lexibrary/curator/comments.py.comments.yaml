@@ -3,14 +3,3 @@ comments:
     dispatch_comment_integration(item, ctx) extracted from Coordinator._dispatch_comment_integration.
     Handles integrate_sidecar_comments.'
   date: '2026-04-10T21:18:27.504429Z'
-- body: 'Phase 3a (bead lexibrary-sq5.7): replaced the inline write contract with
-    a single call to write_design_file_as_curator from the new write_contract module.
-    No behavioural change visible to callers since comment integration already stamped
-    updated_by=''curator'' (the shared helper enforces the same value). The metadata
-    generator field remains ''curator-comment-integration'' to distinguish which sub-agent
-    produced the content. Note: serialize_design_file is still imported directly here
-    because the comment integration stub passes the *current* serialized design content
-    into the BAML stub for context (this is NOT part of the write contract but a stub
-    input formatting step). Removed compute_hashes and atomic_write imports since
-    the helper owns those calls now.'
-  date: '2026-04-10T21:37:57.227354Z'

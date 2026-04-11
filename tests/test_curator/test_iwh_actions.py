@@ -350,9 +350,7 @@ async def test_consume_superseded_iwh_end_to_end(tmp_path: Path) -> None:
     # dispatched_details should contain exactly one consume_superseded_iwh
     # entry with outcome="fixed".
     consumed = [
-        d
-        for d in report.dispatched_details
-        if d.get("action_key") == "consume_superseded_iwh"
+        d for d in report.dispatched_details if d.get("action_key") == "consume_superseded_iwh"
     ]
     assert len(consumed) == 1, (
         f"Expected 1 consume_superseded_iwh dispatch, got {len(consumed)}. "

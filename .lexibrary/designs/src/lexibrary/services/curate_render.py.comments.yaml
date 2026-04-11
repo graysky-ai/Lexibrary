@@ -1,8 +1,0 @@
-comments:
-- body: "curator-fix Phase 1: render_summary() now accepts stubbed/verbose/dispatched_details;\
-    \ emits a warn-level 'Stubbed: N' line when stubbed > 0 and walks dispatched_details\
-    \ printing '[action_key] path -- message' per entry when verbose=True. render_last_run()\
-    \ reads schema_version from the JSON report and branches between v1 (legacy rendering)\
-    \ and v2 (stubbed line + optional verbose detail walk). All output remains plain\
-    \ text via (level, msg) tuples \u2014 no Rich, no bare print()."
-  date: '2026-04-10T20:51:26.964339Z'

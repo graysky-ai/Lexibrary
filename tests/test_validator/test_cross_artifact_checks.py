@@ -393,10 +393,12 @@ class TestCheckDuplicateSlugs:
         concepts_dir = lexibrary_dir / "concepts"
         concepts_dir.mkdir(parents=True, exist_ok=True)
         (concepts_dir / "CN-001-error-handling.md").write_text(
-            "---\ntitle: Error Handling\nid: CN-001\naliases: []\ntags: [general]\nstatus: active\n---\n"
+            "---\ntitle: Error Handling\nid: CN-001\n"
+            "aliases: []\ntags: [general]\nstatus: active\n---\n"
         )
         (concepts_dir / "CN-002-error-handling.md").write_text(
-            "---\ntitle: Error Handling v2\nid: CN-002\naliases: []\ntags: [general]\nstatus: active\n---\n"
+            "---\ntitle: Error Handling v2\nid: CN-002\n"
+            "aliases: []\ntags: [general]\nstatus: active\n---\n"
         )
 
         issues = check_duplicate_slugs(project_root, lexibrary_dir)
@@ -603,6 +605,73 @@ class TestCheckDesignDepsExistence:
 
         issues = check_design_deps_existence(project_root, lexibrary_dir)
         assert issues == []
+
+    def test_gitignored_missing_dependency_is_skipped(self, tmp_path: Path) -> None:
+        """A dependency pointing to a gitignored path produces no issue.
+
+        This guards against false positives for generated code (e.g.
+        baml_client/) that is legitimately absent from the design library
+        because the archivist skips gitignored sources.
+        """
+        project_root = tmp_path
+        lexibrary_dir = tmp_path / ".lexibrary"
+        lexibrary_dir.mkdir()
+
+        # Write a .gitignore that ignores the generated directory
+        (project_root / ".gitignore").write_text("generated/\n", encoding="utf-8")
+
+        # Design file that lists a dep inside the gitignored directory
+        _write_design_file(
+            lexibrary_dir,
+            "src/alpha.py",
+            dependencies=["src/generated/client.py"],
+        )
+
+        issues = check_design_deps_existence(project_root, lexibrary_dir)
+        assert issues == [], (
+            f"Expected no issues for a dependency under a gitignored path, got: {issues}"
+        )
+
+    def test_gitignored_missing_dependent_is_skipped(self, tmp_path: Path) -> None:
+        """A dependent pointing to a gitignored path produces no issue."""
+        project_root = tmp_path
+        lexibrary_dir = tmp_path / ".lexibrary"
+        lexibrary_dir.mkdir()
+
+        (project_root / ".gitignore").write_text("generated/\n", encoding="utf-8")
+
+        _write_design_file(
+            lexibrary_dir,
+            "src/alpha.py",
+            dependents=["src/generated/consumer.py"],
+        )
+
+        issues = check_design_deps_existence(project_root, lexibrary_dir)
+        assert issues == []
+
+    def test_non_ignored_missing_dep_still_produces_warning(self, tmp_path: Path) -> None:
+        """A missing dep that is NOT gitignored still produces a warning.
+
+        Regression guard: the ignore-filter must not suppress genuine issues.
+        """
+        project_root = tmp_path
+        lexibrary_dir = tmp_path / ".lexibrary"
+        lexibrary_dir.mkdir()
+
+        # .gitignore ignores only 'generated/', not 'src/'
+        (project_root / ".gitignore").write_text("generated/\n", encoding="utf-8")
+
+        _write_design_file(
+            lexibrary_dir,
+            "src/alpha.py",
+            dependencies=["src/nonexistent.py"],
+        )
+
+        issues = check_design_deps_existence(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        assert issues[0].check == "design_deps_existence"
+        assert issues[0].severity == "warning"
+        assert "nonexistent.py" in issues[0].message
 
 
 # ---------------------------------------------------------------------------

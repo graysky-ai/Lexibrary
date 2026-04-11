@@ -41,10 +41,12 @@ lexi lookup <path> [--full]
 1. **Design file content** -- the full markdown design file including YAML frontmatter (source path, source_hash, generated timestamp, updated_by, wikilinks), summary, interface skeleton, and key details.
 2. **Staleness warning** -- if the source file's SHA-256 hash does not match the hash stored in the design file frontmatter, a warning is printed suggesting `lexictl update`.
 3. **Applicable conventions** -- conventions from `.aindex` files walked upward from the file's directory to the scope root. Each convention is shown with its originating directory.
-4. **Known Issues** -- Stack posts that reference this file, showing status, title, attempts summary, and vote count. Open posts shown first, then resolved. Maximum controlled by `stack.lookup_display_limit` (default: 3). Stale posts excluded.
-5. **IWH signals** -- peek at IWH signals for the file's directory (read without consuming).
-6. **Dependents** -- files that import this file (from the link graph, if available).
-7. **Also referenced by** -- other inbound references: concept wikilinks, Stack post file refs, design file refs, convention concept refs.
+4. **Key symbols** (`--full`) -- public functions, classes, and methods from the symbol graph with caller and callee counts. Omitted when `symbols.enabled` is `false` or `symbols.db` is missing.
+5. **Class hierarchy** (`--full`) -- Phase 3 table listing every class defined in the file with its resolved bases, unresolved external bases (suffixed `*`), subclass count, method count, and starting line number. Omitted when the file defines no classes or `symbols.db` is missing. See the ["Class hierarchy in lookup output"](symbol-graph.md#class-hierarchy-in-lookup-output) section of the symbol graph docs for the full table format.
+6. **Known Issues** -- Stack posts that reference this file, showing status, title, attempts summary, and vote count. Open posts shown first, then resolved. Maximum controlled by `stack.lookup_display_limit` (default: 3). Stale posts excluded.
+7. **IWH signals** -- peek at IWH signals for the file's directory (read without consuming).
+8. **Dependents** -- files that import this file (from the link graph, if available).
+9. **Also referenced by** -- other inbound references: concept wikilinks, Stack post file refs, design file refs, convention concept refs.
 
 **What it outputs (directory mode):**
 
@@ -235,8 +237,27 @@ For each matching symbol, a section containing:
 4. **`### Unresolved callees (external or dynamic)`** — table of
    `| Name | Line |` rows for calls the symbol resolver could not map
    to a definition. Typical entries are standard library calls
-   (`logger.info`, `sqlite3.connect`), dynamic dispatch, and (until
-   Phase 3) `super()` calls. Omitted if there are none.
+   (`logger.info`, `sqlite3.connect`) and dynamic dispatch. As of
+   Phase 3, `self.method()` calls are walked through the MRO, so a
+   subclass method calling an inherited base method appears as a
+   resolved callee rather than an unresolved one.
+5. **`### Base classes`** — Phase 3 markdown table of
+   `| Base | Location |` listing every class this symbol inherits
+   from or implements. Populated from Python `class Foo(Bar):`
+   declarations and TS/JS `extends` / `implements` clauses. Omitted
+   if the symbol has no resolved bases (or is not a class).
+6. **`### Subclasses and instantiation sites`** — Phase 3 markdown
+   table of `| Type | Source | Location |` listing every class that
+   inherits from this one (`Type = inherits`) plus every call site
+   that constructs it (`Type = instantiates`). Populated from the
+   Python PascalCase instantiation heuristic
+   (`^[A-Z][A-Za-z0-9]*$`) and TS/JS `new` expressions. Omitted if
+   the symbol has no inbound class edges.
+7. **`Unresolved bases: ...`** — Phase 3 trailing line listing base
+   names the resolver could not map to a project symbol (typically
+   external libraries like Pydantic `BaseModel` or stdlib `Enum`).
+   Treat these as out-of-scope for refactoring. Omitted when there
+   are no unresolved bases.
 
 Multiple matches are separated by a blank line. All output is rendered
 via the same `info()` helper used by `lexi lookup`, so it is safe to
@@ -270,6 +291,29 @@ lexi trace lexibrary.archivist.pipeline.update_project
 
 # Narrow an ambiguous bare name to a single file
 lexi trace build_index --file src/lexibrary/linkgraph/builder.py
+
+# Trace a class — shows base classes, subclasses, instantiation
+# sites, and unresolved external bases
+lexi trace LexibraryConfig
+```
+
+Sample class output:
+
+```
+## lexibrary.config.schema.LexibraryConfig  [class]
+`src/lexibrary/config/schema.py:42`
+
+### Base classes
+| Base                                    | Location                                  |
+|-----------------------------------------|-------------------------------------------|
+| lexibrary.config.schema._ConfigBase     | src/lexibrary/config/schema.py:18         |
+
+### Subclasses and instantiation sites
+| Type          | Source                                  | Location                                 |
+|---------------|------------------------------------------|------------------------------------------|
+| instantiates  | lexibrary.config.loader.load_config      | src/lexibrary/config/loader.py:87        |
+
+Unresolved bases: BaseModel
 ```
 
 **Related:**
@@ -277,8 +321,13 @@ lexi trace build_index --file src/lexibrary/linkgraph/builder.py
 - [`lexi search --type symbol`](#search) — fuzzy-find a symbol by name
   before tracing it.
 - [`lexi lookup --full`](#lookup) — lists the file's public symbols in
-  the "Key symbols" section with caller and callee counts.
+  the "Key symbols" section with caller and callee counts and a
+  "Class hierarchy" table of the file's classes with base/subclass
+  counts.
 - Playbook: [[Tracing a symbol with lexi trace]] (`PB-008`).
+- Playbook: [[Refactoring with the call graph]] (`PB-009`) — the
+  step-by-step procedure for renaming, splitting, or removing a
+  symbol that has downstream dependents.
 - [Symbol graph](symbol-graph.md) — what the symbol graph is and how it
   is built.
 

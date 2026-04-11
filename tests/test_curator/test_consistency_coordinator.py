@@ -206,9 +206,7 @@ class TestCollectConsistency:
         hints = [i.action_hint for i in result.items if i.source == "consistency"]
         assert "strip_unresolved_wikilink" not in hints
 
-    def test_collect_consistency_scope_mode_includes_promotable_iwh(
-        self, tmp_path: Path
-    ) -> None:
+    def test_collect_consistency_scope_mode_includes_promotable_iwh(self, tmp_path: Path) -> None:
         """``consistency_collect='scope'`` surfaces stale blocked IWH for promotion.
 
         Pins the CUR-05 contract: promotable blocked IWH detection is
@@ -219,41 +217,31 @@ class TestCollectConsistency:
         project = _setup_project(tmp_path)
         _plant_old_blocked_iwh(project, "src/auth", age_hours=96)
 
-        config = LexibraryConfig.model_validate(
-            {"curator": {"consistency_collect": "scope"}}
-        )
+        config = LexibraryConfig.model_validate({"curator": {"consistency_collect": "scope"}})
         coord = Coordinator(project, config)
         result = CollectResult()
         coord._collect_consistency(  # noqa: SLF001
             result, scope=None, uncommitted=set(), active_iwh=set()
         )
 
-        hints = [
-            i.action_hint for i in result.items if i.source == "consistency"
-        ]
+        hints = [i.action_hint for i in result.items if i.source == "consistency"]
         assert "promote_blocked_iwh" in hints, (
             f"Expected promote_blocked_iwh hint in scope mode; got {hints}"
         )
 
-    def test_collect_consistency_off_skips_promotable_iwh(
-        self, tmp_path: Path
-    ) -> None:
+    def test_collect_consistency_off_skips_promotable_iwh(self, tmp_path: Path) -> None:
         """``consistency_collect='off'`` still suppresses promotable IWH detection."""
         project = _setup_project(tmp_path)
         _plant_old_blocked_iwh(project, "src/auth", age_hours=96)
 
-        config = LexibraryConfig.model_validate(
-            {"curator": {"consistency_collect": "off"}}
-        )
+        config = LexibraryConfig.model_validate({"curator": {"consistency_collect": "off"}})
         coord = Coordinator(project, config)
         result = CollectResult()
         coord._collect_consistency(  # noqa: SLF001
             result, scope=None, uncommitted=set(), active_iwh=set()
         )
 
-        hints = [
-            i.action_hint for i in result.items if i.source == "consistency"
-        ]
+        hints = [i.action_hint for i in result.items if i.source == "consistency"]
         assert "promote_blocked_iwh" not in hints
 
 
@@ -298,9 +286,7 @@ class TestClassifyConsistency:
         assert triage.action_key == "suggest_new_concept"
         assert triage.risk_level == "medium"
 
-    def test_classify_iwh_scan_path_routes_promote_to_consistency_fix(
-        self, tmp_path: Path
-    ) -> None:
+    def test_classify_iwh_scan_path_routes_promote_to_consistency_fix(self, tmp_path: Path) -> None:
         """Scan-path IWH items for blocked signals get ``issue_type='consistency_fix'``.
 
         Pins the CUR-05 routing contract: ``_collect_iwh`` produces a
@@ -323,9 +309,7 @@ class TestClassifyConsistency:
         assert triage.action_key == "promote_blocked_iwh"
         assert triage.issue_type == "consistency_fix"
 
-    def test_classify_iwh_scan_path_consume_remains_orphan(
-        self, tmp_path: Path
-    ) -> None:
+    def test_classify_iwh_scan_path_consume_remains_orphan(self, tmp_path: Path) -> None:
         """Non-blocked IWH scan items remain ``issue_type='orphan'``.
 
         ``consume_superseded_iwh`` deletes stale signals and has no

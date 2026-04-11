@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import pytest
+
 from lexibrary.ast_parser.models import (
+    CallSite,
+    ClassEdgeSite,
     ClassSig,
     ConstantSig,
     FunctionSig,
     InterfaceSkeleton,
     ParameterSig,
+    SymbolDefinition,
+    SymbolExtract,
 )
 
 
@@ -146,3 +152,125 @@ class TestInterfaceSkeleton:
         assert skeleton.functions == []
         assert skeleton.classes == []
         assert skeleton.exports == []
+
+
+class TestClassEdgeSite:
+    """Tests for ClassEdgeSite model."""
+
+    def test_inherits_edge(self) -> None:
+        edge = ClassEdgeSite(
+            source_name="pkg.derived.Derived",
+            target_name="Base",
+            edge_type="inherits",
+            line=3,
+        )
+        assert edge.source_name == "pkg.derived.Derived"
+        assert edge.target_name == "Base"
+        assert edge.edge_type == "inherits"
+        assert edge.line == 3
+
+    def test_instantiates_edge(self) -> None:
+        edge = ClassEdgeSite(
+            source_name="pkg.users.main",
+            target_name="Derived",
+            edge_type="instantiates",
+            line=12,
+        )
+        assert edge.edge_type == "instantiates"
+        assert edge.target_name == "Derived"
+
+    def test_requires_all_fields(self) -> None:
+        with pytest.raises(ValueError):
+            ClassEdgeSite(  # type: ignore[call-arg]
+                source_name="A",
+                target_name="B",
+                edge_type="inherits",
+            )
+
+    def test_model_dump_round_trip(self) -> None:
+        edge = ClassEdgeSite(
+            source_name="pkg.mod.Cls",
+            target_name="BaseCls",
+            edge_type="inherits",
+            line=7,
+        )
+        dumped = edge.model_dump()
+        assert dumped == {
+            "source_name": "pkg.mod.Cls",
+            "target_name": "BaseCls",
+            "edge_type": "inherits",
+            "line": 7,
+        }
+        restored = ClassEdgeSite.model_validate(dumped)
+        assert restored == edge
+
+
+class TestSymbolExtract:
+    """Tests for the SymbolExtract container."""
+
+    def test_empty_symbol_extract(self) -> None:
+        extract = SymbolExtract(file_path="src/empty.py", language="python")
+        assert extract.file_path == "src/empty.py"
+        assert extract.language == "python"
+        assert extract.definitions == []
+        assert extract.calls == []
+        assert extract.class_edges == []
+
+    def test_symbol_extract_defaults_class_edges_to_empty_list(self) -> None:
+        extract = SymbolExtract(
+            file_path="src/mod.py",
+            language="python",
+            definitions=[
+                SymbolDefinition(
+                    name="foo",
+                    qualified_name="pkg.mod.foo",
+                    symbol_type="function",
+                    line_start=1,
+                    line_end=2,
+                    visibility="public",
+                )
+            ],
+            calls=[
+                CallSite(caller_name="pkg.mod.foo", callee_name="bar", line=2),
+            ],
+        )
+        assert extract.class_edges == []
+        assert len(extract.definitions) == 1
+        assert len(extract.calls) == 1
+
+    def test_symbol_extract_round_trip_with_class_edges(self) -> None:
+        extract = SymbolExtract(
+            file_path="src/pkg/derived.py",
+            language="python",
+            definitions=[
+                SymbolDefinition(
+                    name="Derived",
+                    qualified_name="pkg.derived.Derived",
+                    symbol_type="class",
+                    line_start=3,
+                    line_end=5,
+                    visibility="public",
+                ),
+            ],
+            calls=[],
+            class_edges=[
+                ClassEdgeSite(
+                    source_name="pkg.derived.Derived",
+                    target_name="Base",
+                    edge_type="inherits",
+                    line=3,
+                ),
+                ClassEdgeSite(
+                    source_name="pkg.derived.main",
+                    target_name="Derived",
+                    edge_type="instantiates",
+                    line=8,
+                ),
+            ],
+        )
+        dumped = extract.model_dump()
+        assert len(dumped["class_edges"]) == 2
+        restored = SymbolExtract.model_validate(dumped)
+        assert restored == extract
+        assert restored.class_edges[0].edge_type == "inherits"
+        assert restored.class_edges[1].edge_type == "instantiates"

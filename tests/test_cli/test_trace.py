@@ -18,6 +18,13 @@ Coverage is 1:1 with the task specification (symbol-graph-2 group 12.4):
    ``qualified_name`` match.
 7. ``test_trace_emits_stale_warning_on_stderr`` — stale ``last_hash``
    surfaces as a warning without failing the command.
+
+symbol-graph-3 group 5.8 adds:
+
+8. ``test_trace_renders_class_sections`` — a Phase 3 class hierarchy
+   fixture surfaces ``### Base classes`` and ``### Subclasses and
+   instantiation sites`` blocks plus the trailing "Unresolved bases"
+   line for external bases.
 """
 
 from __future__ import annotations
@@ -33,6 +40,7 @@ from tests.test_symbolgraph.conftest import (
     make_linkgraph,
     make_project,
     seed_phase2_fixture,
+    seed_phase3_class_fixture,
 )
 
 runner = CliRunner()
@@ -277,3 +285,72 @@ def test_trace_emits_stale_warning_on_stderr(
     # Warning is emitted via warn() → stderr.
     assert "Symbol graph may be stale" in result.stderr
     assert "src/a.py" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# (8) Class hierarchy sections (Phase 3)
+# ---------------------------------------------------------------------------
+
+
+def test_trace_renders_class_sections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A class symbol renders ``### Base classes`` / ``### Subclasses`` blocks.
+
+    Uses the Phase 3 class-hierarchy fixture from ``conftest`` which
+    seeds ``Base``, ``Derived``, ``Thing``, and ``main`` plus four
+    class edges (two resolved, two unresolved). Tracing each class
+    exercises a different slice of the renderer:
+
+    - ``Base`` — no parents, one inbound ``inherits`` edge from
+      ``Derived``. Output must contain ``### Subclasses and
+      instantiation sites`` but NOT ``### Base classes`` or
+      ``Unresolved bases``. (``main → Derived`` is an instantiation of
+      ``Derived``, not of ``Base``, so it does not appear under
+      ``Base``.)
+    - ``Derived`` — one parent (``Base``) and one instantiation site
+      (``main``). Output must contain both ``### Base classes`` and
+      ``### Subclasses and instantiation sites``.
+    - ``Thing`` — two unresolved parents (``BaseModel``, ``Enum``).
+      Output must contain the trailing ``Unresolved bases: ...`` line
+      and must NOT contain ``### Base classes`` (nothing resolved).
+    """
+    project = make_project(tmp_path)
+    make_linkgraph(project)
+    seed_phase3_class_fixture(project)
+    monkeypatch.chdir(project)
+
+    # --- Base ---
+    base_result = runner.invoke(lexi_app, ["trace", "Base"])
+    assert base_result.exit_code == 0, base_result.output
+    assert "## pkg.Base  [class]" in base_result.output
+    assert "### Subclasses and instantiation sites" in base_result.output
+    # Only Derived is an inbound edge for Base.
+    assert "pkg.Derived" in base_result.output
+    assert "inherits" in base_result.output
+    # Base has no parents and no unresolved bases, so those sections
+    # must be absent.
+    assert "### Base classes" not in base_result.output
+    assert "Unresolved bases" not in base_result.output
+
+    # --- Derived ---
+    derived_result = runner.invoke(lexi_app, ["trace", "Derived"])
+    assert derived_result.exit_code == 0, derived_result.output
+    assert "## pkg.Derived  [class]" in derived_result.output
+    assert "### Base classes" in derived_result.output
+    assert "pkg.Base" in derived_result.output
+    assert "### Subclasses and instantiation sites" in derived_result.output
+    assert "pkg.main" in derived_result.output
+    assert "instantiates" in derived_result.output
+    assert "Unresolved bases" not in derived_result.output
+
+    # --- Thing ---
+    thing_result = runner.invoke(lexi_app, ["trace", "Thing"])
+    assert thing_result.exit_code == 0, thing_result.output
+    assert "## pkg.Thing  [class]" in thing_result.output
+    # Thing's only bases are unresolved — the trailing line surfaces
+    # both external names together.
+    assert "Unresolved bases:" in thing_result.output
+    assert "BaseModel" in thing_result.output
+    assert "Enum" in thing_result.output
+    # No resolved base class row and no inbound class edges.
+    assert "### Base classes" not in thing_result.output
+    assert "### Subclasses and instantiation sites" not in thing_result.output

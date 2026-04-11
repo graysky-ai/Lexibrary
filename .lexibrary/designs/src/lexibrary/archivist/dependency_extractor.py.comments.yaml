@@ -1,5 +1,0 @@
-comments:
-- body: 'Phase 2: Python import resolution helpers moved to symbolgraph/python_imports.py
-    to share one implementation with the symbol graph''s cross-file resolver. Behaviour
-    unchanged.'
-  date: '2026-04-10T15:26:16.572076Z'

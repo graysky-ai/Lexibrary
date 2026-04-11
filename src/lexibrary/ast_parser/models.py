@@ -74,6 +74,27 @@ class CallSite(BaseModel):
     is_method_call: bool = False
 
 
+class ClassEdgeSite(BaseModel):
+    """A class-level edge emitted from a source file's parse tree.
+
+    Represents either an ``inherits`` edge (class A extends/implements class
+    B) or an ``instantiates`` edge (somewhere in A's body, B is constructed).
+    ``source_name`` is the qualified name of the class or enclosing symbol
+    that owns the edge; ``target_name`` is the raw textual name of the base
+    class or instantiated class before resolution.
+
+    The edge is the AST-level ancestor of a row in the ``class_edges`` or
+    ``class_edges_unresolved`` table of ``.lexibrary/symbols.db`` — the
+    symbol-graph builder's pass 3 resolves ``target_name`` to a
+    ``symbols.id`` and persists the result.
+    """
+
+    source_name: str
+    target_name: str
+    edge_type: str
+    line: int
+
+
 class SymbolDefinition(BaseModel):
     """A function, method, or class definition location inside a file.
 
@@ -118,13 +139,15 @@ class SymbolDefinition(BaseModel):
 class SymbolExtract(BaseModel):
     """Everything the symbol graph needs from a single file.
 
-    Call extraction and (future) class-edge extraction run off the same parse
-    tree and share this container. Phase 3 will add ``class_edges`` (inherits
-    + instantiates). Phase 4 will add ``enum_members`` and
-    ``module_constants``.
+    Call extraction and class-edge extraction run off the same parse tree
+    and share this container. ``class_edges`` records ``inherits`` and
+    ``instantiates`` edges emitted by the parsers; the symbol-graph builder
+    resolves them against known symbols in pass 3. Phase 4 will add
+    ``enum_members`` and ``module_constants``.
     """
 
     file_path: str
     language: str
     definitions: list[SymbolDefinition] = Field(default_factory=list)
     calls: list[CallSite] = Field(default_factory=list)
+    class_edges: list[ClassEdgeSite] = Field(default_factory=list)

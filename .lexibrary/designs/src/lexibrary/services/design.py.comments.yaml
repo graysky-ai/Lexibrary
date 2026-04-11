@@ -1,0 +1,8 @@
+comments:
+- body: Recognize curator as an archivist-owned updater. Added _ARCHIVIST_OWNED_UPDATERS
+    = {'archivist', 'curator'} and changed the 'unknown updated_by' branch to check
+    set membership. Curator-stamped files are hash-fresh via curator/write_contract.py
+    (which recomputes source_hash, interface_hash, and re-serializes to refresh design_hash),
+    so they must fall through to the same staleness check (step 6) as archivist-stamped
+    files instead of being quarantined as 'unrecognized'.
+  date: '2026-04-11T18:47:46.305075Z'

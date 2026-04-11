@@ -21,3 +21,9 @@ comments:
     the search handler to reject --tag / --concept / --resolution-type / --include-stale
     when combined with --type symbol (exits 1 via error()).'
   date: '2026-04-11T05:26:36.126664Z'
+- body: 'symbol-graph-3 Group 6: Wired render_class_hierarchy() into the ''lexi lookup
+    --full'' pipeline. The new section renders after ''Key symbols'' so users see
+    inheritance, subclass counts, and unresolved external bases right next to the
+    per-symbol fan-out data for the file. The section is only emitted in full mode
+    (brief mode still omits all symbol graph data).'
+  date: '2026-04-11T17:21:18.360433Z'

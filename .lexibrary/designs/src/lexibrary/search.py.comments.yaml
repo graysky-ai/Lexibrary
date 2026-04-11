@@ -1,6 +1,0 @@
-comments:
-- body: 'symbol-graph-2 group 13: added _SymbolResult dataclass, symbol_results field
-    on SearchResults, unified_search early-route for artifact_type=''symbol'' that
-    delegates to SymbolQueryService.search_symbols (with ValueError on incompatible
-    filters), plus Symbols sections in the markdown/JSON/plain renderers.'
-  date: '2026-04-11T05:26:20.455824Z'

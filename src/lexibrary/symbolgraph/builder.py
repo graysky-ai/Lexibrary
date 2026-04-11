@@ -56,8 +56,10 @@ class SymbolBuildResult:
 
     Every counter is zero until the builder actually populates the matching
     tables. Phase 2 fills :attr:`file_count`, :attr:`symbol_count`,
-    :attr:`call_count`, and :attr:`unresolved_call_count`. Class-edge and
-    member counts remain zero until Phase 3/4.
+    :attr:`call_count`, and :attr:`unresolved_call_count`. Phase 3 (the
+    symbol-graph-3 change) fills :attr:`class_edge_count` and
+    :attr:`class_edge_unresolved_count` from the new pass-3 class-edge
+    resolver; member counts remain zero until Phase 4.
     """
 
     file_count: int = 0
@@ -65,6 +67,7 @@ class SymbolBuildResult:
     call_count: int = 0
     unresolved_call_count: int = 0
     class_edge_count: int = 0
+    class_edge_unresolved_count: int = 0
     member_count: int = 0
     duration_ms: int = 0
     errors: list[str] = field(default_factory=list)
@@ -244,6 +247,59 @@ def build_symbol_graph(
                             (caller_id, call.callee_name, call.line, call.receiver),
                         )
                         result.unresolved_call_count += 1
+
+            # ---- Pass 3: class edge resolution ---------------------------
+            # Resolves :class:`ClassEdgeSite` entries emitted by the
+            # parsers in pass 1 into concrete ``class_edges`` rows. Runs
+            # after pass 2 so every class definition is already in the
+            # ``symbols`` table before we try to resolve inheritance /
+            # instantiation targets against it. Uses the same resolver
+            # dispatch as pass 2: Python files use
+            # :class:`PythonResolver`, everything else uses
+            # :class:`FallbackResolver` (which returns ``None`` for every
+            # class-name lookup until Phase 6 ships a real TS/JS class
+            # resolver). Target-id sanity check for ``instantiates``
+            # edges filters out PascalCase functions that would otherwise
+            # look like classes to ``resolve_class_name``.
+            for src, extract in extracts:
+                rel_path = str(src.relative_to(project_root))
+                file_id = file_id_map[rel_path]
+                suffix = src.suffix.lower()
+                is_python = suffix in _PY_EXTENSIONS
+                resolver = python_resolver if is_python else fallback_resolver
+
+                for edge in extract.class_edges:
+                    source_id = _lookup_symbol_id(conn, file_id, edge.source_name)
+                    if source_id is None:
+                        continue
+                    target_id = resolver.resolve_class_name(
+                        edge.target_name,
+                        caller_file_id=file_id,
+                        caller_file_path=rel_path,
+                    )
+                    if target_id is None:
+                        conn.execute(
+                            "INSERT OR IGNORE INTO class_edges_unresolved "
+                            "(source_id, target_name, edge_type, line) "
+                            "VALUES (?, ?, ?, ?)",
+                            (source_id, edge.target_name, edge.edge_type, edge.line),
+                        )
+                        result.class_edge_unresolved_count += 1
+                        continue
+                    if edge.edge_type == "instantiates":
+                        target_row = conn.execute(
+                            "SELECT symbol_type FROM symbols WHERE id = ?",
+                            (target_id,),
+                        ).fetchone()
+                        if target_row is None or target_row[0] != "class":
+                            continue
+                    conn.execute(
+                        "INSERT OR IGNORE INTO class_edges "
+                        "(source_id, target_id, edge_type, line, context) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (source_id, target_id, edge.edge_type, edge.line, None),
+                    )
+                    result.class_edge_count += 1
 
             # ---- Meta rows ------------------------------------------------
             # Written inside the transaction so readers never see stale

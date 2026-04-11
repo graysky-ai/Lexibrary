@@ -14,3 +14,11 @@ comments:
     (formerly only __init__/__new__ were allow-listed). Call attribution uses innermost-wins
     based on row spans to keep nested-function calls attributed correctly.'
   date: '2026-04-10T19:44:31.680585Z'
+- body: "Phase 3 symbol-graph-3 group 3: emits ClassEdgeSite rows alongside CallSite\
+    \ rows. Added _collect_all_class_edges walker that reads 'superclasses' argument_list\
+    \ for inherits edges (stripping Generic[T] via _base_class_name) and scans bare-identifier\
+    \ PascalCase calls for instantiates edges. Uses the same innermost-definition\
+    \ attribution logic as _collect_all_calls. Function false positives (e.g. a PascalCase\
+    \ helper function) are filtered by the builder's pass 3 symbol-type check \u2014\
+    \ the parser stays a pure AST layer."
+  date: '2026-04-11T10:44:41.197892Z'

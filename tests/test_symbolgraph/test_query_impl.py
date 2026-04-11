@@ -23,7 +23,9 @@ from pathlib import Path
 
 from lexibrary.symbolgraph.query import (
     CallRow,
+    ClassEdgeRow,
     SymbolGraph,
+    SymbolMemberRow,
     SymbolRow,
     UnresolvedCallRow,
     open_symbol_graph,
@@ -450,20 +452,167 @@ def test_query_raw_arbitrary_select(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Phase 3/4 placeholders still return []
+# class_edges_from / class_edges_to — real SQL queries
 # ---------------------------------------------------------------------------
 
 
-def test_class_and_member_queries_remain_placeholders(tmp_path: Path) -> None:
-    """``class_edges_*`` and ``members_of`` still return ``[]`` in Phase 2.
+def test_class_edge_queries_return_empty_when_tables_empty(tmp_path: Path) -> None:
+    """With ``class_edges`` and ``symbol_members`` empty, queries yield ``[]``.
 
-    Their tables aren't populated yet, so the correct behaviour is
-    "empty list". Phase 3 / Phase 4 will replace the bodies.
+    The builder's pass 3 (``symbol-graph-3``) populates ``class_edges``
+    and the Phase 4 extractor populates ``symbol_members``. Before either
+    has run for a given symbol, the corresponding query method must
+    return an empty list rather than raising.
     """
     graph, symbol_ids, _ = _seed_graph(tmp_path)
     try:
         assert graph.class_edges_from(symbol_ids["Hello"]) == []
         assert graph.class_edges_to(symbol_ids["Hello"]) == []
         assert graph.members_of(symbol_ids["Hello"]) == []
+    finally:
+        graph.close()
+
+
+def test_class_edges_from_returns_populated_edges(tmp_path: Path) -> None:
+    """``class_edges_from`` joins both endpoints and orders by edge_type."""
+    graph, symbol_ids, _ = _seed_graph(tmp_path)
+    try:
+        # Seed an ``inherits`` edge from ``say_hi``'s parent ``Hello`` to
+        # a freshly-inserted base class, plus one ``instantiates`` edge
+        # from ``greet`` to ``Hello`` so the ordering assertion is
+        # meaningful.
+        conn = graph._conn
+        cur = conn.execute(
+            "INSERT INTO symbols "
+            "(file_id, name, qualified_name, symbol_type, line_start, "
+            "line_end, visibility, parent_class) "
+            "VALUES ((SELECT id FROM files WHERE path='src/a.py'), "
+            "?, ?, ?, ?, ?, ?, NULL)",
+            ("Base", "a.Base", "class", 50, 55, "public"),
+        )
+        base_id = int(cur.lastrowid or 0)
+
+        conn.execute(
+            "INSERT INTO class_edges "
+            "(source_id, target_id, edge_type, line, context) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (symbol_ids["Hello"], base_id, "inherits", 10, None),
+        )
+        conn.execute(
+            "INSERT INTO class_edges "
+            "(source_id, target_id, edge_type, line, context) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (symbol_ids["greet"], symbol_ids["Hello"], "instantiates", 3, None),
+        )
+        conn.commit()
+
+        # Outbound edges from Hello — exactly one inherits edge.
+        hello_out = graph.class_edges_from(symbol_ids["Hello"])
+        assert len(hello_out) == 1
+        edge = hello_out[0]
+        assert isinstance(edge, ClassEdgeRow)
+        assert edge.source.name == "Hello"
+        assert edge.target.name == "Base"
+        assert edge.edge_type == "inherits"
+        assert edge.line == 10
+        assert edge.context is None
+
+        # Outbound edges from greet — exactly one instantiates edge.
+        greet_out = graph.class_edges_from(symbol_ids["greet"])
+        assert len(greet_out) == 1
+        assert greet_out[0].edge_type == "instantiates"
+        assert greet_out[0].target.name == "Hello"
+
+        # No edges — empty list, not an error.
+        assert graph.class_edges_from(symbol_ids["shout"]) == []
+    finally:
+        graph.close()
+
+
+def test_class_edges_to_returns_populated_edges(tmp_path: Path) -> None:
+    """``class_edges_to`` returns inbound edges with both endpoints populated."""
+    graph, symbol_ids, _ = _seed_graph(tmp_path)
+    try:
+        conn = graph._conn
+        # Two edges target ``Hello``: one subclass ``Child`` that
+        # inherits, plus ``greet`` that instantiates.
+        cur = conn.execute(
+            "INSERT INTO symbols "
+            "(file_id, name, qualified_name, symbol_type, line_start, "
+            "line_end, visibility, parent_class) "
+            "VALUES ((SELECT id FROM files WHERE path='src/b.py'), "
+            "?, ?, ?, ?, ?, ?, NULL)",
+            ("Child", "b.Child", "class", 40, 45, "public"),
+        )
+        child_id = int(cur.lastrowid or 0)
+
+        conn.execute(
+            "INSERT INTO class_edges "
+            "(source_id, target_id, edge_type, line, context) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (child_id, symbol_ids["Hello"], "inherits", 40, None),
+        )
+        conn.execute(
+            "INSERT INTO class_edges "
+            "(source_id, target_id, edge_type, line, context) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (symbol_ids["greet"], symbol_ids["Hello"], "instantiates", 3, None),
+        )
+        conn.commit()
+
+        rows = graph.class_edges_to(symbol_ids["Hello"])
+        assert len(rows) == 2
+        # Ordered by edge_type: inherits before instantiates.
+        assert [row.edge_type for row in rows] == ["inherits", "instantiates"]
+        assert rows[0].source.name == "Child"
+        assert rows[0].target.name == "Hello"
+        assert rows[0].line == 40
+        assert rows[1].source.name == "greet"
+        assert rows[1].target.name == "Hello"
+
+        # No inbound edges — empty list.
+        assert graph.class_edges_to(symbol_ids["shout"]) == []
+    finally:
+        graph.close()
+
+
+# ---------------------------------------------------------------------------
+# members_of — real SQL query
+# ---------------------------------------------------------------------------
+
+
+def test_members_of_returns_populated_members(tmp_path: Path) -> None:
+    """``members_of`` joins the parent and orders by ordinal then name."""
+    graph, symbol_ids, _ = _seed_graph(tmp_path)
+    try:
+        conn = graph._conn
+        # Seed three members under ``Hello`` — one without an ordinal
+        # so the "NULLs last, then by name" ordering rule is exercised.
+        conn.execute(
+            "INSERT INTO symbol_members (symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+            (symbol_ids["Hello"], "B", "2", 1),
+        )
+        conn.execute(
+            "INSERT INTO symbol_members (symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+            (symbol_ids["Hello"], "A", "1", 0),
+        )
+        conn.execute(
+            "INSERT INTO symbol_members (symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+            (symbol_ids["Hello"], "Z", None, None),
+        )
+        conn.commit()
+
+        rows = graph.members_of(symbol_ids["Hello"])
+        assert len(rows) == 3
+        assert all(isinstance(row, SymbolMemberRow) for row in rows)
+        assert [row.name for row in rows] == ["A", "B", "Z"]
+        assert [row.ordinal for row in rows] == [0, 1, None]
+        assert [row.value for row in rows] == ["1", "2", None]
+        # Parent is populated on every row.
+        assert rows[0].parent.name == "Hello"
+        assert rows[0].parent.file_path == "src/a.py"
+
+        # Missing parent — empty list, not an error.
+        assert graph.members_of(symbol_ids["shout"]) == []
     finally:
         graph.close()

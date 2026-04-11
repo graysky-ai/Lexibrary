@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, cast
 
 from lexibrary.ast_parser.models import (
     CallSite,
+    ClassEdgeSite,
     ClassSig,
     ConstantSig,
     FunctionSig,
@@ -64,6 +65,14 @@ _DUNDER_RE = re.compile(r"^__.+__$")
 
 # Pattern matching UPPER_CASE names (module-level constants)
 _UPPER_CASE_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+# Pattern matching PascalCase identifiers used to heuristically detect class
+# instantiation sites. Intentionally rejects ``_Config`` (leading underscore),
+# ``SCREAMING_CASE`` (consecutive uppercase with underscores), and
+# ``some_func`` (lowercase start). Pass-3 resolution in the symbol-graph
+# builder filters the resulting candidates down to actual ``class`` symbols,
+# so we can afford to emit a few false positives here.
+_PASCAL_CASE_RE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 
 
 def parse_python_tree(file_path: Path) -> tuple[Tree, bytes] | None:
@@ -235,7 +244,8 @@ def extract_symbols_from_tree(
     Walks the tree twice: first to collect every function, class, method,
     nested function and nested class as a :class:`SymbolDefinition`; then
     to collect every ``call`` descendant inside each definition body as a
-    :class:`CallSite`.
+    :class:`CallSite` and every ``class_definition`` / PascalCase call as a
+    :class:`ClassEdgeSite`.
 
     Call extraction runs on the full parse tree (not the pruned interface
     skeleton) because function bodies are the whole point of the symbol
@@ -255,8 +265,8 @@ def extract_symbols_from_tree(
             :func:`lexibrary.utils.root.find_project_root`.
 
     Returns:
-        :class:`SymbolExtract` describing every definition and call, or
-        ``None`` when the tree has no root node.
+        :class:`SymbolExtract` describing every definition, call and class
+        edge, or ``None`` when the tree has no root node.
     """
     del source_bytes  # Not currently required; reserved for future walkers.
 
@@ -278,12 +288,14 @@ def extract_symbols_from_tree(
         )
 
     calls: list[CallSite] = _collect_all_calls(def_nodes)
+    class_edges: list[ClassEdgeSite] = _collect_all_class_edges(def_nodes)
 
     return SymbolExtract(
         file_path=str(file_path),
         language="python",
         definitions=definitions,
         calls=calls,
+        class_edges=class_edges,
     )
 
 
@@ -636,6 +648,141 @@ def _collect_all_calls(
     # Stable order: by line then by callee to keep snapshot tests stable.
     calls.sort(key=lambda c: (c.line, c.callee_name, c.caller_name))
     return calls
+
+
+def _collect_all_class_edges(
+    def_nodes: list[tuple[object, SymbolDefinition]],
+) -> list[ClassEdgeSite]:
+    """Emit ``ClassEdgeSite`` entries for every class base and instantiation.
+
+    Two kinds of edges are recorded:
+
+    - ``inherits``: for every class definition with ``superclasses``, emit
+      one edge per base clause. Generic bases (``Generic[T]``) collapse to
+      their identifier (``Generic``); qualified bases (``mod.Base``) are
+      kept verbatim so the resolver can strip attribute prefixes later.
+    - ``instantiates``: for every call whose bare callee name matches
+      :data:`_PASCAL_CASE_RE`, emit an edge from the innermost enclosing
+      definition to that callee. Qualified calls (``mod.Foo()``) and
+      attribute calls (``obj.Foo()``) are skipped because Phase 3 resolves
+      only bare identifiers. Function false positives (e.g. a PascalCase
+      helper function) are filtered later by the builder's pass 3 — the
+      symbol-type check lives there so this walker stays a pure AST
+      layer.
+    """
+    if not def_nodes:
+        return []
+
+    definition_spans: list[tuple[SymbolDefinition, int, int]] = []
+    class_defs_by_qualified: dict[str, tuple[object, SymbolDefinition]] = {}
+    for def_node, definition in def_nodes:
+        start_row, end_row = _node_row_span(def_node)
+        definition_spans.append((definition, start_row, end_row))
+        if definition.symbol_type == "class":
+            class_defs_by_qualified[definition.qualified_name] = (
+                def_node,
+                definition,
+            )
+
+    # Deepest definitions first so the innermost match is found quickly.
+    definition_spans.sort(key=lambda item: (-item[1], item[2]))
+
+    edges: list[ClassEdgeSite] = []
+
+    # ---- inherits edges ----
+    for class_node, class_def in class_defs_by_qualified.values():
+        superclasses_node = _child_by_field(class_node, "superclasses")
+        if superclasses_node is None:
+            continue
+        for base_node in _named_children(superclasses_node):
+            base_name = _base_class_name(base_node)
+            if not base_name:
+                continue
+            edges.append(
+                ClassEdgeSite(
+                    source_name=class_def.qualified_name,
+                    target_name=base_name,
+                    edge_type="inherits",
+                    line=class_def.line_start,
+                ),
+            )
+
+    # ---- instantiates edges ----
+    seen_call_keys: set[tuple[int, int]] = set()
+    for def_node, _definition in def_nodes:
+        for call_node in _iter_call_descendants(def_node):
+            call_key = _node_byte_key(call_node)
+            if call_key in seen_call_keys:
+                continue
+            seen_call_keys.add(call_key)
+
+            callee_name = _bare_identifier_callee(call_node)
+            if callee_name is None:
+                continue
+            if not _PASCAL_CASE_RE.fullmatch(callee_name):
+                continue
+
+            call_row = _node_row_span(call_node)[0]
+            owner = _innermost_definition_for_row(call_row, definition_spans)
+            if owner is None:
+                continue
+
+            edges.append(
+                ClassEdgeSite(
+                    source_name=owner.qualified_name,
+                    target_name=callee_name,
+                    edge_type="instantiates",
+                    line=call_row + 1,
+                ),
+            )
+
+    # Stable order: by line then by target name then by source name so
+    # snapshot tests stay deterministic.
+    edges.sort(key=lambda e: (e.line, e.target_name, e.source_name, e.edge_type))
+    return edges
+
+
+def _base_class_name(node: object) -> str:
+    """Return the textual name of a base class clause.
+
+    - ``identifier`` → ``Animal``
+    - ``attribute`` → ``mod.Base`` (kept verbatim; builder strips modules)
+    - ``subscript`` → first identifier child (``Generic[T]`` → ``Generic``)
+    - anything else (string, call, ...) → empty string (skip)
+    """
+    node_type = getattr(node, "type", "")
+    if node_type == "identifier":
+        return _node_text(node)
+    if node_type == "attribute":
+        return _node_text(node)
+    if node_type == "subscript":
+        # ``Generic[T]`` — use the value (identifier) before the brackets.
+        value_node = _child_by_field(node, "value")
+        if value_node is not None:
+            return _node_text(value_node)
+        for child in _named_children(node):
+            child_type = getattr(child, "type", "")
+            if child_type in ("identifier", "attribute"):
+                return _node_text(child)
+            break
+        return ""
+    return ""
+
+
+def _bare_identifier_callee(call_node: object) -> str | None:
+    """Return the bare identifier name of a call, or ``None``.
+
+    Attribute callees (``obj.method()``), subscript callees (``foo[0]()``),
+    chained calls (``foo()()``), and lambda callees all return ``None`` —
+    the PascalCase instantiation heuristic only fires on bare identifiers.
+    """
+    func_node = _child_by_field(call_node, "function")
+    if func_node is None:
+        return None
+    if getattr(func_node, "type", "") != "identifier":
+        return None
+    text = _node_text(func_node)
+    return text or None
 
 
 def _node_byte_key(node: object) -> tuple[int, int]:

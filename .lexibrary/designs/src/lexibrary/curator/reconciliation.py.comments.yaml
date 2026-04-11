@@ -3,12 +3,3 @@ comments:
     dispatch_reconciliation(item, ctx) extracted from Coordinator._dispatch_reconciliation.
     Handles all reconcile_agent_* action keys.'
   date: '2026-04-10T21:18:20.443223Z'
-- body: 'Phase 3a (bead lexibrary-sq5.7): replaced the inline write contract with
-    a single call to write_design_file_as_curator from the new write_contract module.
-    No behavioural change visible to callers since reconciliation already stamped
-    updated_by=''curator'' (the shared helper enforces the same value). The metadata
-    generator field remains ''curator-reconciliation'' so downstream blame tracking
-    can still distinguish reconciliation output from other curator sub-agents. Removed
-    direct imports of compute_hashes, serialize_design_file, and atomic_write since
-    the helper owns those calls now.'
-  date: '2026-04-10T21:37:51.646491Z'

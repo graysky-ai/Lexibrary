@@ -569,3 +569,143 @@ class TestCheckChangeSkeletonOnly:
             interface_hash="iface_hash",
         )
         assert result == ChangeLevel.UNCHANGED
+
+
+# ---------------------------------------------------------------------------
+# Curator / archivist parity — lexictl update treats curator-stamped files
+# identically to archivist-stamped files because change detection is hash
+# based, not updated_by based.  These tests lock in that invariant so any
+# future change_checker change that special-cases updated_by will fail loudly.
+# ---------------------------------------------------------------------------
+
+
+def _parity_body(source_rel: str, updated_by: str) -> str:
+    """Minimal design-file body matching _make_design_file's default shape."""
+    return (
+        "---\n"
+        "description: Test file.\n"
+        "id: DS-001\n"
+        f"updated_by: {updated_by}\n"
+        "---\n"
+        "\n"
+        f"# {source_rel}\n"
+        "\n"
+        "## Interface Contract\n"
+        "\n"
+        "```python\ndef foo(): ...\n```\n"
+        "\n"
+        "## Dependencies\n"
+        "\n"
+        "(none)\n"
+        "\n"
+        "## Dependents\n"
+        "\n"
+        "(none)\n"
+    )
+
+
+class TestCuratorArchivistParity:
+    """check_change must classify curator-stamped files exactly like archivist-stamped files.
+
+    Curator uses the shared write_contract helper which recomputes
+    source_hash / interface_hash / design_hash on write, so a curator-written
+    file is just as hash-fresh as an archivist-written file.  The hash-based
+    classifier should therefore not distinguish between them.
+    """
+
+    def test_unchanged_parity(self, tmp_path: Path) -> None:
+        source_rel = "src/parity_unchanged.py"
+        source = tmp_path / source_rel
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("print('hi')", encoding="utf-8")
+
+        source_hash = "matching_hash"
+        body = _parity_body(source_rel, "curator")
+        _make_design_file(
+            tmp_path,
+            source_rel,
+            source_hash=source_hash,
+            interface_hash="iface_old",
+            body=body,
+        )
+
+        result = check_change(
+            source_path=source,
+            project_root=tmp_path,
+            content_hash=source_hash,
+            interface_hash="iface_new",
+        )
+        assert result == ChangeLevel.UNCHANGED
+
+    def test_content_only_parity(self, tmp_path: Path) -> None:
+        source_rel = "src/parity_content.py"
+        source = tmp_path / source_rel
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("print('hi')", encoding="utf-8")
+
+        body = _parity_body(source_rel, "curator")
+        _make_design_file(
+            tmp_path,
+            source_rel,
+            source_hash="old_source_hash",
+            interface_hash="same_iface_hash",
+            body=body,
+            # design_hash=None -> auto-computed from body, mirroring write_contract
+        )
+
+        result = check_change(
+            source_path=source,
+            project_root=tmp_path,
+            content_hash="new_source_hash",
+            interface_hash="same_iface_hash",
+        )
+        assert result == ChangeLevel.CONTENT_ONLY
+
+    def test_interface_changed_parity(self, tmp_path: Path) -> None:
+        source_rel = "src/parity_interface.py"
+        source = tmp_path / source_rel
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("print('hi')", encoding="utf-8")
+
+        body = _parity_body(source_rel, "curator")
+        _make_design_file(
+            tmp_path,
+            source_rel,
+            source_hash="old_source_hash",
+            interface_hash="old_iface_hash",
+            body=body,
+        )
+
+        result = check_change(
+            source_path=source,
+            project_root=tmp_path,
+            content_hash="new_source_hash",
+            interface_hash="new_iface_hash",
+        )
+        assert result == ChangeLevel.INTERFACE_CHANGED
+
+    def test_agent_updated_still_detected_when_body_drifts(self, tmp_path: Path) -> None:
+        """If a curator-stamped body is later mutated out-of-band, the
+        design_hash divergence must still trip AGENT_UPDATED — curator is
+        hash-fresh only at the moment of the write contract, not forever.
+        """
+        source_rel = "src/parity_drift.py"
+        source = tmp_path / source_rel
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("print('hi')", encoding="utf-8")
+
+        _make_design_file(
+            tmp_path,
+            source_rel,
+            source_hash="old_source_hash",
+            interface_hash="iface_old",
+            design_hash="stale_design_hash_placeholder",  # forced mismatch
+        )
+
+        result = check_change(
+            source_path=source,
+            project_root=tmp_path,
+            content_hash="new_source_hash",
+            interface_hash="iface_new",
+        )
+        assert result == ChangeLevel.AGENT_UPDATED

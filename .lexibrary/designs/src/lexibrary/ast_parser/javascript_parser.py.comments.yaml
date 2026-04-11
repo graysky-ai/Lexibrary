@@ -10,3 +10,8 @@ comments:
     \ and arrow-function lexical declarations become SymbolDefinitions; call_expression\
     \ descendants become CallSites; this is the analog of Python's self."
   date: '2026-04-10T19:44:42.524978Z'
+- body: 'Phase 3 symbol-graph-3 group 3: emits ClassEdgeSite rows for JS class_heritage
+    and new_expression. JavaScript has only ''extends'' (no ''implements''), so the
+    inherits path is simpler than TypeScript. Only bare-identifier new_expression
+    constructors produce instantiates edges.'
+  date: '2026-04-11T10:44:52.632287Z'

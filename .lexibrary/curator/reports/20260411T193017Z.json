@@ -1,0 +1,672 @@
+{
+  "schema_version": 2,
+  "timestamp": "20260411T193017Z",
+  "trigger": "on_demand",
+  "checked": 80,
+  "fixed": 74,
+  "stubbed": 0,
+  "deferred": 2,
+  "errored": 0,
+  "errors": [],
+  "sub_agent_calls": {
+    "integrate_sidecar_comments": 28,
+    "add_missing_bidirectional_dep": 41,
+    "flag_stale_convention": 1,
+    "flag_stale_playbook": 4,
+    "autofix_validation_issue": 1,
+    "consume_superseded_iwh": 3
+  },
+  "dispatched": [
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/risk_taxonomy.py",
+      "message": "Integrated comments for src/lexibrary/curator/risk_taxonomy.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/cli/lexictl_app.py",
+      "message": "Integrated comments for src/lexibrary/cli/lexictl_app.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/comments.py",
+      "message": "Integrated comments for src/lexibrary/curator/comments.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/config.py",
+      "message": "Integrated comments for src/lexibrary/curator/config.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/models.py",
+      "message": "Integrated comments for src/lexibrary/curator/models.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/reconciliation.py",
+      "message": "Integrated comments for src/lexibrary/curator/reconciliation.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/staleness.py",
+      "message": "Integrated comments for src/lexibrary/curator/staleness.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/linkgraph/builder.py",
+      "message": "Integrated comments for src/lexibrary/linkgraph/builder.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/archivist/dependency_extractor.py",
+      "message": "Integrated comments for src/lexibrary/archivist/dependency_extractor.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/archivist/pipeline.py",
+      "message": "Integrated comments for src/lexibrary/archivist/pipeline.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/ast_parser/__init__.py",
+      "message": "Integrated comments for src/lexibrary/ast_parser/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/cli/curate.py",
+      "message": "Integrated comments for src/lexibrary/cli/curate.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/cli/design.py",
+      "message": "Integrated comments for src/lexibrary/cli/design.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/auditing.py",
+      "message": "Integrated comments for src/lexibrary/curator/auditing.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/budget.py",
+      "message": "Integrated comments for src/lexibrary/curator/budget.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/consistency.py",
+      "message": "Integrated comments for src/lexibrary/curator/consistency.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/consistency_fixes.py",
+      "message": "Integrated comments for src/lexibrary/curator/consistency_fixes.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/deprecation.py",
+      "message": "Integrated comments for src/lexibrary/curator/deprecation.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/dispatch_context.py",
+      "message": "Integrated comments for src/lexibrary/curator/dispatch_context.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/iwh_actions.py",
+      "message": "Integrated comments for src/lexibrary/curator/iwh_actions.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/lifecycle.py",
+      "message": "Integrated comments for src/lexibrary/curator/lifecycle.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/validation_fixers.py",
+      "message": "Integrated comments for src/lexibrary/curator/validation_fixers.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/write_contract.py",
+      "message": "Integrated comments for src/lexibrary/curator/write_contract.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/iwh/reader.py",
+      "message": "Integrated comments for src/lexibrary/iwh/reader.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/search.py",
+      "message": "Integrated comments for src/lexibrary/search.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/services/curate_render.py",
+      "message": "Integrated comments for src/lexibrary/services/curate_render.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/wiki/index.py",
+      "message": "Integrated comments for src/lexibrary/wiki/index.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/wiki/resolver.py",
+      "message": "Integrated comments for src/lexibrary/wiki/resolver.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/linkgraph/builder.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/archivist/pipeline.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/wiki/index.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/archivist/pipeline.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/ast_parser/models.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/ast_parser/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/ast_parser/models.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/ast_parser/javascript_parser.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/ast_parser/models.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/ast_parser/python_parser.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/ast_parser/models.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/ast_parser/skeleton_render.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/ast_parser/models.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/ast_parser/typescript_parser.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/cli/lexi_app.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/cli/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/wiki/resolver.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/curator/consistency.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/validator/report.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/curator/hook_runners.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/validator/report.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/curator/hooks.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/validator/report.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/curator/validation_fixers.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/playbooks/index.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/linkgraph/builder.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/symbolgraph/query.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/services/symbols.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/services/symbols.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/services/symbols_render.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/symbolgraph/builder.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/symbolgraph/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/symbolgraph/health.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/symbolgraph/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/symbolgraph/query.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/symbolgraph/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/symbolgraph/resolver_base.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/symbolgraph/builder.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/symbolgraph/resolver_python.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/symbolgraph/builder.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/symbolgraph/__init__.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/symbolgraph/resolver_python.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/validator/checks.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/validator/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/validator/report.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/validator/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/validator/report.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/validator/checks.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/wiki/index.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/validator/checks.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/wiki/resolver.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/validator/checks.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/validator/report.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/validator/fixes.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/wiki/index.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/wiki/parser.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/wiki/resolver.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/wiki/serializer.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/wiki/template.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/__init__.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/artifacts/concept.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/index.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/wiki/parser.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/index.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/artifacts/concept.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/resolver.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/artifacts/convention.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/resolver.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/artifacts/ids.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/resolver.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/conventions/index.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/resolver.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/wiki/index.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/resolver.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/artifacts/concept.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/serializer.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "add_missing_bidirectional_dep",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/src/lexibrary/artifacts/slugs.py.md",
+      "message": "Added bidirectional dep entry for src/lexibrary/wiki/template.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "flag_stale_convention",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/conventions/CV-009-validator-check-registration.md",
+      "message": "Flagged stale convention CV-009-validator-check-registration.md",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "flag_stale_playbook",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/playbooks/PB-001-adding-a-new-artifact-type.md",
+      "message": "Flagged stale playbook PB-001-adding-a-new-artifact-type.md",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "flag_stale_playbook",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/playbooks/PB-002-adding-a-new-cli-command.md",
+      "message": "Flagged stale playbook PB-002-adding-a-new-cli-command.md",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "flag_stale_playbook",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/playbooks/PB-003-adding-a-new-design-file.md",
+      "message": "Flagged stale playbook PB-003-adding-a-new-design-file.md",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "flag_stale_playbook",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/playbooks/PB-003-adding-a-new-design-file.md",
+      "message": "Flagged stale playbook PB-003-adding-a-new-design-file.md",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "autofix_validation_issue",
+      "path": ".lexibrary/designs/src/lexibrary/validator/checks.py.md",
+      "message": "no_fixer_registered: bidirectional_deps",
+      "success": false,
+      "outcome": "no_fixer",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "consume_superseded_iwh",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/.lexibrary/concepts",
+      "message": "No IWH signal found at /Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/.lexibrary/concepts",
+      "success": false,
+      "outcome": "fixer_failed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "consume_superseded_iwh",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/conventions",
+      "message": "No IWH signal found at /Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/conventions",
+      "success": false,
+      "outcome": "fixer_failed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "consume_superseded_iwh",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/playbooks",
+      "message": "No IWH signal found at /Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/playbooks",
+      "success": false,
+      "outcome": "fixer_failed",
+      "llm_calls": 0
+    }
+  ],
+  "deferred_details": [
+    {
+      "action_key": "flag_stale_comment",
+      "issue_type": "comment_audit",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/archivist/topology.py",
+      "check": "comment_audit",
+      "message": "TODO at line 910: # TODO: review sentinel strategy after detail_dirs",
+      "risk_level": "medium"
+    },
+    {
+      "action_key": "flag_stale_comment",
+      "issue_type": "comment_audit",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/crawler/engine.py",
+      "check": "comment_audit",
+      "message": "TODO at line 217: # TODO: Add a 'stale' flag or column to track files where we fell back to",
+      "risk_level": "medium"
+    }
+  ],
+  "deprecated": 0,
+  "hard_deleted": 0,
+  "migrations_applied": 0,
+  "migrations_proposed": 0,
+  "budget_condensed": 0,
+  "budget_proposed": 0,
+  "comments_flagged": 0,
+  "descriptions_audited": 0,
+  "summaries_audited": 0
+}

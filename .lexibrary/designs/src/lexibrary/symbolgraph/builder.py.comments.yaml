@@ -1,0 +1,9 @@
+comments:
+- body: 'Pass 3 (symbol-graph-3): after pass 2 resolves calls, the builder now iterates
+    every ClassEdgeSite emitted by the parsers in pass 1 and resolves target_name
+    via the same resolver dispatch used by pass 2. The resolved edge lands in class_edges;
+    a None result lands in class_edges_unresolved. Instantiates edges are additionally
+    filtered by target symbol_type=''class'' so PascalCase functions never appear
+    as instantiation targets. SymbolBuildResult.class_edge_unresolved_count was added
+    to surface the new table counter.'
+  date: '2026-04-11T10:58:51.757489Z'

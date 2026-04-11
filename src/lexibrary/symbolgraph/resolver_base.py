@@ -37,6 +37,14 @@ class SymbolResolver(Protocol):
     ``tsconfig.json`` path mapping for TS/JS in a later phase). Returning
     ``None`` signals that no definite target exists and the builder should
     record the call in ``unresolved_calls`` instead of ``calls``.
+
+    Phase 3 (``symbol-graph-3``) adds the :meth:`resolve_class_name` hook
+    so the builder's pass 3 can resolve :class:`~lexibrary.ast_parser.models.ClassEdgeSite`
+    target names into concrete ``symbols`` rows with
+    ``symbol_type='class'``. Resolvers without real class-name
+    resolution (e.g. :class:`FallbackResolver`) return ``None`` for
+    every target so the builder falls back to
+    ``class_edges_unresolved``.
     """
 
     def resolve(
@@ -46,6 +54,15 @@ class SymbolResolver(Protocol):
         caller_file_path: str,
     ) -> int | None:
         """Return the ``symbols.id`` of the callee, or ``None`` if unresolved."""
+        ...
+
+    def resolve_class_name(
+        self,
+        name: str,
+        caller_file_id: int,
+        caller_file_path: str,
+    ) -> int | None:
+        """Return the ``symbols.id`` of the class named *name*, or ``None``."""
         ...
 
 
@@ -87,3 +104,22 @@ class FallbackResolver:
             (bare, caller_file_id),
         ).fetchall()
         return rows[0][0] if len(rows) == 1 else None
+
+    def resolve_class_name(
+        self,
+        name: str,
+        caller_file_id: int,
+        caller_file_path: str,
+    ) -> int | None:
+        """Phase 3 class-name stub — always returns ``None`` for TS/JS.
+
+        Real cross-file class resolution for TypeScript and JavaScript
+        lands in Phase 6 when the resolver gains ``tsconfig.json`` path
+        support. Until then, every class edge emitted by a TS/JS parser
+        falls into the ``class_edges_unresolved`` table so the builder
+        never points at the wrong target. The method signature exists
+        so the pass-3 builder can call ``resolver.resolve_class_name()``
+        uniformly across all languages without branching on file
+        extension.
+        """
+        return None

@@ -32,6 +32,7 @@ from lexibrary.services.symbols import (
 from lexibrary.symbolgraph import build_symbol_graph
 from lexibrary.symbolgraph.query import open_symbol_graph
 from lexibrary.utils.hashing import hash_file
+from tests.test_symbolgraph.conftest import seed_phase3_class_fixture
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -219,6 +220,7 @@ def test_trace_result_defaults_empty_lists() -> None:
     assert result.unresolved_callees == []
     assert result.parents == []
     assert result.children == []
+    assert result.unresolved_parents == []
     assert result.members == []
 
 
@@ -583,3 +585,86 @@ def test_symbols_in_file_stale_warning(tmp_path: Path) -> None:
         assert response.stale is not None
         assert response.stale.file_path == "src/b.py"
         assert len(response.symbols) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — class edges through trace()
+# ---------------------------------------------------------------------------
+
+
+def test_trace_class_parents_and_children(tmp_path: Path) -> None:
+    """Tracing the base class surfaces its subclass in ``children``.
+
+    ``Base`` has no parents of its own and one inbound class edge —
+    the ``inherits`` edge from ``Derived``. The ``main → Derived``
+    ``instantiates`` edge targets ``Derived`` (not ``Base``), so it
+    does not appear under ``Base``. ``Derived``'s own trace exercises
+    that edge (see the next test).
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    seed_phase3_class_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        response = svc.trace("Base")
+        assert len(response.results) == 1
+        result = response.results[0]
+
+        assert result.symbol.name == "Base"
+        assert result.parents == []
+        assert result.unresolved_parents == []
+        # One inherits edge from Derived (Base's only inbound edge).
+        assert len(result.children) == 1
+        assert result.children[0].edge_type == "inherits"
+        assert result.children[0].source.name == "Derived"
+
+
+def test_trace_derived_class_shows_parents_and_instantiations(tmp_path: Path) -> None:
+    """Tracing a derived class surfaces its base in ``parents`` and its
+    instantiation site in ``children``.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    seed_phase3_class_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        response = svc.trace("Derived")
+        assert len(response.results) == 1
+        result = response.results[0]
+
+        assert result.symbol.name == "Derived"
+        # Derived inherits Base.
+        assert len(result.parents) == 1
+        assert result.parents[0].edge_type == "inherits"
+        assert result.parents[0].target.name == "Base"
+        # Derived is instantiated once from main.
+        assert len(result.children) == 1
+        assert result.children[0].edge_type == "instantiates"
+        assert result.children[0].source.name == "main"
+        # Derived has no unresolved parents of its own.
+        assert result.unresolved_parents == []
+
+
+def test_trace_class_with_unresolved_bases(tmp_path: Path) -> None:
+    """Tracing a class whose base is out of scope surfaces the unresolved row.
+
+    ``Thing`` extends ``BaseModel`` and ``Enum``, neither of which
+    resolves in the fixture, so both land in ``class_edges_unresolved``
+    and must come back in ``TraceResult.unresolved_parents``. The
+    ``parents`` list stays empty because no base resolved.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    seed_phase3_class_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        response = svc.trace("Thing")
+        assert len(response.results) == 1
+        result = response.results[0]
+
+        assert result.symbol.name == "Thing"
+        assert result.parents == []
+        assert len(result.unresolved_parents) == 2
+        names = sorted(u.target_name for u in result.unresolved_parents)
+        assert names == ["BaseModel", "Enum"]
+        assert all(u.edge_type == "inherits" for u in result.unresolved_parents)

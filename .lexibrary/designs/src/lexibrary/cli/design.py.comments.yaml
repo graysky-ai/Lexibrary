@@ -1,9 +1,0 @@
-comments:
-- body: 'Skip dispatch now differentiates skip_code values: ''protected'' and ''up_to_date''
-    route through info() to stdout with no ''Warning:'' prefix and exit 0 (skip is
-    the protection working as designed); ''iwh_blocked'' routes through warn() to
-    stderr and raises typer.Exit(1) so exit-code-only automation halts and the agent
-    is forced to read the blocking IWH signal. Motivated by agent feedback that the
-    previous single-branch handler (warn to stderr, always exit 0) fooled both stdout-capture
-    and exit-code-only scripts into thinking the design file was fresh.'
-  date: '2026-04-10T14:51:49.589970Z'

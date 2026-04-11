@@ -70,6 +70,7 @@ def test_health_missing_db(tmp_path: Path) -> None:
     assert health.call_count == 0
     assert health.unresolved_call_count == 0
     assert health.class_edge_count == 0
+    assert health.class_edge_unresolved_count == 0
     assert health.member_count == 0
 
 
@@ -104,6 +105,7 @@ def test_health_empty_db(project_root: Path) -> None:
     assert health.call_count == 0
     assert health.unresolved_call_count == 0
     assert health.class_edge_count == 0
+    assert health.class_edge_unresolved_count == 0
     assert health.member_count == 0
 
 
@@ -173,6 +175,13 @@ def test_health_with_rows(project_root: Path) -> None:
             "INSERT INTO class_edges (source_id, target_id, edge_type, line) VALUES (?, ?, ?, ?)",
             (child_id, base_id, "inherits", 20),
         )
+
+        # class_edges_unresolved — one unresolved external base from ``Child``.
+        conn.execute(
+            "INSERT INTO class_edges_unresolved "
+            "(source_id, target_name, edge_type, line) VALUES (?, ?, ?, ?)",
+            (child_id, "BaseModel", "inherits", 21),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -190,6 +199,7 @@ def test_health_with_rows(project_root: Path) -> None:
     assert health.call_count == 1
     assert health.unresolved_call_count == 1
     assert health.class_edge_count == 1
+    assert health.class_edge_unresolved_count == 1
     assert health.member_count == 1
 
 
@@ -213,6 +223,7 @@ def test_health_corrupt_db_returns_safe_default(project_root: Path) -> None:
     assert health.call_count == 0
     assert health.unresolved_call_count == 0
     assert health.class_edge_count == 0
+    assert health.class_edge_unresolved_count == 0
     assert health.member_count == 0
 
 
@@ -240,4 +251,5 @@ def test_health_missing_meta_row_returns_safe_default(project_root: Path) -> Non
     assert health.call_count == 0
     assert health.unresolved_call_count == 0
     assert health.class_edge_count == 0
+    assert health.class_edge_unresolved_count == 0
     assert health.member_count == 0

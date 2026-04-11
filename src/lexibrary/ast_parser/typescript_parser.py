@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, cast
 
 from lexibrary.ast_parser.models import (
     CallSite,
+    ClassEdgeSite,
     ClassSig,
     ConstantSig,
     FunctionSig,
@@ -158,13 +159,21 @@ def extract_symbols_from_tree(
     source_bytes: bytes,
     file_path: Path,
 ) -> SymbolExtract | None:
-    """Extract symbol definitions and call sites from a pre-parsed tree.
+    """Extract symbol definitions, call sites and class edges from a pre-parsed tree.
 
     Definitions include ``function_declaration``, ``class_declaration``,
     ``method_definition`` inside classes, and ``lexical_declaration``
     entries whose value is an ``arrow_function``. Calls are
     ``call_expression`` descendants of each definition; ``type_arguments``
     children (``foo<T>(...)``) are ignored.
+
+    Class edges include ``inherits`` edges emitted for every ``extends``
+    or ``implements`` clause on a ``class_declaration`` (``implements`` is
+    modelled as ``inherits`` so interface implementation participates in
+    the class graph), and ``instantiates`` edges emitted for every
+    ``new_expression`` with a bare identifier constructor. Qualified
+    constructors (``new mod.Foo()``) are skipped because Phase 3
+    resolution only handles bare names.
 
     Qualified names use the file stem as the module prefix and take the
     form ``<stem>.<class?>.<name>``. TypeScript resolution uses the
@@ -193,12 +202,14 @@ def extract_symbols_from_tree(
         )
 
     calls = _collect_ts_calls(def_nodes)
+    class_edges = _collect_ts_class_edges(def_nodes)
 
     return SymbolExtract(
         file_path=str(file_path),
         language=language,
         definitions=definitions,
         calls=calls,
+        class_edges=class_edges,
     )
 
 
@@ -433,6 +444,163 @@ def _collect_ts_calls(
 
     calls.sort(key=lambda c: (c.line, c.callee_name, c.caller_name))
     return calls
+
+
+def _collect_ts_class_edges(
+    def_nodes: list[tuple[object, SymbolDefinition]],
+) -> list[ClassEdgeSite]:
+    """Emit ``ClassEdgeSite`` entries for TS/TSX definitions.
+
+    Two kinds of edges are recorded:
+
+    - ``inherits``: one edge per ``extends`` or ``implements`` clause on a
+      ``class_declaration``. ``implements`` is intentionally modelled as
+      ``inherits`` — the symbol graph does not distinguish interfaces from
+      base classes, and the refactoring playbook treats both as "things
+      whose break-contract depends on this class".
+    - ``instantiates``: one edge per ``new_expression`` whose constructor
+      is a bare ``identifier``. ``new mod.Foo()`` and
+      ``new some.chained.expr()`` are skipped because Phase 3 resolution
+      only handles bare names.
+
+    Unlike :func:`_collect_ts_calls`, the walker explicitly re-descends
+    from each class-declaration root so inherits clauses sit outside any
+    definition body (the class-body containing span matters for method
+    members, not for the heritage clause itself).
+    """
+    if not def_nodes:
+        return []
+
+    definition_spans: list[tuple[SymbolDefinition, int, int]] = []
+    class_defs_by_qualified: dict[str, tuple[object, SymbolDefinition]] = {}
+    for def_node, definition in def_nodes:
+        start_row, end_row = _node_row_span(def_node)
+        definition_spans.append((definition, start_row, end_row))
+        if definition.symbol_type == "class":
+            class_defs_by_qualified[definition.qualified_name] = (
+                def_node,
+                definition,
+            )
+
+    definition_spans.sort(key=lambda item: (-item[1], item[2]))
+
+    edges: list[ClassEdgeSite] = []
+
+    # ---- inherits edges ----
+    for class_node, class_def in class_defs_by_qualified.values():
+        heritage_node: object | None = None
+        for child in getattr(class_node, "children", []):
+            if getattr(child, "type", "") == "class_heritage":
+                heritage_node = child
+                break
+        if heritage_node is None:
+            continue
+        for target_name in _iter_ts_heritage_names(heritage_node):
+            edges.append(
+                ClassEdgeSite(
+                    source_name=class_def.qualified_name,
+                    target_name=target_name,
+                    edge_type="inherits",
+                    line=class_def.line_start,
+                ),
+            )
+
+    # ---- instantiates edges ----
+    seen_new_keys: set[tuple[int, int]] = set()
+    for def_node, _definition in def_nodes:
+        for new_node in _iter_ts_new_expression_descendants(def_node):
+            key = _node_byte_key(new_node)
+            if key in seen_new_keys:
+                continue
+            seen_new_keys.add(key)
+
+            constructor_name = _ts_bare_new_constructor(new_node)
+            if constructor_name is None:
+                continue
+
+            call_row = _node_row_span(new_node)[0]
+            owner: SymbolDefinition | None = None
+            for candidate, start_row, end_row in definition_spans:
+                if start_row <= call_row <= end_row:
+                    owner = candidate
+                    break
+            if owner is None:
+                continue
+
+            edges.append(
+                ClassEdgeSite(
+                    source_name=owner.qualified_name,
+                    target_name=constructor_name,
+                    edge_type="instantiates",
+                    line=call_row + 1,
+                ),
+            )
+
+    edges.sort(key=lambda e: (e.line, e.target_name, e.source_name, e.edge_type))
+    return edges
+
+
+def _iter_ts_heritage_names(heritage_node: object) -> list[str]:
+    """Return base-class / interface names from a ``class_heritage`` node.
+
+    Each ``extends_clause`` and ``implements_clause`` child is scanned for
+    ``identifier``, ``type_identifier`` and ``member_expression`` entries.
+    Type argument subtrees (``type_arguments``) and separators (``,``) are
+    ignored. ``member_expression`` (qualified bases like ``mod.Base``) are
+    emitted with their full dotted text — the resolver strips module
+    prefixes in a later pass.
+    """
+    names: list[str] = []
+    for clause in getattr(heritage_node, "children", []):
+        clause_type = getattr(clause, "type", "")
+        if clause_type not in ("extends_clause", "implements_clause"):
+            continue
+        for sub in getattr(clause, "children", []):
+            sub_type = getattr(sub, "type", "")
+            if sub_type in ("identifier", "type_identifier", "member_expression"):
+                text = _node_text(sub) or ""
+                if text:
+                    names.append(text)
+    return names
+
+
+def _iter_ts_new_expression_descendants(node: object) -> list[object]:
+    """Return every ``new_expression`` descendant of ``node``."""
+    results: list[object] = []
+    stack: list[object] = list(getattr(node, "children", []))
+    while stack:
+        current = stack.pop(0)
+        if getattr(current, "type", "") == "new_expression":
+            results.append(current)
+        stack = list(getattr(current, "children", [])) + stack
+    return results
+
+
+def _ts_bare_new_constructor(new_node: object) -> str | None:
+    """Return the bare constructor name of a ``new_expression``, or ``None``.
+
+    tree-sitter-typescript exposes the constructor through the
+    ``constructor`` field. Only bare ``identifier`` constructors are
+    returned; ``member_expression`` (``new mod.Foo()``), call chains and
+    function expressions return ``None``.
+    """
+    getter = getattr(new_node, "child_by_field_name", None)
+    constructor_node: object | None = None
+    if getter is not None:
+        constructor_node = cast("object | None", getter("constructor"))
+    if constructor_node is None:
+        for child in getattr(new_node, "children", []):
+            child_type = getattr(child, "type", "")
+            if child_type in ("new", "arguments", "type_arguments"):
+                continue
+            constructor_node = child
+            break
+    if constructor_node is None:
+        return None
+    if getattr(constructor_node, "type", "") != "identifier":
+        return None
+    text = _node_text(constructor_node)
+    return text or None
 
 
 def _node_byte_key(node: object) -> tuple[int, int]:

@@ -190,7 +190,7 @@ class LinkGraph:
             # Verify schema version
             version = check_schema_version(conn)
             if version is None or version != SCHEMA_VERSION:
-                logger.warning(
+                logger.debug(
                     "Schema version mismatch for %s: expected %s, got %s",
                     db_path,
                     SCHEMA_VERSION,
@@ -200,7 +200,7 @@ class LinkGraph:
                 return None
 
         except sqlite3.DatabaseError as exc:
-            logger.warning("Cannot open link graph %s: %s", db_path, exc)
+            logger.debug("Cannot open link graph %s: %s", db_path, exc)
             if conn is not None:
                 with contextlib.suppress(Exception):
                     conn.close()

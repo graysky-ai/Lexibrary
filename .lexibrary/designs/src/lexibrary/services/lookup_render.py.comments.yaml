@@ -8,3 +8,11 @@ comments:
     \ overflow marker is appended. Returns '' on empty input so the CLI can omit the\
     \ section entirely."
   date: '2026-04-11T05:24:00.215747Z'
+- body: 'symbol-graph-3 Group 6: Added render_class_hierarchy() which emits a ''###
+    Class hierarchy'' markdown table with columns Class | Bases | Subclasses | Methods
+    | Line. Resolved bases join with '', ''; unresolved bases are appended with a
+    trailing ''*'' marker (e.g. ''BaseModel*'') so readers can visually distinguish
+    in-scope inheritance from out-of-scope external bases like pydantic.BaseModel.
+    Returns an empty string when classes is empty so the CLI can omit the whole section
+    without a conditional there.'
+  date: '2026-04-11T17:21:13.111593Z'

@@ -143,6 +143,7 @@ def lookup(
         truncate_lookup_sections,
     )
     from lexibrary.services.lookup_render import (  # noqa: PLC0415
+        render_class_hierarchy,
         render_conventions,
         render_directory_link_summary,
         render_key_symbols,
@@ -318,6 +319,13 @@ def lookup(
     )
     if key_symbols_text:
         info(key_symbols_text)
+
+    # Class hierarchy (symbol-graph-3) -- emits after Key symbols so
+    # users see inheritance, subclass counts, and unresolved external
+    # bases right next to the per-symbol fan-out data for the file.
+    class_hierarchy_text = render_class_hierarchy(file_result.classes)
+    if class_hierarchy_text:
+        info(class_hierarchy_text)
 
     # Apply token budget truncation to supplementary sections
     total_budget = config.token_budgets.lookup_total_tokens

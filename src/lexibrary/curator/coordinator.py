@@ -2342,53 +2342,39 @@ class Coordinator:
         deprecated = sum(
             1
             for d in dispatch.dispatched
-            if d.success
-            and d.action_key.startswith("deprecate_")
-            and d.outcome != "dry_run"
+            if d.success and d.action_key.startswith("deprecate_") and d.outcome != "dry_run"
         )
         hard_deleted = sum(
             1
             for d in dispatch.dispatched
-            if d.success
-            and d.action_key.startswith("hard_delete_")
-            and d.outcome != "dry_run"
+            if d.success and d.action_key.startswith("hard_delete_") and d.outcome != "dry_run"
         )
 
         # Phase 3: Budget and auditing counters
         budget_condensed = sum(
             1
             for d in dispatch.dispatched
-            if d.success
-            and d.action_key == "condense_file"
-            and d.outcome != "dry_run"
+            if d.success and d.action_key == "condense_file" and d.outcome != "dry_run"
         )
         budget_proposed = sum(
             1
             for d in dispatch.dispatched
-            if d.success
-            and d.action_key == "propose_condensation"
-            and d.outcome != "dry_run"
+            if d.success and d.action_key == "propose_condensation" and d.outcome != "dry_run"
         )
         comments_flagged = sum(
             1
             for d in dispatch.dispatched
-            if d.success
-            and d.action_key == "flag_stale_comment"
-            and d.outcome != "dry_run"
+            if d.success and d.action_key == "flag_stale_comment" and d.outcome != "dry_run"
         )
         descriptions_audited = sum(
             1
             for d in dispatch.dispatched
-            if d.success
-            and d.action_key == "audit_description"
-            and d.outcome != "dry_run"
+            if d.success and d.action_key == "audit_description" and d.outcome != "dry_run"
         )
         summaries_audited = sum(
             1
             for d in dispatch.dispatched
-            if d.success
-            and d.action_key == "audit_summary"
-            and d.outcome != "dry_run"
+            if d.success and d.action_key == "audit_summary" and d.outcome != "dry_run"
         )
 
         # Errors from ErrorSummary

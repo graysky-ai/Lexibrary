@@ -331,6 +331,54 @@ class TestCheckDesignUpdate:
         assert decision.action == "generate"
         assert "no metadata footer" in decision.reason.lower()
 
+    # Scenario: Curator file up to date — parity with archivist
+    def test_curator_up_to_date(self, tmp_path: Path) -> None:
+        """Curator-stamped files fall through to staleness and skip when hash matches."""
+        project = _setup_project(tmp_path)
+        config = _load_config(project)
+        content = "def stable(): ...\n"
+        source = _write_source(project, "src/curated_stable.py", content)
+        _create_design_file(project, "src/curated_stable.py", content, updated_by="curator")
+
+        decision = check_design_update(source, project, config)
+
+        assert decision.action == "skip"
+        assert decision.skip_code == "up_to_date"
+
+    # Scenario: Curator file stale — parity with archivist
+    def test_curator_stale(self, tmp_path: Path) -> None:
+        """Curator-stamped files regenerate when source hash no longer matches."""
+        project = _setup_project(tmp_path)
+        config = _load_config(project)
+        original = "def old(): ...\n"
+        source = _write_source(project, "src/curated_changed.py", "def new(): ...\n")
+        _create_design_file(project, "src/curated_changed.py", original, updated_by="curator")
+
+        decision = check_design_update(source, project, config)
+
+        assert decision.action == "generate"
+        assert "changed" in decision.reason.lower()
+
+    # Scenario: Curator file missing metadata footer — parity with archivist
+    def test_curator_missing_footer(self, tmp_path: Path) -> None:
+        """Curator-stamped files regenerate when metadata footer is absent."""
+        project = _setup_project(tmp_path)
+        config = _load_config(project)
+        content = "def check(): ...\n"
+        source = _write_source(project, "src/curated_check.py", content)
+        _create_design_file(
+            project,
+            "src/curated_check.py",
+            content,
+            updated_by="curator",
+            include_footer=False,
+        )
+
+        decision = check_design_update(source, project, config)
+
+        assert decision.action == "generate"
+        assert "no metadata footer" in decision.reason.lower()
+
     # Scenario: Force overrides protection
     def test_force_overrides_protection(self, tmp_path: Path) -> None:
         """force=True overrides agent protection."""

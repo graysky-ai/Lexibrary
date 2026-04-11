@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from lexibrary.services.lookup import (
+    ClassHierarchyEntry,
     ConceptSummary,
     DirectoryLookupResult,
     KeySymbolSummary,
@@ -19,7 +20,7 @@ from lexibrary.services.lookup import (
     estimate_tokens,
     truncate_lookup_sections,
 )
-from lexibrary.services.lookup_render import render_key_symbols
+from lexibrary.services.lookup_render import render_class_hierarchy, render_key_symbols
 
 # ---------------------------------------------------------------------------
 # Dataclass construction tests
@@ -1077,6 +1078,102 @@ def _make_linkgraph_db(project_root: Path) -> None:
         conn.close()
 
 
+def _seed_class_hierarchy_fixture(
+    project_root: Path,
+    *,
+    files: list[dict[str, object]],
+    class_edges: list[dict[str, object]] | None = None,
+    unresolved_edges: list[dict[str, object]] | None = None,
+) -> dict[str, int]:
+    """Seed ``symbols.db`` with the rows needed for a Class hierarchy test.
+
+    *files* is a list of ``{"path": ..., "symbols": [...]}`` dicts. Each
+    symbol dict matches :func:`_seed_key_symbols_fixture`'s schema (name,
+    qualified_name, symbol_type, line_start, line_end, visibility,
+    optional parent_class). *class_edges* is a list of
+    ``{"source_name": ..., "target_name": ..., "edge_type": ...,
+    "line": ...}`` dicts referring to symbol names that were inserted in
+    *files*. *unresolved_edges* is a list of
+    ``{"source_name": ..., "target_name": ..., "edge_type": ...,
+    "line": ...}`` dicts, with ``target_name`` as a plain string (e.g.
+    ``"BaseModel"``).
+
+    Returns a ``{name: symbol_id}`` map merged across every file so the
+    caller can cross-reference any seeded row by its bare ``name``.
+    """
+    from lexibrary.symbolgraph.query import open_symbol_graph  # noqa: PLC0415
+
+    graph = open_symbol_graph(project_root)
+    assert graph is not None
+    try:
+        conn: sqlite3.Connection = graph._conn  # noqa: SLF001
+
+        ids: dict[str, int] = {}
+        for file_entry in files:
+            rel_path = str(file_entry["path"])
+            cur = conn.execute(
+                "INSERT INTO files (path, language, last_hash) VALUES (?, ?, ?)",
+                (rel_path, "python", "deadbeef"),
+            )
+            file_id = int(cur.lastrowid or 0)
+
+            symbols_in_file = file_entry.get("symbols", [])
+            assert isinstance(symbols_in_file, list)
+            for row in symbols_in_file:
+                cur = conn.execute(
+                    "INSERT INTO symbols "
+                    "(file_id, name, qualified_name, symbol_type, line_start, "
+                    "line_end, visibility, parent_class) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        file_id,
+                        row["name"],
+                        row.get("qualified_name"),
+                        row["symbol_type"],
+                        row["line_start"],
+                        row.get("line_end"),
+                        row["visibility"],
+                        row.get("parent_class"),
+                    ),
+                )
+                ids[str(row["name"])] = int(cur.lastrowid or 0)
+
+        for edge in class_edges or []:
+            src_name = str(edge["source_name"])
+            tgt_name = str(edge["target_name"])
+            conn.execute(
+                "INSERT INTO class_edges "
+                "(source_id, target_id, edge_type, line, context) "
+                "VALUES (?, ?, ?, ?, NULL)",
+                (
+                    ids[src_name],
+                    ids[tgt_name],
+                    str(edge["edge_type"]),
+                    edge.get("line"),
+                ),
+            )
+
+        for unresolved in unresolved_edges or []:
+            src_name = str(unresolved["source_name"])
+            conn.execute(
+                "INSERT INTO class_edges_unresolved "
+                "(source_id, target_name, edge_type, line) "
+                "VALUES (?, ?, ?, ?)",
+                (
+                    ids[src_name],
+                    str(unresolved["target_name"]),
+                    str(unresolved["edge_type"]),
+                    unresolved.get("line"),
+                ),
+            )
+
+        conn.commit()
+    finally:
+        graph.close()
+
+    return ids
+
+
 class TestKeySymbolSummaryDataclass:
     """Covers the KeySymbolSummary dataclass surface (task 14.1 / scenario 1)."""
 
@@ -1425,3 +1522,477 @@ class TestRenderKeySymbols:
     def test_render_key_symbols_non_summary_objects_filtered(self) -> None:
         """Non-KeySymbolSummary objects are filtered (parallels render_siblings)."""
         assert render_key_symbols(["not a summary"], key_symbols_total=0) == ""
+
+
+# ---------------------------------------------------------------------------
+# 6 — Class hierarchy section (symbol-graph-3 Group 6)
+# ---------------------------------------------------------------------------
+#
+# Exercise ``LookupResult.classes`` end to end against a real
+# ``.lexibrary/symbols.db`` seeded via :func:`_seed_class_hierarchy_fixture`.
+# The tests never mock ``SymbolQueryService`` because the "graceful
+# degradation when the DB is missing" guarantee is part of the service
+# contract.
+
+
+class TestClassHierarchyEntryDataclass:
+    """Covers the :class:`ClassHierarchyEntry` dataclass surface."""
+
+    def test_construction_with_all_fields(self) -> None:
+        """ClassHierarchyEntry exposes every spec-mandated field."""
+        entry = ClassHierarchyEntry(
+            class_name="Foo",
+            bases=["Base"],
+            unresolved_bases=["BaseModel"],
+            subclass_count=2,
+            method_count=5,
+            line_start=10,
+        )
+        assert entry.class_name == "Foo"
+        assert entry.bases == ["Base"]
+        assert entry.unresolved_bases == ["BaseModel"]
+        assert entry.subclass_count == 2
+        assert entry.method_count == 5
+        assert entry.line_start == 10
+
+    def test_field_names(self) -> None:
+        """The dataclass field names match the spec verbatim."""
+        names = {f.name for f in dataclass_fields(ClassHierarchyEntry)}
+        assert names == {
+            "class_name",
+            "bases",
+            "unresolved_bases",
+            "subclass_count",
+            "method_count",
+            "line_start",
+        }
+
+
+class TestBuildFileLookupClassHierarchy:
+    """Exercise build_file_lookup()'s ``classes`` population."""
+
+    def _patched_lookup(
+        self,
+        *,
+        target: Path,
+        project_root: Path,
+        config: object,
+        full: bool = False,
+    ) -> LookupResult | None:
+        """Run build_file_lookup with the ambient aindex / design patches.
+
+        The class-hierarchy tests don't care about siblings, conventions,
+        concepts, or issues — the patches here short-circuit those code
+        paths so only the symbol-graph branch stays live.
+        """
+        with (
+            patch("lexibrary.artifacts.aindex_parser.parse_aindex", return_value=None),
+            patch(
+                "lexibrary.artifacts.design_file_parser.parse_design_file_frontmatter",
+                return_value=None,
+            ),
+            patch(
+                "lexibrary.artifacts.design_file_parser.parse_design_file_metadata",
+                return_value=None,
+            ),
+            patch(
+                "lexibrary.artifacts.design_file_parser.parse_design_file",
+                return_value=None,
+            ),
+            patch(
+                "lexibrary.utils.paths.mirror_path",
+                return_value=Path("/nonexistent"),
+            ),
+            patch("lexibrary.services.lookup._build_iwh_peek", return_value=""),
+        ):
+            return build_file_lookup(target, project_root, config, full=full)
+
+    def test_lookup_includes_class_hierarchy(self, tmp_path: Path) -> None:
+        """A class with a resolved base in another file renders the base."""
+        project_root = _setup_minimal_project(tmp_path)
+        _make_linkgraph_db(project_root)
+
+        _seed_class_hierarchy_fixture(
+            project_root,
+            files=[
+                {
+                    "path": "src/pkg/base.py",
+                    "symbols": [
+                        {
+                            "name": "Base",
+                            "qualified_name": "pkg.base.Base",
+                            "symbol_type": "class",
+                            "line_start": 1,
+                            "line_end": 5,
+                            "visibility": "public",
+                        },
+                    ],
+                },
+                {
+                    "path": "src/pkg/derived.py",
+                    "symbols": [
+                        {
+                            "name": "Derived",
+                            "qualified_name": "pkg.derived.Derived",
+                            "symbol_type": "class",
+                            "line_start": 3,
+                            "line_end": 12,
+                            "visibility": "public",
+                        },
+                        {
+                            "name": "greet",
+                            "qualified_name": "pkg.derived.Derived.greet",
+                            "symbol_type": "method",
+                            "line_start": 5,
+                            "line_end": 7,
+                            "visibility": "public",
+                            "parent_class": "Derived",
+                        },
+                        {
+                            "name": "shout",
+                            "qualified_name": "pkg.derived.Derived.shout",
+                            "symbol_type": "method",
+                            "line_start": 9,
+                            "line_end": 11,
+                            "visibility": "public",
+                            "parent_class": "Derived",
+                        },
+                    ],
+                },
+            ],
+            class_edges=[
+                {
+                    "source_name": "Derived",
+                    "target_name": "Base",
+                    "edge_type": "inherits",
+                    "line": 3,
+                },
+            ],
+        )
+
+        config = _make_config()
+        target = project_root / "src" / "pkg" / "derived.py"
+
+        result = self._patched_lookup(target=target, project_root=project_root, config=config)
+
+        assert result is not None
+        assert len(result.classes) == 1
+        entry = result.classes[0]
+        assert entry.class_name == "Derived"
+        assert entry.bases == ["Base"]
+        assert entry.unresolved_bases == []
+        assert entry.subclass_count == 0
+        assert entry.method_count == 2
+        assert entry.line_start == 3
+
+    def test_lookup_class_hierarchy_missing_when_no_classes(self, tmp_path: Path) -> None:
+        """A file with only functions populates an empty ``classes`` list."""
+        project_root = _setup_minimal_project(tmp_path)
+        _make_linkgraph_db(project_root)
+
+        _seed_class_hierarchy_fixture(
+            project_root,
+            files=[
+                {
+                    "path": "src/pkg/mymodule.py",
+                    "symbols": [
+                        {
+                            "name": "foo",
+                            "qualified_name": "pkg.mymodule.foo",
+                            "symbol_type": "function",
+                            "line_start": 1,
+                            "line_end": 5,
+                            "visibility": "public",
+                        },
+                        {
+                            "name": "bar",
+                            "qualified_name": "pkg.mymodule.bar",
+                            "symbol_type": "function",
+                            "line_start": 7,
+                            "line_end": 12,
+                            "visibility": "public",
+                        },
+                    ],
+                },
+            ],
+        )
+
+        config = _make_config()
+        target = project_root / "src" / "pkg" / "mymodule.py"
+
+        result = self._patched_lookup(target=target, project_root=project_root, config=config)
+
+        assert result is not None
+        assert result.classes == []
+        assert render_class_hierarchy(result.classes) == ""
+
+    def test_lookup_class_hierarchy_subclass_count(self, tmp_path: Path) -> None:
+        """A base class with two derived subclasses reports ``subclass_count == 2``."""
+        project_root = _setup_minimal_project(tmp_path)
+        _make_linkgraph_db(project_root)
+
+        _seed_class_hierarchy_fixture(
+            project_root,
+            files=[
+                {
+                    "path": "src/pkg/base.py",
+                    "symbols": [
+                        {
+                            "name": "Base",
+                            "qualified_name": "pkg.base.Base",
+                            "symbol_type": "class",
+                            "line_start": 1,
+                            "line_end": 5,
+                            "visibility": "public",
+                        },
+                    ],
+                },
+                {
+                    "path": "src/pkg/sub_one.py",
+                    "symbols": [
+                        {
+                            "name": "SubOne",
+                            "qualified_name": "pkg.sub_one.SubOne",
+                            "symbol_type": "class",
+                            "line_start": 1,
+                            "line_end": 5,
+                            "visibility": "public",
+                        },
+                    ],
+                },
+                {
+                    "path": "src/pkg/sub_two.py",
+                    "symbols": [
+                        {
+                            "name": "SubTwo",
+                            "qualified_name": "pkg.sub_two.SubTwo",
+                            "symbol_type": "class",
+                            "line_start": 1,
+                            "line_end": 5,
+                            "visibility": "public",
+                        },
+                    ],
+                },
+            ],
+            class_edges=[
+                {
+                    "source_name": "SubOne",
+                    "target_name": "Base",
+                    "edge_type": "inherits",
+                    "line": 1,
+                },
+                {
+                    "source_name": "SubTwo",
+                    "target_name": "Base",
+                    "edge_type": "inherits",
+                    "line": 1,
+                },
+            ],
+        )
+
+        config = _make_config()
+        target = project_root / "src" / "pkg" / "base.py"
+
+        result = self._patched_lookup(target=target, project_root=project_root, config=config)
+
+        assert result is not None
+        assert len(result.classes) == 1
+        entry = result.classes[0]
+        assert entry.class_name == "Base"
+        assert entry.bases == []
+        assert entry.unresolved_bases == []
+        assert entry.subclass_count == 2
+        assert entry.method_count == 0
+
+    def test_lookup_class_hierarchy_unresolved_bases(self, tmp_path: Path) -> None:
+        """External bases (``BaseModel``) appear in ``unresolved_bases``."""
+        project_root = _setup_minimal_project(tmp_path)
+        _make_linkgraph_db(project_root)
+
+        _seed_class_hierarchy_fixture(
+            project_root,
+            files=[
+                {
+                    "path": "src/pkg/models.py",
+                    "symbols": [
+                        {
+                            "name": "Thing",
+                            "qualified_name": "pkg.models.Thing",
+                            "symbol_type": "class",
+                            "line_start": 1,
+                            "line_end": 3,
+                            "visibility": "public",
+                        },
+                    ],
+                },
+            ],
+            unresolved_edges=[
+                {
+                    "source_name": "Thing",
+                    "target_name": "BaseModel",
+                    "edge_type": "inherits",
+                    "line": 1,
+                },
+                {
+                    "source_name": "Thing",
+                    "target_name": "Enum",
+                    "edge_type": "inherits",
+                    "line": 1,
+                },
+            ],
+        )
+
+        config = _make_config()
+        target = project_root / "src" / "pkg" / "models.py"
+
+        result = self._patched_lookup(target=target, project_root=project_root, config=config)
+
+        assert result is not None
+        assert len(result.classes) == 1
+        entry = result.classes[0]
+        assert entry.class_name == "Thing"
+        assert entry.bases == []
+        assert entry.unresolved_bases == ["BaseModel", "Enum"]
+        assert entry.subclass_count == 0
+
+    def test_lookup_class_hierarchy_skipped_when_db_missing(self, tmp_path: Path) -> None:
+        """Missing symbols.db ⇒ ``classes`` is ``[]`` without raising."""
+        project_root = _setup_minimal_project(tmp_path)
+        _make_linkgraph_db(project_root)
+
+        # Deliberately do NOT seed a symbols.db — ``build_file_lookup``
+        # must degrade gracefully and return an empty ``classes`` list.
+
+        config = _make_config()
+        target = project_root / "src" / "pkg" / "mymodule.py"
+
+        result = self._patched_lookup(target=target, project_root=project_root, config=config)
+
+        assert result is not None
+        assert result.classes == []
+
+
+class TestRenderClassHierarchy:
+    """Covers ``render_class_hierarchy()`` format + edge cases."""
+
+    def test_empty_returns_empty_string(self) -> None:
+        """Empty ``classes`` returns an empty string so the CLI can omit it."""
+        assert render_class_hierarchy([]) == ""
+
+    def test_non_entry_objects_filtered(self) -> None:
+        """Non-ClassHierarchyEntry objects are filtered (parallels render_key_symbols)."""
+        assert render_class_hierarchy(["not an entry"]) == ""
+
+    def test_render_single_row_with_resolved_base(self) -> None:
+        """A class with a resolved base renders the base in the ``Bases`` column."""
+        entries = [
+            ClassHierarchyEntry(
+                class_name="Derived",
+                bases=["Base"],
+                unresolved_bases=[],
+                subclass_count=0,
+                method_count=2,
+                line_start=3,
+            )
+        ]
+        output = render_class_hierarchy(entries)
+
+        assert "### Class hierarchy" in output
+        assert "| Class" in output
+        assert "| Bases" in output
+        assert "| Subclasses" in output
+        assert "| Methods" in output
+        assert "| Line" in output
+        assert "Derived" in output
+        assert "Base" in output
+        # No unresolved marker
+        assert "*" not in output.split("### Class hierarchy", 1)[1].split("\n| Class")[0]
+
+    def test_render_unresolved_bases_get_star_marker(self) -> None:
+        """Unresolved bases are rendered with a trailing ``*``."""
+        entries = [
+            ClassHierarchyEntry(
+                class_name="Thing",
+                bases=[],
+                unresolved_bases=["BaseModel", "Enum"],
+                subclass_count=0,
+                method_count=0,
+                line_start=1,
+            )
+        ]
+        output = render_class_hierarchy(entries)
+
+        assert "### Class hierarchy" in output
+        assert "BaseModel*" in output
+        assert "Enum*" in output
+
+    def test_render_mixed_resolved_and_unresolved_bases(self) -> None:
+        """Resolved bases come first, then unresolved bases with ``*`` marker."""
+        entries = [
+            ClassHierarchyEntry(
+                class_name="Hybrid",
+                bases=["Animal"],
+                unresolved_bases=["Serializable"],
+                subclass_count=0,
+                method_count=0,
+                line_start=2,
+            )
+        ]
+        output = render_class_hierarchy(entries)
+
+        assert "Animal" in output
+        assert "Serializable*" in output
+        # Resolved base comes before the unresolved one
+        assert output.index("Animal") < output.index("Serializable*")
+
+    def test_render_dash_when_no_bases(self) -> None:
+        """A class with zero bases renders ``—`` in the ``Bases`` column."""
+        entries = [
+            ClassHierarchyEntry(
+                class_name="Root",
+                bases=[],
+                unresolved_bases=[],
+                subclass_count=3,
+                method_count=1,
+                line_start=5,
+            )
+        ]
+        output = render_class_hierarchy(entries)
+
+        assert "Root" in output
+        assert "—" in output
+
+    def test_render_multiple_rows(self) -> None:
+        """Every entry appears as its own row."""
+        entries = [
+            ClassHierarchyEntry(
+                class_name="Foo",
+                bases=[],
+                unresolved_bases=[],
+                subclass_count=0,
+                method_count=0,
+                line_start=1,
+            ),
+            ClassHierarchyEntry(
+                class_name="Bar",
+                bases=["Foo"],
+                unresolved_bases=[],
+                subclass_count=0,
+                method_count=0,
+                line_start=10,
+            ),
+            ClassHierarchyEntry(
+                class_name="Baz",
+                bases=["Bar"],
+                unresolved_bases=["BaseModel"],
+                subclass_count=0,
+                method_count=0,
+                line_start=20,
+            ),
+        ]
+        output = render_class_hierarchy(entries)
+
+        assert "Foo" in output
+        assert "Bar" in output
+        assert "Baz" in output
+        assert "BaseModel*" in output

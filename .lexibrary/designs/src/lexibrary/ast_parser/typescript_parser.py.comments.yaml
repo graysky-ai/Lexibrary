@@ -11,3 +11,9 @@ comments:
     of self and skips type_arguments. Parse-tree sharing via parse_ts_tree remains
     single-parse per file.'
   date: '2026-04-10T19:44:40.089380Z'
+- body: 'Phase 3 symbol-graph-3 group 3: emits ClassEdgeSite rows for TS/TSX class_heritage
+    and new_expression. Both ''extends'' and ''implements'' clauses collapse to edge_type=''inherits''
+    (the symbol graph does not distinguish interfaces from base classes). Only bare-identifier
+    ''new_expression'' constructors produce instantiates edges; qualified constructors
+    (''new mod.Foo()'') are skipped because Phase 3 resolution only handles bare names.'
+  date: '2026-04-11T10:44:47.883003Z'

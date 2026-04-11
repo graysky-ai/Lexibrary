@@ -15,6 +15,7 @@ from lexibrary.symbolgraph.query import (
     SymbolMemberRow,
     SymbolRow,
     UnresolvedCallRow,
+    UnresolvedClassEdgeRow,
     open_symbol_graph,
 )
 from lexibrary.symbolgraph.schema import SCHEMA_VERSION, ensure_schema
@@ -29,6 +30,7 @@ __all__ = [
     "SymbolMemberRow",
     "SymbolRow",
     "UnresolvedCallRow",
+    "UnresolvedClassEdgeRow",
     "build_symbol_graph",
     "ensure_schema",
     "open_symbol_graph",

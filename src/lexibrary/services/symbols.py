@@ -37,6 +37,7 @@ if TYPE_CHECKING:
         SymbolMemberRow,
         SymbolRow,
         UnresolvedCallRow,
+        UnresolvedClassEdgeRow,
     )
 
 
@@ -51,8 +52,9 @@ class TraceResult:
 
     Phase 2 populates ``callers``, ``callees``, and ``unresolved_callees``
     via :class:`~lexibrary.symbolgraph.query.SymbolGraph` queries. Phase 3
-    will begin populating ``parents`` / ``children`` from ``class_edges``;
-    Phase 4 will begin populating ``members`` from ``symbol_members``.
+    populates ``parents`` / ``children`` from ``class_edges`` and
+    ``unresolved_parents`` from ``class_edges_unresolved``; Phase 4 will
+    begin populating ``members`` from ``symbol_members``.
     """
 
     symbol: SymbolRow
@@ -61,10 +63,13 @@ class TraceResult:
     unresolved_callees: list[UnresolvedCallRow] = field(default_factory=list)
     parents: list[ClassEdgeRow] = field(
         default_factory=list
-    )  # edges from this symbol (base classes)
+    )  # resolved edges from this symbol (base classes)
     children: list[ClassEdgeRow] = field(
         default_factory=list
     )  # edges to this symbol (subclasses, instantiation sites)
+    unresolved_parents: list[UnresolvedClassEdgeRow] = field(
+        default_factory=list
+    )  # unresolved edges from this symbol (e.g. external bases like BaseModel)
     members: list[SymbolMemberRow] = field(default_factory=list)
 
 
@@ -253,6 +258,9 @@ class SymbolQueryService:
                     callers=self._symbol_graph.callers_of(sym.id),
                     callees=self._symbol_graph.callees_of(sym.id),
                     unresolved_callees=self._symbol_graph.unresolved_callees_of(sym.id),
+                    parents=self._symbol_graph.class_edges_from(sym.id),
+                    children=self._symbol_graph.class_edges_to(sym.id),
+                    unresolved_parents=self._symbol_graph.class_edges_unresolved_from(sym.id),
                 )
             )
 

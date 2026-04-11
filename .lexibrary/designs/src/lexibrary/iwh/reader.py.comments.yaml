@@ -1,9 +1,0 @@
-comments:
-- body: 'curator-fix-2 group 3 (CUR-09/PRE-01): find_all_iwh now strips the ''designs/''
-    prefix from the returned relative path when an .iwh file is discovered under .lexibrary/designs/.
-    Previously callers received paths like ''designs/src/auth'' which broke both project_root
-    joining (no such source dir exists) and any iwh_path round-trip. After the fix,
-    callers receive source-relative paths (e.g. ''src/auth'') that join cleanly to
-    project_root to locate the source directory, and iwh_path() reconstructs the mirror
-    location unambiguously. Docstring extended to document the new behavior.'
-  date: '2026-04-11T07:38:07.777047Z'

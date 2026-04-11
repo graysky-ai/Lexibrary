@@ -43,6 +43,29 @@ class ConceptSummary:
 
 
 @dataclass
+class ClassHierarchyEntry:
+    """A class symbol declared in a file, with hierarchy counts.
+
+    Populated by :func:`build_file_lookup` from the symbol graph for the
+    "Class hierarchy" section of ``lexi lookup``. ``bases`` and
+    ``unresolved_bases`` come from the outbound ``class_edges`` filtered
+    to ``edge_type='inherits'`` plus ``class_edges_unresolved`` rows for
+    the same source; ``subclass_count`` counts inbound inherits edges.
+    ``method_count`` reflects every ``method`` symbol in the same file
+    whose qualified name starts with this class's qualified-name
+    prefix — the renderer uses this to size the hierarchy table without
+    hitting the symbol graph a second time.
+    """
+
+    class_name: str  # bare class identifier (e.g., "LexibraryConfig")
+    bases: list[str]  # resolved base class names, ordered by class_edges sort
+    unresolved_bases: list[str]  # out-of-scope bases (e.g., ``BaseModel``)
+    subclass_count: int  # number of inbound ``inherits`` edges
+    method_count: int  # number of ``method`` symbols owned by this class
+    line_start: int  # 1-based source line of the class header
+
+
+@dataclass
 class KeySymbolSummary:
     """A public symbol declared in a file, with caller/callee counts.
 
@@ -169,6 +192,15 @@ class LookupResult:
     When ``key_symbols_total > len(key_symbols)``, the render layer emits a
     ``… and N more`` overflow marker. Stays at ``0`` when ``key_symbols``
     itself is empty.
+    """
+
+    classes: list[ClassHierarchyEntry] = field(default_factory=list)
+    """Class symbols declared in this file with hierarchy counts.
+
+    Populated from the symbol graph's ``class_edges`` and
+    ``class_edges_unresolved`` tables when ``config.symbols.enabled`` is
+    True and ``symbols.db`` exists. Empty when symbols are disabled, the
+    graph is missing, or the file declares no classes.
     """
 
 
@@ -440,128 +472,165 @@ def build_file_lookup(
     else:
         pb_display_limit = min(config.playbooks.lookup_display_limit, 5)
 
-    # Link graph queries
-    link_graph = open_index(project_root)
-    issues_text = ""
-    links_text = ""
-    dependents: list[str] = []
-    open_issue_count = 0
-    # Concept link data gathered from link graph (used in full mode)
-    concept_link_names: list[str] = []
+    # Open a single SymbolQueryService for the remainder of build_file_lookup.
+    # This service owns both ``symbols.db`` (_symbol_graph) and ``index.db``
+    # (_link_graph), so we reuse its _link_graph for the link-graph queries
+    # below instead of making a separate open_index() call.  When the service
+    # is ineligible (disabled, DB missing) we fall back to a standalone
+    # open_index() call so link-graph data is still available.
+    _symbols_eligible = _symbols_section_eligible(project_root, config)
 
-    if link_graph is not None:
-        if full:
-            # Full mode: gather known issues text
-            stack_display_limit = config.stack.lookup_display_limit
-            issues_text = _build_known_issues(
-                link_graph, rel_target, project_root, stack_display_limit
-            )
+    from lexibrary.services.symbols import SymbolQueryService  # noqa: PLC0415
 
-            # Dependents: inbound ast_import links
-            import_links = link_graph.reverse_deps(rel_target, link_type="ast_import")
-            links_text_parts: list[str] = []
-            if import_links:
-                links_text_parts.append("\n## Dependents (imports this file)\n")
-                for link in import_links:
-                    links_text_parts.append(f"- {link.source_path}")
-                    dependents.append(link.source_path)
-                links_text_parts.append("")
+    _service: SymbolQueryService | None = None
+    if _symbols_eligible:
+        _service = SymbolQueryService(project_root)
+        _service.open()
 
-            # Also Referenced By: all other inbound link types
-            link_type_labels: dict[str, str] = {
-                "wikilink": "concept wikilink",
-                "stack_file_ref": "stack post",
-                "stack_concept_ref": "stack concept ref",
-                "design_stack_ref": "design stack ref",
-                "design_source": "design file",
-                "concept_file_ref": "concept file ref",
-                "convention_concept_ref": "convention concept ref",
-            }
-            all_links = link_graph.reverse_deps(rel_target)
-            # Exclude ast_import (shown in Dependents) and the file's own design file
-            rel_design = str(design_path.relative_to(project_root))
-            other_links = [
-                lnk
-                for lnk in all_links
-                if lnk.link_type != "ast_import"
-                and not (lnk.link_type == "design_source" and lnk.source_path == rel_design)
-            ]
-            if other_links:
-                links_text_parts.append("\n## Also Referenced By\n")
-                for link in other_links:
-                    label = link_type_labels.get(link.link_type, link.link_type)
-                    display_name = link.link_context or link.source_path
-                    links_text_parts.append(f"- [[{display_name}]] ({label})")
-                links_text_parts.append("")
+    try:
+        # Resolve the link graph: prefer the service's already-open handle.
+        link_graph = (
+            _service._link_graph  # noqa: SLF001
+            if _service is not None
+            else open_index(project_root)
+        )
 
-            links_text = "\n".join(links_text_parts)
+        issues_text = ""
+        links_text = ""
+        dependents: list[str] = []
+        open_issue_count = 0
+        # Concept link data gathered from link graph (used in full mode)
+        concept_link_names: list[str] = []
 
-            # Gather concept names from link graph (wikilink + concept_file_ref)
-            concept_links = [
-                lnk for lnk in all_links if lnk.link_type in ("wikilink", "concept_file_ref")
-            ]
-            seen_concept_names: set[str] = set()
-            for lnk in concept_links:
-                name = lnk.link_context or lnk.source_path
-                if name not in seen_concept_names:
-                    seen_concept_names.add(name)
-                    concept_link_names.append(name)
-        else:
-            # Brief mode: just count open issues
-            stack_links = link_graph.reverse_deps(rel_target, link_type="stack_file_ref")
-            for slink in stack_links:
-                post_path = project_root / slink.source_path
-                post = parse_stack_post(post_path)
-                if post is not None and post.frontmatter.status == "open":
-                    open_issue_count += 1
-
-        link_graph.close()
-
-    # Concept population
-    concepts_list: list[ConceptSummary] = []
-    linkgraph_available = True
-    concept_limit = config.concepts.lookup_display_limit
-
-    # Load concept index for enriching status/summary
-    concepts_dir = project_root / ".lexibrary" / "concepts"
-    concept_index = _ConceptIndex.load(concepts_dir)
-
-    if full and concept_link_names:
-        # Full mode with link graph: use link graph concept names
-        for name in concept_link_names:
-            concept_file = concept_index.find(name)
-            if concept_file is not None:
-                concepts_list.append(
-                    ConceptSummary(
-                        name=name,
-                        status=concept_file.frontmatter.status,
-                        summary=concept_file.summary or None,
-                    )
+        if link_graph is not None:
+            if full:
+                # Full mode: gather known issues text
+                stack_display_limit = config.stack.lookup_display_limit
+                issues_text = _build_known_issues(
+                    link_graph, rel_target, project_root, stack_display_limit
                 )
+
+                # Dependents: inbound ast_import links
+                import_links = link_graph.reverse_deps(rel_target, link_type="ast_import")
+                links_text_parts: list[str] = []
+                if import_links:
+                    links_text_parts.append("\n## Dependents (imports this file)\n")
+                    for link in import_links:
+                        links_text_parts.append(f"- {link.source_path}")
+                        dependents.append(link.source_path)
+                    links_text_parts.append("")
+
+                # Also Referenced By: all other inbound link types
+                link_type_labels: dict[str, str] = {
+                    "wikilink": "concept wikilink",
+                    "stack_file_ref": "stack post",
+                    "stack_concept_ref": "stack concept ref",
+                    "design_stack_ref": "design stack ref",
+                    "design_source": "design file",
+                    "concept_file_ref": "concept file ref",
+                    "convention_concept_ref": "convention concept ref",
+                }
+                all_links = link_graph.reverse_deps(rel_target)
+                # Exclude ast_import (shown in Dependents) and the file's own design file
+                rel_design = str(design_path.relative_to(project_root))
+                other_links = [
+                    lnk
+                    for lnk in all_links
+                    if lnk.link_type != "ast_import"
+                    and not (lnk.link_type == "design_source" and lnk.source_path == rel_design)
+                ]
+                if other_links:
+                    links_text_parts.append("\n## Also Referenced By\n")
+                    for link in other_links:
+                        label = link_type_labels.get(link.link_type, link.link_type)
+                        display_name = link.link_context or link.source_path
+                        links_text_parts.append(f"- [[{display_name}]] ({label})")
+                    links_text_parts.append("")
+
+                links_text = "\n".join(links_text_parts)
+
+                # Gather concept names from link graph (wikilink + concept_file_ref)
+                concept_links = [
+                    lnk for lnk in all_links if lnk.link_type in ("wikilink", "concept_file_ref")
+                ]
+                seen_concept_names: set[str] = set()
+                for lnk in concept_links:
+                    name = lnk.link_context or lnk.source_path
+                    if name not in seen_concept_names:
+                        seen_concept_names.add(name)
+                        concept_link_names.append(name)
             else:
-                concepts_list.append(ConceptSummary(name=name, status=None, summary=None))
-    else:
-        # Brief mode, or full mode without link graph: use design file wikilinks
-        if full and link_graph is None:
-            linkgraph_available = False
+                # Brief mode: just count open issues
+                stack_links = link_graph.reverse_deps(rel_target, link_type="stack_file_ref")
+                for slink in stack_links:
+                    post_path = project_root / slink.source_path
+                    post = parse_stack_post(post_path)
+                    if post is not None and post.frontmatter.status == "open":
+                        open_issue_count += 1
 
-        wikilink_names: list[str] = []
-        if design_path.exists():
-            design_file = parse_design_file(design_path)
-            if design_file is not None:
-                wikilink_names = design_file.wikilinks
+            # Only close the link graph when we opened it standalone (i.e., no
+            # service).  When _service owns it, closing is handled in the
+            # finally block below.
+            if _service is None:
+                link_graph.close()
 
-        for name in wikilink_names:
-            concept_file = concept_index.find(name)
-            status = concept_file.frontmatter.status if concept_file is not None else None
-            summary = (concept_file.summary or None) if concept_file is not None and full else None
-            concepts_list.append(ConceptSummary(name=name, status=status, summary=summary))
+        # Concept population
+        concepts_list: list[ConceptSummary] = []
+        linkgraph_available = True
+        concept_limit = config.concepts.lookup_display_limit
 
-    # Apply display limit
-    concepts_list = concepts_list[:concept_limit]
+        # Load concept index for enriching status/summary
+        concepts_dir = project_root / ".lexibrary" / "concepts"
+        concept_index = _ConceptIndex.load(concepts_dir)
 
-    # Key symbols (public top-level + methods) from the symbol graph
-    key_symbols, key_symbols_total = _build_key_symbols(rel_target, project_root, config)
+        if full and concept_link_names:
+            # Full mode with link graph: use link graph concept names
+            for name in concept_link_names:
+                concept_file = concept_index.find(name)
+                if concept_file is not None:
+                    concepts_list.append(
+                        ConceptSummary(
+                            name=name,
+                            status=concept_file.frontmatter.status,
+                            summary=concept_file.summary or None,
+                        )
+                    )
+                else:
+                    concepts_list.append(ConceptSummary(name=name, status=None, summary=None))
+        else:
+            # Brief mode, or full mode without link graph: use design file wikilinks
+            if full and link_graph is None:
+                linkgraph_available = False
+
+            wikilink_names: list[str] = []
+            if design_path.exists():
+                design_file = parse_design_file(design_path)
+                if design_file is not None:
+                    wikilink_names = design_file.wikilinks
+
+            for name in wikilink_names:
+                concept_file = concept_index.find(name)
+                status = concept_file.frontmatter.status if concept_file is not None else None
+                summary = (
+                    (concept_file.summary or None) if concept_file is not None and full else None
+                )
+                concepts_list.append(ConceptSummary(name=name, status=status, summary=summary))
+
+        # Apply display limit
+        concepts_list = concepts_list[:concept_limit]
+
+        # Key symbols and class hierarchy reuse the already-open service.
+        key_symbols: list[KeySymbolSummary] = []
+        key_symbols_total = 0
+        classes_list: list[ClassHierarchyEntry] = []
+
+        if _service is not None:
+            key_symbols, key_symbols_total = _build_key_symbols_with_service(rel_target, _service)
+            classes_list = _build_class_hierarchy_with_service(rel_target, _service)
+
+    finally:
+        if _service is not None:
+            _service.close()
 
     # IWH signal peek
     iwh_text = _build_iwh_peek(project_root, target)
@@ -586,6 +655,7 @@ def build_file_lookup(
         concepts_linkgraph_available=linkgraph_available,
         key_symbols=key_symbols,
         key_symbols_total=key_symbols_total,
+        classes=classes_list,
     )
 
 
@@ -712,66 +782,73 @@ def _build_known_issues(
 _KEY_SYMBOLS_DISPLAY_CAP = 10
 
 
-def _build_key_symbols(
+def _symbols_section_eligible(project_root: Path, config: object) -> bool:
+    """Return ``True`` when the symbol-graph sections should be populated.
+
+    Both :func:`_build_key_symbols_with_service` and
+    :func:`_build_class_hierarchy_with_service` share the same eligibility
+    gate: the config must be a :class:`~lexibrary.config.schema.LexibraryConfig`
+    with ``symbols.enabled`` set and ``symbols.db`` present on disk.
+
+    Centralising the check here lets :func:`build_file_lookup` decide once
+    whether to open a :class:`~lexibrary.services.symbols.SymbolQueryService`
+    rather than rediscovering the answer inside each helper.
+    """
+    from lexibrary.config.schema import LexibraryConfig  # noqa: PLC0415
+    from lexibrary.utils.paths import symbols_db_path  # noqa: PLC0415
+
+    if not isinstance(config, LexibraryConfig):
+        _logger.debug("Symbol sections skipped: config is not a LexibraryConfig.")
+        return False
+
+    if not config.symbols.enabled:
+        _logger.debug("Symbol sections skipped: config.symbols.enabled is False.")
+        return False
+
+    if not symbols_db_path(project_root).exists():
+        _logger.debug("Symbol sections skipped: symbols.db is missing.")
+        return False
+
+    return True
+
+
+def _build_key_symbols_with_service(
     rel_target: str,
-    project_root: Path,
-    config: object,
+    service: object,
 ) -> tuple[list[KeySymbolSummary], int]:
-    """Gather public symbols from the symbol graph for the "Key symbols" section.
+    """Gather public symbols using an already-open *service*.
 
     Returns ``(summaries, total_count)`` where *summaries* is capped at
     :data:`_KEY_SYMBOLS_DISPLAY_CAP` and *total_count* reflects the
     pre-cap number of matching symbols so the renderer can emit a
     ``… and N more`` overflow marker.
 
-    The helper skips (returning ``([], 0)``) in three cases:
+    *service* must be a :class:`~lexibrary.services.symbols.SymbolQueryService`
+    that has already been opened by the caller (via ``.open()`` or as a context
+    manager). The caller is responsible for closing it.
 
-    - ``config`` is not a :class:`~lexibrary.config.schema.LexibraryConfig`.
-    - ``config.symbols.enabled`` is ``False``.
-    - ``symbols.db`` does not exist on disk.
-
-    When the symbol graph is available, the helper opens a
-    :class:`~lexibrary.services.symbols.SymbolQueryService`, calls
-    :meth:`~lexibrary.services.symbols.SymbolQueryService.symbols_in_file`
-    to get every symbol in the file (already sorted by source line), and
-    calls :meth:`SymbolGraph.symbol_call_counts` exactly **once** to get
-    the ``(caller_count, callee_count)`` mapping — never per-symbol. The
+    The helper calls :meth:`SymbolGraph.symbol_call_counts` exactly **once** to
+    get the ``(caller_count, callee_count)`` mapping — never per-symbol. The
     filter keeps public top-level functions and classes (``visibility ==
     "public"``) plus every ``method`` (regardless of visibility) so the
     render layer can group methods under their parent class.
+
+    Returns ``([], 0)`` when ``service._symbol_graph`` is ``None`` (race
+    condition or corrupt schema after the eligibility check).
     """
-    from lexibrary.config.schema import LexibraryConfig  # noqa: PLC0415
     from lexibrary.services.symbols import SymbolQueryService  # noqa: PLC0415
-    from lexibrary.utils.paths import symbols_db_path  # noqa: PLC0415
 
-    if not isinstance(config, LexibraryConfig):
-        _logger.debug("Key symbols skipped: config is not a LexibraryConfig.")
+    assert isinstance(service, SymbolQueryService)
+
+    if service._symbol_graph is None:  # noqa: SLF001
+        # open() could not attach even though the DB existed when we checked.
+        _logger.debug("Key symbols skipped: symbol graph unavailable after open().")
         return [], 0
 
-    if not config.symbols.enabled:
-        _logger.debug("Key symbols skipped: config.symbols.enabled is False.")
-        return [], 0
-
-    if not symbols_db_path(project_root).exists():
-        _logger.debug("Key symbols skipped: symbols.db is missing.")
-        return [], 0
-
-    service = SymbolQueryService(project_root)
-    service.open()
-    try:
-        if service._symbol_graph is None:  # noqa: SLF001
-            # ``open()`` could not attach to the symbol graph even though
-            # the DB file existed when we checked (race condition, corrupt
-            # schema, etc.). Treat it as missing.
-            _logger.debug("Key symbols skipped: symbol graph unavailable after open().")
-            return [], 0
-
-        response = service.symbols_in_file(rel_target)
-        # ``symbol_call_counts`` is the single-query aggregation helper —
-        # never issue ``callers_of`` / ``callees_of`` per symbol here.
-        counts = service._symbol_graph.symbol_call_counts(rel_target)  # noqa: SLF001
-    finally:
-        service.close()
+    response = service.symbols_in_file(rel_target)
+    # ``symbol_call_counts`` is the single-query aggregation helper —
+    # never issue ``callers_of`` / ``callees_of`` per symbol here.
+    counts = service._symbol_graph.symbol_call_counts(rel_target)  # noqa: SLF001
 
     matches: list[KeySymbolSummary] = []
     for row in response.symbols:
@@ -798,3 +875,103 @@ def _build_key_symbols(
 
     total = len(matches)
     return matches[:_KEY_SYMBOLS_DISPLAY_CAP], total
+
+
+def _build_class_hierarchy_with_service(
+    rel_target: str,
+    service: object,
+) -> list[ClassHierarchyEntry]:
+    """Gather class-hierarchy entries using an already-open *service*.
+
+    Returns one :class:`ClassHierarchyEntry` per class symbol declared in
+    *rel_target*, in source order.
+
+    *service* must be a :class:`~lexibrary.services.symbols.SymbolQueryService`
+    that has already been opened by the caller. The caller is responsible for
+    closing it.
+
+    Returns ``[]`` when ``service._symbol_graph`` is ``None`` or the file
+    contains no class symbols.
+
+    For each class the helper:
+
+    - Queries :meth:`SymbolGraph.class_edges_from` filtered to
+      ``edge_type == "inherits"`` for the resolved base-class names.
+    - Queries :meth:`SymbolGraph.class_edges_unresolved_from` filtered to
+      ``edge_type == "inherits"`` for out-of-scope bases (``BaseModel``,
+      ``Enum``, ...).
+    - Queries :meth:`SymbolGraph.class_edges_to` and counts rows whose
+      ``edge_type == "inherits"`` to derive ``subclass_count``.
+    - Counts methods owned by this class via ``symbols_in_file`` — every
+      symbol whose ``symbol_type == "method"`` and whose ``qualified_name``
+      equals ``"{class.qualified_name}.{method.name}"``.
+    """
+    from lexibrary.services.symbols import SymbolQueryService  # noqa: PLC0415
+
+    assert isinstance(service, SymbolQueryService)
+
+    if service._symbol_graph is None:  # noqa: SLF001
+        _logger.debug("Class hierarchy skipped: symbol graph unavailable after open().")
+        return []
+
+    response = service.symbols_in_file(rel_target)
+    symbol_rows = response.symbols
+    class_rows = [row for row in symbol_rows if row.symbol_type == "class"]
+    if not class_rows:
+        return []
+
+    graph = service._symbol_graph  # noqa: SLF001
+
+    entries: list[ClassHierarchyEntry] = []
+    for class_row in class_rows:
+        outbound = graph.class_edges_from(class_row.id)
+        bases = [edge.target.name for edge in outbound if edge.edge_type == "inherits"]
+
+        unresolved = graph.class_edges_unresolved_from(class_row.id)
+        unresolved_bases = [row.target_name for row in unresolved if row.edge_type == "inherits"]
+
+        inbound = graph.class_edges_to(class_row.id)
+        subclass_count = sum(1 for edge in inbound if edge.edge_type == "inherits")
+
+        # Method count: every method in the same file whose qualified
+        # name is ``<class.qualified_name>.<method.name>``. Fall back
+        # to the ``parent_class_name``-matching heuristic on
+        # ``line_start`` when the class lacks a qualified name (e.g.
+        # anonymous class definitions the parser only captured by
+        # bare name).
+        method_count = 0
+        if class_row.qualified_name is not None:
+            prefix = f"{class_row.qualified_name}."
+            for row in symbol_rows:
+                if row.symbol_type != "method":
+                    continue
+                if row.qualified_name is None:
+                    continue
+                if row.qualified_name == f"{prefix}{row.name}":
+                    method_count += 1
+        else:
+            # Without a qualified name the best we can do is bound
+            # methods by the class's source range. ``line_end`` is
+            # optional on :class:`SymbolRow`, so fall back to the
+            # class start line when it is missing.
+            start = class_row.line_start or 0
+            end = class_row.line_end or start
+            for row in symbol_rows:
+                if row.symbol_type != "method":
+                    continue
+                row_line = row.line_start or 0
+                if start <= row_line <= end:
+                    method_count += 1
+
+        entries.append(
+            ClassHierarchyEntry(
+                class_name=class_row.name,
+                bases=bases,
+                unresolved_bases=unresolved_bases,
+                subclass_count=subclass_count,
+                method_count=method_count,
+                line_start=class_row.line_start if class_row.line_start is not None else 0,
+            )
+        )
+
+    return entries

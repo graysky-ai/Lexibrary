@@ -22,14 +22,6 @@ comments:
     and its function_ref updated to point at the new bridge. Taxonomy counts are now
     37 Low / 14 Medium / 3 High = 54 total.'
   date: '2026-04-10T21:36:06.504647Z'
-- body: 'Phase 4 (lexibrary-sq5.9): re-pointed function_ref for consume_superseded_iwh,
-    write_reactive_iwh, and flag_unresolvable_agent_design at the new lexibrary.curator.iwh_actions
-    module. Previously these pointed at non-existent attributes on lexibrary.curator.consistency
-    / lexibrary.curator.reconciliation, which made the taxonomy self-check (test_taxonomy_function_refs_resolve)
-    fail for those keys. Note: the test still xfails because 4 unrelated orphan keys
-    (mark_design_unlinked, prune_ephemeral_comments, promote_comment, rewrite_insights_section)
-    remain unclaimed by the curator-fix plan and need a follow-up plan to address.'
-  date: '2026-04-11T01:04:10.013585Z'
 - body: 'curator-fix-2 group 1 (CUR-01/02/06): removed 6 orphan/dead stub entries
     whose function_ref values never resolved (mark_design_unlinked, prune_ephemeral_comments,
     promote_comment, fix_broken_wikilink_exact, rewrite_insights_section, flag_conflicting_conventions);

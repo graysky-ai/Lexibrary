@@ -109,6 +109,11 @@ select = [
 "__init__.py" = ["F401"]
 # Legacy crawler engine uses retired v1 indexer types (commented-out imports)
 "src/lexibrary/crawler/engine.py" = ["F821"]
+# AST parser fixtures: intentionally malformed/unconventional source for parser tests.
+# They contain undefined names (F821), PascalCase function names (N802), and other
+# constructs that exist solely to drive ClassEdgeSite extraction behavior.
+"tests/test_ast_parser/fixtures/**/*.py" = ["F821", "N802"]
+"tests/test_symbolgraph/fixtures/**/*.py" = ["F821", "N802"]
 
 [dependency-groups]
 dev = [
