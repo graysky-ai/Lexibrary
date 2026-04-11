@@ -30,6 +30,8 @@ from lexibrary.ast_parser.models import (
     ClassEdgeSite,
     ClassSig,
     ConstantSig,
+    ConstantValue,
+    EnumMemberSig,
     FunctionSig,
     InterfaceSkeleton,
     ParameterSig,
@@ -37,6 +39,13 @@ from lexibrary.ast_parser.models import (
     SymbolExtract,
 )
 from lexibrary.ast_parser.registry import get_parser
+
+# RHS node types accepted as "simple literal" for TS/JS constant extraction.
+# Template strings, object literals, array literals, and arrow functions are
+# intentionally excluded; see openspec/changes/symbol-graph-4 for the rationale.
+_TS_CONSTANT_LITERAL_TYPES = frozenset(
+    {"string", "number", "true", "false", "null", "regex"},
+)
 
 if TYPE_CHECKING:
     from tree_sitter import Tree
@@ -192,6 +201,8 @@ def extract_symbols_from_tree(
 
     definitions: list[SymbolDefinition] = []
     def_nodes: list[tuple[object, SymbolDefinition]] = []
+    enums: list[tuple[str, list[EnumMemberSig]]] = []
+    constants: list[ConstantValue] = []
 
     for child in root.children:
         _collect_ts_top_level_definitions(
@@ -199,6 +210,8 @@ def extract_symbols_from_tree(
             module_path,
             definitions,
             def_nodes,
+            enums,
+            constants,
         )
 
     calls = _collect_ts_calls(def_nodes)
@@ -210,6 +223,8 @@ def extract_symbols_from_tree(
         definitions=definitions,
         calls=calls,
         class_edges=class_edges,
+        enums=enums,
+        constants=constants,
     )
 
 
@@ -218,6 +233,8 @@ def _collect_ts_top_level_definitions(
     module_path: str,
     definitions: list[SymbolDefinition],
     def_nodes: list[tuple[object, SymbolDefinition]],
+    enums: list[tuple[str, list[EnumMemberSig]]],
+    constants: list[ConstantValue],
 ) -> None:
     """Collect a top-level TS/JS definition and recurse into classes."""
     node_type = getattr(node, "type", "")
@@ -239,12 +256,21 @@ def _collect_ts_top_level_definitions(
             def_nodes,
             force_private=False,
         )
+    elif node_type == "enum_declaration":
+        _emit_ts_enum(
+            node,
+            module_path,
+            definitions,
+            def_nodes,
+            enums,
+        )
     elif node_type == "lexical_declaration":
         _emit_ts_lexical_declaration(
             node,
             module_path,
             definitions,
             def_nodes,
+            constants,
         )
     elif node_type == "export_statement":
         for child in getattr(node, "children", []):
@@ -253,6 +279,8 @@ def _collect_ts_top_level_definitions(
                 module_path,
                 definitions,
                 def_nodes,
+                enums,
+                constants,
             )
 
 
@@ -330,6 +358,112 @@ def _emit_ts_class(
                 )
 
 
+def _emit_ts_enum(
+    node: object,
+    module_path: str,
+    definitions: list[SymbolDefinition],
+    def_nodes: list[tuple[object, SymbolDefinition]],
+    enums: list[tuple[str, list[EnumMemberSig]]],
+) -> None:
+    """Emit an ``enum_declaration`` node as a ``symbol_type='enum'`` definition.
+
+    Handles both plain ``enum Foo {...}`` and ``const enum Foo {...}`` — the
+    ``const`` modifier appears as a sibling token on ``enum_declaration``
+    (child with ``type='const'``) rather than a distinct node type, so no
+    special branching is required.
+
+    Members are walked out of ``enum_body``. Members of the form
+    ``Name = <literal>`` appear as ``enum_assignment`` children; bare
+    ``Name`` members (implicit numeric ordinal) appear as direct
+    ``property_identifier`` children.
+    """
+    name = _child_text_by_type(node, "identifier")
+    if not name:
+        return
+
+    qualified_name = f"{module_path}.{name}" if module_path else name
+    line_start, line_end = _line_range(node)
+    definition = SymbolDefinition(
+        name=name,
+        qualified_name=qualified_name,
+        symbol_type="enum",
+        line_start=line_start,
+        line_end=line_end,
+        visibility=_ts_visibility(name),
+        parent_class=None,
+    )
+    definitions.append(definition)
+    def_nodes.append((node, definition))
+
+    members = _collect_ts_enum_members(node)
+    enums.append((qualified_name, members))
+
+
+def _collect_ts_enum_members(enum_node: object) -> list[EnumMemberSig]:
+    """Walk an ``enum_declaration``'s ``enum_body`` and return its members.
+
+    Returns a list of :class:`EnumMemberSig` entries with zero-based
+    ``ordinal`` tracking the declaration order. Handles:
+
+    - ``enum_assignment`` nodes (``Pending = "pending"``) — value is the
+      raw source text of the RHS literal.
+    - bare ``property_identifier`` children (``Active,`` with implicit
+      numeric ordinal) — value is ``None``.
+    """
+    members: list[EnumMemberSig] = []
+
+    body: object | None = None
+    for child in getattr(enum_node, "children", []):
+        if getattr(child, "type", "") == "enum_body":
+            body = child
+            break
+    if body is None:
+        return members
+
+    ordinal = 0
+    for child in getattr(body, "children", []):
+        child_type = getattr(child, "type", "")
+
+        if child_type == "enum_assignment":
+            member_name: str | None = None
+            value_text: str | None = None
+            seen_equals = False
+            for sub in getattr(child, "children", []):
+                sub_type = getattr(sub, "type", "")
+                if sub_type == "property_identifier" and member_name is None:
+                    member_name = _node_text(sub)
+                elif sub_type == "=":
+                    seen_equals = True
+                elif seen_equals and sub_type not in (",", ";"):
+                    value_text = _node_text(sub)
+                    break
+            if member_name is None:
+                continue
+            members.append(
+                EnumMemberSig(
+                    name=member_name,
+                    value=value_text,
+                    ordinal=ordinal,
+                ),
+            )
+            ordinal += 1
+
+        elif child_type == "property_identifier":
+            member_name = _node_text(child)
+            if member_name is None:
+                continue
+            members.append(
+                EnumMemberSig(
+                    name=member_name,
+                    value=None,
+                    ordinal=ordinal,
+                ),
+            )
+            ordinal += 1
+
+    return members
+
+
 def _emit_ts_method(
     node: object,
     class_prefix: str,
@@ -366,39 +500,94 @@ def _emit_ts_lexical_declaration(
     module_path: str,
     definitions: list[SymbolDefinition],
     def_nodes: list[tuple[object, SymbolDefinition]],
+    constants: list[ConstantValue],
 ) -> None:
-    """Emit ``const foo = () => ...`` as a function definition.
+    """Emit definitions from a ``lexical_declaration`` (``const``/``let``).
 
-    Plain constants (``const x = 42``) are not symbol-graph definitions —
-    they land in the interface skeleton but carry no calls.
+    Two emission paths are supported:
+
+    - ``const foo = () => ...`` → ``symbol_type='function'`` definition.
+      Arrow functions assigned to a ``const`` binding are routed through
+      the function pipeline so they participate in call extraction.
+    - ``const API_URL = "..."`` → ``symbol_type='constant'`` definition
+      plus a :class:`ConstantValue` entry, but only when the binding is
+      ``const`` and the RHS is a primitive literal from
+      :data:`_TS_CONSTANT_LITERAL_TYPES`. Object literals, array
+      literals, template strings with substitutions, and arrow functions
+      are intentionally excluded.
     """
+    is_const = any(getattr(child, "type", "") == "const" for child in getattr(node, "children", []))
+
     for child in getattr(node, "children", []):
         if getattr(child, "type", "") != "variable_declarator":
             continue
         name = _child_text_by_type(child, "identifier")
         if not name:
             continue
-        arrow: object | None = None
+
+        # Locate the RHS value node and any type annotation. The
+        # ``variable_declarator`` layout is
+        # ``identifier [type_annotation] = <value>`` so the value is
+        # the first child after the ``=`` token (excluding trivia).
+        value_node: object | None = None
+        type_annotation_text: str | None = None
+        seen_equals = False
         for sub in getattr(child, "children", []):
-            if getattr(sub, "type", "") == "arrow_function":
-                arrow = sub
-                break
-        if arrow is None:
+            sub_type = getattr(sub, "type", "")
+            if sub_type == "type_annotation":
+                type_annotation_text = _extract_type_text(sub)
+            elif sub_type == "=":
+                seen_equals = True
+            elif seen_equals and value_node is None:
+                value_node = sub
+
+        if value_node is None:
             continue
 
+        value_type = getattr(value_node, "type", "")
         line_start, line_end = _line_range(child)
         qualified_name = f"{module_path}.{name}" if module_path else name
+
+        if value_type == "arrow_function":
+            definition = SymbolDefinition(
+                name=name,
+                qualified_name=qualified_name,
+                symbol_type="function",
+                line_start=line_start,
+                line_end=line_end,
+                visibility=_ts_visibility(name),
+                parent_class=None,
+            )
+            definitions.append(definition)
+            def_nodes.append((value_node, definition))
+            continue
+
+        if not is_const:
+            continue
+
+        if value_type not in _TS_CONSTANT_LITERAL_TYPES:
+            continue
+
+        value_text = _node_text(value_node)
         definition = SymbolDefinition(
             name=name,
             qualified_name=qualified_name,
-            symbol_type="function",
+            symbol_type="constant",
             line_start=line_start,
             line_end=line_end,
             visibility=_ts_visibility(name),
             parent_class=None,
         )
         definitions.append(definition)
-        def_nodes.append((arrow, definition))
+        def_nodes.append((child, definition))
+        constants.append(
+            ConstantValue(
+                name=name,
+                value=value_text,
+                line=line_start,
+                type_annotation=type_annotation_text,
+            ),
+        )
 
 
 def _collect_ts_calls(

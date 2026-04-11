@@ -19,3 +19,12 @@ comments:
     via class_edges_from/to/unresolved_from. Enables rendering base classes, subclasses,
     instantiation sites, and external (unresolved) bases in lexi trace output.'
   date: '2026-04-11T11:15:19.666227Z'
+- body: 'symbol-graph-4 group 6 wires enum/constant members through trace() and search_symbols().
+    trace() now populates TraceResult.members via members_of() so the renderer can
+    emit the ### Members block. search_symbols() runs two LIKE passes: the original
+    name/qualified_name pass (score 0.0) and a new member-value pass via symbols_with_member_value_like
+    (score 0.5). Hits from the value pass are appended only when the parent symbol
+    is not already in the name-pass results, and the combined output respects limit.
+    0.5 is the sentinel callers use to distinguish ''matched on name'' from ''matched
+    via a member value''.'
+  date: '2026-04-11T20:13:58.068241Z'

@@ -493,6 +493,34 @@ class SymbolGraph:
         rows = self._conn.execute(sql, (file_path,)).fetchall()
         return [_row_to_symbol(row) for row in rows]
 
+    def symbols_with_member_value_like(self, needle: str) -> list[SymbolRow]:
+        """Return every symbol that has a member whose ``value`` ``LIKE`` *needle*.
+
+        Powers the "search by enum member value or constant value" leg of
+        ``lexi search --type symbol``. Joins ``symbol_members`` to the
+        parent :data:`_SELECT_SYMBOL` projection and filters on
+        ``sm.value LIKE ?`` so a user searching for ``"pending"`` surfaces
+        the canonical enum whose variant value is that string. Results
+        are de-duplicated via ``GROUP BY s.id`` so a parent with multiple
+        matching members still appears only once, and ordered by
+        ``s.name`` for deterministic display.
+
+        *needle* is wrapped in ``%`` wildcards on both sides so the match
+        is a case-sensitive substring match (the default SQLite ``LIKE``
+        behaviour). Returns an empty list when ``symbol_members`` is
+        empty or no row matches — callers get the same "empty not error"
+        contract as every other :class:`SymbolGraph` query.
+        """
+        sql = (
+            _SELECT_SYMBOL
+            + "JOIN symbol_members sm ON sm.symbol_id = s.id "
+            + "WHERE sm.value LIKE ? "
+            + "GROUP BY s.id "
+            + "ORDER BY s.name"
+        )
+        rows = self._conn.execute(sql, (f"%{needle}%",)).fetchall()
+        return [_row_to_symbol(row) for row in rows]
+
     # -- call edges ---------------------------------------------------------
 
     def callers_of(self, symbol_id: int) -> list[CallRow]:

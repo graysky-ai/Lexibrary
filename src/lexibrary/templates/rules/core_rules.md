@@ -70,6 +70,11 @@ Do not create an IWH signal if all work is complete.
 - Run `lexi trace <symbol>` when a bug traces through a call chain. The
   trace shows every caller and callee with file:line locations, so you
   can walk the chain without grepping.
+- When you see an unfamiliar string or integer literal appear in a bug
+  (e.g. `"pending"`, `"failed"`, status codes), run
+  `lexi search --type symbol <value>` — the symbol graph now indexes
+  enum member values and constants, so the canonical enum (if any)
+  surfaces directly.
 - For complex research or investigation, delegate to the `lexi-research`
   subagent rather than doing extensive exploration inline.
 - After solving a non-trivial bug, run `lexi stack post` to document

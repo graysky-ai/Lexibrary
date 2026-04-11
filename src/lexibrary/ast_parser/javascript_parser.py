@@ -31,6 +31,7 @@ from lexibrary.ast_parser.models import (
     ClassEdgeSite,
     ClassSig,
     ConstantSig,
+    ConstantValue,
     FunctionSig,
     InterfaceSkeleton,
     ParameterSig,
@@ -40,6 +41,22 @@ from lexibrary.ast_parser.models import (
 from lexibrary.ast_parser.registry import get_parser
 
 logger = logging.getLogger(__name__)
+
+# Node types for RHS values of `const NAME = <value>` that we index as
+# module-level constants. Object literals, array literals, template strings
+# (with or without substitutions), arrow functions, function expressions,
+# and call expressions (including ``Object.freeze(...)``) are intentionally
+# excluded — see design.md D5 for the allow-list rationale.
+_JS_CONST_LITERAL_TYPES = frozenset(
+    {
+        "string",
+        "number",
+        "true",
+        "false",
+        "null",
+        "regex",
+    }
+)
 
 
 def parse_js_tree(file_path: Path) -> tuple[Tree, bytes] | None:
@@ -193,6 +210,7 @@ def extract_symbols_from_tree(
     module_path = file_path.stem
     definitions: list[SymbolDefinition] = []
     def_nodes: list[tuple[object, SymbolDefinition]] = []
+    constants: list[ConstantValue] = []
 
     for child in root.children:
         _collect_js_top_level_definitions(
@@ -200,6 +218,7 @@ def extract_symbols_from_tree(
             module_path,
             definitions,
             def_nodes,
+            constants,
         )
 
     calls = _collect_js_calls(def_nodes)
@@ -211,6 +230,7 @@ def extract_symbols_from_tree(
         definitions=definitions,
         calls=calls,
         class_edges=class_edges,
+        constants=constants,
     )
 
 
@@ -219,8 +239,9 @@ def _collect_js_top_level_definitions(
     module_path: str,
     definitions: list[SymbolDefinition],
     def_nodes: list[tuple[object, SymbolDefinition]],
+    constants: list[ConstantValue],
 ) -> None:
-    """Walk a top-level JS node and emit any function/class definitions."""
+    """Walk a top-level JS node and emit any function/class/constant definitions."""
     node_type = getattr(node, "type", "")
 
     if node_type == "function_declaration":
@@ -244,6 +265,7 @@ def _collect_js_top_level_definitions(
             module_path,
             definitions,
             def_nodes,
+            constants,
         )
     elif node_type == "export_statement":
         for child in getattr(node, "children", []):
@@ -252,6 +274,7 @@ def _collect_js_top_level_definitions(
                 module_path,
                 definitions,
                 def_nodes,
+                constants,
             )
 
 
@@ -364,8 +387,24 @@ def _emit_js_lexical_declaration(
     module_path: str,
     definitions: list[SymbolDefinition],
     def_nodes: list[tuple[object, SymbolDefinition]],
+    constants: list[ConstantValue],
 ) -> None:
-    """Emit ``const foo = () => ...`` as a function definition."""
+    """Emit ``const foo = () => ...`` as a function definition.
+
+    Also emits module-level ``const NAME = <primitive-literal>`` as a
+    ``SymbolDefinition(symbol_type='constant', ...)`` and appends a matching
+    :class:`ConstantValue` to ``constants``. Only ``const`` declarations are
+    considered — ``let`` and ``var`` are ignored. The RHS must be a primitive
+    literal from :data:`_JS_CONST_LITERAL_TYPES`; object literals, array
+    literals, template strings, ``Object.freeze(...)`` calls, and function
+    expressions are intentionally skipped (see design.md D5).
+    """
+    # Restrict to `const` kind. `let` also lands in `lexical_declaration`
+    # but is not treated as a constant, and `var` is a separate node type
+    # (`variable_declaration`) that never reaches this function.
+    if not _sym_has_child_type(node, "const"):
+        return
+
     for child in getattr(node, "children", []):
         if getattr(child, "type", "") != "variable_declarator":
             continue
@@ -375,8 +414,30 @@ def _emit_js_lexical_declaration(
         name = _sym_node_text(name_node)
         if not name:
             continue
+
         arrow = _sym_find_child_by_type(child, "arrow_function")
-        if arrow is None:
+        if arrow is not None:
+            line_start, line_end = _line_range(child)
+            qualified_name = f"{module_path}.{name}" if module_path else name
+            definition = SymbolDefinition(
+                name=name,
+                qualified_name=qualified_name,
+                symbol_type="function",
+                line_start=line_start,
+                line_end=line_end,
+                visibility=_js_visibility(name),
+                parent_class=None,
+            )
+            definitions.append(definition)
+            def_nodes.append((arrow, definition))
+            continue
+
+        literal_node = _js_variable_declarator_literal_rhs(child)
+        if literal_node is None:
+            continue
+
+        value_text = _sym_node_text(literal_node)
+        if not value_text:
             continue
 
         line_start, line_end = _line_range(child)
@@ -384,14 +445,49 @@ def _emit_js_lexical_declaration(
         definition = SymbolDefinition(
             name=name,
             qualified_name=qualified_name,
-            symbol_type="function",
+            symbol_type="constant",
             line_start=line_start,
             line_end=line_end,
             visibility=_js_visibility(name),
             parent_class=None,
         )
         definitions.append(definition)
-        def_nodes.append((arrow, definition))
+        # Intentionally NOT appending to def_nodes — constants have no body
+        # and cannot own call-sites or class-edges. Adding them would only
+        # widen the candidate owner list for call-attribution (and potentially
+        # mis-attribute a top-level call that happens to share a line range
+        # with a multi-line constant declaration).
+        constants.append(
+            ConstantValue(
+                name=name,
+                value=value_text,
+                line=line_start,
+                type_annotation=None,
+            ),
+        )
+
+
+def _js_variable_declarator_literal_rhs(node: object) -> object | None:
+    """Return the RHS node of a ``variable_declarator`` when it is a primitive literal.
+
+    A ``variable_declarator`` for ``const NAME = <value>`` has the RHS as
+    the child after the ``=`` token. Returns the node when its type is in
+    :data:`_JS_CONST_LITERAL_TYPES`; otherwise ``None``. JavaScript has no
+    type annotations, so the RHS is always the first non-token child after
+    the identifier and ``=``.
+    """
+    found_equals = False
+    for child in getattr(node, "children", []):
+        child_type = getattr(child, "type", "")
+        if child_type == "=":
+            found_equals = True
+            continue
+        if not found_equals:
+            continue
+        if child_type in _JS_CONST_LITERAL_TYPES:
+            return cast("object", child)
+        return None
+    return None
 
 
 def _collect_js_calls(
@@ -591,6 +687,16 @@ def _sym_find_child_by_type(node: object, type_name: str) -> object | None:
         if getattr(child, "type", "") == type_name:
             return cast("object", child)
     return None
+
+
+def _sym_has_child_type(node: object, type_name: str) -> bool:
+    """Return ``True`` if ``node`` has a direct child with ``type_name``.
+
+    Mirrors :func:`_has_child_type` but accepts an ``object`` so the
+    symbol-extractor helpers can use it without the tree-sitter ``Node``
+    TYPE_CHECKING import.
+    """
+    return _sym_find_child_by_type(node, type_name) is not None
 
 
 def _sym_node_text(node: object) -> str:

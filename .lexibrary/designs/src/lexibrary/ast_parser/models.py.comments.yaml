@@ -15,3 +15,18 @@ comments:
     share a single parse tree. Downstream groups 3 and 4 will populate and resolve
     these edges.'
   date: '2026-04-11T10:23:49.260781Z'
+- body: "Added EnumMemberSig and ConstantValue Pydantic models for Phase 4 symbol-graph\
+    \ enum/constant extraction. Extended SymbolExtract with two new fields: enums\
+    \ (list of (qualified_name, list[EnumMemberSig])) and constants (list[ConstantValue]).\
+    \ Parsers (Python, TypeScript, JavaScript) will populate these in later groups;\
+    \ the symbolgraph builder consumes them to insert rows into the symbol_members\
+    \ table. EnumMemberSig.value and ConstantValue.value are None when the RHS is\
+    \ not a simple literal (e.g. auto() calls or complex expressions) \u2014 rows\
+    \ with None values are skipped during symbol_members insertion."
+  date: '2026-04-11T19:35:35.770535Z'
+- body: 'symbol-graph-4 Group 3: extended _ALLOWED_SYMBOL_TYPES to include ''enum''
+    and ''constant'' so the three parser beads (Python/TS/JS) can emit SymbolDefinition
+    entries with these symbol_types without tripping the Pydantic validator. This
+    is a cross-cutting prerequisite shared by Groups 2, 3, and 4; Group 1 added the
+    EnumMemberSig and ConstantValue models but did not update the allow-list.'
+  date: '2026-04-11T19:46:43.876006Z'

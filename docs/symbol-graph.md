@@ -17,7 +17,7 @@ edges between *artifacts and files*; the symbol graph records edges between
   and a new "Key symbols" section in `lexi lookup --full`. TypeScript and
   JavaScript extraction records definitions; call resolution for those
   languages is intra-file fuzzy matching only until Phase 6.
-- **Phase 3 (current):** class hierarchy edges — `inherits`
+- **Phase 3:** class hierarchy edges — `inherits`
   (from `class Foo(Bar):` and TS/JS `extends` / `implements`) and
   `instantiates` (from Python PascalCase calls and TS/JS `new`
   expressions) are recorded in `class_edges`, with unresolved external
@@ -27,7 +27,14 @@ edges between *artifacts and files*; the symbol graph records edges between
   bases" line; `lexi lookup --full` adds a "Class hierarchy" table.
   The Python resolver walks the MRO when resolving `self.method()`
   calls so inherited method calls show up in the call graph.
-- **Phase 4:** enum members and module-level constants.
+- **Phase 4 (current):** enum members and module-level constants. Python
+  `Enum`/`StrEnum`/`IntEnum`/`Flag` subclasses (including transitive
+  subclasses), TypeScript `enum` declarations, and module-level
+  `const`/ALL_CAPS/type-annotated assignments land as `symbols` rows with
+  `symbol_type='enum'` or `'constant'`. Their members and values live in
+  the `symbol_members` table. `lexi trace <EnumName>` renders a
+  `### Members` block, and `lexi search --type symbol <value>` matches
+  on member values as well as symbol names.
 - **Phase 5:** design-file enrichment with call paths, enum roles, and data
   flows.
 - **Phase 6:** composition edges and TypeScript/JavaScript cross-file
@@ -136,6 +143,32 @@ Unresolved bases: BaseModel
   libraries such as Pydantic `BaseModel`, stdlib `Enum`). The playbook
   treats these as out-of-scope for refactoring.
 
+When the traced symbol is an enum or a module-level constant, `lexi
+trace` also renders a `### Members` block introduced in Phase 4:
+
+```
+$ lexi trace BuildStatus
+
+## myapp.status.BuildStatus  [enum]
+`src/myapp/status.py:12`
+
+### Members
+| Name     | Value       | Ordinal |
+|----------|-------------|---------|
+| PENDING  | "pending"   | 0       |
+| RUNNING  | "running"   | 1       |
+| FAILED   | "failed"    | 2       |
+```
+
+- **Members** — one row per `symbol_members` row for the traced
+  symbol, in ordinal order. For Python `Enum`/`StrEnum`/`IntEnum`
+  subclasses and TypeScript `enum` declarations, each row is an enum
+  variant with its literal value (or empty when the value is a
+  non-literal expression such as `auto()`). For module-level constants
+  (`SCHEMA_VERSION = 2`, `const API_URL = "..."`), the block renders a
+  single row with the constant's name and literal value and `Ordinal`
+  set to `0`.
+
 If the symbol's file has a stale `last_hash` in `symbols.db`, `lexi trace`
 prints a `Symbol graph may be stale for <file> — run lexi design update
 <file> to refresh.` warning on stderr and still renders the (possibly
@@ -144,10 +177,27 @@ and hints at `lexi design update` and `lexi search --type symbol`.
 
 ### `lexi search --type symbol <query>`
 
-LIKE-search on `symbols.name` and `symbols.qualified_name`. Returns a
-`file:line` for each hit. Unlike the artifact search path this does not
-support `--tag` or any stack-only flags; combining them exits with code 1
-and an error explaining the mismatch. `--limit` still applies.
+LIKE-search on `symbols.name` and `symbols.qualified_name`. Phase 4
+extends this to also match on `symbol_members.value`, so an unfamiliar
+magic string in an error message can be traced back to its defining
+enum or constant without grepping:
+
+```
+$ lexi search --type symbol pending
+
+### Symbols
+| Name         | Type     | Location                     |
+|--------------|----------|------------------------------|
+| BuildStatus  | enum     | src/myapp/status.py:12       |
+```
+
+`BuildStatus` matches because one of its enum members has the value
+`"pending"`, not because its name contains `pending`. Value matches and
+name matches are merged into a single result set; each symbol appears
+at most once. Returns a `file:line` for each hit. Unlike the artifact
+search path this does not support `--tag` or any stack-only flags;
+combining them exits with code 1 and an error explaining the mismatch.
+`--limit` still applies.
 
 ### `lexi lookup <file> --full`
 
@@ -181,6 +231,57 @@ methods, and the class's starting line number:
 - A class with no bases shows `—` in the Bases column.
 - The section is omitted entirely when the file defines no classes or
   when `symbols.db` is missing.
+
+## Enums and constants
+
+Phase 4 records every Python `Enum`/`StrEnum`/`IntEnum`/`Flag`
+subclass, every TypeScript `enum` declaration (including `const enum`
+and `export enum`), and every module-level `const` / ALL_CAPS /
+type-annotated assignment as a `symbols` row with
+`symbol_type='enum'` or `'constant'`. Enum members and constant
+values live in the `symbol_members` table — one row per enum variant,
+or a single row per constant with `ordinal = 0`.
+
+What is indexed:
+
+- **Python enums** — any top-level class whose base chain includes
+  `Enum`, `IntEnum`, `StrEnum`, `Flag`, or `IntFlag` (including
+  dotted `enum.Enum` references). A second pass walks the
+  `class_edges` inherits graph after extraction, so a project-local
+  base (`class MyBase(StrEnum): ...`) transitively classifies every
+  subclass (`class BuildStatus(MyBase): ...`) as
+  `symbol_type='enum'`.
+- **Python constants** — module-level assignments where the name is
+  ALL_CAPS or the statement has a type annotation, AND the right-hand
+  side is a simple literal (`string`, `int`, `float`, `True`, `False`,
+  `None`, or a tuple/list/set of those). Assignments inside function
+  or class bodies are NOT indexed. Non-literal right-hand sides
+  (function calls, comprehensions, expressions over names) are
+  skipped.
+- **TypeScript enums** — `enum Foo { ... }`, `const enum Foo { ... }`,
+  and `export enum Foo { ... }`. Each enum variant lands as one
+  `symbol_members` row with its literal value as the raw source text.
+- **TypeScript and JavaScript constants** — `lexical_declaration` at
+  program scope where the kind is `const` and the right-hand side is
+  a primitive literal (`string`, `number`, `true`, `false`, `null`,
+  `regex`). Object literals, array literals, template strings with
+  substitutions, and arrow functions are NOT indexed as constants —
+  arrow functions are already handled by the function pipeline.
+
+This enables two complementary query patterns:
+
+- **By name:** `lexi trace BuildStatus` — trace the enum like any
+  other symbol and read its members from the `### Members` block, in
+  ordinal order.
+- **By value:** `lexi search --type symbol pending` — find every
+  symbol whose member value contains `pending`. Useful when a bug
+  surfaces a magic string in an error message or log line and you
+  need to know the canonical enum that produced it.
+
+JavaScript is intentionally not parsed for enums. JS has no `enum`
+keyword, and the common `Object.freeze({...})` workaround is too
+ambiguous to index without false positives — JS files contribute only
+constants to the symbol graph.
 
 ## See also
 

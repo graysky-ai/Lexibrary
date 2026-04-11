@@ -12,3 +12,10 @@ comments:
     \ \u2014 reads class_edges_unresolved for Phase 3 trace output. Ordered by edge_type,\
     \ target_name, line for deterministic rendering."
   date: '2026-04-11T11:15:08.977861Z'
+- body: 'symbol-graph-4 group 6.1 adds symbols_with_member_value_like: the value-search
+    leg of lexi search --type symbol. Joins symbol_members to _SELECT_SYMBOL and filters
+    sm.value LIKE ? so a user searching for a bug literal (e.g. "pending") finds the
+    canonical enum whose variant has that value. GROUP BY s.id de-dupes parents with
+    multiple matching members; ORDER BY s.name keeps the result deterministic. The
+    needle is wrapped in % wildcards, matching every other LIKE query on this surface.'
+  date: '2026-04-11T20:13:53.180540Z'

@@ -9,6 +9,8 @@ from lexibrary.ast_parser.models import (
     ClassEdgeSite,
     ClassSig,
     ConstantSig,
+    ConstantValue,
+    EnumMemberSig,
     FunctionSig,
     InterfaceSkeleton,
     ParameterSig,
@@ -50,6 +52,45 @@ class TestConstantSig:
     def test_constant_without_type(self) -> None:
         const = ConstantSig(name="DEFAULT_TIMEOUT")
         assert const.name == "DEFAULT_TIMEOUT"
+        assert const.type_annotation is None
+
+
+class TestEnumMemberSig:
+    """Tests for EnumMemberSig model."""
+
+    def test_enum_member_sig_fields(self) -> None:
+        member = EnumMemberSig(name="PENDING", value="pending", ordinal=0)
+        assert member.name == "PENDING"
+        assert member.value == "pending"
+        assert member.ordinal == 0
+
+    def test_enum_member_sig_none_value(self) -> None:
+        member = EnumMemberSig(name="READ", value=None, ordinal=0)
+        assert member.name == "READ"
+        assert member.value is None
+        assert member.ordinal == 0
+
+
+class TestConstantValue:
+    """Tests for ConstantValue model."""
+
+    def test_constant_value_fields(self) -> None:
+        const = ConstantValue(
+            name="MAX_RETRIES",
+            value="3",
+            line=5,
+            type_annotation="int",
+        )
+        assert const.name == "MAX_RETRIES"
+        assert const.value == "3"
+        assert const.line == 5
+        assert const.type_annotation == "int"
+
+    def test_constant_value_defaults(self) -> None:
+        const = ConstantValue(name="COMPUTED", line=10)
+        assert const.name == "COMPUTED"
+        assert const.value is None
+        assert const.line == 10
         assert const.type_annotation is None
 
 
@@ -215,6 +256,11 @@ class TestSymbolExtract:
         assert extract.definitions == []
         assert extract.calls == []
         assert extract.class_edges == []
+
+    def test_symbol_extract_enum_and_constant_defaults(self) -> None:
+        extract = SymbolExtract(file_path="src/empty.py", language="python")
+        assert extract.enums == []
+        assert extract.constants == []
 
     def test_symbol_extract_defaults_class_edges_to_empty_list(self) -> None:
         extract = SymbolExtract(

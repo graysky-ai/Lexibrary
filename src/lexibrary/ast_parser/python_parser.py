@@ -45,6 +45,8 @@ from lexibrary.ast_parser.models import (
     ClassEdgeSite,
     ClassSig,
     ConstantSig,
+    ConstantValue,
+    EnumMemberSig,
     FunctionSig,
     InterfaceSkeleton,
     ParameterSig,
@@ -73,6 +75,43 @@ _UPPER_CASE_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 # builder filters the resulting candidates down to actual ``class`` symbols,
 # so we can afford to emit a few false positives here.
 _PASCAL_CASE_RE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
+
+# Python standard-library enum base-class names used for syntactic enum
+# detection. Both unqualified (``StrEnum``) and ``enum.``-prefixed
+# (``enum.StrEnum``) spellings are matched so either ``from enum import ...``
+# or a plain ``import enum`` import style is covered. Classes inheriting from
+# a project-local enum base — e.g. ``class MyBase(StrEnum)`` followed by
+# ``class Status(MyBase)`` — are resolved transitively in the symbol-graph
+# builder, not in this module.
+_PY_ENUM_BASES = frozenset(
+    {
+        "Enum",
+        "IntEnum",
+        "StrEnum",
+        "Flag",
+        "IntFlag",
+        "enum.Enum",
+        "enum.IntEnum",
+        "enum.StrEnum",
+        "enum.Flag",
+        "enum.IntFlag",
+    }
+)
+
+# Node types whose text can be taken verbatim as a Python constant literal
+# RHS. A tuple/list/set of literals is also accepted when every element is
+# one of these types (checked dynamically in :func:`_is_literal_rhs_python`).
+_PY_LITERAL_SIMPLE_TYPES = frozenset(
+    {
+        "string",
+        "concatenated_string",
+        "integer",
+        "float",
+        "true",
+        "false",
+        "none",
+    }
+)
 
 
 def parse_python_tree(file_path: Path) -> tuple[Tree, bytes] | None:
@@ -278,6 +317,8 @@ def extract_symbols_from_tree(
 
     definitions: list[SymbolDefinition] = []
     def_nodes: list[tuple[object, SymbolDefinition]] = []
+    enums: list[tuple[str, list[EnumMemberSig]]] = []
+    constants: list[ConstantValue] = []
 
     for child in root.children:
         _collect_top_level_definitions(
@@ -285,7 +326,9 @@ def extract_symbols_from_tree(
             module_path,
             definitions,
             def_nodes,
+            enums,
         )
+        _collect_top_level_constants(child, module_path, definitions, constants)
 
     calls: list[CallSite] = _collect_all_calls(def_nodes)
     class_edges: list[ClassEdgeSite] = _collect_all_class_edges(def_nodes)
@@ -296,6 +339,8 @@ def extract_symbols_from_tree(
         definitions=definitions,
         calls=calls,
         class_edges=class_edges,
+        enums=enums,
+        constants=constants,
     )
 
 
@@ -333,12 +378,15 @@ def _collect_top_level_definitions(
     module_path: str,
     definitions: list[SymbolDefinition],
     def_nodes: list[tuple[object, SymbolDefinition]],
+    enums: list[tuple[str, list[EnumMemberSig]]],
 ) -> None:
     """Collect a top-level function, class, or decorated variant.
 
     Descends one level into ``decorated_definition`` nodes. Calls
     :func:`_emit_definition` for each hit so nested walkers can share the
-    same emit path.
+    same emit path. Classes whose bases match :data:`_PY_ENUM_BASES` are
+    emitted with ``symbol_type='enum'`` and their members are appended to
+    ``enums``; all other classes go through the normal class path.
     """
     node_type = getattr(node, "type", "")
 
@@ -353,12 +401,12 @@ def _collect_top_level_definitions(
             force_private=False,
         )
     elif node_type == "class_definition":
-        _emit_class_definition(
+        _emit_top_level_class_or_enum(
             node,
             module_path,
             definitions,
             def_nodes,
-            force_private=False,
+            enums,
         )
     elif node_type == "decorated_definition":
         inner = _child_by_field(node, "definition")
@@ -376,13 +424,377 @@ def _collect_top_level_definitions(
                 force_private=False,
             )
         elif inner_type == "class_definition":
-            _emit_class_definition(
+            _emit_top_level_class_or_enum(
                 inner,
                 module_path,
                 definitions,
                 def_nodes,
-                force_private=False,
+                enums,
             )
+
+
+def _emit_top_level_class_or_enum(
+    node: object,
+    module_path: str,
+    definitions: list[SymbolDefinition],
+    def_nodes: list[tuple[object, SymbolDefinition]],
+    enums: list[tuple[str, list[EnumMemberSig]]],
+) -> None:
+    """Route a top-level ``class_definition`` to the class or enum emitter.
+
+    When any direct base class name is in :data:`_PY_ENUM_BASES` the class
+    is emitted as a ``symbol_type='enum'`` symbol and its body is walked for
+    :class:`EnumMemberSig` entries, which are appended to ``enums`` as
+    ``(qualified_name, members)``. Otherwise the node falls through to the
+    regular :func:`_emit_class_definition` path. Nested (non-top-level)
+    classes never become enums — the transitive-base second pass in the
+    symbol-graph builder handles project-local enum bases.
+    """
+    if _class_has_enum_base(node):
+        _emit_enum_definition(node, module_path, definitions, def_nodes, enums)
+    else:
+        _emit_class_definition(
+            node,
+            module_path,
+            definitions,
+            def_nodes,
+            force_private=False,
+        )
+
+
+def _class_has_enum_base(class_node: object) -> bool:
+    """Return ``True`` if any base class name is in :data:`_PY_ENUM_BASES`.
+
+    Walks the ``superclasses`` field and uses :func:`_base_class_name` to
+    extract the textual base identifier (e.g. ``Enum``, ``enum.StrEnum``).
+    Generic and subscripted bases like ``Generic[T]`` collapse to their
+    head identifier, which is almost never an enum base, so they are
+    filtered naturally by set membership.
+    """
+    superclasses_node = _child_by_field(class_node, "superclasses")
+    if superclasses_node is None:
+        return False
+    for base_node in _named_children(superclasses_node):
+        base_name = _base_class_name(base_node)
+        if base_name and base_name in _PY_ENUM_BASES:
+            return True
+    return False
+
+
+def _emit_enum_definition(
+    node: object,
+    module_path: str,
+    definitions: list[SymbolDefinition],
+    def_nodes: list[tuple[object, SymbolDefinition]],
+    enums: list[tuple[str, list[EnumMemberSig]]],
+) -> None:
+    """Emit an enum ``SymbolDefinition`` and record its members.
+
+    The enum itself is emitted with ``symbol_type='enum'``; its methods
+    (and any nested classes) are walked exactly like a normal class so the
+    rest of the symbol graph still sees the surrounding structure. Member
+    detection is delegated to :func:`_collect_enum_members`, which only
+    picks up literal assignments at the class-body level.
+    """
+    name_node = _child_by_field(node, "name")
+    if name_node is None:
+        return
+    name = _node_text(name_node)
+    if not name:
+        return
+
+    visibility = _visibility_for(name, force_private=False)
+    qualified_name = f"{module_path}.{name}" if module_path else name
+    line_start, line_end = _line_range(node)
+    enum_def = SymbolDefinition(
+        name=name,
+        qualified_name=qualified_name,
+        symbol_type="enum",
+        line_start=line_start,
+        line_end=line_end,
+        visibility=visibility,
+        parent_class=None,
+    )
+    definitions.append(enum_def)
+    def_nodes.append((node, enum_def))
+
+    body_node = _child_by_field(node, "body")
+    if body_node is not None:
+        members = _collect_enum_members(body_node)
+        enums.append((qualified_name, members))
+
+        # Walk the body for methods and nested classes so the enum still
+        # contributes methods to the symbol graph (e.g. ``__str__``
+        # overrides on a StrEnum subclass).
+        class_prefix = qualified_name
+        for member in _children(body_node):
+            member_type = getattr(member, "type", "")
+
+            if member_type == "function_definition":
+                _emit_definition(
+                    member,
+                    definitions,
+                    def_nodes,
+                    symbol_type="method",
+                    qualified_prefix=class_prefix,
+                    parent_class=name,
+                    force_private=False,
+                )
+            elif member_type == "decorated_definition":
+                inner = _child_by_field(member, "definition")
+                if inner is None:
+                    continue
+                inner_type = getattr(inner, "type", "")
+                if inner_type == "function_definition":
+                    _emit_definition(
+                        inner,
+                        definitions,
+                        def_nodes,
+                        symbol_type="method",
+                        qualified_prefix=class_prefix,
+                        parent_class=name,
+                        force_private=False,
+                    )
+                elif inner_type == "class_definition":
+                    _emit_class_definition(
+                        inner,
+                        class_prefix,
+                        definitions,
+                        def_nodes,
+                        force_private=True,
+                    )
+            elif member_type == "class_definition":
+                _emit_class_definition(
+                    member,
+                    class_prefix,
+                    definitions,
+                    def_nodes,
+                    force_private=True,
+                )
+
+
+def _collect_enum_members(body_node: object) -> list[EnumMemberSig]:
+    """Walk an enum class body and return :class:`EnumMemberSig` entries.
+
+    Each assignment inside an ``expression_statement`` whose LHS is a
+    bare identifier becomes a member, with an auto-incremented
+    zero-based ``ordinal``. The RHS is recorded as literal source text
+    when it is a simple literal (see :data:`_PY_LITERAL_SIMPLE_TYPES`),
+    as ``None`` for ``auto()`` calls or any other non-literal expression.
+    Annotated assignments (``VALUE: int = 1``) are accepted with the
+    ``right`` field treated the same way. Non-assignment body members
+    (``def`` methods, docstrings, ``...``) are skipped silently.
+    """
+    members: list[EnumMemberSig] = []
+    ordinal = 0
+    for child in _children(body_node):
+        if getattr(child, "type", "") != "expression_statement":
+            continue
+        for inner in _named_children(child):
+            if getattr(inner, "type", "") != "assignment":
+                continue
+            left_node = _child_by_field(inner, "left")
+            if left_node is None:
+                continue
+            if getattr(left_node, "type", "") != "identifier":
+                continue
+            member_name = _node_text(left_node)
+            if not member_name:
+                continue
+            right_node = _child_by_field(inner, "right")
+            value = _enum_member_value(right_node)
+            members.append(
+                EnumMemberSig(
+                    name=member_name,
+                    value=value,
+                    ordinal=ordinal,
+                ),
+            )
+            ordinal += 1
+    return members
+
+
+def _enum_member_value(right_node: object | None) -> str | None:
+    """Return the literal value text for an enum member RHS, or ``None``.
+
+    ``auto()`` and any other call/expression that is not a simple literal
+    returns ``None`` — these members still get an :class:`EnumMemberSig`
+    row but with a null ``value`` so the symbol-graph builder can insert a
+    ``symbol_members`` row that records the ordinal without a value.
+    """
+    if right_node is None:
+        return None
+    right_type = getattr(right_node, "type", "")
+    if right_type == "string":
+        return _node_text(right_node)
+    if right_type in _PY_LITERAL_SIMPLE_TYPES:
+        return _node_text(right_node)
+    if right_type == "unary_operator":
+        # Covers ``-1`` and ``+1`` literal RHS.
+        operand = None
+        for sub in _named_children(right_node):
+            operand = sub
+            break
+        if operand is not None:
+            operand_type = getattr(operand, "type", "")
+            if operand_type in _PY_LITERAL_SIMPLE_TYPES:
+                return _node_text(right_node)
+    return None
+
+
+def _collect_top_level_constants(
+    node: object,
+    module_path: str,
+    definitions: list[SymbolDefinition],
+    constants: list[ConstantValue],
+) -> None:
+    """Collect a module-level constant from a top-level AST child node.
+
+    Examines one direct child of the ``module`` node. If it is an
+    ``expression_statement`` that wraps a qualifying assignment, a
+    :class:`SymbolDefinition` with ``symbol_type='constant'`` is appended
+    to ``definitions`` and a :class:`ConstantValue` is appended to
+    ``constants``. Qualification rules: LHS must be a bare identifier that
+    either passes :func:`_is_constant_name` (ALL_CAPS or
+    underscore-prefixed ALL_CAPS) or carries a type annotation, and RHS
+    must be a simple literal per :func:`_is_literal_rhs_python`. Nested
+    assignments (inside a class or function body) are intentionally NOT
+    reached — this walker is only called from the top-level loop in
+    :func:`extract_symbols_from_tree`.
+    """
+    if getattr(node, "type", "") != "expression_statement":
+        return
+
+    for child in _named_children(node):
+        child_type = getattr(child, "type", "")
+        if child_type == "assignment":
+            _collect_constant_from_assignment(
+                child,
+                module_path,
+                definitions,
+                constants,
+            )
+        elif child_type == "augmented_assignment":
+            # ``X += 1`` is never treated as a constant definition.
+            continue
+
+
+def _collect_constant_from_assignment(
+    assignment_node: object,
+    module_path: str,
+    definitions: list[SymbolDefinition],
+    constants: list[ConstantValue],
+) -> None:
+    """Append a :class:`ConstantValue` from an assignment, when eligible.
+
+    The LHS must be a bare ``identifier`` — tuple/list unpacking targets
+    like ``A, B = 1, 2`` are skipped because the heuristic cannot express
+    multi-target constants cleanly. The name qualifies when ANY of the
+    following hold:
+
+    1. The name matches :data:`_UPPER_CASE_RE` (``MAX_RETRIES``).
+    2. The name is an underscore-prefixed ALL_CAPS identifier
+       (``_PRIVATE``, ``_MAX_RETRIES``). This is the conventional spelling
+       for a private module constant; the extractor preserves it so
+       visibility (``private``) can be recorded later by the symbol
+       emitter.
+    3. The assignment carries a type annotation — e.g.
+       ``DEFAULT_TIMEOUT: float = 30.0`` or even ``timeout: float = 30.0``.
+
+    The RHS must be literal per :func:`_is_literal_rhs_python`. The
+    recorded ``value`` is the raw source text of the RHS; ``line`` is the
+    1-indexed start line of the assignment node.
+    """
+    left_node = _child_by_field(assignment_node, "left")
+    if left_node is None:
+        return
+    if getattr(left_node, "type", "") != "identifier":
+        return
+    name = _node_text(left_node)
+    if not name:
+        return
+
+    type_node = _child_by_field(assignment_node, "type")
+    type_ann = _node_text(type_node) if type_node is not None else None
+
+    if type_ann is None and not _is_constant_name(name):
+        return
+
+    right_node = _child_by_field(assignment_node, "right")
+    if right_node is None:
+        return
+    if not _is_literal_rhs_python(right_node):
+        return
+
+    value = _node_text(right_node)
+    if not value:
+        return
+
+    line_start, line_end = _line_range(assignment_node)
+    qualified_name = f"{module_path}.{name}" if module_path else name
+    visibility = _visibility_for(name, force_private=False)
+    definitions.append(
+        SymbolDefinition(
+            name=name,
+            qualified_name=qualified_name,
+            symbol_type="constant",
+            line_start=line_start,
+            line_end=line_end,
+            visibility=visibility,
+            parent_class=None,
+        ),
+    )
+    constants.append(
+        ConstantValue(
+            name=name,
+            value=value,
+            line=line_start,
+            type_annotation=type_ann,
+        ),
+    )
+
+
+def _is_constant_name(name: str) -> bool:
+    """Return ``True`` if ``name`` is an ALL_CAPS or private ALL_CAPS identifier.
+
+    Matches ``MAX_RETRIES`` (public) and ``_PRIVATE`` / ``_MAX_RETRIES``
+    (private — conventional leading-underscore private constant). The
+    plain :data:`_UPPER_CASE_RE` regex does not match leading underscores,
+    so this helper strips one leading underscore before testing so we can
+    still record ``_PRIVATE = "secret"`` as a constant with
+    ``visibility='private'``.
+    """
+    if not name:
+        return False
+    probe = name[1:] if name.startswith("_") else name
+    return bool(_UPPER_CASE_RE.fullmatch(probe))
+
+
+def _is_literal_rhs_python(node: object) -> bool:
+    """Return ``True`` if ``node`` is a simple Python literal RHS.
+
+    A literal is one of the entries in :data:`_PY_LITERAL_SIMPLE_TYPES`, a
+    unary-prefixed literal (``-1``, ``+3.14``), or a ``tuple``/``list``/
+    ``set`` whose every named child is itself one of the above. Dict
+    literals, comprehensions, function calls, attribute accesses, binary
+    operators, and name references are all rejected.
+    """
+    node_type = getattr(node, "type", "")
+    if node_type in _PY_LITERAL_SIMPLE_TYPES:
+        return True
+    if node_type == "unary_operator":
+        for child in _named_children(node):
+            child_type = getattr(child, "type", "")
+            return child_type in _PY_LITERAL_SIMPLE_TYPES
+        return False
+    if node_type in {"tuple", "list", "set"}:
+        # Empty collection literals count as literals; otherwise every
+        # named child must itself be a simple literal.
+        children = list(_named_children(node))
+        if not children:
+            return True
+        return all(_is_literal_rhs_python(child) for child in children)
+    return False
 
 
 def _emit_class_definition(

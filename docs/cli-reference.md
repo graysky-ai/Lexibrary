@@ -113,13 +113,18 @@ At least one of `query`, `--tag`, `--scope`, or other filters must be provided.
 
 **Symbol search (`--type symbol`):** Dispatches directly to the symbol
 graph (`.lexibrary/symbols.db`) and runs a `LIKE` match against
-`symbols.name` and `symbols.qualified_name`. Results are rendered in a
-`### Symbols` section with a `| Name | Type | Location |` table
-(markdown mode), a `symbol  <qualified_name>  <file>:<line>` line (plain
-mode), or a `{"type": "symbol", ...}` entry (JSON mode). Stack-only
-filters (`--tag`, `--concept`, `--resolution-type`, `--include-stale`)
-are rejected with exit code 1 when combined with `--type symbol` — use
-`lexi trace` for resolved call graph queries. `--limit` still applies.
+`symbols.name` and `symbols.qualified_name`. Phase 4 extends this to
+also match on `symbol_members.value`, so enum variants and
+module-level constants surface whenever their literal value contains
+the query string. A single symbol whose name AND member value both
+match the query still appears only once in the result set. Results
+are rendered in a `### Symbols` section with a `| Name | Type |
+Location |` table (markdown mode), a `symbol  <qualified_name>
+<file>:<line>` line (plain mode), or a `{"type": "symbol", ...}`
+entry (JSON mode). Stack-only filters (`--tag`, `--concept`,
+`--resolution-type`, `--include-stale`) are rejected with exit code
+1 when combined with `--type symbol` — use `lexi trace` for resolved
+call graph queries. `--limit` still applies.
 
 **Examples:**
 
@@ -132,6 +137,10 @@ lexi search --type stack "timeout"
 
 # Search for a symbol by bare or partial name
 lexi search --type symbol update_project
+
+# Search for a symbol by enum member value or constant value —
+# surfaces the canonical enum / constant that defines a literal
+lexi search --type symbol pending
 
 # Filter by tag
 lexi search --tag validation
@@ -204,7 +213,9 @@ Trace a symbol's callers and callees through the symbol graph
 where `impact` answers "which files import me?", `trace` answers "which
 functions call me, and which functions do I call?". Use it when tracking
 a bug across more than two files or sizing the blast radius of a rename
-or signature change.
+or signature change. Since Phase 4, `lexi trace` also renders enum
+members and module-level constant values when the traced symbol is an
+enum or constant.
 
 ```
 lexi trace <symbol> [--file PATH]
@@ -258,6 +269,17 @@ For each matching symbol, a section containing:
    external libraries like Pydantic `BaseModel` or stdlib `Enum`).
    Treat these as out-of-scope for refactoring. Omitted when there
    are no unresolved bases.
+8. **`### Members`** — Phase 4 markdown table of
+   `| Name | Value | Ordinal |` rows listing enum variants (in
+   ordinal order) or the single row describing a module-level
+   constant's value. Emitted when the traced symbol has
+   `symbol_members` rows — that is, when it is a Python
+   `Enum`/`StrEnum`/`IntEnum`/`Flag` subclass, a TypeScript `enum`
+   declaration, or a module-level Python/TS/JS constant whose value
+   is a simple literal. Enum variants show their literal values as
+   source text (empty string for `auto()`); constants render as a
+   single row with `Ordinal = 0`. Omitted when the symbol has no
+   members.
 
 Multiple matches are separated by a blank line. All output is rendered
 via the same `info()` helper used by `lexi lookup`, so it is safe to
@@ -295,6 +317,12 @@ lexi trace build_index --file src/lexibrary/linkgraph/builder.py
 # Trace a class — shows base classes, subclasses, instantiation
 # sites, and unresolved external bases
 lexi trace LexibraryConfig
+
+# Trace an enum — shows its member variants in ordinal order
+lexi trace BuildStatus
+
+# Trace a module-level constant — shows a single-row Members block
+lexi trace SCHEMA_VERSION
 ```
 
 Sample class output:
@@ -314,6 +342,32 @@ Sample class output:
 | instantiates  | lexibrary.config.loader.load_config      | src/lexibrary/config/loader.py:87        |
 
 Unresolved bases: BaseModel
+```
+
+Sample enum output (Phase 4):
+
+```
+## myapp.status.BuildStatus  [enum]
+`src/myapp/status.py:12`
+
+### Members
+| Name     | Value       | Ordinal |
+|----------|-------------|---------|
+| PENDING  | "pending"   | 0       |
+| RUNNING  | "running"   | 1       |
+| FAILED   | "failed"    | 2       |
+```
+
+Sample constant output (Phase 4):
+
+```
+## lexibrary.symbolgraph.schema.SCHEMA_VERSION  [constant]
+`src/lexibrary/symbolgraph/schema.py:7`
+
+### Members
+| Name            | Value | Ordinal |
+|-----------------|-------|---------|
+| SCHEMA_VERSION  | 2     | 0       |
 ```
 
 **Related:**

@@ -7,3 +7,12 @@ comments:
     as instantiation targets. SymbolBuildResult.class_edge_unresolved_count was added
     to surface the new table counter.'
   date: '2026-04-11T10:58:51.757489Z'
+- body: 'Phase 4 (symbol-graph-4 group 5): the definitions pass now populates `symbol_members`
+    alongside the `symbols` table via `_insert_enum_members` and `_insert_constant_values`,
+    and a new post-pass-3 `_propagate_transitive_enums` walks the resolved inherits
+    graph (plus same-file class_edges_unresolved rows whose target_name matches a
+    local enum) to reclassify classes that transitively inherit from a known enum
+    base and re-extract their members via the Python parser''s _collect_enum_members
+    helper. refresh_file() mirrors the same member-insertion calls so incremental
+    reindex drops stale members via CASCADE on symbols.id.'
+  date: '2026-04-11T20:02:46.551857Z'

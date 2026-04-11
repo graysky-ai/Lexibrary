@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
-_ALLOWED_SYMBOL_TYPES = frozenset({"function", "method", "class"})
+_ALLOWED_SYMBOL_TYPES = frozenset({"function", "method", "class", "enum", "constant"})
 _ALLOWED_VISIBILITIES = frozenset({"public", "private"})
 
 
@@ -20,6 +20,42 @@ class ConstantSig(BaseModel):
     """Represents a module-level constant or exported variable."""
 
     name: str
+    type_annotation: str | None = None
+
+
+class EnumMemberSig(BaseModel):
+    """Represents a single member of an enum definition.
+
+    Emitted by the Python and TypeScript parsers alongside the enum's
+    ``SymbolDefinition``. ``value`` holds the source text of the member's
+    RHS literal (for example ``'"pending"'`` for a StrEnum member or
+    ``"10"`` for an IntEnum member). ``value`` is ``None`` when the RHS
+    is a call like ``auto()`` or otherwise not a simple literal.
+    ``ordinal`` is the zero-based position of the member within the enum
+    body as it appears in source.
+    """
+
+    name: str
+    value: str | None = None
+    ordinal: int
+
+
+class ConstantValue(BaseModel):
+    """Represents a module-level constant assignment with a literal RHS.
+
+    Emitted by the Python, TypeScript, and JavaScript parsers alongside
+    the constant's ``SymbolDefinition``. ``value`` holds the source text
+    of the RHS literal (for example ``'"myapp"'`` or ``"30.0"``).
+    ``value`` is ``None`` when the RHS is not a simple literal (and the
+    constant should not be recorded in ``symbol_members``). ``line`` is
+    the 1-based line number of the assignment. ``type_annotation`` holds
+    the source text of the type annotation if present, otherwise
+    ``None``.
+    """
+
+    name: str
+    value: str | None = None
+    line: int
     type_annotation: str | None = None
 
 
@@ -142,8 +178,11 @@ class SymbolExtract(BaseModel):
     Call extraction and class-edge extraction run off the same parse tree
     and share this container. ``class_edges`` records ``inherits`` and
     ``instantiates`` edges emitted by the parsers; the symbol-graph builder
-    resolves them against known symbols in pass 3. Phase 4 will add
-    ``enum_members`` and ``module_constants``.
+    resolves them against known symbols in pass 3. ``enums`` maps each
+    enum's qualified name to its list of member signatures, and
+    ``constants`` holds module-level constant assignments with literal
+    RHS values — both are emitted alongside ``definitions`` and consumed
+    by the builder to populate ``symbol_members`` rows.
     """
 
     file_path: str
@@ -151,3 +190,5 @@ class SymbolExtract(BaseModel):
     definitions: list[SymbolDefinition] = Field(default_factory=list)
     calls: list[CallSite] = Field(default_factory=list)
     class_edges: list[ClassEdgeSite] = Field(default_factory=list)
+    enums: list[tuple[str, list[EnumMemberSig]]] = Field(default_factory=list)
+    constants: list[ConstantValue] = Field(default_factory=list)

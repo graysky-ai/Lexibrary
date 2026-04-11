@@ -40,7 +40,7 @@ from lexibrary.utils.paths import symbols_db_path
 if TYPE_CHECKING:
     from tree_sitter import Tree
 
-    from lexibrary.ast_parser.models import SymbolExtract
+    from lexibrary.ast_parser.models import EnumMemberSig, SymbolExtract
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +197,13 @@ def build_symbol_graph(
                         ),
                     )
 
+                # Populate ``symbol_members`` for enums and constants. The
+                # parser emits ``enum`` symbols directly (Decision D6), so
+                # the matching parent row is already in place from the
+                # definition-insert loop above — we just need the row id.
+                result.member_count += _insert_enum_members(conn, file_id, extract)
+                result.member_count += _insert_constant_values(conn, file_id, extract)
+
                 extracts.append((src, extract))
                 result.file_count += 1
                 result.symbol_count += len(extract.definitions)
@@ -300,6 +307,23 @@ def build_symbol_graph(
                         (source_id, target_id, edge.edge_type, edge.line, None),
                     )
                     result.class_edge_count += 1
+
+            # ---- Pass 4: transitive enum promotion -----------------------
+            # Runs after Phase 3's class edges are resolved so the
+            # inherits graph is fully populated. A Python class like
+            # ``class BuildStatus(MyLocalBase):`` will be emitted by the
+            # parser with ``symbol_type='class'`` because ``MyLocalBase``
+            # is not in :data:`_PY_ENUM_BASES`. This pass walks the
+            # ``class_edges`` inherits graph outward from the known enum
+            # roots (parser direct-match) and re-classifies every class
+            # that transitively reaches one of them, then re-parses the
+            # owning source file to capture their members.
+            result.member_count += _propagate_transitive_enums(
+                conn,
+                extracts,
+                file_id_map,
+                project_root,
+            )
 
             # ---- Meta rows ------------------------------------------------
             # Written inside the transaction so readers never see stale
@@ -526,6 +550,15 @@ def refresh_file(
                         definition.parent_class,
                     ),
                 )
+
+            # Populate ``symbol_members`` for enums and constants in the
+            # refreshed file. The old symbol rows were already deleted at
+            # Step 2 above, and the CASCADE on ``symbol_members.symbol_id``
+            # took their member rows with them, so we only need to insert
+            # the new rows — no explicit DELETE required.
+            result.member_count += _insert_enum_members(conn, new_file_id, extract)
+            result.member_count += _insert_constant_values(conn, new_file_id, extract)
+
             result.file_count += 1
             result.symbol_count += len(extract.definitions)
 
@@ -759,3 +792,319 @@ def _lookup_symbol_id(
     if row is None:
         return None
     return int(row[0])
+
+
+def _insert_enum_members(
+    conn: sqlite3.Connection,
+    file_id: int,
+    extract: SymbolExtract,
+) -> int:
+    """Insert ``symbol_members`` rows for every enum in ``extract``.
+
+    Each ``(qualified_name, members)`` tuple in ``extract.enums`` points at
+    a symbol already emitted by the parser with ``symbol_type='enum'`` —
+    the parent row is looked up via :func:`_lookup_symbol_id`. Missing
+    parent rows are skipped silently; the parser is responsible for
+    keeping ``extract.enums`` in sync with the emitted definitions.
+
+    Returns the number of member rows inserted so the caller can update
+    ``SymbolBuildResult.member_count``.
+    """
+    inserted = 0
+    for qualified_name, members in extract.enums:
+        enum_symbol_id = _lookup_symbol_id(conn, file_id, qualified_name)
+        if enum_symbol_id is None:
+            continue
+        for member in members:
+            conn.execute(
+                "INSERT OR IGNORE INTO symbol_members "
+                "(symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+                (enum_symbol_id, member.name, member.value, member.ordinal),
+            )
+            inserted += 1
+    return inserted
+
+
+def _insert_constant_values(
+    conn: sqlite3.Connection,
+    file_id: int,
+    extract: SymbolExtract,
+) -> int:
+    """Insert a ``symbol_members`` row for every constant in ``extract``.
+
+    Each :class:`ConstantValue` corresponds to a ``SymbolDefinition`` with
+    ``symbol_type='constant'``, ``parent_class=None`` and matching
+    ``name``. The ``qualified_name`` on that definition is the parent-row
+    lookup key — we find it in ``extract.definitions`` rather than
+    re-deriving the module path here, which keeps the two emission paths
+    (Python's dotted packages and TS/JS's file-stem prefix) uniform.
+
+    Constants whose ``value`` is ``None`` are skipped per Decision D3 in
+    ``openspec/changes/symbol-graph-4/design.md`` — a member row without a
+    literal would be uninformative for value search.
+
+    Returns the number of member rows inserted so the caller can update
+    ``SymbolBuildResult.member_count``.
+    """
+    if not extract.constants:
+        return 0
+
+    # Build a name → qualified_name map so we can resolve each
+    # ``ConstantValue`` back to the definition emitted alongside it
+    # without scanning all definitions inside the per-constant loop.
+    constant_qnames: dict[str, str] = {}
+    for definition in extract.definitions:
+        if definition.symbol_type == "constant" and definition.parent_class is None:
+            constant_qnames[definition.name] = definition.qualified_name
+
+    inserted = 0
+    for const in extract.constants:
+        if const.value is None:
+            continue
+        qualified_name = constant_qnames.get(const.name)
+        if qualified_name is None:
+            continue
+        const_symbol_id = _lookup_symbol_id(conn, file_id, qualified_name)
+        if const_symbol_id is None:
+            continue
+        conn.execute(
+            "INSERT OR IGNORE INTO symbol_members "
+            "(symbol_id, name, value, ordinal) VALUES (?, ?, ?, 0)",
+            (const_symbol_id, const.name, const.value),
+        )
+        inserted += 1
+    return inserted
+
+
+def _propagate_transitive_enums(
+    conn: sqlite3.Connection,
+    extracts: list[tuple[Path, SymbolExtract]],
+    file_id_map: dict[str, int],
+    project_root: Path,
+) -> int:
+    """Reclassify classes that transitively inherit from a known enum base.
+
+    Runs as a second pass after Phase 3's ``class_edges`` are resolved so
+    every inherits edge is available (either resolved or unresolved).
+    Starting from every symbol already marked ``symbol_type='enum'`` in
+    the ``symbols`` table (the parser's direct-base matches), this walks
+    the inheritance DAG outward to find every class that reaches an enum
+    root via any chain of ``inherits`` edges.
+
+    For each newly-discovered enum, the walker:
+
+    1. ``UPDATE``s the ``symbols`` row to set ``symbol_type='enum'``.
+    2. Re-opens the owning source file, runs the Python parser's enum
+       body walker on the original AST subtree, and inserts the
+       resulting :class:`EnumMemberSig` rows into ``symbol_members``.
+
+    Only Python classes are reclassified — the walker skips rows whose
+    owning file is not a ``.py``/``.pyi`` file because TypeScript enums
+    are already caught at parse time (``enum_declaration`` is a distinct
+    node type) and JavaScript has no enum concept at all. Returns the
+    number of member rows inserted so the caller can update
+    ``SymbolBuildResult.member_count``.
+
+    Unresolved-edge quirk: Phase 3's :meth:`PythonResolver.resolve_class_name`
+    filters candidate rows by ``symbol_type='class'``, so an inherits
+    edge whose target has already been emitted as ``symbol_type='enum'``
+    by the parser (for example ``class MyBase(StrEnum)``) ends up in
+    ``class_edges_unresolved`` instead of ``class_edges``. This pass
+    therefore reads both tables and promotes unresolved rows whose
+    ``target_name`` matches a local enum row in the same source file.
+    """
+    # Build a directed graph: parent_id -> set of child_ids.
+    # We want "which classes inherit from this enum?", so the edge
+    # direction is from the *target* (parent / base class) to the
+    # *source* (derived class). Phase 3's class_edges table already
+    # stores the resolved ids — no re-resolution needed for those rows.
+    inherits_rows = conn.execute(
+        "SELECT source_id, target_id FROM class_edges WHERE edge_type = 'inherits'",
+    ).fetchall()
+    children_by_parent: dict[int, list[int]] = {}
+    for source_id, target_id in inherits_rows:
+        children_by_parent.setdefault(int(target_id), []).append(int(source_id))
+
+    # Promote same-file ``class_edges_unresolved`` rows whose target
+    # name matches a local enum symbol. This is the path a
+    # ``class BuildStatus(MyBase)`` edge travels when ``MyBase`` is
+    # parser-direct-matched as an enum — the Phase 3 class-name
+    # resolver skips enum rows, so the edge lands in the unresolved
+    # table. Cross-file enum bases are left unresolved here (the same
+    # limitation as Phase 3 cross-file class resolution).
+    unresolved_rows = conn.execute(
+        "SELECT ceu.source_id, ceu.target_name, source_sym.file_id "
+        "FROM class_edges_unresolved ceu "
+        "JOIN symbols source_sym ON source_sym.id = ceu.source_id "
+        "WHERE ceu.edge_type = 'inherits'",
+    ).fetchall()
+    for source_id, target_name, source_file_id in unresolved_rows:
+        target_row = conn.execute(
+            "SELECT id FROM symbols WHERE file_id = ? AND name = ? AND symbol_type = 'enum'",
+            (int(source_file_id), str(target_name)),
+        ).fetchone()
+        if target_row is None:
+            continue
+        target_id = int(target_row[0])
+        children_by_parent.setdefault(target_id, []).append(int(source_id))
+
+    if not children_by_parent:
+        return 0
+
+    # Seed the frontier with every row already marked as an enum. These
+    # are the parser-direct matches (``class Foo(StrEnum)``). The graph
+    # walk expands outward to the transitive cases
+    # (``class Foo(LocalBase)`` where ``LocalBase(StrEnum)``).
+    enum_root_rows = conn.execute(
+        "SELECT id FROM symbols WHERE symbol_type = 'enum'",
+    ).fetchall()
+    enum_ids: set[int] = {int(row[0]) for row in enum_root_rows}
+
+    # Breadth-first walk. Only newly-discovered ids need to be processed
+    # (updated to enum + members extracted). The seed roots already have
+    # their members from the parser.
+    newly_enum: list[int] = []
+    frontier: list[int] = list(enum_ids)
+    while frontier:
+        next_frontier: list[int] = []
+        for parent_id in frontier:
+            for child_id in children_by_parent.get(parent_id, ()):
+                if child_id in enum_ids:
+                    continue
+                enum_ids.add(child_id)
+                newly_enum.append(child_id)
+                next_frontier.append(child_id)
+        frontier = next_frontier
+
+    if not newly_enum:
+        return 0
+
+    # Map each newly-promoted symbol back to its owning source file so we
+    # can re-parse the file and extract enum members from the class body.
+    # ``extracts`` already holds every parsed tree we saw in pass 1, so we
+    # can reuse the in-memory extract objects rather than re-parsing the
+    # file from disk. Match by ``(file_id, qualified_name)``.
+    qname_by_id: dict[int, tuple[int, str]] = {}
+    for symbol_id in newly_enum:
+        row = conn.execute(
+            "SELECT file_id, qualified_name FROM symbols WHERE id = ?",
+            (symbol_id,),
+        ).fetchone()
+        if row is None:
+            continue
+        qname_by_id[symbol_id] = (int(row[0]), str(row[1]))
+
+    # Build a reverse lookup ``file_id -> (path, extract)`` so we can
+    # quickly find the right extract for each promoted symbol.
+    extract_by_file_id: dict[int, tuple[Path, SymbolExtract]] = {}
+    for src_path, extract in extracts:
+        rel_path = str(src_path.relative_to(project_root))
+        file_id = file_id_map.get(rel_path)
+        if file_id is not None:
+            extract_by_file_id[file_id] = (src_path, extract)
+
+    inserted = 0
+    for symbol_id in newly_enum:
+        lookup = qname_by_id.get(symbol_id)
+        if lookup is None:
+            continue
+        file_id, qualified_name = lookup
+
+        src_lookup = extract_by_file_id.get(file_id)
+        if src_lookup is None:
+            continue
+        src_path, _ = src_lookup
+
+        # Only Python files get transitive promotion — TS enums are
+        # parsed directly and JS has no enum concept.
+        if src_path.suffix.lower() not in _PY_EXTENSIONS:
+            continue
+
+        # Flip the row's symbol_type so downstream queries treat it as
+        # an enum. The UNIQUE constraint on ``symbols`` includes
+        # ``symbol_type`` so this UPDATE cannot collide with a sibling
+        # class row of the same name unless the source file actually
+        # defines both — which is impossible in Python syntax.
+        conn.execute(
+            "UPDATE symbols SET symbol_type = 'enum' WHERE id = ?",
+            (symbol_id,),
+        )
+
+        # Re-parse the file and locate the class_definition node whose
+        # textual name matches this promoted symbol, then walk its body
+        # with the parser's enum-member collector. This is cheaper than
+        # caching every parsed tree from pass 1 and keeps the walker's
+        # state isolated from the main definitions pass.
+        members = _extract_enum_members_for_qualified_name(src_path, qualified_name)
+        for member in members:
+            conn.execute(
+                "INSERT OR IGNORE INTO symbol_members "
+                "(symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+                (symbol_id, member.name, member.value, member.ordinal),
+            )
+            inserted += 1
+
+    return inserted
+
+
+def _extract_enum_members_for_qualified_name(
+    file_path: Path,
+    qualified_name: str,
+) -> list[EnumMemberSig]:
+    """Re-parse ``file_path`` and return the member list for a promoted enum.
+
+    Used only by :func:`_propagate_transitive_enums` to pick up members
+    for classes that were not detected as enums at parse time. The
+    transitive walker already knows the symbol's ``qualified_name``
+    (``pkg.module.BuildStatus``); we match on the trailing component
+    against the class name in the AST so nested classes of the same
+    name in other modules cannot collide.
+
+    Returns an empty list when the file cannot be parsed, when the
+    matching class_definition cannot be located, or when the body is
+    missing — the caller treats an empty list as "nothing to insert".
+    """
+    # Deferred import for the same reason as the other builder imports:
+    # ``ast_parser.python_parser`` transitively imports from this module
+    # at package-init time.
+    from lexibrary.ast_parser.python_parser import (
+        _child_by_field,
+        _children,
+        _collect_enum_members,
+        _node_text,
+        parse_python_tree,
+    )
+
+    parsed = parse_python_tree(file_path)
+    if parsed is None:
+        return []
+    tree, _source_bytes = parsed
+    root = tree.root_node
+    if root is None:
+        return []
+
+    # Only the trailing identifier (after the last dot) needs to match —
+    # the enclosing module path is already guaranteed to match because
+    # we resolved the symbol row back to its owning file_id.
+    class_name = qualified_name.rsplit(".", 1)[-1]
+
+    for child in _children(root):
+        child_type = getattr(child, "type", "")
+        if child_type == "decorated_definition":
+            inner = _child_by_field(child, "definition")
+            if inner is None:
+                continue
+            child = inner
+            child_type = getattr(child, "type", "")
+        if child_type != "class_definition":
+            continue
+        name_node = _child_by_field(child, "name")
+        if name_node is None:
+            continue
+        if _node_text(name_node) != class_name:
+            continue
+        body_node = _child_by_field(child, "body")
+        if body_node is None:
+            return []
+        return _collect_enum_members(body_node)
+    return []

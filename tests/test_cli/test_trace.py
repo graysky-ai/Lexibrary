@@ -25,6 +25,12 @@ symbol-graph-3 group 5.8 adds:
    fixture surfaces ``### Base classes`` and ``### Subclasses and
    instantiation sites`` blocks plus the trailing "Unresolved bases"
    line for external bases.
+
+symbol-graph-4 group 6.8 adds:
+
+9. ``test_trace_renders_members_section`` — a Phase 4 enum with three
+   ``symbol_members`` rows surfaces a ``### Members`` block with a
+   ``Name | Value | Ordinal`` Markdown table in the trace output.
 """
 
 from __future__ import annotations
@@ -354,3 +360,67 @@ def test_trace_renders_class_sections(tmp_path: Path, monkeypatch: pytest.Monkey
     # No resolved base class row and no inbound class edges.
     assert "### Base classes" not in thing_result.output
     assert "### Subclasses and instantiation sites" not in thing_result.output
+
+
+# ---------------------------------------------------------------------------
+# (9) Members section (Phase 4)
+# ---------------------------------------------------------------------------
+
+
+def test_trace_renders_members_section(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A symbol with ``symbol_members`` rows renders a ``### Members`` table.
+
+    Reclassifies the fixture's ``bar`` function as an enum and attaches
+    three member rows to it so ``lexi trace bar`` produces:
+
+    - The standard header / file:line block.
+    - A ``### Members`` section with a ``Name | Value | Ordinal``
+      Markdown table listing the three variants in source order.
+
+    The existing ``### Callers`` block for ``bar`` must still render
+    above the Members block so the two phases compose cleanly.
+    """
+    project = make_project(tmp_path)
+    make_linkgraph(project)
+    ids = seed_phase2_fixture(project)
+
+    graph = open_symbol_graph(project)
+    try:
+        conn = graph._conn
+        conn.execute(
+            "UPDATE symbols SET symbol_type = 'enum' WHERE id = ?",
+            (ids["bar_id"],),
+        )
+        conn.execute(
+            "INSERT INTO symbol_members (symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+            (ids["bar_id"], "PENDING", '"pending"', 0),
+        )
+        conn.execute(
+            "INSERT INTO symbol_members (symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+            (ids["bar_id"], "RUNNING", '"running"', 1),
+        )
+        conn.execute(
+            "INSERT INTO symbol_members (symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+            (ids["bar_id"], "FAILED", '"failed"', 2),
+        )
+        conn.commit()
+    finally:
+        graph.close()
+
+    monkeypatch.chdir(project)
+    result = runner.invoke(lexi_app, ["trace", "bar"])
+
+    assert result.exit_code == 0, result.output
+    # Header still shows the reclassified symbol_type.
+    assert "## a.bar  [enum]" in result.output
+    # Members block surfaces all three variants with their values.
+    assert "### Members" in result.output
+    assert "Name" in result.output
+    assert "Value" in result.output
+    assert "Ordinal" in result.output
+    assert "PENDING" in result.output
+    assert '"pending"' in result.output
+    assert "RUNNING" in result.output
+    assert "FAILED" in result.output
+    # The existing Callers block for ``bar`` is still rendered alongside.
+    assert "### Callers" in result.output

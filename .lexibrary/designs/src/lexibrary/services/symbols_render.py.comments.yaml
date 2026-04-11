@@ -16,3 +16,10 @@ comments:
     \ 'Unresolved bases: ...' line for unresolved_parents. Each block is omitted when\
     \ its data is empty, preserving the existing public contract for non-class symbols."
   date: '2026-04-11T11:15:22.527786Z'
+- body: 'symbol-graph-4 group 6.4 adds a trailing ### Members block after the unresolved_parents
+    line. Renders a Name | Value | Ordinal Markdown table via the existing markdown_table
+    helper. Value column is blank when the member value is None (e.g. Python auto()
+    enum members); Ordinal column is blank when ordinal is None. The section is omitted
+    entirely when TraceResult.members is empty so non-enum, non-constant traces are
+    unaffected.'
+  date: '2026-04-11T20:14:01.744707Z'

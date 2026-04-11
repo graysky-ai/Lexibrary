@@ -5,3 +5,9 @@ comments:
     unresolved external bases) so agents know to use it as the pre-refactor blast-radius
     check for classes, parallel to the existing per-function trace rule.'
   date: '2026-04-11T17:16:09.430781Z'
+- body: Phase 4 (symbol-graph-4) adds a debugging tip under 'Debugging and Problem
+    Solving' directing agents to run 'lexi search --type symbol <value>' whenever
+    an unfamiliar string or integer literal appears in a bug. The symbol graph now
+    indexes enum member values and module-level constants, so the canonical enum or
+    constant surfaces directly without grepping for the literal.
+  date: '2026-04-11T22:09:04.609450Z'

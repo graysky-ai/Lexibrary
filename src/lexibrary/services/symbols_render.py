@@ -9,9 +9,10 @@ edge category) with blank-line separators between results.
 
 Phase 3 (``symbol-graph-3``) extends :func:`render_trace` with class
 hierarchy sections (``Base classes``, ``Subclasses and instantiation
-sites``, and a trailing ``Unresolved bases`` line). Phase 4 will add
-enum/constant members. Both extensions plug in after the existing call
-sections so the public contract stays stable.
+sites``, and a trailing ``Unresolved bases`` line). Phase 4
+(``symbol-graph-4``) adds a trailing ``### Members`` block that renders
+enum variants and constant values. All extensions plug in after the
+existing call sections so the public contract stays stable.
 """
 
 from __future__ import annotations
@@ -44,6 +45,11 @@ def render_trace(query: str, results: list[TraceResult]) -> None:
     - ``Unresolved bases: ...`` — a trailing line listing every
       unresolved outbound class edge target (e.g. ``BaseModel``,
       ``Enum``), omitted when ``unresolved_parents`` is empty.
+    - ``### Members`` — a Markdown table of enum variants or constant
+      values keyed by ``(name, value, ordinal)``, omitted when
+      ``members`` is empty. The ``ordinal`` column is blank when the
+      extractor did not capture a source-order position (e.g. for a
+      single-row constant member).
 
     Results are separated by a blank line. *query* is accepted for
     forward compatibility (future renderers may echo it back) but is
@@ -122,4 +128,16 @@ def render_trace(query: str, results: list[TraceResult]) -> None:
         if result.unresolved_parents:
             info("")
             info("Unresolved bases: " + ", ".join(u.target_name for u in result.unresolved_parents))
-        # Phase 4 extends this to render enum members.
+
+        if result.members:
+            info("")
+            info("### Members")
+            member_rows = [
+                [
+                    m.name,
+                    m.value if m.value is not None else "",
+                    "" if m.ordinal is None else str(m.ordinal),
+                ]
+                for m in result.members
+            ]
+            info(markdown_table(["Name", "Value", "Ordinal"], member_rows))

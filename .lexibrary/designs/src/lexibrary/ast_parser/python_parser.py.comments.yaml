@@ -22,3 +22,18 @@ comments:
     \ helper function) are filtered by the builder's pass 3 symbol-type check \u2014\
     \ the parser stays a pure AST layer."
   date: '2026-04-11T10:44:41.197892Z'
+- body: "Group 2 of symbol-graph-4: added syntactic enum detection via _PY_ENUM_BASES\
+    \ frozen set (Enum/StrEnum/IntEnum/Flag/IntFlag and enum.*-prefixed variants)\
+    \ and module-level constant extraction via ALL_CAPS-or-annotated heuristic. Enums\
+    \ now emit SymbolDefinition(symbol_type='enum', ...) with a parallel (qualified_name,\
+    \ members) entry in extract.enums, where each EnumMemberSig records the raw RHS\
+    \ source text (or None for auto()). Constants at module scope produce SymbolDefinition(symbol_type='constant',\
+    \ ...) plus a ConstantValue carrying the literal value, line, and optional type\
+    \ annotation. Nested assignments inside function or class bodies are intentionally\
+    \ NOT captured; transitive enum base detection (e.g. class Foo(MyBase) where MyBase(StrEnum))\
+    \ is deferred to the builder's second pass in group 5. The _is_constant_name helper\
+    \ treats an underscore-prefixed ALL_CAPS name (_PRIVATE) as a valid constant with\
+    \ visibility='private' \u2014 this is a documented extension of the stated regex\
+    \ heuristic to cover the conventional private-constant spelling required by the\
+    \ test plan."
+  date: '2026-04-11T19:50:10.835754Z'

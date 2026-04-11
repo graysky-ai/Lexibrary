@@ -668,3 +668,222 @@ def test_trace_class_with_unresolved_bases(tmp_path: Path) -> None:
         names = sorted(u.target_name for u in result.unresolved_parents)
         assert names == ["BaseModel", "Enum"]
         assert all(u.edge_type == "inherits" for u in result.unresolved_parents)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — enum / constant members surfaced through trace() and search()
+# ---------------------------------------------------------------------------
+
+
+def _seed_phase4_members_fixture(project_root: Path) -> dict[str, int]:
+    """Seed a minimal Phase 4 corpus with one enum and one constant.
+
+    Builds on :func:`_seed_phase2_fixture` by reclassifying ``bar`` as an
+    enum, attaching three member rows to it, and inserting a brand-new
+    ``SCHEMA_VERSION`` constant symbol in ``src/a.py`` with a single
+    member row. Returns a dict of the ids the tests need (``bar_id``,
+    ``constant_id``) so assertions can reference them directly.
+    """
+    ids = _seed_phase2_fixture(project_root)
+
+    graph = open_symbol_graph(project_root)
+    conn = graph._conn
+    try:
+        # Reclassify bar as an enum and give it three members whose
+        # values are the strings the tests search for.
+        conn.execute(
+            "UPDATE symbols SET symbol_type = 'enum' WHERE id = ?",
+            (ids["bar_id"],),
+        )
+        conn.execute(
+            "INSERT INTO symbol_members (symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+            (ids["bar_id"], "PENDING", '"pending"', 0),
+        )
+        conn.execute(
+            "INSERT INTO symbol_members (symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+            (ids["bar_id"], "RUNNING", '"running"', 1),
+        )
+        conn.execute(
+            "INSERT INTO symbol_members (symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+            (ids["bar_id"], "FAILED", '"failed"', 2),
+        )
+
+        # Add a constant SCHEMA_VERSION with value "2" in src/a.py. The
+        # constant carries a single member row — this mirrors how the
+        # Phase 4 builder persists constants.
+        cur = conn.execute(
+            "INSERT INTO symbols "
+            "(file_id, name, qualified_name, symbol_type, line_start, "
+            "line_end, visibility, parent_class) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+            (
+                ids["file_a_id"],
+                "SCHEMA_VERSION",
+                "a.SCHEMA_VERSION",
+                "constant",
+                10,
+                10,
+                "public",
+            ),
+        )
+        schema_version_id = int(cur.lastrowid or 0)
+        conn.execute(
+            "INSERT INTO symbol_members (symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+            (schema_version_id, "SCHEMA_VERSION", "2", 0),
+        )
+        conn.commit()
+    finally:
+        graph.close()
+
+    return {
+        **ids,
+        "constant_id": schema_version_id,
+    }
+
+
+def test_trace_enum_includes_members(tmp_path: Path) -> None:
+    """Tracing an enum populates ``TraceResult.members`` in source order."""
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    ids = _seed_phase4_members_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        response = svc.trace("bar")
+        assert len(response.results) == 1
+        result = response.results[0]
+
+        assert result.symbol.id == ids["bar_id"]
+        assert result.symbol.symbol_type == "enum"
+        # Three members, ordered by ordinal.
+        assert len(result.members) == 3
+        names = [m.name for m in result.members]
+        values = [m.value for m in result.members]
+        ordinals = [m.ordinal for m in result.members]
+        assert names == ["PENDING", "RUNNING", "FAILED"]
+        assert values == ['"pending"', '"running"', '"failed"']
+        assert ordinals == [0, 1, 2]
+        # Parent metadata is threaded through every row.
+        assert all(m.parent.id == ids["bar_id"] for m in result.members)
+
+
+def test_trace_constant_includes_single_member(tmp_path: Path) -> None:
+    """Tracing a constant populates a single-member ``TraceResult.members``."""
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    ids = _seed_phase4_members_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        response = svc.trace("SCHEMA_VERSION")
+        assert len(response.results) == 1
+        result = response.results[0]
+
+        assert result.symbol.id == ids["constant_id"]
+        assert result.symbol.symbol_type == "constant"
+        assert len(result.members) == 1
+        member = result.members[0]
+        assert member.name == "SCHEMA_VERSION"
+        assert member.value == "2"
+        assert member.ordinal == 0
+
+
+def test_search_matches_member_value(tmp_path: Path) -> None:
+    """``search_symbols('pending')`` surfaces the enum whose variant has that value.
+
+    The name pass against ``symbols.name`` / ``symbols.qualified_name``
+    does not hit any row for ``pending`` in the seed, so the enum can
+    only come back via the member-value pass. The hit must therefore
+    score ``0.5`` — the sentinel that distinguishes a value match from
+    a name match.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    ids = _seed_phase4_members_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        hits = svc.search_symbols("pending")
+        assert len(hits) == 1
+        hit = hits[0]
+        assert hit.symbol.id == ids["bar_id"]
+        assert hit.symbol.symbol_type == "enum"
+        assert hit.score == 0.5
+
+
+def test_search_value_match_deduped_by_name_match(tmp_path: Path) -> None:
+    """A symbol already returned by the name pass is not re-added by the value pass.
+
+    Searching for ``"bar"`` hits the enum via the name pass (score
+    ``0.0``). The enum's members do not contain ``"bar"`` so the value
+    pass returns nothing for this query, but the test also guards
+    against a regression where both passes re-add the same parent.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    _seed_phase4_members_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        hits = svc.search_symbols("bar")
+        # The enum (renamed from the ``bar`` fixture) matches by name;
+        # no duplicates.
+        ids_seen = [hit.symbol.id for hit in hits]
+        assert len(ids_seen) == len(set(ids_seen))
+        # The original name match scores 0.0.
+        assert any(hit.score == 0.0 and hit.symbol.name == "bar" for hit in hits)
+
+
+def test_search_value_match_respects_limit(tmp_path: Path) -> None:
+    """``limit`` caps results across both name and value passes combined.
+
+    Seeds four constants whose names do NOT contain the search needle
+    but whose member values all do; with ``limit=2`` the service must
+    return exactly two hits rather than all four. The name pass against
+    ``symbols.name`` / ``symbols.qualified_name`` contributes nothing,
+    so every returned hit originates in the value pass and scores
+    ``0.5``.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    _seed_phase2_fixture(project)
+
+    # Attach four parents whose names are plain words (no substring
+    # match for the needle below) but whose member values contain the
+    # needle so only the value pass fires.
+    graph = open_symbol_graph(project)
+    try:
+        conn = graph._conn
+        conn.execute(
+            "INSERT INTO files (path, language, last_hash) VALUES (?, ?, ?)",
+            ("src/c.py", "python", "hash-c"),
+        )
+        file_c_id = int(conn.execute("SELECT id FROM files WHERE path = 'src/c.py'").fetchone()[0])
+
+        def _add_constant(name: str, qname: str, value: str) -> int:
+            cur = conn.execute(
+                "INSERT INTO symbols "
+                "(file_id, name, qualified_name, symbol_type, line_start, "
+                "line_end, visibility, parent_class) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+                (file_c_id, name, qname, "constant", 1, 1, "public"),
+            )
+            sym_id = int(cur.lastrowid or 0)
+            conn.execute(
+                "INSERT INTO symbol_members (symbol_id, name, value, ordinal) VALUES (?, ?, ?, ?)",
+                (sym_id, name, value, 0),
+            )
+            return sym_id
+
+        # The needle ``zzxxyy`` does not appear in any symbol name or
+        # qualified name, so the name pass must contribute zero hits.
+        _add_constant("ALPHA", "c.ALPHA", '"zzxxyy_alpha"')
+        _add_constant("BETA", "c.BETA", '"zzxxyy_beta"')
+        _add_constant("GAMMA", "c.GAMMA", '"zzxxyy_gamma"')
+        _add_constant("DELTA", "c.DELTA", '"zzxxyy_delta"')
+        conn.commit()
+    finally:
+        graph.close()
+
+    with SymbolQueryService(project) as svc:
+        hits = svc.search_symbols("zzxxyy", limit=2)
+        # Name pass contributes nothing for ``zzxxyy``; value pass would
+        # return four candidates; the combined cap is two.
+        assert len(hits) == 2
+        assert all(hit.score == 0.5 for hit in hits)

@@ -17,3 +17,12 @@ comments:
     ''new_expression'' constructors produce instantiates edges; qualified constructors
     (''new mod.Foo()'') are skipped because Phase 3 resolution only handles bare names.'
   date: '2026-04-11T10:44:47.883003Z'
+- body: 'symbol-graph-4 Group 3: added enum_declaration + const enum handling and
+    module-level constant extraction to the symbol pipeline. The InterfaceSkeleton
+    pipeline is unchanged. Only primitive literals (string/number/true/false/null/regex)
+    are indexed as constants; object literals, array literals, template strings with
+    substitutions, and arrow functions are excluded. Enum members handle both enum_assignment
+    (Name = value) and bare property_identifier (Name,) forms, assigning monotonic
+    zero-based ordinals in declaration order. export enum Foo is handled via existing
+    export_statement recursion in _collect_ts_top_level_definitions.'
+  date: '2026-04-11T19:46:03.576595Z'

@@ -261,6 +261,7 @@ class SymbolQueryService:
                     parents=self._symbol_graph.class_edges_from(sym.id),
                     children=self._symbol_graph.class_edges_to(sym.id),
                     unresolved_parents=self._symbol_graph.class_edges_unresolved_from(sym.id),
+                    members=self._symbol_graph.members_of(sym.id),
                 )
             )
 
@@ -270,12 +271,21 @@ class SymbolQueryService:
     def search_symbols(self, query: str, *, limit: int = 20) -> list[SymbolSearchHit]:
         """Return up to *limit* symbols matching *query* via a LIKE search.
 
-        The search matches against both ``symbols.name`` and
-        ``symbols.qualified_name``; results are ordered by ``name`` and
-        capped at *limit*. Wraps each row in a :class:`SymbolSearchHit`
-        (score stays at ``0.0`` in Phase 2 — ranking lands in a later
-        phase). Returns an empty list when the symbol graph is
-        unavailable.
+        The search runs two LIKE passes and combines the results:
+
+        1. A name / qualified-name pass against ``symbols`` (Phase 2
+           behaviour) — each hit scores ``0.0``.
+        2. A member-value pass via
+           :meth:`~lexibrary.symbolgraph.query.SymbolGraph.symbols_with_member_value_like`
+           so searching for a literal like ``"pending"`` surfaces the
+           canonical enum whose variant value is that string. Hits from
+           this pass are appended only when the parent symbol has not
+           already been returned by the name pass, and score ``0.5`` so
+           callers can distinguish "matched on name" from "matched via a
+           member value" without changing the return type.
+
+        Results are capped at *limit* across both passes combined.
+        Returns an empty list when the symbol graph is unavailable.
         """
         if self._symbol_graph is None:
             return []
@@ -288,7 +298,21 @@ class SymbolQueryService:
             + "ORDER BY s.name LIMIT ?",
             params,
         )
-        return [SymbolSearchHit(symbol=_row_to_symbol(row)) for row in rows]
+        results: list[SymbolSearchHit] = [
+            SymbolSearchHit(symbol=_row_to_symbol(row)) for row in rows
+        ]
+
+        value_hits = self._symbol_graph.symbols_with_member_value_like(query)
+        seen_ids = {hit.symbol.id for hit in results}
+        for sym in value_hits:
+            if len(results) >= limit:
+                break
+            if sym.id in seen_ids:
+                continue
+            results.append(SymbolSearchHit(symbol=sym, score=0.5))
+            seen_ids.add(sym.id)
+
+        return results
 
     def symbols_in_file(self, file_path: str) -> SymbolsInFileResponse:
         """Return every symbol declared in *file_path* plus staleness info.
