@@ -130,9 +130,7 @@ class TestConventionFile:
         assert cf.scope_paths == ["src/auth"]
 
     def test_scope_paths_multi(self) -> None:
-        fm = ConventionFileFrontmatter(
-            title="Test", id="CV-001", scope="src/cli/, src/services/"
-        )
+        fm = ConventionFileFrontmatter(title="Test", id="CV-001", scope="src/cli/, src/services/")
         cf = ConventionFile(frontmatter=fm)
         assert cf.scope_paths == ["src/cli", "src/services"]
 

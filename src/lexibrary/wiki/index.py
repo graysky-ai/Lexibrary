@@ -102,9 +102,7 @@ class ConceptIndex:
                     candidates.append(lower_alias)
                     candidate_to_concept[lower_alias] = concept
 
-        fuzzy_hits = difflib.get_close_matches(
-            needle, candidates, n=5, cutoff=0.6
-        )
+        fuzzy_hits = difflib.get_close_matches(needle, candidates, n=5, cutoff=0.6)
         fuzzy_matches: dict[str, ConceptFile] = {}
         for hit in fuzzy_hits:
             concept = candidate_to_concept[hit]

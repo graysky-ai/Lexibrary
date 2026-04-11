@@ -6,6 +6,23 @@ from pathlib import Path
 
 LEXIBRARY_DIR = ".lexibrary"
 DESIGNS_DIR = "designs"
+SYMBOLS_DB_FILENAME: str = "symbols.db"
+
+
+def symbols_db_path(project_root: Path) -> Path:
+    """Compute the path to the symbol graph SQLite database.
+
+    Maps a project root to ``<project_root>/.lexibrary/symbols.db``. The
+    symbol graph is stored as a sibling to ``index.db`` so its write cadence
+    and lifecycle stay independent of the link graph.
+
+    Args:
+        project_root: Absolute path to the project root.
+
+    Returns:
+        Absolute path to ``.lexibrary/symbols.db`` under *project_root*.
+    """
+    return project_root / LEXIBRARY_DIR / SYMBOLS_DB_FILENAME
 
 
 def mirror_path(project_root: Path, source_file: Path) -> Path:

@@ -45,6 +45,16 @@ def curate(
             help="Display the most recent curator report.",
         ),
     ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            help=(
+                "Emit per-dispatch detail lines. When combined with "
+                "--last-run, walks the persisted dispatched list."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Run the curator pipeline to detect and fix library issues.
 
@@ -55,7 +65,7 @@ def curate(
 
     # --last-run: display most recent report and exit
     if last_run:
-        _handle_last_run(project_root)
+        _handle_last_run(project_root, verbose=verbose)
         return
 
     # Validate --scope path exists
@@ -122,6 +132,9 @@ def curate(
             errored=report.errored,
             sub_agent_calls=report.sub_agent_calls,
             report_path=report.report_path,
+            stubbed=report.stubbed,
+            verbose=verbose,
+            dispatched_details=report.dispatched_details,
         )
 
     for level, msg in lines:
@@ -132,7 +145,7 @@ def curate(
         raise typer.Exit(1)
 
 
-def _handle_last_run(project_root: Path) -> None:
+def _handle_last_run(project_root: Path, *, verbose: bool = False) -> None:
     """Read and display the most recent curator report."""
     from lexibrary.services.curate_render import render_last_run  # noqa: PLC0415
 
@@ -149,5 +162,5 @@ def _handle_last_run(project_root: Path) -> None:
     latest = report_files[-1]
 
     _dispatch = {"info": info, "warn": warn, "error": error}
-    for level, msg in render_last_run(latest):
+    for level, msg in render_last_run(latest, verbose=verbose):
         _dispatch[level](msg)

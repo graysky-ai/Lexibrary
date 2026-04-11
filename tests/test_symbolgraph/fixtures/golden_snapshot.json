@@ -1,0 +1,116 @@
+{
+  "calls": [
+    {
+      "call_context": "self",
+      "callee": "pkg.animals.Dog.speak",
+      "caller": "pkg.animals.Dog.fetch",
+      "line": 16
+    },
+    {
+      "call_context": null,
+      "callee": "pkg.zoo.play_with_dog",
+      "caller": "pkg.zoo.greet",
+      "line": 14
+    },
+    {
+      "call_context": null,
+      "callee": "pkg.animals.Dog",
+      "caller": "pkg.zoo.play_with_dog",
+      "line": 9
+    }
+  ],
+  "files": [
+    {
+      "language": "python",
+      "path": "src/pkg/__init__.py"
+    },
+    {
+      "language": "python",
+      "path": "src/pkg/animals.py"
+    },
+    {
+      "language": "python",
+      "path": "src/pkg/zoo.py"
+    }
+  ],
+  "symbols": [
+    {
+      "file_path": "src/pkg/animals.py",
+      "line_end": 8,
+      "line_start": 6,
+      "name": "Animal",
+      "parent_class": null,
+      "qualified_name": "pkg.animals.Animal",
+      "symbol_type": "class",
+      "visibility": "public"
+    },
+    {
+      "file_path": "src/pkg/animals.py",
+      "line_end": 8,
+      "line_start": 7,
+      "name": "speak",
+      "parent_class": "Animal",
+      "qualified_name": "pkg.animals.Animal.speak",
+      "symbol_type": "method",
+      "visibility": "public"
+    },
+    {
+      "file_path": "src/pkg/animals.py",
+      "line_end": 16,
+      "line_start": 11,
+      "name": "Dog",
+      "parent_class": null,
+      "qualified_name": "pkg.animals.Dog",
+      "symbol_type": "class",
+      "visibility": "public"
+    },
+    {
+      "file_path": "src/pkg/animals.py",
+      "line_end": 13,
+      "line_start": 12,
+      "name": "speak",
+      "parent_class": "Dog",
+      "qualified_name": "pkg.animals.Dog.speak",
+      "symbol_type": "method",
+      "visibility": "public"
+    },
+    {
+      "file_path": "src/pkg/animals.py",
+      "line_end": 16,
+      "line_start": 15,
+      "name": "fetch",
+      "parent_class": "Dog",
+      "qualified_name": "pkg.animals.Dog.fetch",
+      "symbol_type": "method",
+      "visibility": "public"
+    },
+    {
+      "file_path": "src/pkg/zoo.py",
+      "line_end": 10,
+      "line_start": 8,
+      "name": "play_with_dog",
+      "parent_class": null,
+      "qualified_name": "pkg.zoo.play_with_dog",
+      "symbol_type": "function",
+      "visibility": "public"
+    },
+    {
+      "file_path": "src/pkg/zoo.py",
+      "line_end": 14,
+      "line_start": 13,
+      "name": "greet",
+      "parent_class": null,
+      "qualified_name": "pkg.zoo.greet",
+      "symbol_type": "function",
+      "visibility": "public"
+    }
+  ],
+  "unresolved_calls": [
+    {
+      "call_context": "dog",
+      "callee_name": "dog.fetch",
+      "caller": "pkg.zoo.play_with_dog",
+      "line": 10
+    }
+  ]
+}

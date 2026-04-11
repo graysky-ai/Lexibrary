@@ -10,12 +10,14 @@ Insights section of design files.  Each comment is classified as:
 - **actionable** -- bugs, questions, suggestions.
   Promoted to a Stack post or IWH signal.
 
-The write contract follows the shared design file write sequence:
-1. Serialize via ``serialize_design_file()``
-2. Write via ``atomic_write()``
-3. ``updated_by`` set to ``"curator"``
-4. ``source_hash`` and ``interface_hash`` computed fresh
-5. ``design_hash`` computed by the serializer
+The write contract is owned by the shared helper
+:func:`lexibrary.curator.write_contract.write_design_file_as_curator`,
+which stamps ``updated_by="curator"``, recomputes
+``source_hash``/``interface_hash`` from the current source file,
+serializes via :func:`serialize_design_file` (which computes
+``design_hash`` as a footer field), and writes atomically.  This module
+is responsible only for building the in-memory :class:`DesignFile` with
+the updated Insights section and preserved metadata.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from lexibrary.artifacts.design_file import (
     DesignFile,
@@ -38,11 +40,13 @@ from lexibrary.artifacts.design_file_parser import (
     parse_design_file_frontmatter,
 )
 from lexibrary.artifacts.design_file_serializer import serialize_design_file
-from lexibrary.ast_parser import compute_hashes
-from lexibrary.curator.models import SubAgentResult
+from lexibrary.curator.models import SubAgentResult, TriageItem
+from lexibrary.curator.write_contract import write_design_file_as_curator
 from lexibrary.lifecycle.comments import read_comments
 from lexibrary.lifecycle.models import ArtefactComment
-from lexibrary.utils.atomic import atomic_write
+
+if TYPE_CHECKING:
+    from lexibrary.curator.dispatch_context import DispatchContext
 
 logger = logging.getLogger(__name__)
 
@@ -263,16 +267,7 @@ def integrate_comments(
         else:
             preserved["Insights"] = stub_result.insights_content.strip()
 
-    # Compute fresh hashes
     source_rel = str(work_item.source_path.relative_to(project_root))
-    try:
-        fresh_source_hash, fresh_interface_hash = compute_hashes(work_item.source_path)
-    except Exception as exc:
-        return CommentIntegrationResult(
-            success=False,
-            message=f"Failed to compute hashes: {exc}",
-            llm_calls=stub_result.llm_calls,
-        )
 
     # Preserve existing frontmatter identity
     existing_fm = parse_design_file_frontmatter(work_item.design_path)
@@ -285,13 +280,17 @@ def integrate_comments(
         existing_fm.description if existing_fm is not None else f"Design file for {source_rel}"
     )
 
-    # Build updated DesignFile
+    # Build updated DesignFile.  ``updated_by`` and hash metadata are
+    # set by :func:`write_design_file_as_curator` below -- the helper
+    # stamps curator authorship and recomputes hashes from the on-disk
+    # source.  Passing placeholders here keeps the Pydantic model valid
+    # until the helper overwrites them.
     df = DesignFile(
         source_path=existing_df.source_path,
         frontmatter=DesignFileFrontmatter(
             description=description,
             id=design_id,
-            updated_by="curator",
+            updated_by="curator",  # re-stamped by the shared write helper
             status=existing_fm.status if existing_fm else "active",
         ),
         summary=existing_df.summary,
@@ -306,17 +305,17 @@ def integrate_comments(
         preserved_sections=preserved,
         metadata=StalenessMetadata(
             source=source_rel,
-            source_hash=fresh_source_hash,
-            interface_hash=fresh_interface_hash,
+            source_hash="",  # overwritten by the shared write helper
+            interface_hash=None,
             generated=datetime.now(UTC),
             generator="curator-comment-integration",
         ),
     )
 
-    # Serialize and write atomically
+    # Delegate the write contract: the helper sets updated_by,
+    # recomputes hashes, serializes, and atomically writes.
     try:
-        content = serialize_design_file(df)
-        atomic_write(work_item.design_path, content)
+        write_design_file_as_curator(df, work_item.design_path, project_root)
     except Exception as exc:
         return CommentIntegrationResult(
             success=False,
@@ -398,6 +397,85 @@ def comment_result_to_sub_agent_result(
         message=result.message,
         llm_calls=result.llm_calls,
     )
+
+
+def dispatch_comment_integration(
+    item: TriageItem,
+    ctx: DispatchContext,
+) -> SubAgentResult:
+    """Dispatch a comment integration item to the Comment Curator.
+
+    Reads sidecar comments, calls the Comment Curator sub-agent,
+    updates the design file Insights section, and handles Stack
+    post promotion for actionable comments.
+
+    Extracted from :class:`Coordinator._dispatch_comment_integration`
+    (Phase 1.5 dispatcher refactor).
+    """
+    from lexibrary.stack.helpers import stack_dir  # noqa: PLC0415
+
+    if item.comment_item is None:
+        return SubAgentResult(
+            success=False,
+            action_key="integrate_sidecar_comments",
+            path=item.source_item.path,
+            message="No comment item available for integration",
+        )
+
+    # Read the actual comments from sidecar
+    comments = read_comments(item.comment_item.comments_path)
+    if not comments:
+        return SubAgentResult(
+            success=True,
+            action_key="integrate_sidecar_comments",
+            path=item.source_item.path,
+            message="No comments to process",
+            llm_calls=0,
+        )
+
+    work_item = CommentWorkItem(
+        design_path=item.comment_item.design_path,
+        source_path=item.comment_item.source_path,
+        comments_path=item.comment_item.comments_path,
+        comments=comments,
+    )
+
+    try:
+        result = integrate_comments(work_item, ctx.project_root)
+    except Exception as exc:
+        ctx.summary.add(
+            "dispatch",
+            exc,
+            path=str(item.comment_item.source_path),
+        )
+        return SubAgentResult(
+            success=False,
+            action_key="integrate_sidecar_comments",
+            path=item.source_item.path,
+            message=f"Comment integration error: {exc}",
+        )
+
+    # Handle actionable comment promotion to Stack posts
+    if result.success:
+        sdir = stack_dir(ctx.project_root)
+        source_rel = str(item.comment_item.source_path.relative_to(ctx.project_root))
+        for classification in result.classifications:
+            if classification.disposition == "actionable":
+                try:
+                    promote_to_stack_post(
+                        sdir,
+                        source_path=source_rel,
+                        title=classification.promotion_title,
+                        problem=classification.promotion_problem,
+                    )
+                except Exception as exc:
+                    ctx.summary.add(
+                        "dispatch",
+                        exc,
+                        path=f"stack-promote:{source_rel}",
+                    )
+
+    return comment_result_to_sub_agent_result(result, item.source_item.path)
 
 
 # ---------------------------------------------------------------------------

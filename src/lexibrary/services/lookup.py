@@ -8,13 +8,16 @@ output or CLI dependencies.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lexibrary.artifacts.convention import ConventionFile
     from lexibrary.artifacts.playbook import PlaybookFile
+
+_logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -37,6 +40,29 @@ class ConceptSummary:
     name: str  # concept slug (e.g., "error-handling")
     status: str | None  # "active", "draft", "deprecated" -- None when only name is known
     summary: str | None  # one-line summary -- None in brief mode or when unavailable
+
+
+@dataclass
+class KeySymbolSummary:
+    """A public symbol declared in a file, with caller/callee counts.
+
+    Populated by :func:`build_file_lookup` from the symbol graph for the
+    "Key symbols" section of ``lexi lookup``. Methods are rendered under
+    their parent class by the render layer; the ``qualified_name`` is used
+    to derive the ``Class.method`` display form.
+
+    ``caller_count`` / ``callee_count`` come from a single
+    :meth:`~lexibrary.symbolgraph.query.SymbolGraph.symbol_call_counts`
+    query per file, so the renderer never has to issue a second query per
+    symbol.
+    """
+
+    name: str  # bare identifier (e.g., "update_project")
+    qualified_name: str | None  # dotted path (e.g., "pkg.mod.Class.method")
+    symbol_type: str  # 'function' | 'class' | 'method'
+    line_start: int  # 1-based source line
+    caller_count: int  # inbound call edges (how many callers point at this symbol)
+    callee_count: int  # outbound call edges (how many callees this symbol invokes)
 
 
 @dataclass
@@ -128,6 +154,22 @@ class LookupResult:
 
     concepts_linkgraph_available: bool = True
     """Whether concepts were populated from the link graph (True) or fell back to wikilinks."""
+
+    key_symbols: list[KeySymbolSummary] = field(default_factory=list)
+    """Public top-level symbols declared in this file, capped at 10 entries.
+
+    Populated from the symbol graph when ``config.symbols.enabled`` is True
+    and ``symbols.db`` exists. Empty when symbols are disabled, the graph is
+    missing, or the file has no public symbols.
+    """
+
+    key_symbols_total: int = 0
+    """Pre-cap count of public symbols in this file.
+
+    When ``key_symbols_total > len(key_symbols)``, the render layer emits a
+    ``… and N more`` overflow marker. Stays at ``0`` when ``key_symbols``
+    itself is empty.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -518,6 +560,9 @@ def build_file_lookup(
     # Apply display limit
     concepts_list = concepts_list[:concept_limit]
 
+    # Key symbols (public top-level + methods) from the symbol graph
+    key_symbols, key_symbols_total = _build_key_symbols(rel_target, project_root, config)
+
     # IWH signal peek
     iwh_text = _build_iwh_peek(project_root, target)
 
@@ -539,6 +584,8 @@ def build_file_lookup(
         siblings=siblings_list,
         concepts=concepts_list,
         concepts_linkgraph_available=linkgraph_available,
+        key_symbols=key_symbols,
+        key_symbols_total=key_symbols_total,
     )
 
 
@@ -660,3 +707,94 @@ def _build_known_issues(
     lines.append("")
 
     return "\n".join(lines)
+
+
+_KEY_SYMBOLS_DISPLAY_CAP = 10
+
+
+def _build_key_symbols(
+    rel_target: str,
+    project_root: Path,
+    config: object,
+) -> tuple[list[KeySymbolSummary], int]:
+    """Gather public symbols from the symbol graph for the "Key symbols" section.
+
+    Returns ``(summaries, total_count)`` where *summaries* is capped at
+    :data:`_KEY_SYMBOLS_DISPLAY_CAP` and *total_count* reflects the
+    pre-cap number of matching symbols so the renderer can emit a
+    ``… and N more`` overflow marker.
+
+    The helper skips (returning ``([], 0)``) in three cases:
+
+    - ``config`` is not a :class:`~lexibrary.config.schema.LexibraryConfig`.
+    - ``config.symbols.enabled`` is ``False``.
+    - ``symbols.db`` does not exist on disk.
+
+    When the symbol graph is available, the helper opens a
+    :class:`~lexibrary.services.symbols.SymbolQueryService`, calls
+    :meth:`~lexibrary.services.symbols.SymbolQueryService.symbols_in_file`
+    to get every symbol in the file (already sorted by source line), and
+    calls :meth:`SymbolGraph.symbol_call_counts` exactly **once** to get
+    the ``(caller_count, callee_count)`` mapping — never per-symbol. The
+    filter keeps public top-level functions and classes (``visibility ==
+    "public"``) plus every ``method`` (regardless of visibility) so the
+    render layer can group methods under their parent class.
+    """
+    from lexibrary.config.schema import LexibraryConfig  # noqa: PLC0415
+    from lexibrary.services.symbols import SymbolQueryService  # noqa: PLC0415
+    from lexibrary.utils.paths import symbols_db_path  # noqa: PLC0415
+
+    if not isinstance(config, LexibraryConfig):
+        _logger.debug("Key symbols skipped: config is not a LexibraryConfig.")
+        return [], 0
+
+    if not config.symbols.enabled:
+        _logger.debug("Key symbols skipped: config.symbols.enabled is False.")
+        return [], 0
+
+    if not symbols_db_path(project_root).exists():
+        _logger.debug("Key symbols skipped: symbols.db is missing.")
+        return [], 0
+
+    service = SymbolQueryService(project_root)
+    service.open()
+    try:
+        if service._symbol_graph is None:  # noqa: SLF001
+            # ``open()`` could not attach to the symbol graph even though
+            # the DB file existed when we checked (race condition, corrupt
+            # schema, etc.). Treat it as missing.
+            _logger.debug("Key symbols skipped: symbol graph unavailable after open().")
+            return [], 0
+
+        response = service.symbols_in_file(rel_target)
+        # ``symbol_call_counts`` is the single-query aggregation helper —
+        # never issue ``callers_of`` / ``callees_of`` per symbol here.
+        counts = service._symbol_graph.symbol_call_counts(rel_target)  # noqa: SLF001
+    finally:
+        service.close()
+
+    matches: list[KeySymbolSummary] = []
+    for row in response.symbols:
+        if row.symbol_type in ("function", "class"):
+            if row.visibility != "public":
+                continue
+        elif row.symbol_type == "method":
+            pass
+        else:
+            # enums, constants, etc. are surfaced by different phases
+            continue
+
+        caller_count, callee_count = counts.get(row.id, (0, 0))
+        matches.append(
+            KeySymbolSummary(
+                name=row.name,
+                qualified_name=row.qualified_name,
+                symbol_type=row.symbol_type,
+                line_start=row.line_start if row.line_start is not None else 0,
+                caller_count=caller_count,
+                callee_count=callee_count,
+            )
+        )
+
+    total = len(matches)
+    return matches[:_KEY_SYMBOLS_DISPLAY_CAP], total

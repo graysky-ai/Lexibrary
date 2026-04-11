@@ -572,11 +572,15 @@ class ConsistencyChecker:
         """Detect blocked IWH signals older than the threshold for Stack promotion.
 
         Scans all IWH signals and returns promotion instructions for
-        ``blocked`` signals older than *ttl_hours*.
+        ``blocked`` signals older than *ttl_hours*.  ``find_all_iwh``
+        returns source-relative paths, so the mirror ``.iwh`` location is
+        computed via :func:`lexibrary.utils.paths.iwh_path` to ensure the
+        ``apply_promote_blocked_iwh`` handler can find the file on disk.
         """
         from datetime import UTC, datetime, timedelta  # noqa: PLC0415
 
         from lexibrary.iwh.reader import find_all_iwh  # noqa: PLC0415
+        from lexibrary.utils.paths import iwh_path as _iwh_path  # noqa: PLC0415
 
         try:
             signals = find_all_iwh(self.project_root)
@@ -592,11 +596,14 @@ class ConsistencyChecker:
                 continue
             age = now - iwh.created
             if age >= timedelta(hours=ttl_hours):
-                iwh_path = self.lexibrary_dir / rel_dir / ".iwh"
+                # rel_dir is source-relative (e.g. "src/auth"); resolve to
+                # the mirror ``.iwh`` path under ``.lexibrary/designs/``.
+                source_dir = self.project_root / rel_dir
+                iwh_file_path = _iwh_path(self.project_root, source_dir)
                 instructions.append(
                     FixInstruction(
                         action="promote_blocked_iwh",
-                        target_path=iwh_path,
+                        target_path=iwh_file_path,
                         detail=(
                             f"Blocked IWH signal in {rel_dir} is {age.days}d old; "
                             f"promote to Stack post and consume"

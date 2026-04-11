@@ -1,6 +1,14 @@
 comments:
-- body: 'Phase 3: Added BudgetTokenLimits, BudgetConfig, AuditingConfig, and ReactiveConfig
-    sub-models. CuratorConfig now exposes budget, auditing, and reactive fields for
-    the Budget Trimmer, Comment Auditing, and Reactive Hooks sub-agents. All sub-models
-    use extra=ignore for forward compatibility.'
-  date: '2026-04-09T11:08:19.487733Z'
+- body: "curator-fix Phase 5 (group 10): added verify_after_sweep flag. Strictly an\
+    \ observability toggle \u2014 does NOT affect which fixes run. When True, Coordinator\
+    \ re-runs validate_library() after dispatch to compute a before/after/delta block\
+    \ in the JSON report. Default False preserves the 'exactly one validator call\
+    \ per run' contract."
+  date: '2026-04-11T01:16:59.234764Z'
+- body: 'curator-fix-2 group 3 (CUR-05): consistency_collect docstring updated to
+    reflect the new scope/full split. ''promotable blocked IWH'' detection moved from
+    the ''full'' bucket to the ''scope'' bucket so the default run surfaces blocked
+    IWH promotion candidates without requiring a library-wide sweep. ''full'' now
+    only adds domain-term detection and orphan concept detection on top of the scope-level
+    checks.'
+  date: '2026-04-11T07:38:13.098359Z'

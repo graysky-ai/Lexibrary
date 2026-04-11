@@ -13,15 +13,21 @@ Risk classification:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from lexibrary.baml_client.async_client import BamlAsyncClient, b
 from lexibrary.curator.config import BudgetConfig, CuratorConfig
+from lexibrary.curator.models import SubAgentResult, TriageItem
 from lexibrary.tokenizer import TokenCounter, create_tokenizer
+from lexibrary.utils.atomic import atomic_write
 from lexibrary.utils.paths import LEXIBRARY_DIR
+
+if TYPE_CHECKING:
+    from lexibrary.curator.dispatch_context import DispatchContext
 
 logger = logging.getLogger(__name__)
 
@@ -244,3 +250,121 @@ async def condense_file(
             trimmed_sections=[],
             success=False,
         )
+
+
+# ---------------------------------------------------------------------------
+# Dispatcher entry point (Phase 1.5)
+# ---------------------------------------------------------------------------
+
+
+def _write_condensed_file(file_path: Path, condensed_content: str) -> None:
+    """Write condensed content to a design file with updated metadata.
+
+    Uses ``atomic_write()``.  For design files the frontmatter's
+    ``updated_by`` field should already have been reset to
+    ``"curator"`` by the BAML function output; this helper just writes
+    the new content atomically.
+    """
+    from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
+        parse_design_file_frontmatter,
+    )
+
+    fm = None
+    with contextlib.suppress(Exception):
+        fm = parse_design_file_frontmatter(file_path)
+
+    if fm is not None:
+        atomic_write(file_path, condensed_content)
+    else:
+        atomic_write(file_path, condensed_content)
+
+
+async def dispatch_budget_condense(
+    item: TriageItem,
+    ctx: DispatchContext,
+) -> SubAgentResult:
+    """Dispatch a budget issue to the Budget Trimmer sub-agent.
+
+    Under ``full`` autonomy the condensed content is written to disk
+    via ``atomic_write()`` with the BAML-produced content.  Under
+    ``auto_low`` or ``propose`` the condensation is proposed only
+    (returned in the result message).
+
+    Extracted from :class:`Coordinator._dispatch_budget_condense`
+    (Phase 1.5 dispatcher refactor).
+    """
+    budget_item = item.budget_item
+    if budget_item is None:
+        return SubAgentResult(
+            success=False,
+            action_key="condense_file",
+            path=item.source_item.path,
+            message="No budget item available for condensation",
+        )
+
+    issue = BudgetIssue(
+        path=budget_item.path,
+        current_tokens=budget_item.current_tokens,
+        budget_target=budget_item.budget_target,
+        file_type=budget_item.file_type,  # type: ignore[arg-type]
+    )
+
+    try:
+        condense_result = await condense_file(issue, ctx.config.curator)
+    except Exception as exc:
+        ctx.summary.add("dispatch", exc, path=str(budget_item.path))
+        return SubAgentResult(
+            success=False,
+            action_key="condense_file",
+            path=budget_item.path,
+            message=f"Budget condensation error: {exc}",
+        )
+
+    if not condense_result.success:
+        return SubAgentResult(
+            success=False,
+            action_key="condense_file",
+            path=budget_item.path,
+            message="Budget condensation failed (BAML returned failure)",
+            llm_calls=1,
+        )
+
+    # Under full autonomy, write the condensed file
+    autonomy = ctx.config.curator.autonomy
+    if autonomy == "full":
+        try:
+            _write_condensed_file(budget_item.path, condense_result.condensed_content)
+        except Exception as exc:
+            ctx.summary.add("dispatch", exc, path=str(budget_item.path))
+            return SubAgentResult(
+                success=False,
+                action_key="condense_file",
+                path=budget_item.path,
+                message=f"Failed to write condensed file: {exc}",
+                llm_calls=1,
+            )
+
+        return SubAgentResult(
+            success=True,
+            action_key="condense_file",
+            path=budget_item.path,
+            message=(
+                f"Condensed from {budget_item.current_tokens} to "
+                f"~{budget_item.budget_target} tokens; "
+                f"trimmed: {', '.join(condense_result.trimmed_sections)}"
+            ),
+            llm_calls=1,
+        )
+
+    # Under auto_low or propose, just report the proposal
+    return SubAgentResult(
+        success=True,
+        action_key="propose_condensation",
+        path=budget_item.path,
+        message=(
+            f"Proposed condensation from {budget_item.current_tokens} to "
+            f"~{budget_item.budget_target} tokens; "
+            f"would trim: {', '.join(condense_result.trimmed_sections)}"
+        ),
+        llm_calls=1,
+    )

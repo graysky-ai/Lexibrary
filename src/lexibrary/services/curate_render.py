@@ -19,6 +19,9 @@ def render_summary(
     errored: int,
     sub_agent_calls: dict[str, int],
     report_path: Path | None,
+    stubbed: int = 0,
+    verbose: bool = False,
+    dispatched_details: list[dict[str, object]] | None = None,
 ) -> list[tuple[str, str]]:
     """Render a curator run summary as a list of (level, message) pairs.
 
@@ -36,6 +39,14 @@ def render_summary(
         Mapping of action_key -> call count.
     report_path:
         Path to the written JSON report, or ``None`` if writing failed.
+    stubbed:
+        Items dispatched to stub handlers (no real fix applied). Emits a
+        warn-level ``Stubbed:`` line when greater than zero.
+    verbose:
+        When ``True``, also walk ``dispatched_details`` and emit one line per
+        dispatched entry in the form ``[action_key] path -- message``.
+    dispatched_details:
+        Optional list of dispatch detail dicts for verbose rendering.
 
     Returns
     -------
@@ -48,6 +59,9 @@ def render_summary(
     lines.append(("info", "Curator Run Summary"))
     lines.append(("info", f"  Checked:  {checked}"))
     lines.append(("info", f"  Fixed:    {fixed}"))
+
+    if stubbed > 0:
+        lines.append(("warn", f"  Stubbed:  {stubbed}"))
 
     if deferred > 0:
         lines.append(("warn", f"  Deferred: {deferred}"))
@@ -64,6 +78,15 @@ def render_summary(
         lines.append(("info", "  Sub-agent calls:"))
         for action_key, count in sorted(sub_agent_calls.items()):
             lines.append(("info", f"    {action_key}: {count}"))
+
+    if verbose and dispatched_details:
+        lines.append(("info", ""))
+        lines.append(("info", "  Dispatched details:"))
+        for entry in dispatched_details:
+            action_key = str(entry.get("action_key", ""))
+            path = str(entry.get("path", ""))
+            message = str(entry.get("message", ""))
+            lines.append(("info", f"    [{action_key}] {path} -- {message}"))
 
     if report_path is not None:
         lines.append(("info", ""))
@@ -124,13 +147,20 @@ def render_dry_run(
     return lines
 
 
-def render_last_run(report_path: Path) -> list[tuple[str, str]]:
+def render_last_run(
+    report_path: Path,
+    *,
+    verbose: bool = False,
+) -> list[tuple[str, str]]:
     """Render the most recent curator report.
 
     Parameters
     ----------
     report_path:
         Path to a JSON report file in ``.lexibrary/curator/reports/``.
+    verbose:
+        When ``True`` and the report is schema version 2, emit one line per
+        dispatched entry under a ``Dispatched details:`` heading.
 
     Returns
     -------
@@ -144,18 +174,24 @@ def render_last_run(report_path: Path) -> list[tuple[str, str]]:
     except (json.JSONDecodeError, OSError) as exc:
         return [("error", f"Failed to read report: {exc}")]
 
+    schema_version = data.get("schema_version", 1)
     timestamp = data.get("timestamp", "unknown")
     checked = data.get("checked", 0)
     fixed = data.get("fixed", 0)
     deferred = data.get("deferred", 0)
     errored = data.get("errored", 0)
     sub_agent_calls = data.get("sub_agent_calls", {})
+    stubbed = data.get("stubbed", 0)
+    dispatched_details = data.get("dispatched", [])
 
     lines.append(("info", ""))
     lines.append(("info", "Last Curator Run"))
     lines.append(("info", f"  Timestamp: {timestamp}"))
     lines.append(("info", f"  Checked:   {checked}"))
     lines.append(("info", f"  Fixed:     {fixed}"))
+
+    if schema_version >= 2 and stubbed > 0:
+        lines.append(("warn", f"  Stubbed:   {stubbed}"))
 
     if deferred > 0:
         lines.append(("warn", f"  Deferred:  {deferred}"))
@@ -172,6 +208,15 @@ def render_last_run(report_path: Path) -> list[tuple[str, str]]:
         lines.append(("info", "  Sub-agent calls:"))
         for action_key, count in sorted(sub_agent_calls.items()):
             lines.append(("info", f"    {action_key}: {count}"))
+
+    if verbose and schema_version >= 2 and dispatched_details:
+        lines.append(("info", ""))
+        lines.append(("info", "  Dispatched details:"))
+        for entry in dispatched_details:
+            action_key = str(entry.get("action_key", ""))
+            path = str(entry.get("path", ""))
+            message = str(entry.get("message", ""))
+            lines.append(("info", f"    [{action_key}] {path} -- {message}"))
 
     lines.append(("info", ""))
     lines.append(("info", f"  Report: {report_path}"))

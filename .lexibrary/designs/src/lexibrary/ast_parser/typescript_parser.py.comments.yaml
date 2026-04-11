@@ -1,0 +1,13 @@
+comments:
+- body: 'Phase 2 group 2 refactor: split the single-shot extract_interface() path
+    into parse_ts_tree() (parses once, returns tree + source_bytes) and extract_interface_from_tree()
+    (consumes the pre-parsed tuple). extract_interface() is now a thin wrapper. Enables
+    group 8 to parse each source file exactly once per build_symbol_graph run and
+    feed the same tree to both interface and symbol extractors. Behaviour unchanged.'
+  date: '2026-04-10T15:18:29.813431Z'
+- body: 'Group 3 of symbol-graph-2: added extract_symbols_from_tree walking function_declaration,
+    class_declaration, method_definition, and lexical_declaration+arrow_function to
+    emit SymbolDefinitions, plus call_expression walker that treats this as the analog
+    of self and skips type_arguments. Parse-tree sharing via parse_ts_tree remains
+    single-parse per file.'
+  date: '2026-04-10T19:44:40.089380Z'

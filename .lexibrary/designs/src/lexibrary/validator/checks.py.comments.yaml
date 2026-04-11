@@ -1,9 +1,4 @@
 comments:
-- body: Added _HTML_COMMENT_RE regex and HTML comment stripping in check_orphan_concepts().
-    All three scan blocks (design files, stack posts, concept files) now strip HTML
-    comments before wikilink extraction, preventing comment-embedded wikilinks from
-    inflating the referenced set.
-  date: '2026-04-07T21:18:51.178417Z'
 - body: Replaced local _WIKILINK_RE and _HTML_COMMENT_RE regex definitions with imports
     from lexibrary.wiki.patterns. All six _WIKILINK_RE.findall() call sites and three
     _HTML_COMMENT_RE.sub() call sites remain unchanged via import aliases. This is
@@ -12,12 +7,11 @@ comments:
     it needs per-match processing (strip/lowercase) and in some cases all matches
     including duplicates.
   date: '2026-04-07T22:14:19.709865Z'
-- body: "Added check_stale_agent_design: iterates design files, filters to those where\
-    \ updated_by is 'agent' or 'maintainer', and produces warning-severity issues\
-    \ when source_hash no longer matches the current file hash. Archivist-owned files\
-    \ are skipped (they are covered by check_hash_freshness). Missing source files\
-    \ are also skipped (covered by check_file_existence). The distinction matters\
-    \ because agent/maintainer edits capture human-authored rationale that can silently\
-    \ become inaccurate when source code changes \u2014 the remediation path (lexictl\
-    \ curate) prompts human review rather than a mechanical regeneration."
-  date: '2026-04-09T06:22:10.619521Z'
+- body: check_duplicate_slugs now enforces uniqueness within a single artifact type
+    (concepts, conventions, or playbooks) rather than globally across all types. Slugs
+    only need to be unique within their type because filesystem uniqueness is provided
+    by ID prefixes, wikilinks resolve by title (not slug), and per-type indexes (ConceptIndex,
+    PlaybookIndex, etc.) form separate namespaces. The collision key changed from
+    slug to (artifact_type, slug). Error messages now identify the artifact type (e.g.
+    'concept files') for clarity.
+  date: '2026-04-11T08:17:13.322315Z'

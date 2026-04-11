@@ -8,7 +8,6 @@ Phase 3 report fields, and autonomy gating for high-risk condensation.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -28,13 +27,11 @@ from lexibrary.curator.models import (
     CollectItem,
     CollectResult,
     CommentAuditCollectItem,
-    CuratorReport,
     DispatchResult,
     SubAgentResult,
     TriageItem,
     TriageResult,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -390,7 +387,7 @@ class TestDispatchBudgetAndAudit:
         mock_result.success = True
 
         with patch(
-            "lexibrary.curator.coordinator.Coordinator._dispatch_budget_condense",
+            "lexibrary.curator.budget.dispatch_budget_condense",
             new_callable=AsyncMock,
         ) as mock_condense:
             mock_condense.return_value = SubAgentResult(
@@ -441,7 +438,7 @@ class TestDispatchBudgetAndAudit:
         )
 
         with patch(
-            "lexibrary.curator.coordinator.Coordinator._dispatch_comment_audit",
+            "lexibrary.curator.auditing.dispatch_comment_audit",
             new_callable=AsyncMock,
         ) as mock_audit:
             mock_audit.return_value = SubAgentResult(

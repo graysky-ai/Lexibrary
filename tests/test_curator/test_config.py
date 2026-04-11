@@ -81,9 +81,9 @@ class TestCuratorConfigRiskOverrides:
 
     def test_multiple_overrides_accepted(self) -> None:
         overrides = {
-            "regen_stale_design": "low",
-            "remove_orphan_concept": "medium",
-            "reconcile_agent_edit": "high",
+            "regenerate_stale_design": "low",
+            "remove_orphan_zero_deps": "medium",
+            "reconcile_agent_interface_changed": "high",
         }
         config = CuratorConfig(risk_overrides=overrides)
         assert config.risk_overrides == overrides
@@ -97,9 +97,7 @@ class TestCuratorConfigExtraIgnored:
     """Unknown keys are silently ignored (backwards compat)."""
 
     def test_extra_fields_ignored(self) -> None:
-        config = CuratorConfig.model_validate(
-            {"autonomy": "full", "unknown_future_field": True}
-        )
+        config = CuratorConfig.model_validate({"autonomy": "full", "unknown_future_field": True})
         assert config.autonomy == "full"
         assert not hasattr(config, "unknown_future_field")
 
@@ -130,9 +128,7 @@ class TestLexibraryConfigIntegration:
         assert config.curator.max_llm_calls_per_run == 50
 
     def test_partial_curator_section_merges_with_defaults(self) -> None:
-        config = LexibraryConfig.model_validate(
-            {"curator": {"autonomy": "full"}}
-        )
+        config = LexibraryConfig.model_validate({"curator": {"autonomy": "full"}})
         assert config.curator.autonomy == "full"
         assert config.curator.max_llm_calls_per_run == 50  # default preserved
         assert config.curator.risk_overrides == {}  # default preserved
@@ -143,7 +139,7 @@ class TestLexibraryConfigIntegration:
                 "curator": {
                     "autonomy": "propose",
                     "max_llm_calls_per_run": 25,
-                    "risk_overrides": {"regen_stale_design": "high"},
+                    "risk_overrides": {"regenerate_stale_design": "high"},
                 }
             }
         )
@@ -163,9 +159,7 @@ class TestConfigLoaderCurator:
 
     def test_missing_curator_in_yaml_uses_defaults(self, tmp_path: Path) -> None:
         (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "llm:\n  provider: anthropic\n"
-        )
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("llm:\n  provider: anthropic\n")
 
         config = load_config(
             project_root=tmp_path,
@@ -195,9 +189,7 @@ class TestConfigLoaderCurator:
 
     def test_partial_curator_section_merges(self, tmp_path: Path) -> None:
         (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "curator:\n  autonomy: propose\n"
-        )
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("curator:\n  autonomy: propose\n")
 
         config = load_config(
             project_root=tmp_path,
@@ -244,9 +236,7 @@ class TestCuratorConfigDeprecationIntegration:
         assert config.deprecation.ttl_commits == 50
 
     def test_custom_deprecation_from_dict(self) -> None:
-        config = CuratorConfig.model_validate(
-            {"deprecation": {"ttl_commits": 200}}
-        )
+        config = CuratorConfig.model_validate({"deprecation": {"ttl_commits": 200}})
         assert config.deprecation.ttl_commits == 200
 
     def test_missing_deprecation_uses_defaults(self) -> None:
@@ -277,9 +267,7 @@ class TestCuratorDeprecationConfirm:
         assert config.curator_deprecation_confirm is True
 
     def test_full_config_concept_deprecation_confirm(self) -> None:
-        config = LexibraryConfig.model_validate(
-            {"concepts": {"curator_deprecation_confirm": True}}
-        )
+        config = LexibraryConfig.model_validate({"concepts": {"curator_deprecation_confirm": True}})
         assert config.concepts.curator_deprecation_confirm is True
 
     def test_full_config_convention_deprecation_confirm(self) -> None:
@@ -300,18 +288,14 @@ class TestRiskOverridesValidation:
             warnings.simplefilter("always")
             config = CuratorConfig(risk_overrides={"deprecate_concept": "low"})
             assert config.risk_overrides == {"deprecate_concept": "low"}
-            unknown_warnings = [
-                x for x in w if "Unknown risk_overrides key" in str(x.message)
-            ]
+            unknown_warnings = [x for x in w if "Unknown risk_overrides key" in str(x.message)]
             assert len(unknown_warnings) == 0
 
     def test_unknown_key_produces_warning(self) -> None:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             CuratorConfig(risk_overrides={"totally_unknown_action": "high"})
-            unknown_warnings = [
-                x for x in w if "Unknown risk_overrides key" in str(x.message)
-            ]
+            unknown_warnings = [x for x in w if "Unknown risk_overrides key" in str(x.message)]
             assert len(unknown_warnings) == 1
             assert "totally_unknown_action" in str(unknown_warnings[0].message)
 
@@ -329,9 +313,7 @@ class TestRiskOverridesValidation:
             overrides = {key: "low" for key in DEPRECATION_ACTION_KEYS}
             config = CuratorConfig(risk_overrides=overrides)
             assert len(config.risk_overrides) == len(DEPRECATION_ACTION_KEYS)
-            unknown_warnings = [
-                x for x in w if "Unknown risk_overrides key" in str(x.message)
-            ]
+            unknown_warnings = [x for x in w if "Unknown risk_overrides key" in str(x.message)]
             assert len(unknown_warnings) == 0
 
     def test_deprecation_action_keys_count(self) -> None:
@@ -446,9 +428,7 @@ class TestBudgetTokenLimitsDefaults:
             BudgetTokenLimits(handoff=0)
 
     def test_extra_fields_ignored(self) -> None:
-        limits = BudgetTokenLimits.model_validate(
-            {"design_file": 5000, "unknown_field": True}
-        )
+        limits = BudgetTokenLimits.model_validate({"design_file": 5000, "unknown_field": True})
         assert limits.design_file == 5000
         assert not hasattr(limits, "unknown_field")
 
@@ -510,9 +490,7 @@ class TestAuditingConfigDefaults:
             AuditingConfig(quality_threshold=-0.1)
 
     def test_extra_fields_ignored(self) -> None:
-        config = AuditingConfig.model_validate(
-            {"quality_threshold": 0.5, "unknown_field": True}
-        )
+        config = AuditingConfig.model_validate({"quality_threshold": 0.5, "unknown_field": True})
         assert config.quality_threshold == 0.5
         assert not hasattr(config, "unknown_field")
 
@@ -567,9 +545,7 @@ class TestReactiveConfigDefaults:
             ReactiveConfig(severity_threshold="info")  # type: ignore[arg-type]
 
     def test_extra_fields_ignored(self) -> None:
-        config = ReactiveConfig.model_validate(
-            {"enabled": True, "unknown_field": True}
-        )
+        config = ReactiveConfig.model_validate({"enabled": True, "unknown_field": True})
         assert config.enabled is True
         assert not hasattr(config, "unknown_field")
 
@@ -596,16 +572,12 @@ class TestCuratorConfigPhase3Integration:
         assert config.reactive.enabled is False
 
     def test_custom_budget_from_dict(self) -> None:
-        config = CuratorConfig.model_validate(
-            {"budget": {"token_limits": {"design_file": 8000}}}
-        )
+        config = CuratorConfig.model_validate({"budget": {"token_limits": {"design_file": 8000}}})
         assert config.budget.token_limits.design_file == 8000
         assert config.budget.token_limits.start_here == 3000  # default
 
     def test_custom_auditing_from_dict(self) -> None:
-        config = CuratorConfig.model_validate(
-            {"auditing": {"quality_threshold": 0.85}}
-        )
+        config = CuratorConfig.model_validate({"auditing": {"quality_threshold": 0.85}})
         assert config.auditing.quality_threshold == 0.85
 
     def test_custom_reactive_from_dict(self) -> None:
@@ -645,9 +617,7 @@ class TestLexibraryConfigPhase3Integration:
         assert config.curator.reactive.enabled is False
 
     def test_partial_curator_preserves_phase3_defaults(self) -> None:
-        config = LexibraryConfig.model_validate(
-            {"curator": {"autonomy": "full"}}
-        )
+        config = LexibraryConfig.model_validate({"curator": {"autonomy": "full"}})
         assert config.curator.autonomy == "full"
         assert config.curator.budget.token_limits.design_file == 4000
         assert config.curator.auditing.quality_threshold == 0.7
@@ -707,9 +677,7 @@ class TestConfigLoaderPhase3:
 
     def test_missing_phase3_in_yaml_uses_defaults(self, tmp_path: Path) -> None:
         (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "curator:\n  autonomy: full\n"
-        )
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("curator:\n  autonomy: full\n")
         config = load_config(
             project_root=tmp_path,
             global_config_path=tmp_path / "nonexistent_global.yaml",

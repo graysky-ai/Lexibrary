@@ -65,9 +65,9 @@ class ConventionIndex:
         matching: list[ConventionFile] = []
         for conv in self.conventions:
             scope = conv.frontmatter.scope
-            if scope == "project":
-                matching.append(conv)
-            elif any(_normalise_scope(p) in ancestry for p in split_scope(scope)):
+            if scope == "project" or any(
+                _normalise_scope(p) in ancestry for p in split_scope(scope)
+            ):
                 matching.append(conv)
 
         # Sort: root-to-leaf by scope depth, then priority desc, then title asc

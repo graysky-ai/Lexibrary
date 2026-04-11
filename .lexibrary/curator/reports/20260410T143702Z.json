@@ -1,0 +1,23 @@
+{
+  "timestamp": "20260410T143702Z",
+  "trigger": "on_demand",
+  "checked": 170,
+  "fixed": 156,
+  "deferred": 14,
+  "errored": 0,
+  "errors": [],
+  "sub_agent_calls": {
+    "integrate_sidecar_comments": 44,
+    "autofix_validation_issue": 109,
+    "consume_superseded_iwh": 3
+  },
+  "deprecated": 0,
+  "hard_deleted": 0,
+  "migrations_applied": 0,
+  "migrations_proposed": 0,
+  "budget_condensed": 0,
+  "budget_proposed": 0,
+  "comments_flagged": 0,
+  "descriptions_audited": 0,
+  "summaries_audited": 0
+}

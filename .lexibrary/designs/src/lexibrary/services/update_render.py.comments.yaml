@@ -1,7 +1,0 @@
-comments:
-- body: 'New module extracting update stat rendering from lexictl_app.py update()
-    command. Follows the CLI Service Extraction Pattern: render functions return (level,
-    message) tuples or plain strings, CLI handler dispatches to info/warn/error output
-    helpers. Covers update summary, failed files, lifecycle stats, enrichment queue,
-    and dry-run results.'
-  date: '2026-04-08T07:52:41.739501Z'

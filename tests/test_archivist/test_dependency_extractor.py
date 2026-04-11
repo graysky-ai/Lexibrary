@@ -2,6 +2,11 @@
 
 Covers: Python absolute imports, relative imports, third-party excluded,
 TypeScript/JS imports, non-code empty, unresolvable omitted.
+
+Note: unit tests for the Python import resolution helpers themselves live
+with the shared implementation at ``tests/test_symbolgraph/test_python_imports.py``.
+This file exercises only the ``extract_dependencies`` entry point and the
+JS/TS resolver still private to this module.
 """
 
 from __future__ import annotations
@@ -10,7 +15,6 @@ from pathlib import Path
 
 from lexibrary.archivist.dependency_extractor import (
     _resolve_js_import,
-    _resolve_python_import,
     extract_dependencies,
 )
 
@@ -225,54 +229,6 @@ class TestNonCodeFiles:
         """sample_config.yaml fixture returns empty list."""
         deps = extract_dependencies(FIXTURES / "sample_config.yaml", PROJECT_ROOT)
         assert deps == []
-
-
-# ---------------------------------------------------------------------------
-# _resolve_python_import unit tests
-# ---------------------------------------------------------------------------
-
-
-class TestResolvePythonImport:
-    def test_resolves_src_layout(self, tmp_path: Path) -> None:
-        pkg = tmp_path / "src" / "mypkg"
-        pkg.mkdir(parents=True)
-        (pkg / "config.py").write_text("")
-
-        result = _resolve_python_import("mypkg.config", tmp_path)
-        assert result == "src/mypkg/config.py"
-
-    def test_resolves_flat_layout(self, tmp_path: Path) -> None:
-        pkg = tmp_path / "mypkg"
-        pkg.mkdir()
-        (pkg / "config.py").write_text("")
-
-        result = _resolve_python_import("mypkg.config", tmp_path)
-        assert result == "mypkg/config.py"
-
-    def test_resolves_package_init(self, tmp_path: Path) -> None:
-        pkg = tmp_path / "src" / "mypkg"
-        pkg.mkdir(parents=True)
-        (pkg / "__init__.py").write_text("")
-
-        result = _resolve_python_import("mypkg", tmp_path)
-        assert result == "src/mypkg/__init__.py"
-
-    def test_returns_none_for_missing(self, tmp_path: Path) -> None:
-        result = _resolve_python_import("nonexistent.module", tmp_path)
-        assert result is None
-
-    def test_prefers_src_layout(self, tmp_path: Path) -> None:
-        """When both src/ and flat layout exist, src/ is preferred."""
-        src_pkg = tmp_path / "src" / "pkg"
-        src_pkg.mkdir(parents=True)
-        (src_pkg / "mod.py").write_text("# src layout")
-
-        flat_pkg = tmp_path / "pkg"
-        flat_pkg.mkdir()
-        (flat_pkg / "mod.py").write_text("# flat layout")
-
-        result = _resolve_python_import("pkg.mod", tmp_path)
-        assert result == "src/pkg/mod.py"
 
 
 # ---------------------------------------------------------------------------

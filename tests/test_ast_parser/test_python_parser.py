@@ -128,12 +128,16 @@ class TestClassesAndFunctions:
         method_names = {m.name for m in base.methods}
         assert "_internal_setup" not in method_names
 
-    def test_dunder_excluded_except_init(self, skeleton):
+    def test_all_dunders_public(self, skeleton):
+        # Phase 2: dunder methods are always public, including __repr__,
+        # __enter__, __aiter__, etc. The short _ALLOWED_DUNDER_METHODS
+        # allow-list was removed so the interface skeleton and symbol
+        # graph agree on visibility.
         by_name = {c.name: c for c in skeleton.classes}
         base = by_name["BaseService"]
         method_names = {m.name for m in base.methods}
         assert "__init__" in method_names
-        assert "__repr__" not in method_names
+        assert "__repr__" in method_names
 
     def test_init_included(self, skeleton):
         by_name = {c.name: c for c in skeleton.classes}

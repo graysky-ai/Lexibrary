@@ -1,0 +1,14 @@
+comments:
+- body: "Added KeySymbolSummary dataclass and _build_key_symbols helper wired into\
+    \ build_file_lookup. Contract: when config.symbols.enabled is True and .lexibrary/symbols.db\
+    \ exists, we open a SymbolQueryService exactly once per file lookup, call symbols_in_file()\
+    \ to list every symbol in source order, then call SymbolGraph.symbol_call_counts()\
+    \ ONCE (no N+1 via callers_of/callees_of) to get the (caller, callee) count mapping\
+    \ keyed by symbol id. We filter to public top-level functions/classes plus every\
+    \ method (so the render layer can group methods under their parent class), cap\
+    \ at 10 entries, and stash the pre-cap count in key_symbols_total so the renderer\
+    \ can emit the '\u2026 and N more' overflow marker. When symbols.db is missing\
+    \ or symbols.enabled is False, key_symbols is [] and a DEBUG log is emitted. The\
+    \ disabled branch short-circuits BEFORE constructing SymbolQueryService to honour\
+    \ spec scenario 'no SymbolQueryService SHALL be opened'."
+  date: '2026-04-11T05:23:46.701337Z'

@@ -1,4 +1,5 @@
 """User data model."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,6 +8,7 @@ from dataclasses import dataclass
 @dataclass
 class User:
     """A user in the system."""
+
     id: str
     username: str
     email: str
@@ -27,6 +29,7 @@ class User:
 def create_user(username: str, email: str) -> User:
     """Factory function for creating users."""
     import uuid
+
     return User(id=str(uuid.uuid4()), username=username, email=email)
 
 

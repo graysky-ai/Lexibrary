@@ -1155,9 +1155,7 @@ class TestJSONOutputTypeAndId:
 
         results = SearchResults(
             concepts=[
-                _ConceptResult(
-                    id="CN-001", name="Auth", status="active", tags=[], summary=""
-                )
+                _ConceptResult(id="CN-001", name="Auth", status="active", tags=[], summary="")
             ],
             conventions=[
                 _ConventionResult(
@@ -1170,19 +1168,13 @@ class TestJSONOutputTypeAndId:
                 )
             ],
             stack_posts=[
-                _StackResult(
-                    post_id="ST-001", title="Bug", status="open", votes=0, tags=[]
-                )
+                _StackResult(post_id="ST-001", title="Bug", status="open", votes=0, tags=[])
             ],
             design_files=[
-                _DesignFileResult(
-                    id="DS-001", source_path="src/a.py", description="", tags=[]
-                )
+                _DesignFileResult(id="DS-001", source_path="src/a.py", description="", tags=[])
             ],
             playbooks=[
-                _PlaybookResult(
-                    id="PB-001", title="Deploy", status="active", tags=[], overview=""
-                )
+                _PlaybookResult(id="PB-001", title="Deploy", status="active", tags=[], overview="")
             ],
         )
         records = self._render_json(results)
@@ -1192,3 +1184,182 @@ class TestJSONOutputTypeAndId:
             assert "id" in record, f"Missing 'id' in {record}"
         types = {r["type"] for r in records}
         assert types == {"concept", "convention", "stack", "design", "playbook"}
+
+
+# ---------------------------------------------------------------------------
+# 13 -- Symbol search via unified_search (symbol-graph-2 group 13)
+# ---------------------------------------------------------------------------
+
+
+class TestUnifiedSearchSymbolType:
+    """End-to-end unit tests for ``unified_search(..., artifact_type='symbol')``.
+
+    Seeds a minimal ``symbols.db`` via the shared Phase 2 fixture and then
+    drives ``unified_search`` directly (no CLI runner) so the routing path,
+    flag rejection, and ``SearchResults.symbol_results`` wiring are all
+    exercised at the Python API level.
+    """
+
+    def test_symbol_type_returns_symbol_results(self, tmp_path: Path) -> None:
+        """``artifact_type='symbol'`` populates ``symbol_results`` from
+        ``SymbolQueryService.search_symbols``."""
+        from tests.test_symbolgraph.conftest import (  # noqa: PLC0415
+            make_linkgraph,
+            make_project,
+            seed_phase2_fixture,
+        )
+
+        project = make_project(tmp_path)
+        make_linkgraph(project)
+        seed_phase2_fixture(project)
+
+        results = unified_search(
+            project,
+            query="bar",
+            artifact_type="symbol",
+        )
+
+        assert results.has_results()
+        assert len(results.symbol_results) >= 1
+        # The seeded corpus maps ``bar`` to ``a.bar`` at ``src/a.py``.
+        qualified = {sym.qualified_name for sym in results.symbol_results}
+        assert "a.bar" in qualified
+        # Other artifact buckets remain empty on the symbol-search path.
+        assert results.concepts == []
+        assert results.conventions == []
+        assert results.stack_posts == []
+        assert results.design_files == []
+        assert results.playbooks == []
+
+    def test_symbol_type_empty_query_returns_empty_results(self, tmp_path: Path) -> None:
+        """``query=None`` on the symbol branch returns empty results rather
+        than dispatching a wildcard LIKE scan."""
+        from tests.test_symbolgraph.conftest import (  # noqa: PLC0415
+            make_linkgraph,
+            make_project,
+            seed_phase2_fixture,
+        )
+
+        project = make_project(tmp_path)
+        make_linkgraph(project)
+        seed_phase2_fixture(project)
+
+        results = unified_search(
+            project,
+            query=None,
+            artifact_type="symbol",
+        )
+        assert results.symbol_results == []
+        assert not results.has_results()
+
+    def test_symbol_type_missing_db_returns_empty(self, tmp_path: Path) -> None:
+        """No ``symbols.db`` means ``SymbolQueryService`` degrades gracefully
+        and ``unified_search`` returns an empty ``SearchResults``."""
+        project = _setup_project(tmp_path)
+
+        results = unified_search(
+            project,
+            query="anything",
+            artifact_type="symbol",
+        )
+        assert results.symbol_results == []
+        assert not results.has_results()
+
+    def test_symbol_type_rejects_tag_flag(self, tmp_path: Path) -> None:
+        """Combining ``--tag`` with ``--type symbol`` raises ``ValueError``
+        so the CLI handler can turn it into exit 1."""
+        import pytest  # noqa: PLC0415
+
+        project = _setup_project(tmp_path)
+
+        with pytest.raises(ValueError, match="--tag is not supported"):
+            unified_search(
+                project,
+                query="bar",
+                artifact_type="symbol",
+                tag="security",
+            )
+
+    def test_symbol_type_rejects_tags_list(self, tmp_path: Path) -> None:
+        """Passing ``tags=[...]`` (the multi-tag form) also raises."""
+        import pytest  # noqa: PLC0415
+
+        project = _setup_project(tmp_path)
+
+        with pytest.raises(ValueError, match="--tag is not supported"):
+            unified_search(
+                project,
+                query="bar",
+                artifact_type="symbol",
+                tags=["security"],
+            )
+
+    def test_symbol_type_rejects_concept_filter(self, tmp_path: Path) -> None:
+        """``concept=<name>`` is rejected on the symbol-search path."""
+        import pytest  # noqa: PLC0415
+
+        project = _setup_project(tmp_path)
+
+        with pytest.raises(ValueError, match="--concept is not supported"):
+            unified_search(
+                project,
+                query="bar",
+                artifact_type="symbol",
+                concept="auth",
+            )
+
+    def test_symbol_type_rejects_resolution_type_filter(self, tmp_path: Path) -> None:
+        """``resolution_type`` is rejected on the symbol-search path."""
+        import pytest  # noqa: PLC0415
+
+        project = _setup_project(tmp_path)
+
+        with pytest.raises(ValueError, match="--resolution-type is not supported"):
+            unified_search(
+                project,
+                query="bar",
+                artifact_type="symbol",
+                resolution_type="answered",
+            )
+
+    def test_symbol_type_rejects_include_stale(self, tmp_path: Path) -> None:
+        """``include_stale=True`` is rejected on the symbol-search path."""
+        import pytest  # noqa: PLC0415
+
+        project = _setup_project(tmp_path)
+
+        with pytest.raises(ValueError, match="--include-stale is not supported"):
+            unified_search(
+                project,
+                query="bar",
+                artifact_type="symbol",
+                include_stale=True,
+            )
+
+    def test_symbol_type_rejects_include_deprecated(self, tmp_path: Path) -> None:
+        """``include_deprecated=True`` is rejected on the symbol-search path."""
+        import pytest  # noqa: PLC0415
+
+        project = _setup_project(tmp_path)
+
+        with pytest.raises(ValueError, match="--all is not supported"):
+            unified_search(
+                project,
+                query="bar",
+                artifact_type="symbol",
+                include_deprecated=True,
+            )
+
+    def test_symbol_type_rejects_status_filter(self, tmp_path: Path) -> None:
+        """``status=<value>`` is rejected on the symbol-search path."""
+        import pytest  # noqa: PLC0415
+
+        project = _setup_project(tmp_path)
+
+        with pytest.raises(ValueError, match="--status is not supported"):
+            unified_search(
+                project,
+                query="bar",
+                artifact_type="symbol",
+                status="active",
+            )

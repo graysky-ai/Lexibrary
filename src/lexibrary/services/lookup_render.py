@@ -307,6 +307,63 @@ def render_related_concepts(
     return "\n".join(lines)
 
 
+def render_key_symbols(
+    key_symbols: Sequence[object],
+    key_symbols_total: int,
+) -> str:
+    """Render a ``### Key symbols`` markdown table for a file lookup.
+
+    *key_symbols* should be a list of :class:`KeySymbolSummary` instances,
+    already ordered by source line (as produced by
+    :func:`lexibrary.services.lookup.build_file_lookup`). The renderer
+    groups methods under their parent class by showing the qualified-name
+    tail (``Class.method``) for ``symbol_type == "method"`` and the bare
+    ``name`` otherwise. When *key_symbols_total* exceeds
+    ``len(key_symbols)``, a trailing ``… and N more`` line is appended so
+    users know the list was truncated by the display cap.
+
+    Returns an empty string when *key_symbols* is empty; the CLI uses
+    that signal to omit the whole section.
+    """
+    from lexibrary.cli._output import markdown_table  # noqa: PLC0415
+    from lexibrary.services.lookup import KeySymbolSummary  # noqa: PLC0415
+
+    typed: list[KeySymbolSummary] = [s for s in key_symbols if isinstance(s, KeySymbolSummary)]
+    if not typed:
+        return ""
+
+    rows: list[list[str]] = []
+    for summary in typed:
+        if summary.symbol_type == "method" and summary.qualified_name is not None:
+            # Trim the module prefix and keep the ``Class.method`` tail so
+            # readers can see which class owns the method without having
+            # to scan upward.
+            parts = summary.qualified_name.split(".")
+            display_name = ".".join(parts[-2:]) if len(parts) >= 2 else summary.name
+        else:
+            display_name = summary.name
+        rows.append(
+            [
+                display_name,
+                summary.symbol_type,
+                str(summary.line_start),
+                f"{summary.caller_count} → {summary.callee_count}",
+            ]
+        )
+
+    table = markdown_table(
+        ["Symbol", "Type", "Line", "Callers → Callees"],
+        rows,
+    )
+
+    lines: list[str] = ["\n### Key symbols\n", table]
+    remainder = key_symbols_total - len(typed)
+    if remainder > 0:
+        lines.append(f"\n… and {remainder} more")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def render_directory_link_summary(
     import_count: int,
     imported_file_count: int,

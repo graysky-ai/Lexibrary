@@ -7,6 +7,7 @@ the coordinator itself makes no LLM calls.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -14,9 +15,12 @@ import subprocess
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal
 
 from lexibrary.config.schema import LexibraryConfig
+from lexibrary.curator.collect_filters import _should_skip_path
 from lexibrary.curator.config import CuratorConfig
+from lexibrary.curator.dispatch_context import DispatchContext
 from lexibrary.curator.models import (
     BudgetCollectItem,
     CollectItem,
@@ -34,10 +38,40 @@ from lexibrary.curator.risk_taxonomy import get_risk_level, should_dispatch
 from lexibrary.errors import ErrorSummary
 from lexibrary.utils.paths import LEXIBRARY_DIR
 
+if TYPE_CHECKING:
+    from lexibrary.wiki.resolver import WikilinkResolver
+
 logger = logging.getLogger(__name__)
 
 # Stale lock threshold in seconds (30 minutes).
 _STALE_LOCK_SECONDS = 30 * 60
+
+# ---------------------------------------------------------------------------
+# Validation action-key routing
+# ---------------------------------------------------------------------------
+
+# Mapping from validator check names to narrow per-check curator action keys.
+# Classifying validation issues this way lets honest counters and risk
+# taxonomy report each fixer individually instead of rolling every validator
+# auto-fix under the umbrella ``autofix_validation_issue`` key.  The mapping
+# MUST stay in lock-step with the keys in
+# :data:`lexibrary.validator.fixes.FIXERS`.
+CHECK_TO_ACTION_KEY: dict[str, str] = {
+    "hash_freshness": "fix_hash_freshness",
+    "orphan_artifacts": "fix_orphan_artifacts",
+    "aindex_coverage": "fix_aindex_coverage",
+    "orphaned_aindex": "fix_orphaned_aindex",
+    "orphaned_iwh": "fix_orphaned_iwh",
+    "orphaned_designs": "fix_orphaned_designs",
+    "deprecated_ttl": "fix_deprecated_ttl",
+}
+
+# Set of action keys recognised by the validation bridge router.  Includes the
+# narrow per-check keys and the legacy umbrella key so triage items classified
+# before the CHECK_TO_ACTION_KEY mapping was applied still reach the bridge.
+VALIDATION_ACTION_KEYS: frozenset[str] = frozenset(
+    set(CHECK_TO_ACTION_KEY.values()) | {"autofix_validation_issue"}
+)
 
 
 # ---------------------------------------------------------------------------
@@ -102,8 +136,6 @@ def _acquire_lock(project_root: Path) -> Path:
 
 def _release_lock(project_root: Path) -> None:
     """Remove the curator lock file if present."""
-    import contextlib  # noqa: PLC0415
-
     lock = _lock_path(project_root)
     with contextlib.suppress(OSError):
         lock.unlink(missing_ok=True)
@@ -206,6 +238,35 @@ class Coordinator:
         self.curator_config: CuratorConfig = config.curator
         self.lexibrary_dir = project_root / LEXIBRARY_DIR
         self.summary = ErrorSummary()
+        # Scope-isolation caches populated during _collect; consumed when
+        # building a DispatchContext.  Reset at the start of each pipeline run.
+        self._uncommitted: set[Path] = set()
+        self._active_iwh: set[Path] = set()
+        # Set at the top of _dispatch so _ctx() can report the correct flag.
+        self._dry_run: bool = False
+        # Raw ``validate_library()`` issue count captured during the collect
+        # phase.  Only consumed when ``curator_config.verify_after_sweep`` is
+        # True, where it supplies the ``before`` leg of the verification
+        # delta.  ``None`` means validation did not run (or raised).
+        self._validation_before_count: int | None = None
+
+    def _ctx(self) -> DispatchContext:
+        """Build a :class:`DispatchContext` snapshot from coordinator state.
+
+        The returned context is a shallow snapshot — ``uncommitted`` and
+        ``active_iwh`` are the sets captured during ``_collect`` and
+        ``dry_run`` reflects the flag passed to ``_dispatch``.  Handlers
+        must treat the sets as read-only.
+        """
+        return DispatchContext(
+            project_root=self.project_root,
+            config=self.config,
+            summary=self.summary,
+            lexibrary_dir=self.lexibrary_dir,
+            dry_run=self._dry_run,
+            uncommitted=self._uncommitted,
+            active_iwh=self._active_iwh,
+        )
 
     # -- Public API ---------------------------------------------------------
 
@@ -251,6 +312,10 @@ class Coordinator:
             dispatch_result, dry_run=dry_run
         )
 
+        # Phase 3c: Post-sweep verification (curator-fix Phase 5 — group 10).
+        # Strictly observability — does NOT influence which fixes ran.
+        verification = self._verify_after_sweep(check=check)
+
         # Phase 4: Report
         report = self._report(
             collect_result,
@@ -259,6 +324,7 @@ class Coordinator:
             migrations_applied=migrations_applied,
             migrations_proposed=migrations_proposed,
             trigger=trigger,
+            verification=verification,
         )
         return report
 
@@ -276,9 +342,14 @@ class Coordinator:
         # Determine scope isolation exclusions
         uncommitted = _uncommitted_files(self.project_root)
         active_iwh = _active_iwh_dirs(self.project_root, self.config.iwh.ttl_hours)
+        # Stash on self so _ctx() (dispatch phase) can expose them.
+        self._uncommitted = uncommitted
+        self._active_iwh = active_iwh
 
         # 1. Validation
-        self._collect_validation(result, check=check)
+        self._collect_validation(
+            result, check=check, uncommitted=uncommitted, active_iwh=active_iwh
+        )
 
         # 2. Hash-based staleness detection
         self._collect_staleness(result, scope=scope, uncommitted=uncommitted, active_iwh=active_iwh)
@@ -287,7 +358,7 @@ class Coordinator:
         self._collect_iwh(result, scope=scope)
 
         # 4. Comment detection
-        self._collect_comments(result, scope=scope)
+        self._collect_comments(result, scope=scope, uncommitted=uncommitted, active_iwh=active_iwh)
 
         # 5. Agent-edit detection via change_checker
         self._collect_agent_edits(
@@ -306,6 +377,14 @@ class Coordinator:
         # 9. TODO/FIXME/HACK scanning (Phase 3)
         self._collect_comment_audit_issues(result, scope=scope)
 
+        # 10. Consistency checks (curator-fix Phase 3 — group 8)
+        self._collect_consistency(
+            result,
+            scope=scope,
+            uncommitted=uncommitted,
+            active_iwh=active_iwh,
+        )
+
         return result
 
     def _collect_validation(
@@ -313,9 +392,14 @@ class Coordinator:
         result: CollectResult,
         *,
         check: str | None = None,
+        uncommitted: set[Path] | None = None,
+        active_iwh: set[Path] | None = None,
     ) -> None:
         """Run validate_library() and add results to CollectResult."""
         from lexibrary.validator import validate_library  # noqa: PLC0415
+
+        uncommitted = uncommitted or set()
+        active_iwh = active_iwh or set()
 
         try:
             report = validate_library(
@@ -323,11 +407,20 @@ class Coordinator:
                 self.lexibrary_dir,
                 check_filter=check,
             )
+            # Capture the raw issue count so the Phase 5 post-sweep
+            # verification can compute a ``before`` figure without having
+            # to re-run the validator when ``verify_after_sweep`` is False.
+            self._validation_before_count = len(report.issues)
             for issue in report.issues:
+                artifact_path = Path(issue.artifact) if issue.artifact else None
+                if artifact_path is not None and _should_skip_path(
+                    artifact_path, uncommitted, active_iwh
+                ):
+                    continue
                 result.items.append(
                     CollectItem(
                         source="validation",
-                        path=Path(issue.artifact) if issue.artifact else None,
+                        path=artifact_path,
                         severity=issue.severity,
                         message=issue.message,
                         check=issue.check,
@@ -378,27 +471,18 @@ class Coordinator:
             if scope is not None and not source_path.is_relative_to(scope):
                 continue
 
-            # Scope isolation: skip uncommitted files
-            if source_path in uncommitted:
+            # Scope isolation: skip uncommitted files or active IWH dirs
+            if _should_skip_path(source_path, uncommitted, active_iwh):
+                if source_path in uncommitted:
+                    skip_msg = "Skipped -- uncommitted changes detected"
+                else:
+                    skip_msg = "Skipped -- active IWH signal in directory"
                 result.items.append(
                     CollectItem(
                         source="staleness",
                         path=source_path,
                         severity="info",
-                        message="Skipped -- uncommitted changes detected",
-                        check="scope_isolation",
-                    )
-                )
-                continue
-
-            # Scope isolation: skip files in active IWH directories
-            if any(source_path.is_relative_to(d) for d in active_iwh):
-                result.items.append(
-                    CollectItem(
-                        source="staleness",
-                        path=source_path,
-                        severity="info",
-                        message="Skipped -- active IWH signal in directory",
+                        message=skip_msg,
                         check="scope_isolation",
                     )
                 )
@@ -468,6 +552,7 @@ class Coordinator:
     ) -> None:
         """Scan IWH signals and add to results."""
         from lexibrary.iwh.reader import find_all_iwh  # noqa: PLC0415
+        from lexibrary.utils.paths import iwh_path as _iwh_path  # noqa: PLC0415
 
         try:
             signals = find_all_iwh(self.project_root)
@@ -479,10 +564,13 @@ class Coordinator:
             source_dir = self.project_root / rel_dir
             if scope is not None and not source_dir.is_relative_to(scope):
                 continue
+            # ``consume_iwh`` needs the mirror directory where the ``.iwh`` file
+            # actually lives; ``source_dir`` is used only for scope filtering.
+            mirror_dir = _iwh_path(self.project_root, source_dir).parent
             result.items.append(
                 CollectItem(
                     source="iwh",
-                    path=source_dir,
+                    path=mirror_dir,
                     severity="info",
                     message=f"IWH signal: scope={iwh.scope}, body={iwh.body[:80]}",
                     check="iwh_scan",
@@ -494,6 +582,8 @@ class Coordinator:
         result: CollectResult,
         *,
         scope: Path | None = None,
+        uncommitted: set[Path] | None = None,
+        active_iwh: set[Path] | None = None,
     ) -> None:
         """Detect design files with unprocessed sidecar comments."""
         from lexibrary.lifecycle.comments import comment_count  # noqa: PLC0415
@@ -502,6 +592,9 @@ class Coordinator:
         designs_dir = self.lexibrary_dir / "designs"
         if not designs_dir.is_dir():
             return
+
+        uncommitted = uncommitted or set()
+        active_iwh = active_iwh or set()
 
         for design_path in sorted(designs_dir.rglob("*.md")):
             if design_path.name.startswith("."):
@@ -531,6 +624,10 @@ class Coordinator:
 
             # Scope filtering
             if scope is not None and not source_path.is_relative_to(scope):
+                continue
+
+            # Scope isolation: skip uncommitted files and active IWH dirs
+            if _should_skip_path(source_path, uncommitted, active_iwh):
                 continue
 
             result.comment_items.append(
@@ -1095,6 +1192,202 @@ class Coordinator:
                     )
                 )
 
+    # -- Consistency collection (curator-fix Phase 3 — group 8) -------------
+
+    def _collect_consistency(
+        self,
+        result: CollectResult,
+        *,
+        scope: Path | None = None,
+        uncommitted: set[Path],
+        active_iwh: set[Path],
+    ) -> None:
+        """Run :class:`ConsistencyChecker` checks and append ``CollectItem``s.
+
+        Gated on ``self.curator_config.consistency_collect``:
+        - ``"off"``   — skip all consistency checks.
+        - ``"scope"`` — run scope-bounded checks (wikilink hygiene,
+          slug/alias collisions, bidirectional deps, orphaned .aindex,
+          orphaned .comments.yaml, stale conventions / playbooks,
+          promotable blocked IWH).
+        - ``"full"``  — also run library-wide checks (domain-term
+          suggestion, orphan concept detection).
+
+        ``FixInstruction`` objects returned by the checker are translated
+        into :class:`CollectItem` rows with ``source="consistency"``, the
+        raw ``action`` string on ``action_hint``, and the human-readable
+        ``detail`` on ``fix_instruction_detail``.  Triage then maps
+        ``action_hint`` to a canonical ``action_key`` via
+        :data:`lexibrary.curator.consistency_fixes.CONSISTENCY_ACTION_KEYS`.
+        """
+        mode = self.curator_config.consistency_collect
+        if mode == "off":
+            return
+
+        from lexibrary.curator.consistency import (  # noqa: PLC0415
+            ConsistencyChecker,
+            FixInstruction,
+        )
+
+        resolver = self._build_wikilink_resolver()
+        checker = ConsistencyChecker(self.project_root, self.lexibrary_dir, resolver=resolver)
+
+        def _append(instruction: FixInstruction) -> None:
+            path = instruction.target_path
+            # Consistency paths may be absolute paths anywhere in the
+            # library; ``_should_skip_path`` works on absolute paths.
+            if _should_skip_path(path, uncommitted, active_iwh):
+                return
+            if scope is not None:
+                # Convert to project-relative comparison where possible.
+                try:
+                    if not path.is_relative_to(scope):
+                        return
+                except ValueError:
+                    return
+            severity: Literal["error", "warning", "info"] = (
+                "warning" if instruction.risk == "medium" else "info"
+            )
+            result.items.append(
+                CollectItem(
+                    source="consistency",
+                    path=path,
+                    severity=severity,
+                    message=instruction.detail,
+                    check="consistency",
+                    action_hint=instruction.action,
+                    fix_instruction_detail=instruction.detail,
+                )
+            )
+
+        designs_dir = self.lexibrary_dir / "designs"
+        design_files: list[Path] = []
+        if designs_dir.is_dir():
+            for design_path in sorted(designs_dir.rglob("*.md")):
+                if design_path.name.startswith("."):
+                    continue
+                design_files.append(design_path)
+
+        # -- Scope-bounded checks -----------------------------------------
+        # Wikilink hygiene: per-design-file pass.
+        for design_path in design_files:
+            try:
+                instructions = checker.check_wikilinks(design_path)
+            except Exception as exc:
+                self.summary.add("collect", exc, path=str(design_path))
+                continue
+            for instruction in instructions:
+                _append(instruction)
+
+        # Slug collision detection across design files.
+        try:
+            for instruction in checker.detect_slug_collisions(design_files):
+                _append(instruction)
+        except Exception as exc:
+            self.summary.add("collect", exc, path="slug_collisions")
+
+        # Alias collisions across concepts + conventions.
+        try:
+            alias_instructions = checker.detect_alias_collisions(
+                self.lexibrary_dir / "concepts",
+                self.lexibrary_dir / "conventions",
+            )
+            for instruction in alias_instructions:
+                _append(instruction)
+        except Exception as exc:
+            self.summary.add("collect", exc, path="alias_collisions")
+
+        # Bidirectional dependency check.
+        try:
+            for instruction in checker.check_bidirectional_deps(design_files):
+                _append(instruction)
+        except Exception as exc:
+            self.summary.add("collect", exc, path="bidirectional_deps")
+
+        # Orphaned .aindex cleanup.
+        try:
+            for instruction in checker.detect_orphaned_aindex():
+                _append(instruction)
+        except Exception as exc:
+            self.summary.add("collect", exc, path="orphaned_aindex")
+
+        # Orphaned .comments.yaml cleanup.
+        try:
+            for instruction in checker.detect_orphaned_comments():
+                _append(instruction)
+        except Exception as exc:
+            self.summary.add("collect", exc, path="orphaned_comments")
+
+        # Stale convention / playbook path refs.
+        try:
+            for instruction in checker.detect_stale_conventions(self.lexibrary_dir / "conventions"):
+                _append(instruction)
+        except Exception as exc:
+            self.summary.add("collect", exc, path="stale_conventions")
+        try:
+            for instruction in checker.detect_stale_playbooks(self.lexibrary_dir / "playbooks"):
+                _append(instruction)
+        except Exception as exc:
+            self.summary.add("collect", exc, path="stale_playbooks")
+
+        # Promotable blocked IWH: scope-level (runs in both "scope" and
+        # "full" modes).  The check walks ``.lexibrary/designs/`` for
+        # stale ``scope=blocked`` .iwh files; each hit yields a
+        # ``promote_blocked_iwh`` escalation instruction.  Moved above
+        # the ``full`` guard so default runs surface blocked IWH
+        # promotion candidates without requiring full library sweeps.
+        try:
+            for instruction in checker.detect_promotable_iwh():
+                _append(instruction)
+        except Exception as exc:
+            self.summary.add("collect", exc, path="promotable_iwh")
+
+        if mode != "full":
+            return
+
+        # -- Library-wide checks (mode == "full") -------------------------
+        try:
+            for instruction in checker.detect_domain_terms(design_files):
+                _append(instruction)
+        except Exception as exc:
+            self.summary.add("collect", exc, path="domain_terms")
+
+        try:
+            for instruction in checker.detect_orphan_concepts(
+                self.lexibrary_dir / "concepts",
+                link_graph_available=result.link_graph_available,
+            ):
+                _append(instruction)
+        except Exception as exc:
+            self.summary.add("collect", exc, path="orphan_concepts")
+
+    def _build_wikilink_resolver(self) -> WikilinkResolver | None:
+        """Build a :class:`WikilinkResolver` from the library layout.
+
+        Returns ``None`` if the concepts directory is missing so
+        ``ConsistencyChecker`` falls back to the resolver-less path.
+        """
+        concepts_dir = self.lexibrary_dir / "concepts"
+        if not concepts_dir.is_dir():
+            return None
+        try:
+            from lexibrary.wiki.index import ConceptIndex  # noqa: PLC0415
+            from lexibrary.wiki.resolver import (  # noqa: PLC0415
+                WikilinkResolver as _Resolver,
+            )
+
+            index = ConceptIndex.load(concepts_dir)
+            return _Resolver(
+                index=index,
+                convention_dir=self.lexibrary_dir / "conventions",
+                playbook_dir=self.lexibrary_dir / "playbooks",
+                designs_dir=self.lexibrary_dir / "designs",
+                stack_dir=self.lexibrary_dir / "stack",
+            )
+        except Exception as exc:
+            logger.warning("Failed to build WikilinkResolver: %s", exc)
+            return None
+
     # -- Phase 2: Triage ----------------------------------------------------
 
     def _triage(self, collect: CollectResult) -> TriageResult:
@@ -1149,6 +1442,8 @@ class Coordinator:
             return self._classify_validation(item)
         if item.source == "iwh":
             return self._classify_iwh(item)
+        if item.source == "consistency":
+            return self._classify_consistency(item)
         return None
 
     def _classify_staleness(
@@ -1262,10 +1557,29 @@ class Coordinator:
         return "low", "reconcile_agent_interface_stable"
 
     def _classify_validation(self, item: CollectItem) -> TriageItem:
-        """Classify a validation issue."""
+        """Classify a validation issue.
+
+        Uses :data:`CHECK_TO_ACTION_KEY` to pick the narrow per-check action
+        key (e.g. ``"fix_hash_freshness"``) when the validator check has a
+        registered fixer.  Checks without a registered fixer fall back to the
+        umbrella ``"autofix_validation_issue"`` key — the dispatch bridge will
+        still route them through :func:`fix_validation_issue`, which reports
+        ``outcome="no_fixer"`` for unhandled checks.
+        """
         # Map validation checks to issue types and action keys
-        issue_type = "consistency"
-        action_key = "autofix_validation_issue"
+        issue_type: Literal[
+            "staleness",
+            "consistency",
+            "comment",
+            "orphan",
+            "reconciliation",
+            "deprecation",
+            "budget",
+            "comment_audit",
+            "description_audit",
+            "summary_audit",
+        ] = "consistency"
+        action_key = CHECK_TO_ACTION_KEY.get(item.check, "autofix_validation_issue")
 
         # Map severity to priority
         severity_priority = {"error": 80.0, "warning": 40.0, "info": 10.0}
@@ -1279,18 +1593,67 @@ class Coordinator:
         )
 
     def _classify_iwh(self, item: CollectItem) -> TriageItem:
-        """Classify an IWH signal."""
+        """Classify an IWH signal.
+
+        ``consume_superseded_iwh`` is routed via ``issue_type="orphan"``
+        because it simply deletes a stale signal and has no escalation
+        path.  ``promote_blocked_iwh``, however, is an escalation-only
+        handler that lives in ``consistency_fixes`` and must be routed
+        through ``_dispatch_consistency_fix`` — so it is tagged
+        ``issue_type="consistency_fix"``.
+        """
         # IWH signals may be superseded or blocked
         if "scope=blocked" in item.message:
-            action_key = "promote_blocked_iwh"
-        else:
-            action_key = "consume_superseded_iwh"
-
+            return TriageItem(
+                source_item=item,
+                issue_type="consistency_fix",
+                action_key="promote_blocked_iwh",
+                priority=5.0,
+            )
         return TriageItem(
             source_item=item,
             issue_type="orphan",
-            action_key=action_key,
+            action_key="consume_superseded_iwh",
             priority=5.0,
+        )
+
+    def _classify_consistency(self, item: CollectItem) -> TriageItem:
+        """Classify a consistency-checker item (curator-fix Phase 3 — group 8).
+
+        Maps the raw ``action_hint`` (emitted by ``ConsistencyChecker``)
+        to a canonical ``action_key`` via
+        :data:`lexibrary.curator.consistency_fixes.CONSISTENCY_ACTION_KEYS`.
+        Unknown action hints fall back to the hint itself — the dispatch
+        router will still report an unrecognised-handler stub so the
+        counter logic stays honest.
+        """
+        from lexibrary.curator.consistency_fixes import (  # noqa: PLC0415
+            CONSISTENCY_ACTION_KEYS,
+        )
+
+        action_key = CONSISTENCY_ACTION_KEYS.get(item.action_hint, item.action_hint)
+
+        # Resolve the risk level from the taxonomy so autonomy gating
+        # defers Medium/High actions correctly under ``auto_low``.
+        risk_level: Literal["low", "medium", "high"] | None = None
+        try:
+            level = get_risk_level(action_key, self.curator_config.risk_overrides)
+        except KeyError:
+            level = "medium"  # Unknown -- default to Medium so it's deferred.
+        if level in ("low", "medium", "high"):
+            risk_level = level  # type: ignore[assignment]
+
+        # Priority: Medium/High get a higher base so they surface above
+        # routine Low consistency chores in the triage queue.
+        risk_base = {"low": 15.0, "medium": 40.0, "high": 70.0}
+        priority = risk_base.get(level, 15.0)
+
+        return TriageItem(
+            source_item=item,
+            issue_type="consistency_fix",
+            action_key=action_key,
+            priority=priority,
+            risk_level=risk_level,
         )
 
     def _classify_comment(self, item: CommentCollectItem) -> TriageItem:
@@ -1411,8 +1774,7 @@ class Coordinator:
                 path=item.path,
                 severity="info",
                 message=(
-                    f"{item.marker_type} at line {item.line_number}: "
-                    f"{item.comment_text[:80]}"
+                    f"{item.marker_type} at line {item.line_number}: {item.comment_text[:80]}"
                 ),
                 check="comment_audit",
             ),
@@ -1449,6 +1811,8 @@ class Coordinator:
         dry_run: bool = False,
     ) -> DispatchResult:
         """Apply autonomy gating and dispatch to sub-agent stubs."""
+        # Stash on self so handlers consuming _ctx() see the correct flag.
+        self._dry_run = dry_run
         result = DispatchResult()
         autonomy = self.curator_config.autonomy
         overrides = self.curator_config.risk_overrides
@@ -1510,60 +1874,126 @@ class Coordinator:
                         path=item.source_item.path,
                         message="dry-run: would dispatch",
                         llm_calls=0,
+                        outcome="dry_run",
                     )
                 )
                 continue
 
-            # Dispatch to sub-agent stub
-            agent_result = await self._dispatch_to_stub(item)
+            # Dispatch to sub-agent handler (or stub fallback for unrecognized keys)
+            agent_result = await self._route_to_handler(item)
             result.dispatched.append(agent_result)
             result.llm_calls_used += agent_result.llm_calls
 
         return result
 
-    async def _dispatch_to_stub(self, item: TriageItem) -> SubAgentResult:
-        """Dispatch a triage item to a sub-agent or stub.
+    async def _route_to_handler(self, item: TriageItem) -> SubAgentResult:
+        """Route a triage item to the matching public dispatch function.
 
-        Routes ``regenerate_stale_design`` to the Staleness Resolver,
-        ``reconcile_agent_*`` to the Reconciliation sub-agent,
-        ``integrate_sidecar_comments`` to the Comment Curator,
-        ``condense_file`` to the Budget Trimmer,
-        ``flag_stale_comment`` to the Comment Auditor,
-        deprecation action keys to the Deprecation Analyst.
-        All other action keys remain as stubs until their sub-agents are
-        implemented in later groups.
+        Pure router — contains zero business logic.  Every branch imports
+        the module-level dispatch function (defined in a sibling curator
+        module) and delegates with ``self._ctx()``.  The final fallback
+        returns a stub ``SubAgentResult`` (``outcome="stubbed"``) for
+        action keys that do not yet have a handler wired up.
         """
         # Deprecation workflow dispatch
         if item.issue_type == "deprecation" and item.deprecation_item is not None:
-            return self._dispatch_deprecation(item)
+            from lexibrary.curator.deprecation import (  # noqa: PLC0415
+                dispatch_deprecation_router,
+            )
+
+            return dispatch_deprecation_router(item, self._ctx())
+
+        # Validation bridge — route per-check and umbrella validation keys to
+        # the validator-fixer bridge.  The bridge is a synchronous helper that
+        # takes the coordinator state directly rather than a DispatchContext.
+        if item.action_key in VALIDATION_ACTION_KEYS:
+            from lexibrary.curator.validation_fixers import (  # noqa: PLC0415
+                fix_validation_issue,
+            )
+
+            return fix_validation_issue(item, self.project_root, self.config)
 
         if item.action_key == "regenerate_stale_design":
-            return self._dispatch_staleness_resolver(item)
+            from lexibrary.curator.staleness import (  # noqa: PLC0415
+                dispatch_staleness_resolver,
+            )
+
+            return dispatch_staleness_resolver(item, self._ctx())
 
         if item.action_key in (
             "reconcile_agent_interface_stable",
             "reconcile_agent_interface_changed",
             "reconcile_agent_extensive_content",
         ):
-            return self._dispatch_reconciliation(item)
+            from lexibrary.curator.reconciliation import (  # noqa: PLC0415
+                dispatch_reconciliation,
+            )
+
+            return dispatch_reconciliation(item, self._ctx())
 
         if item.action_key == "integrate_sidecar_comments":
-            return self._dispatch_comment_integration(item)
+            from lexibrary.curator.comments import (  # noqa: PLC0415
+                dispatch_comment_integration,
+            )
+
+            return dispatch_comment_integration(item, self._ctx())
 
         # Phase 3: Budget Trimmer dispatch
         if item.issue_type == "budget" and item.budget_item is not None:
-            return await self._dispatch_budget_condense(item)
+            from lexibrary.curator.budget import (  # noqa: PLC0415
+                dispatch_budget_condense,
+            )
+
+            return await dispatch_budget_condense(item, self._ctx())
 
         # Phase 3: Comment Auditor dispatch
         if item.issue_type == "comment_audit" and item.comment_audit_item is not None:
-            return await self._dispatch_comment_audit(item)
+            from lexibrary.curator.auditing import (  # noqa: PLC0415
+                dispatch_comment_audit,
+            )
 
+            return await dispatch_comment_audit(item, self._ctx())
+
+        # curator-fix Phase 3 — group 8: Consistency Integration
+        # Every item with ``issue_type="consistency_fix"`` routes through
+        # the coordinator-level dispatcher which in turn calls a helper
+        # in :mod:`lexibrary.curator.consistency_fixes`.
+        if item.issue_type == "consistency_fix":
+            return self._dispatch_consistency_fix(item)
+
+        # curator-fix Phase 4 — group 9: IWH residual handlers
+        # Route the three residual IWH action keys to the public helpers
+        # in :mod:`lexibrary.curator.iwh_actions`.  These handlers never
+        # modify design files, never call LLMs, and never raise; they
+        # return ``outcome="errored"`` on failure so the honest counter
+        # logic reports them correctly.
+        if item.action_key == "consume_superseded_iwh":
+            from lexibrary.curator.iwh_actions import (  # noqa: PLC0415
+                consume_superseded_iwh,
+            )
+
+            return consume_superseded_iwh(item, self._ctx())
+
+        if item.action_key == "write_reactive_iwh":
+            from lexibrary.curator.iwh_actions import (  # noqa: PLC0415
+                write_reactive_iwh,
+            )
+
+            return write_reactive_iwh(item, self._ctx())
+
+        if item.action_key == "flag_unresolvable_agent_design":
+            from lexibrary.curator.iwh_actions import (  # noqa: PLC0415
+                flag_unresolvable_agent_design,
+            )
+
+            return flag_unresolvable_agent_design(item, self._ctx())
+
+        # Stub fallback for action keys without a wired handler.
         try:
             risk = get_risk_level(item.action_key, self.curator_config.risk_overrides)
         except KeyError:
             risk = "unknown"
 
-        # Stub: return success with 1 LLM call for non-deterministic actions
         llm_calls = 1 if risk in ("medium", "high") else 0
         return SubAgentResult(
             success=True,
@@ -1571,479 +2001,139 @@ class Coordinator:
             path=item.source_item.path,
             message=f"stub: {item.action_key} (risk={risk})",
             llm_calls=llm_calls,
+            outcome="stubbed",
         )
+
+    # -- Dispatch delegates -------------------------------------------------
+    #
+    # Each of the methods below is a thin one-line delegation to a public
+    # ``dispatch_*`` function living in a sibling curator module.  They are
+    # kept for backward compatibility with tests that patch the Coordinator
+    # bound methods; new tests should target the module-level functions
+    # directly.
 
     def _dispatch_staleness_resolver(self, item: TriageItem) -> SubAgentResult:
-        """Dispatch a staleness item to the Staleness Resolver.
-
-        For non-agent-edited files, the resolver regenerates the design
-        file via the archivist pipeline (BAML stub for now).  Agent-edited
-        files are returned as deferred.
-        """
         from lexibrary.curator.staleness import (  # noqa: PLC0415
-            StalenessWorkItem,
-            resolve_stale_design,
-            staleness_result_to_sub_agent_result,
-        )
-        from lexibrary.utils.paths import mirror_path  # noqa: PLC0415
-
-        source_path = item.source_item.path
-        if source_path is None:
-            return SubAgentResult(
-                success=False,
-                action_key="regenerate_stale_design",
-                path=None,
-                message="No source path available for staleness resolution",
-            )
-
-        design_path = mirror_path(self.project_root, source_path)
-
-        work_item = StalenessWorkItem(
-            source_path=source_path,
-            design_path=design_path,
-            source_hash_stale=item.source_item.source_hash_stale,
-            interface_hash_stale=item.source_item.interface_hash_stale,
-            updated_by=item.source_item.updated_by,
+            dispatch_staleness_resolver,
         )
 
-        try:
-            result = resolve_stale_design(work_item, self.project_root)
-            return staleness_result_to_sub_agent_result(result)
-        except Exception as exc:
-            self.summary.add(
-                "dispatch",
-                exc,
-                path=str(source_path),
-            )
-            return SubAgentResult(
-                success=False,
-                action_key="regenerate_stale_design",
-                path=source_path,
-                message=f"Staleness resolver error: {exc}",
-            )
+        return dispatch_staleness_resolver(item, self._ctx())
 
     def _dispatch_reconciliation(self, item: TriageItem) -> SubAgentResult:
-        """Dispatch an agent-edit reconciliation item.
-
-        Sends the work item to the Reconciliation sub-agent (Opus) via BAML
-        stub.  On successful return: passes through ``serialize_design_file()``,
-        sets ``updated_by: curator``, computes fresh hashes, writes via
-        ``atomic_write()``.
-
-        On low-confidence or malformed output: does NOT write, creates IWH
-        signal (scope: warning), records failure in report, leaves existing
-        stale file in place.
-        """
         from lexibrary.curator.reconciliation import (  # noqa: PLC0415
-            ReconciliationWorkItem,
-            reconcile_agent_design,
-            reconciliation_result_to_sub_agent_result,
-        )
-        from lexibrary.utils.paths import mirror_path  # noqa: PLC0415
-
-        source_path = item.source_item.path
-        if source_path is None:
-            return SubAgentResult(
-                success=False,
-                action_key=item.action_key,
-                path=None,
-                message="No source path available for reconciliation",
-            )
-
-        design_path = mirror_path(self.project_root, source_path)
-
-        work_item = ReconciliationWorkItem(
-            source_path=source_path,
-            design_path=design_path,
-            source_hash_stale=item.source_item.source_hash_stale,
-            interface_hash_stale=item.source_item.interface_hash_stale,
-            updated_by=item.source_item.updated_by,
-            risk_level=item.risk_level or "low",
+            dispatch_reconciliation,
         )
 
-        try:
-            result = reconcile_agent_design(work_item, self.project_root)
-            return reconciliation_result_to_sub_agent_result(result)
-        except Exception as exc:
-            self.summary.add(
-                "dispatch",
-                exc,
-                path=str(source_path),
-            )
-            return SubAgentResult(
-                success=False,
-                action_key=item.action_key,
-                path=source_path,
-                message=f"Reconciliation error: {exc}",
-            )
+        return dispatch_reconciliation(item, self._ctx())
 
     def _dispatch_comment_integration(self, item: TriageItem) -> SubAgentResult:
-        """Dispatch a comment integration item to the Comment Curator.
-
-        Reads sidecar comments, calls the Comment Curator sub-agent,
-        updates the design file Insights section, and handles Stack
-        post promotion for actionable comments.
-        """
         from lexibrary.curator.comments import (  # noqa: PLC0415
-            CommentWorkItem,
-            comment_result_to_sub_agent_result,
-            integrate_comments,
-            promote_to_stack_post,
-        )
-        from lexibrary.lifecycle.comments import read_comments  # noqa: PLC0415
-        from lexibrary.stack.helpers import stack_dir  # noqa: PLC0415
-
-        if item.comment_item is None:
-            return SubAgentResult(
-                success=False,
-                action_key="integrate_sidecar_comments",
-                path=item.source_item.path,
-                message="No comment item available for integration",
-            )
-
-        # Read the actual comments from sidecar
-        comments = read_comments(item.comment_item.comments_path)
-        if not comments:
-            return SubAgentResult(
-                success=True,
-                action_key="integrate_sidecar_comments",
-                path=item.source_item.path,
-                message="No comments to process",
-                llm_calls=0,
-            )
-
-        work_item = CommentWorkItem(
-            design_path=item.comment_item.design_path,
-            source_path=item.comment_item.source_path,
-            comments_path=item.comment_item.comments_path,
-            comments=comments,
+            dispatch_comment_integration,
         )
 
-        try:
-            result = integrate_comments(work_item, self.project_root)
-        except Exception as exc:
-            self.summary.add(
-                "dispatch",
-                exc,
-                path=str(item.comment_item.source_path),
-            )
-            return SubAgentResult(
-                success=False,
-                action_key="integrate_sidecar_comments",
-                path=item.source_item.path,
-                message=f"Comment integration error: {exc}",
-            )
-
-        # Handle actionable comment promotion to Stack posts
-        if result.success:
-            sdir = stack_dir(self.project_root)
-            source_rel = str(item.comment_item.source_path.relative_to(self.project_root))
-            for classification in result.classifications:
-                if classification.disposition == "actionable":
-                    try:
-                        promote_to_stack_post(
-                            sdir,
-                            source_path=source_rel,
-                            title=classification.promotion_title,
-                            problem=classification.promotion_problem,
-                        )
-                    except Exception as exc:
-                        self.summary.add(
-                            "dispatch",
-                            exc,
-                            path=f"stack-promote:{source_rel}",
-                        )
-
-        return comment_result_to_sub_agent_result(result, item.source_item.path)
-
-    # -- Phase 3: Budget Trimmer dispatch -----------------------------------
+        return dispatch_comment_integration(item, self._ctx())
 
     async def _dispatch_budget_condense(self, item: TriageItem) -> SubAgentResult:
-        """Dispatch a budget issue to the Budget Trimmer sub-agent.
-
-        Under ``full`` autonomy the condensed content is written to disk
-        via ``serialize_design_file()`` + ``atomic_write()`` with
-        ``updated_by: curator`` and recomputed hashes.  Under ``auto_low``
-        the condensation is proposed only (returned in the result message).
-        """
-        from lexibrary.curator.budget import BudgetIssue, condense_file  # noqa: PLC0415
-
-        budget_item = item.budget_item
-        if budget_item is None:
-            return SubAgentResult(
-                success=False,
-                action_key="condense_file",
-                path=item.source_item.path,
-                message="No budget item available for condensation",
-            )
-
-        issue = BudgetIssue(
-            path=budget_item.path,
-            current_tokens=budget_item.current_tokens,
-            budget_target=budget_item.budget_target,
-            file_type=budget_item.file_type,  # type: ignore[arg-type]
+        from lexibrary.curator.budget import (  # noqa: PLC0415
+            dispatch_budget_condense,
         )
 
-        try:
-            condense_result = await condense_file(issue, self.curator_config)
-        except Exception as exc:
-            self.summary.add("dispatch", exc, path=str(budget_item.path))
-            return SubAgentResult(
-                success=False,
-                action_key="condense_file",
-                path=budget_item.path,
-                message=f"Budget condensation error: {exc}",
-            )
-
-        if not condense_result.success:
-            return SubAgentResult(
-                success=False,
-                action_key="condense_file",
-                path=budget_item.path,
-                message="Budget condensation failed (BAML returned failure)",
-                llm_calls=1,
-            )
-
-        # Under full autonomy, write the condensed file
-        autonomy = self.curator_config.autonomy
-        if autonomy == "full":
-            try:
-                self._write_condensed_file(budget_item.path, condense_result.condensed_content)
-            except Exception as exc:
-                self.summary.add("dispatch", exc, path=str(budget_item.path))
-                return SubAgentResult(
-                    success=False,
-                    action_key="condense_file",
-                    path=budget_item.path,
-                    message=f"Failed to write condensed file: {exc}",
-                    llm_calls=1,
-                )
-
-            return SubAgentResult(
-                success=True,
-                action_key="condense_file",
-                path=budget_item.path,
-                message=(
-                    f"Condensed from {budget_item.current_tokens} to "
-                    f"~{budget_item.budget_target} tokens; "
-                    f"trimmed: {', '.join(condense_result.trimmed_sections)}"
-                ),
-                llm_calls=1,
-            )
-
-        # Under auto_low or propose, just report the proposal
-        return SubAgentResult(
-            success=True,
-            action_key="propose_condensation",
-            path=budget_item.path,
-            message=(
-                f"Proposed condensation from {budget_item.current_tokens} to "
-                f"~{budget_item.budget_target} tokens; "
-                f"would trim: {', '.join(condense_result.trimmed_sections)}"
-            ),
-            llm_calls=1,
-        )
-
-    def _write_condensed_file(self, file_path: Path, condensed_content: str) -> None:
-        """Write condensed content to a design file with updated metadata.
-
-        Uses ``serialize_design_file()`` + ``atomic_write()`` with
-        ``updated_by: curator`` and recomputed hashes.
-        """
-        from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
-            parse_design_file_frontmatter,
-        )
-        from lexibrary.utils.atomic import atomic_write  # noqa: PLC0415
-
-        # For design files, update the frontmatter's updated_by field
-        # before writing.  For non-design files (START_HERE, HANDOFF),
-        # just write the content directly.
-        fm = None
-        try:
-            fm = parse_design_file_frontmatter(file_path)
-        except Exception:
-            pass
-
-        if fm is not None:
-            # Replace the body while preserving frontmatter structure.
-            # The condensed_content from BAML includes the full file content.
-            atomic_write(file_path, condensed_content)
-        else:
-            atomic_write(file_path, condensed_content)
-
-    # -- Phase 3: Comment Auditor dispatch ----------------------------------
+        return await dispatch_budget_condense(item, self._ctx())
 
     async def _dispatch_comment_audit(self, item: TriageItem) -> SubAgentResult:
-        """Dispatch a comment audit issue to the Comment Auditor sub-agent.
-
-        Calls ``audit_comment()`` from ``auditing.py`` and returns the
-        result via the ``comment_audit_to_sub_agent_result()`` converter.
-        """
         from lexibrary.curator.auditing import (  # noqa: PLC0415
-            CommentAuditIssue,
-            audit_comment,
-            comment_audit_to_sub_agent_result,
+            dispatch_comment_audit,
         )
 
-        audit_item = item.comment_audit_item
-        if audit_item is None:
-            return SubAgentResult(
-                success=False,
-                action_key="flag_stale_comment",
-                path=item.source_item.path,
-                message="No comment audit item available",
-            )
-
-        issue = CommentAuditIssue(
-            path=audit_item.path,
-            line_number=audit_item.line_number,
-            comment_text=audit_item.comment_text,
-            code_context=audit_item.code_context,
-            marker_type=audit_item.marker_type,  # type: ignore[arg-type]
-        )
-
-        try:
-            audit_result = await audit_comment(issue)
-            return comment_audit_to_sub_agent_result(issue, audit_result)
-        except Exception as exc:
-            self.summary.add("dispatch", exc, path=str(audit_item.path))
-            return SubAgentResult(
-                success=False,
-                action_key="flag_stale_comment",
-                path=audit_item.path,
-                message=f"Comment audit error: {exc}",
-            )
-
-    # -- Deprecation dispatch -----------------------------------------------
+        return await dispatch_comment_audit(item, self._ctx())
 
     def _dispatch_deprecation(self, item: TriageItem) -> SubAgentResult:
-        """Dispatch a deprecation candidate to the appropriate handler.
+        from lexibrary.curator.deprecation import (  # noqa: PLC0415
+            dispatch_deprecation_router,
+        )
 
-        Routes to hard deletion, lifecycle deprecation, or the Deprecation
-        Analyst sub-agent depending on the action key.  Before dispatch:
-        checks ``git status``, IWH signals, and risk level.
-        """
-        dep = item.deprecation_item
-        if dep is None:
-            return SubAgentResult(
-                success=False,
-                action_key=item.action_key,
-                path=item.source_item.path,
-                message="No deprecation item available for dispatch",
-            )
-
-        action_key = item.action_key
-
-        # Hard deletion actions (TTL-expired, zero refs)
-        if action_key.startswith("hard_delete_"):
-            return self._dispatch_hard_delete(item, dep)
-
-        # Stack post transition
-        if action_key == "stack_post_transition":
-            return self._dispatch_stack_transition(item, dep)
-
-        # Soft deprecation (concept, convention, playbook, design_file)
-        return self._dispatch_soft_deprecation(item, dep)
+        return dispatch_deprecation_router(item, self._ctx())
 
     def _dispatch_hard_delete(
         self, item: TriageItem, dep: DeprecationCollectItem
     ) -> SubAgentResult:
-        """Execute hard deletion of a TTL-expired deprecated artifact."""
-        from lexibrary.curator.lifecycle import execute_hard_delete  # noqa: PLC0415
-        from lexibrary.linkgraph.query import open_index  # noqa: PLC0415
+        from lexibrary.curator.lifecycle import dispatch_hard_delete  # noqa: PLC0415
 
-        link_graph = open_index(self.project_root)
-        try:
-            execute_hard_delete(
-                kind=dep.artifact_kind,
-                artifact_path=dep.artifact_path,
-                ttl_commits=self.curator_config.deprecation.ttl_commits,
-                commits_since_deprecation=dep.commits_since_deprecation,
-                link_graph=link_graph,
-            )
-            return SubAgentResult(
-                success=True,
-                action_key=item.action_key,
-                path=dep.artifact_path,
-                message=f"Hard-deleted {dep.artifact_kind}: {dep.artifact_path.name}",
-                llm_calls=0,
-            )
-        except Exception as exc:
-            self.summary.add("dispatch", exc, path=str(dep.artifact_path))
-            return SubAgentResult(
-                success=False,
-                action_key=item.action_key,
-                path=dep.artifact_path,
-                message=f"Hard deletion failed: {exc}",
-            )
-        finally:
-            if link_graph is not None:
-                link_graph.close()
+        return dispatch_hard_delete(item, self._ctx(), dep)
 
     def _dispatch_stack_transition(
         self, item: TriageItem, dep: DeprecationCollectItem
     ) -> SubAgentResult:
-        """Dispatch a stack post state transition (e.g. resolved -> stale)."""
-        from lexibrary.curator.lifecycle import execute_deprecation  # noqa: PLC0415
+        from lexibrary.curator.lifecycle import (  # noqa: PLC0415
+            dispatch_stack_transition,
+        )
 
-        try:
-            execute_deprecation(
-                kind="stack_post",
-                artifact_path=dep.artifact_path,
-                target_status="stale",
-            )
-            return SubAgentResult(
-                success=True,
-                action_key=item.action_key,
-                path=dep.artifact_path,
-                message=f"Transitioned stack post to stale: {dep.artifact_path.name}",
-                llm_calls=0,
-            )
-        except Exception as exc:
-            self.summary.add("dispatch", exc, path=str(dep.artifact_path))
-            return SubAgentResult(
-                success=False,
-                action_key=item.action_key,
-                path=dep.artifact_path,
-                message=f"Stack transition failed: {exc}",
-            )
+        return dispatch_stack_transition(item, self._ctx(), dep)
 
     def _dispatch_soft_deprecation(
         self, item: TriageItem, dep: DeprecationCollectItem
     ) -> SubAgentResult:
-        """Dispatch soft deprecation via the Deprecation Analyst sub-agent.
+        from lexibrary.curator.deprecation import (  # noqa: PLC0415
+            dispatch_soft_deprecation,
+        )
 
-        For now this is a stub that performs the deprecation directly
-        using the lifecycle module.  When the BAML sub-agent is wired
-        in, this will route through ``analyze_deprecation()`` first.
+        return dispatch_soft_deprecation(item, self._ctx(), dep)
+
+    # -- Consistency dispatch (curator-fix Phase 3 — group 8) ---------------
+
+    def _dispatch_consistency_fix(self, item: TriageItem) -> SubAgentResult:
+        """Route a ``consistency_fix`` triage item to the matching fix helper.
+
+        The mapping from canonical ``action_key`` to helper function lives
+        in :mod:`lexibrary.curator.consistency_fixes`.  Unknown action keys
+        fall through to a stub result so the honest counter logic still
+        records them as ``outcome="stubbed"``.
         """
-        from lexibrary.curator.lifecycle import execute_deprecation  # noqa: PLC0415
+        from lexibrary.curator import consistency_fixes  # noqa: PLC0415
 
-        target_status = "deprecated"
-        if dep.artifact_kind == "design_file" and dep.reason == "source_deleted":
-            target_status = "deprecated"
+        # Canonical action_key -> helper function.  The mapping keys
+        # mirror :data:`CONSISTENCY_ACTION_KEYS` values.
+        handlers = {
+            "strip_unresolved_wikilink": consistency_fixes.apply_strip_wikilink,
+            "fix_broken_wikilink_fuzzy": consistency_fixes.apply_substitute_wikilink,
+            "resolve_slug_collision": consistency_fixes.apply_slug_suffix,
+            "resolve_alias_collision": consistency_fixes.apply_alias_dedup,
+            "add_missing_bidirectional_dep": consistency_fixes.apply_bidirectional_dep,
+            "remove_orphaned_aindex": consistency_fixes.apply_orphaned_aindex_delete,
+            "delete_orphaned_comments": consistency_fixes.apply_orphaned_comments_delete,
+            "remove_orphan_zero_deps": consistency_fixes.apply_orphan_concept_delete,
+            "flag_stale_convention": consistency_fixes.apply_flag_stale_convention,
+            "flag_stale_playbook": consistency_fixes.apply_flag_stale_playbook,
+            "suggest_new_concept": consistency_fixes.apply_suggest_new_concept,
+            "promote_blocked_iwh": consistency_fixes.apply_promote_blocked_iwh,
+        }
 
-        try:
-            execute_deprecation(
-                kind=dep.artifact_kind,
-                artifact_path=dep.artifact_path,
-                target_status=target_status,
-                deprecated_reason=dep.reason,
-            )
+        handler = handlers.get(item.action_key)
+        if handler is None:
             return SubAgentResult(
                 success=True,
                 action_key=item.action_key,
-                path=dep.artifact_path,
-                message=f"Deprecated {dep.artifact_kind}: {dep.artifact_path.name}",
-                llm_calls=1,
+                path=item.source_item.path,
+                message=f"stub: consistency {item.action_key} (no handler)",
+                llm_calls=0,
+                outcome="stubbed",
             )
+
+        try:
+            return handler(item, self._ctx())
         except Exception as exc:
-            self.summary.add("dispatch", exc, path=str(dep.artifact_path))
+            self.summary.add(
+                "dispatch",
+                exc,
+                path=str(item.source_item.path) if item.source_item.path else "",
+            )
             return SubAgentResult(
                 success=False,
                 action_key=item.action_key,
-                path=dep.artifact_path,
-                message=f"Deprecation failed: {exc}",
+                path=item.source_item.path,
+                message=f"consistency fix error: {exc}",
+                llm_calls=0,
+                outcome="errored",
             )
 
     def _write_deprecation_proposal_iwh(self, item: TriageItem) -> None:
@@ -2156,6 +2246,49 @@ class Coordinator:
 
         return (migrations_applied, migrations_proposed)
 
+    # -- Phase 3c: Post-sweep verification (curator-fix Phase 5) -------------
+
+    def _verify_after_sweep(self, *, check: str | None = None) -> dict[str, int] | None:
+        """Optionally re-run ``validate_library()`` to measure sweep impact.
+
+        Returns a ``{"before": int, "after": int, "delta": int}`` dict when
+        ``curator_config.verify_after_sweep`` is True and the pre-sweep
+        validation call during ``_collect_validation`` succeeded.  Returns
+        ``None`` when verification is disabled, when the pre-sweep count
+        was never captured (validator raised), or when the post-sweep
+        validator itself raises.
+
+        The ``delta`` is expressed as ``before - after`` — a positive
+        value indicates issues were resolved during the sweep.  This is
+        strictly observability data; it does not affect which fixes ran.
+
+        The ``check`` filter is passed through unchanged so the after-count
+        is scoped to the same subset of checks as the before-count.  This
+        keeps the delta meaningful when callers invoke the coordinator
+        with ``--check <name>``.
+        """
+        if not self.curator_config.verify_after_sweep:
+            return None
+        if self._validation_before_count is None:
+            return None
+
+        from lexibrary.validator import validate_library  # noqa: PLC0415
+
+        try:
+            report = validate_library(
+                self.project_root,
+                self.lexibrary_dir,
+                check_filter=check,
+            )
+        except Exception as exc:
+            logger.error("validate_library() (post-sweep) raised: %s", exc)
+            self.summary.add("verify", exc, path="validate_library")
+            return None
+
+        before = self._validation_before_count
+        after = len(report.issues)
+        return {"before": before, "after": after, "delta": before - after}
+
     # -- Phase 4: Report ----------------------------------------------------
 
     def _report(
@@ -2167,6 +2300,7 @@ class Coordinator:
         migrations_applied: int = 0,
         migrations_proposed: int = 0,
         trigger: str = "on_demand",
+        verification: dict[str, int] | None = None,
     ) -> CuratorReport:
         """Aggregate results into a CuratorReport and write to disk."""
         # Count sub-agent calls by type
@@ -2174,10 +2308,35 @@ class Coordinator:
         for d in dispatch.dispatched:
             sub_agent_calls[d.action_key] = sub_agent_calls.get(d.action_key, 0) + 1
 
-        # Count fixed (successful dispatches that actually ran)
-        fixed = sum(
-            1 for d in dispatch.dispatched if d.success and d.message != "dry-run: would dispatch"
-        )
+        # Count fixed and stubbed from outcome field
+        fixed = sum(1 for d in dispatch.dispatched if d.outcome == "fixed")
+        stubbed = sum(1 for d in dispatch.dispatched if d.outcome == "stubbed")
+
+        # Populate dispatched_details for verbose rendering and persisted report
+        dispatched_details: list[dict[str, object]] = [
+            {
+                "action_key": d.action_key,
+                "path": str(d.path) if d.path is not None else None,
+                "message": d.message,
+                "success": d.success,
+                "outcome": d.outcome,
+                "llm_calls": d.llm_calls,
+            }
+            for d in dispatch.dispatched
+        ]
+
+        # Populate deferred_details for verbose rendering and persisted report
+        deferred_details: list[dict[str, object]] = [
+            {
+                "action_key": t.action_key,
+                "issue_type": t.issue_type,
+                "path": (str(t.source_item.path) if t.source_item.path is not None else None),
+                "check": t.source_item.check,
+                "message": t.source_item.message,
+                "risk_level": t.risk_level,
+            }
+            for t in dispatch.deferred
+        ]
 
         # Count deprecation-specific results
         deprecated = sum(
@@ -2185,14 +2344,14 @@ class Coordinator:
             for d in dispatch.dispatched
             if d.success
             and d.action_key.startswith("deprecate_")
-            and d.message != "dry-run: would dispatch"
+            and d.outcome != "dry_run"
         )
         hard_deleted = sum(
             1
             for d in dispatch.dispatched
             if d.success
             and d.action_key.startswith("hard_delete_")
-            and d.message != "dry-run: would dispatch"
+            and d.outcome != "dry_run"
         )
 
         # Phase 3: Budget and auditing counters
@@ -2201,35 +2360,35 @@ class Coordinator:
             for d in dispatch.dispatched
             if d.success
             and d.action_key == "condense_file"
-            and d.message != "dry-run: would dispatch"
+            and d.outcome != "dry_run"
         )
         budget_proposed = sum(
             1
             for d in dispatch.dispatched
             if d.success
             and d.action_key == "propose_condensation"
-            and d.message != "dry-run: would dispatch"
+            and d.outcome != "dry_run"
         )
         comments_flagged = sum(
             1
             for d in dispatch.dispatched
             if d.success
             and d.action_key == "flag_stale_comment"
-            and d.message != "dry-run: would dispatch"
+            and d.outcome != "dry_run"
         )
         descriptions_audited = sum(
             1
             for d in dispatch.dispatched
             if d.success
             and d.action_key == "audit_description"
-            and d.message != "dry-run: would dispatch"
+            and d.outcome != "dry_run"
         )
         summaries_audited = sum(
             1
             for d in dispatch.dispatched
             if d.success
             and d.action_key == "audit_summary"
-            and d.message != "dry-run: would dispatch"
+            and d.outcome != "dry_run"
         )
 
         # Errors from ErrorSummary
@@ -2268,7 +2427,12 @@ class Coordinator:
             comments_flagged=comments_flagged,
             descriptions_audited=descriptions_audited,
             summaries_audited=summaries_audited,
+            schema_version=2,
+            stubbed=stubbed,
+            dispatched_details=dispatched_details,
+            deferred_details=deferred_details,
             trigger=trigger_value,  # type: ignore[arg-type]
+            verification=verification,
         )
 
         # Write report to disk
@@ -2288,15 +2452,19 @@ class Coordinator:
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         report_file = reports_dir / f"{timestamp}.json"
 
-        data = {
+        data: dict[str, object] = {
+            "schema_version": report.schema_version,
             "timestamp": timestamp,
             "trigger": report.trigger,
             "checked": report.checked,
             "fixed": report.fixed,
+            "stubbed": report.stubbed,
             "deferred": report.deferred,
             "errored": report.errored,
             "errors": report.errors,
             "sub_agent_calls": report.sub_agent_calls,
+            "dispatched": report.dispatched_details,
+            "deferred_details": report.deferred_details,
             "deprecated": report.deprecated,
             "hard_deleted": report.hard_deleted,
             "migrations_applied": report.migrations_applied,
@@ -2307,6 +2475,12 @@ class Coordinator:
             "descriptions_audited": report.descriptions_audited,
             "summaries_audited": report.summaries_audited,
         }
+        # Phase 5 (curator-fix): emit the post-sweep verification block only
+        # when the feature is enabled and the delta was computed.  The key's
+        # absence for default runs is part of the contract — see
+        # ``test_verification_delta_disabled_by_default``.
+        if report.verification is not None:
+            data["verification"] = report.verification
 
         try:
             report_file.write_text(

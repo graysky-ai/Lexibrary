@@ -19,13 +19,9 @@ from lexibrary.curator.risk_taxonomy import (
 EXPECTED_LOW_KEYS = {
     "regenerate_stale_design",
     "update_footer_hashes",
-    "mark_design_unlinked",
     "reconcile_agent_interface_stable",
     "integrate_sidecar_comments",
-    "prune_ephemeral_comments",
-    "promote_comment",
     "delete_orphaned_comments",
-    "fix_broken_wikilink_exact",
     "fix_broken_wikilink_fuzzy",
     "strip_unresolved_wikilink",
     "add_alias_fuzzy_match",
@@ -33,6 +29,8 @@ EXPECTED_LOW_KEYS = {
     "remove_orphaned_reverse_dep",
     "resolve_slug_collision",
     "resolve_alias_collision",
+    "flag_stale_convention",
+    "flag_stale_playbook",
     "autofix_validation_issue",
     "remove_orphan_zero_deps",
     "remove_orphaned_aindex",
@@ -50,13 +48,18 @@ EXPECTED_LOW_KEYS = {
     "stack_post_transition",
     # Budget trimming (Phase 3)
     "shorten_description",
+    # Validation bridge per-check keys (curator-fix Phase 2)
+    "fix_hash_freshness",
+    "fix_orphan_artifacts",
+    "fix_aindex_coverage",
+    "fix_orphaned_aindex",
+    "fix_orphaned_iwh",
+    "fix_deprecated_ttl",
 }
 
 EXPECTED_MEDIUM_KEYS = {
     "deprecate_design_file",
     "reconcile_agent_interface_changed",
-    "rewrite_insights_section",
-    "flag_conflicting_conventions",
     "suggest_new_concept",
     "promote_blocked_iwh",
     # Deprecation lifecycle (Phase 2)
@@ -69,6 +72,9 @@ EXPECTED_MEDIUM_KEYS = {
     "flag_stale_comment",
     "audit_description",
     "audit_summary",
+    # Validation bridge — medium because deprecation workflow
+    # deletes / mutates files (curator-fix Phase 2)
+    "fix_orphaned_designs",
 }
 
 EXPECTED_HIGH_KEYS = {
@@ -118,11 +124,18 @@ class TestRiskTaxonomy:
 
     def test_low_risk_count(self) -> None:
         low_keys = {k for k, v in RISK_TAXONOMY.items() if v.level == "low"}
-        assert len(low_keys) == 31
+        # 39 previously (37 base + 2 Phase 3 group 8) minus 4 orphan/dead
+        # stubs removed by curator-fix-2 group 1 (``mark_design_unlinked``,
+        # ``prune_ephemeral_comments``, ``promote_comment``,
+        # ``fix_broken_wikilink_exact``).
+        assert len(low_keys) == 35
 
     def test_medium_risk_count(self) -> None:
         medium_keys = {k for k, v in RISK_TAXONOMY.items() if v.level == "medium"}
-        assert len(medium_keys) == 13
+        # 14 previously minus 2 orphan/dead stubs removed by
+        # curator-fix-2 group 1 (``rewrite_insights_section``,
+        # ``flag_conflicting_conventions``).
+        assert len(medium_keys) == 12
 
     def test_high_risk_count(self) -> None:
         high_keys = {k for k, v in RISK_TAXONOMY.items() if v.level == "high"}
@@ -155,7 +168,10 @@ class TestRiskTaxonomy:
             assert risk.function_ref, f"{key} has empty function_ref"
 
     def test_total_action_count(self) -> None:
-        assert len(RISK_TAXONOMY) == 47  # 31 Low + 13 Medium + 3 High
+        # 35 Low + 12 Medium + 3 High = 50.
+        # curator-fix-2 group 1 removed 6 orphan/dead stub entries
+        # (4 Low, 2 Medium) that had no source emission.
+        assert len(RISK_TAXONOMY) == 50
 
 
 # ---------------------------------------------------------------------------
@@ -177,12 +193,22 @@ class TestGetRiskLevel:
         overrides = {"reconcile_agent_extensive_content": "low"}
         assert get_risk_level("reconcile_agent_extensive_content", overrides) == "low"
 
-    def test_unknown_key_raises_key_error(self) -> None:
-        with pytest.raises(KeyError, match="nonexistent_action"):
-            get_risk_level("nonexistent_action", {})
+    def test_unknown_key_returns_low_with_warning(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Unknown action key logs a warning and falls back to ``low``."""
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="lexibrary.curator.risk_taxonomy"):
+            result = get_risk_level("nonexistent_action", {})
+        assert result == "low"
+        assert any("nonexistent_action" in record.getMessage() for record in caplog.records), (
+            f"expected warning mentioning 'nonexistent_action', got {caplog.records!r}"
+        )
 
     def test_unknown_key_with_override_succeeds(self) -> None:
-        """Override for unknown key does NOT raise -- override takes precedence."""
+        """Override for unknown key does NOT warn -- override takes precedence."""
         assert get_risk_level("custom_action", {"custom_action": "medium"}) == "medium"
 
     def test_override_empty_dict_uses_taxonomy(self) -> None:
@@ -259,11 +285,19 @@ class TestShouldDispatch:
         overrides = {"reconcile_agent_extensive_content": "low"}
         assert should_dispatch("reconcile_agent_extensive_content", "propose", overrides) is False
 
-    # --- unknown key raises through should_dispatch ---
+    # --- unknown key falls back to "low" (warning logged) ---
 
-    def test_unknown_key_raises(self) -> None:
-        with pytest.raises(KeyError):
-            should_dispatch("nonexistent_action", "auto_low", {})
+    def test_unknown_key_falls_back_to_low(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Unknown action key resolves to ``low``; auto_low dispatches it."""
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="lexibrary.curator.risk_taxonomy"):
+            # Unknown key → warning + "low" default → auto_low dispatches
+            assert should_dispatch("nonexistent_action", "auto_low", {}) is True
+        assert any("nonexistent_action" in record.getMessage() for record in caplog.records)
 
     # --- exhaustive: all keys dispatch under full ---
 
@@ -472,11 +506,16 @@ PHASE3_ACTION_KEYS_WITH_LEVELS: dict[str, str] = {
 }
 
 # Expected function_ref values for Phase 3 action keys.
+# After the Phase 1.5 dispatcher refactor (openspec change curator-fix,
+# group 3), every budget/comment-audit action key resolves to the public
+# async dispatcher in the owning module.  ``audit_description`` and
+# ``audit_summary`` still point at their domain-specific BAML wrappers
+# because no dedicated dispatcher has been extracted yet.
 PHASE3_FUNCTION_REFS: dict[str, str] = {
-    "condense_file": "curator.budget.condense_file",
-    "shorten_description": "curator.budget.shorten_description",
-    "propose_condensation": "curator.budget.propose_condensation",
-    "flag_stale_comment": "curator.auditing.flag_stale_comment",
+    "condense_file": "curator.budget.dispatch_budget_condense",
+    "shorten_description": "curator.budget.dispatch_budget_condense",
+    "propose_condensation": "curator.budget.dispatch_budget_condense",
+    "flag_stale_comment": "curator.auditing.dispatch_comment_audit",
     "audit_description": "curator.auditing.audit_description",
     "audit_summary": "curator.auditing.audit_summary",
 }

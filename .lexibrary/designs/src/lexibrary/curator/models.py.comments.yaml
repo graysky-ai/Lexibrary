@@ -1,18 +1,13 @@
 comments:
-- body: 'New file: defines the typed dataclass pipeline models (CollectItem, CollectResult,
-    TriageItem, TriageResult, SubAgentResult, DispatchResult, CuratorReport) exchanged
-    between the four coordinator phases. No external dependencies -- pure domain model.'
-  date: '2026-04-09T05:24:41.580126Z'
-- body: 'Extended models for deprecation workflow (Phase 2, Group 7): added DeprecationCollectItem
-    dataclass for deprecation candidates, added ''deprecation'' to CollectItem.source
-    and TriageItem.issue_type literals, added deprecation_items list to CollectResult,
-    added deprecation_item field to TriageItem, added deprecated/hard_deleted/migrations_applied/migrations_proposed
-    counters to CuratorReport.'
-  date: '2026-04-09T07:39:50.860829Z'
-- body: 'Phase 3 extensions: Added BudgetCollectItem and CommentAuditCollectItem to
-    CollectResult. Expanded TriageItem.issue_type Literal with budget, comment_audit,
-    description_audit, summary_audit. Added budget_item and comment_audit_item optional
-    fields to TriageItem. Added Phase 3 counters (budget_condensed, budget_proposed,
-    comments_flagged, descriptions_audited, summaries_audited) and trigger Literal
-    to CuratorReport.'
-  date: '2026-04-09T11:45:16.293965Z'
+- body: 'curator-fix Phase 1: added SubAgentResult.outcome Literal and CuratorReport
+    schema_version/stubbed/dispatched_details/deferred_details fields. The outcome
+    field drives honest fixed/stubbed counters downstream; do not remove or rename
+    the existing success/message/path/action_key/llm_calls fields. schema_version=2
+    signals the enriched JSON payload for curate_render backward compatibility.'
+  date: '2026-04-10T20:51:10.360779Z'
+- body: 'curator-fix Phase 5 (group 10): CuratorReport gained an optional verification:
+    dict[str, int] | None field. Populated only when CuratorConfig.verify_after_sweep
+    is True. Shape: {''before'': int, ''after'': int, ''delta'': int} where delta
+    = before - after (positive means issues were resolved). Default None keeps existing
+    serialization unchanged so the ''verification'' JSON key is strictly additive.'
+  date: '2026-04-11T01:17:12.460325Z'

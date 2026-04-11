@@ -358,8 +358,9 @@ class TestCheckDuplicateSlugs:
         issues = check_duplicate_slugs(project_root, lexibrary_dir)
         assert issues == []
 
-    def test_duplicate_slug_across_types(self, tmp_path: Path) -> None:
-        """Same slug in concepts/ and conventions/ produces issues."""
+    def test_duplicate_slug_across_types_allowed(self, tmp_path: Path) -> None:
+        """Same slug in concepts/ and conventions/ is allowed — slugs need only
+        be unique within a type, not globally across types."""
         project_root = tmp_path
         lexibrary_dir = tmp_path / ".lexibrary"
         lexibrary_dir.mkdir()
@@ -376,30 +377,37 @@ class TestCheckDuplicateSlugs:
         )
 
         issues = check_duplicate_slugs(project_root, lexibrary_dir)
-        assert len(issues) == 2
-        assert all(i.check == "duplicate_slugs" for i in issues)
-        assert all(i.severity == "warning" for i in issues)
-        artifacts = {i.artifact for i in issues}
-        assert "concepts/my-thing.md" in artifacts
-        assert "conventions/my-thing.md" in artifacts
+        assert issues == [], (
+            "Cross-type slug collisions should not be reported; "
+            "each artifact type is its own namespace"
+        )
 
     def test_duplicate_slugs_within_concepts(self, tmp_path: Path) -> None:
-        """Two concept files cannot have the same slug (filesystem prevents this
-        normally, but we test the logic)."""
-        # This is actually impossible on a real filesystem, so just test
-        # that a single file with a unique slug passes cleanly.
+        """Two concept files with different ID prefixes but the same slug produce issues."""
         project_root = tmp_path
         lexibrary_dir = tmp_path / ".lexibrary"
         lexibrary_dir.mkdir()
 
-        _write_concept_file(
-            lexibrary_dir / "concepts",
-            "unique",
-            title="Unique",
+        # Two concept files that share the slug "error-handling" after prefix stripping.
+        # ID-prefixed filenames allow both to exist on the filesystem simultaneously.
+        concepts_dir = lexibrary_dir / "concepts"
+        concepts_dir.mkdir(parents=True, exist_ok=True)
+        (concepts_dir / "CN-001-error-handling.md").write_text(
+            "---\ntitle: Error Handling\nid: CN-001\naliases: []\ntags: [general]\nstatus: active\n---\n"
+        )
+        (concepts_dir / "CN-002-error-handling.md").write_text(
+            "---\ntitle: Error Handling v2\nid: CN-002\naliases: []\ntags: [general]\nstatus: active\n---\n"
         )
 
         issues = check_duplicate_slugs(project_root, lexibrary_dir)
-        assert issues == []
+        assert len(issues) == 2
+        assert all(i.check == "duplicate_slugs" for i in issues)
+        assert all(i.severity == "warning" for i in issues)
+        artifacts = {i.artifact for i in issues}
+        assert "concepts/CN-001-error-handling.md" in artifacts
+        assert "concepts/CN-002-error-handling.md" in artifacts
+        # Message should name the artifact type, not just say "multiple files"
+        assert all("concept" in i.message for i in issues)
 
     def test_missing_directories_returns_empty(self, tmp_path: Path) -> None:
         """When neither concepts nor conventions exist, returns empty."""

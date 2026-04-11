@@ -58,6 +58,12 @@ def find_all_iwh(project_root: Path) -> list[tuple[Path, IWHFile]]:
     tuples.  The ``source_directory_relative`` is the mirror path reversed
     back to the corresponding source directory, relative to *project_root*.
 
+    Under the design-file mirror layout, IWH files live under
+    ``.lexibrary/designs/<src-path>/.iwh``.  This function strips the
+    ``designs/`` prefix so the returned path is source-relative (e.g.,
+    ``src/auth``) and can be joined directly to ``project_root`` to point
+    at a valid source directory.
+
     Unparseable ``.iwh`` files are silently skipped.
 
     Args:
@@ -75,11 +81,15 @@ def find_all_iwh(project_root: Path) -> list[tuple[Path, IWHFile]]:
         parsed = parse_iwh(iwh_file_path)
         if parsed is None:
             continue
-        # Reverse the mirror path: .lexibrary/src/auth/.iwh → src/auth
+        # Reverse the mirror path: .lexibrary/designs/src/auth/.iwh → src/auth
         try:
             relative = iwh_file_path.parent.relative_to(lexibrary_dir)
         except ValueError:
             continue
+        # Strip 'designs/' prefix so callers get source-relative paths that
+        # can be joined back to project_root to reach the source tree.
+        if relative.parts[:1] == ("designs",):
+            relative = Path(*relative.parts[1:])
         results.append((relative, parsed))
 
     return results

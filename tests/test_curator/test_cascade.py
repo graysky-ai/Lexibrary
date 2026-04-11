@@ -247,9 +247,7 @@ class TestLinkGraphSnapshot:
 
     def test_reverse_deps_cached(self) -> None:
         """Second call to ``reverse_deps`` returns cached result."""
-        graph = _mock_link_graph(
-            reverse_deps_result=[_make_link_result("designs/a.md")]
-        )
+        graph = _mock_link_graph(reverse_deps_result=[_make_link_result("designs/a.md")])
         snapshot = LinkGraphSnapshot(_link_graph=graph)
 
         result1 = snapshot.reverse_deps("concepts/test.md")
@@ -261,9 +259,7 @@ class TestLinkGraphSnapshot:
 
     def test_traverse_cached(self) -> None:
         """Second call to ``traverse`` returns cached result."""
-        graph = _mock_link_graph(
-            traverse_result=[_make_traversal_node("designs/a.md", depth=1)]
-        )
+        graph = _mock_link_graph(traverse_result=[_make_traversal_node("designs/a.md", depth=1)])
         snapshot = LinkGraphSnapshot(_link_graph=graph)
 
         result1 = snapshot.traverse("concepts/test.md", max_depth=3, direction="inbound")
@@ -274,9 +270,7 @@ class TestLinkGraphSnapshot:
 
     def test_different_paths_cached_separately(self) -> None:
         """Different paths produce separate cache entries."""
-        graph = _mock_link_graph(
-            reverse_deps_result=[_make_link_result("designs/a.md")]
-        )
+        graph = _mock_link_graph(reverse_deps_result=[_make_link_result("designs/a.md")])
         snapshot = LinkGraphSnapshot(_link_graph=graph)
 
         snapshot.reverse_deps("concepts/one.md")
@@ -286,9 +280,7 @@ class TestLinkGraphSnapshot:
 
     def test_reverse_deps_with_link_type_filter(self) -> None:
         """Link type filter creates separate cache entries."""
-        graph = _mock_link_graph(
-            reverse_deps_result=[_make_link_result("designs/a.md")]
-        )
+        graph = _mock_link_graph(reverse_deps_result=[_make_link_result("designs/a.md")])
         snapshot = LinkGraphSnapshot(_link_graph=graph)
 
         snapshot.reverse_deps("concepts/test.md", link_type=None)
@@ -481,7 +473,9 @@ class TestCascadeWithFixtures:
             # depth 2 -- artifacts that reference the direct dependents
             _make_traversal_node("concepts/CN-001-authentication.md", depth=2, kind="concept"),
             _make_traversal_node(
-                "conventions/CV-001-old-auth-pattern.md", depth=2, kind="convention",
+                "conventions/CV-001-old-auth-pattern.md",
+                depth=2,
+                kind="convention",
             ),
             _make_traversal_node(_DS_HELPERS, depth=2, kind="design"),
             _make_traversal_node(_DS_FORMATTING, depth=2, kind="design"),
@@ -642,8 +636,7 @@ class TestCascadeWithFixtures:
             build_cascade(_CN004_PATH, None)
 
         warning_records = [
-            r for r in caplog.records
-            if r.levelname == "WARNING" and _CN004_PATH in r.message
+            r for r in caplog.records if r.levelname == "WARNING" and _CN004_PATH in r.message
         ]
         assert len(warning_records) == 1
         assert "lexictl update" in warning_records[0].message

@@ -1,5 +1,0 @@
-comments:
-- body: 'serialize_design_file() now emits preserved_sections after Dependencies/Dependents
-    and before optional sections (Tests, etc.). Each entry as ## Heading followed
-    by content. Part of curator-1 group 3.'
-  date: '2026-04-09T05:10:10.099621Z'

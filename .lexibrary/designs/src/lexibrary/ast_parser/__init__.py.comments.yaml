@@ -1,0 +1,6 @@
+comments:
+- body: 'Group 3 of symbol-graph-2: added extract_symbols public dispatch that mirrors
+    parse_interface extension routing, and re-exports CallSite/SymbolDefinition/SymbolExtract.
+    Python extractor accepts an optional project_root for qualified-name computation;
+    TS/JS ignore it.'
+  date: '2026-04-10T19:44:36.395095Z'

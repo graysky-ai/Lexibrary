@@ -164,9 +164,7 @@ class TestReindexMutualExclusivity:
             "path",
         ],
     )
-    def test_reindex_rejects_conflicting_flags(
-        self, tmp_path: Path, args: list[str]
-    ) -> None:
+    def test_reindex_rejects_conflicting_flags(self, tmp_path: Path, args: list[str]) -> None:
         with (
             _mock_project_root(tmp_path),
             _mock_load_config(),
@@ -187,9 +185,7 @@ class TestReindexMutualExclusivity:
             _mock_project_root(tmp_path),
             _mock_load_config(),
         ):
-            result = runner.invoke(
-                lexictl_app, ["update", "--reindex", "--skeleton", "src/foo.py"]
-            )
+            result = runner.invoke(lexictl_app, ["update", "--reindex", "--skeleton", "src/foo.py"])
 
         assert result.exit_code == 1
         assert "--skeleton cannot be combined with" in result.output

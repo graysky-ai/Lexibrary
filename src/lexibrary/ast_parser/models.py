@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+_ALLOWED_SYMBOL_TYPES = frozenset({"function", "method", "class"})
+_ALLOWED_VISIBILITIES = frozenset({"public", "private"})
 
 
 class ParameterSig(BaseModel):
@@ -51,3 +54,77 @@ class InterfaceSkeleton(BaseModel):
     functions: list[FunctionSig] = Field(default_factory=list)
     classes: list[ClassSig] = Field(default_factory=list)
     exports: list[str] = Field(default_factory=list)
+
+
+class CallSite(BaseModel):
+    """A call emitted from a caller symbol.
+
+    ``callee_name`` is the raw textual name as it appears in source (before
+    resolution). ``receiver`` is the object/class the call is being made on,
+    or ``None`` for free-function calls. For ``self.foo()`` calls
+    ``receiver == "self"``; for ``ConceptIndex.find()``,
+    ``receiver == "ConceptIndex"``; for ``super().foo()``,
+    ``receiver == "super"`` and ``callee_name == "super.foo"``.
+    """
+
+    caller_name: str
+    callee_name: str
+    receiver: str | None = None
+    line: int
+    is_method_call: bool = False
+
+
+class SymbolDefinition(BaseModel):
+    """A function, method, or class definition location inside a file.
+
+    ``qualified_name`` format rule: the fully-qualified module path ALWAYS
+    includes the top-level package. Examples:
+
+    - Function: ``lexibrary.archivist.pipeline.update_project``
+    - Method: ``lexibrary.archivist.pipeline.Builder.full_build``
+    - Nested: ``lexibrary.archivist.pipeline.update_project.<locals>._scan_files``
+
+    Nested functions and inner classes are captured as ``SymbolDefinition``
+    rows with ``visibility="private"`` (for accurate call attribution in the
+    symbol graph). The interface skeleton extractor continues to hide nested
+    definitions — only the symbol extractor surfaces them.
+    """
+
+    name: str
+    qualified_name: str
+    symbol_type: str
+    line_start: int
+    line_end: int
+    visibility: str
+    parent_class: str | None = None
+
+    @field_validator("symbol_type")
+    @classmethod
+    def _validate_symbol_type(cls, value: str) -> str:
+        if value not in _ALLOWED_SYMBOL_TYPES:
+            msg = f"symbol_type must be one of {sorted(_ALLOWED_SYMBOL_TYPES)}; got {value!r}"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("visibility")
+    @classmethod
+    def _validate_visibility(cls, value: str) -> str:
+        if value not in _ALLOWED_VISIBILITIES:
+            msg = f"visibility must be one of {sorted(_ALLOWED_VISIBILITIES)}; got {value!r}"
+            raise ValueError(msg)
+        return value
+
+
+class SymbolExtract(BaseModel):
+    """Everything the symbol graph needs from a single file.
+
+    Call extraction and (future) class-edge extraction run off the same parse
+    tree and share this container. Phase 3 will add ``class_edges`` (inherits
+    + instantiates). Phase 4 will add ``enum_members`` and
+    ``module_constants``.
+    """
+
+    file_path: str
+    language: str
+    definitions: list[SymbolDefinition] = Field(default_factory=list)
+    calls: list[CallSite] = Field(default_factory=list)

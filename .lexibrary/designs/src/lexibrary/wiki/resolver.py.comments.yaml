@@ -1,0 +1,12 @@
+comments:
+- body: "Added playbook exact-title match (step 8 in the resolution chain, between\
+    \ concept alias and fuzzy fallback) so bare [[Title]] links to playbook titles\
+    \ resolve without requiring the 'playbook:' prefix. Also fixed a secondary bug\
+    \ in the fuzzy-match fallback: when difflib finds a best match that is a playbook\
+    \ title, _index.find() (concept-only) would return None and the resolver would\
+    \ emit an UnresolvedLink with the playbook title as a suggestion \u2014 identical\
+    \ to the input, making the message nonsensical. The fallback now calls _find_playbook_exact(best)\
+    \ after the concept lookup misses, and returns a resolved playbook link instead.\
+    \ Both changes eliminate the 22 false-positive wikilink_resolution errors previously\
+    \ emitted by lexi validate."
+  date: '2026-04-11T08:14:24.955401Z'

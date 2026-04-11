@@ -556,9 +556,7 @@ class TestFullTextSearchRaw:
 
     def test_raw_true_or_expression(self, graph: LinkGraph) -> None:
         """raw=True allows OR expressions in FTS5."""
-        results = graph.full_text_search(
-            '"authentication" OR "controller"', raw=True
-        )
+        results = graph.full_text_search('"authentication" OR "controller"', raw=True)
         assert isinstance(results, list)
         # Should match Authentication concept and API controller
         assert len(results) >= 2
@@ -574,9 +572,7 @@ class TestFullTextSearchRaw:
 
     def test_raw_true_with_limit(self, graph: LinkGraph) -> None:
         """raw=True works correctly with the limit parameter."""
-        results = graph.full_text_search(
-            '"authentication" OR "controller"', limit=1, raw=True
-        )
+        results = graph.full_text_search('"authentication" OR "controller"', limit=1, raw=True)
         assert len(results) <= 1
         graph.close()
 

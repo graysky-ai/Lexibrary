@@ -1,4 +1,5 @@
 """Session management for authenticated users."""
+
 from __future__ import annotations
 
 
@@ -11,6 +12,7 @@ class SessionManager:
     def create_session(self, user_id: str) -> str:
         """Create a new session for a user."""
         import uuid
+
         session_id = str(uuid.uuid4())
         self._sessions[session_id] = user_id
         return session_id

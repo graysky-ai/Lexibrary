@@ -1,4 +1,4 @@
-"""Unified cross-artifact search for concepts, conventions, design files, and Stack posts."""
+"""Unified cross-artifact search across concepts, conventions, designs, playbooks, stack."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ class SearchResults:
     design_files: list[_DesignFileResult] = field(default_factory=list)
     stack_posts: list[_StackResult] = field(default_factory=list)
     playbooks: list[_PlaybookResult] = field(default_factory=list)
+    symbol_results: list[_SymbolResult] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
 
     def has_results(self) -> bool:
@@ -37,6 +38,7 @@ class SearchResults:
             or self.design_files
             or self.stack_posts
             or self.playbooks
+            or self.symbol_results
         )
 
     def render(self) -> None:
@@ -101,6 +103,16 @@ class SearchResults:
                     "overview": pb.overview,
                 }
             )
+        for sym in self.symbol_results:
+            records.append(
+                {
+                    "type": "symbol",
+                    "name": sym.name,
+                    "qualified_name": sym.qualified_name,
+                    "file": sym.file_path,
+                    "line": sym.line_start,
+                }
+            )
         if self.suggestions:
             info(_json.dumps({"results": records, "suggestions": self.suggestions}))
         else:
@@ -123,6 +135,10 @@ class SearchResults:
             info(f"{d.id}\t{d.source_path}\t{d.description}\t{', '.join(d.tags)}")
         for pb in self.playbooks:
             info(f"{pb.id}\t{pb.title}\t{pb.status}\t{', '.join(pb.tags)}\t{pb.overview}")
+        for sym in self.symbol_results:
+            display_name = sym.qualified_name or sym.name
+            line_str = str(sym.line_start) if sym.line_start is not None else "?"
+            info(f"symbol  {display_name}  {sym.file_path}:{line_str}")
 
     # -- Markdown rendering (original behaviour) ----------------------------
 
@@ -194,6 +210,21 @@ class SearchResults:
             ]
             info(markdown_table(["ID", "Title", "Status", "Overview", "Tags"], rows))
 
+        if self.symbol_results:
+            info("")
+            info("### Symbols\n")
+            symbol_rows = [
+                [
+                    sym.qualified_name or sym.name,
+                    sym.symbol_type,
+                    f"{sym.file_path}:{sym.line_start}"
+                    if sym.line_start is not None
+                    else sym.file_path,
+                ]
+                for sym in self.symbol_results
+            ]
+            info(markdown_table(["Name", "Type", "Location"], symbol_rows))
+
 
 @dataclass
 class _ConceptResult:
@@ -241,6 +272,26 @@ class _PlaybookResult:
 
 
 @dataclass
+class _SymbolResult:
+    """Search hit for a symbol returned by ``lexi search --type symbol``.
+
+    Populated from :class:`~lexibrary.services.symbols.SymbolSearchHit`
+    when :func:`unified_search` is called with ``artifact_type="symbol"``.
+    ``design_file_path`` is the path to the design file describing the
+    symbol's owning source file, when one is known; it is ``None``
+    otherwise.
+    """
+
+    id: int
+    name: str
+    qualified_name: str | None
+    symbol_type: str
+    file_path: str
+    line_start: int | None
+    design_file_path: str | None
+
+
+@dataclass
 class NormalizedQuery:
     """Result of normalizing a raw search query into tokens."""
 
@@ -250,11 +301,53 @@ class NormalizedQuery:
 
 
 # Valid artifact type values for ``artifact_type`` parameter.
-VALID_ARTIFACT_TYPES = ("concept", "convention", "design", "stack", "playbook")
+VALID_ARTIFACT_TYPES = ("concept", "convention", "design", "stack", "playbook", "symbol")
 
 # _PREFIX_TO_KIND and _KIND_TO_DIR are now centralised in
 # ``lexibrary.artifacts.ids`` and accessed via ``kind_for_prefix()``
 # and ``dir_for_kind()``.
+
+
+def _symbol_search(
+    project_root: Path,
+    *,
+    query: str | None,
+    limit: int,
+) -> SearchResults:
+    """Run a symbol-graph search and return a populated :class:`SearchResults`.
+
+    Opens a :class:`~lexibrary.services.symbols.SymbolQueryService`
+    rooted at *project_root* and delegates to
+    :meth:`~lexibrary.services.symbols.SymbolQueryService.search_symbols`
+    for the matching symbols. When *query* is ``None`` or empty, returns
+    an empty :class:`SearchResults` rather than dispatching a wildcard
+    LIKE scan.
+
+    The :class:`SymbolQueryService` degrades gracefully when ``symbols.db``
+    is missing (it logs a hint and returns an empty list), so callers see
+    an empty :class:`SearchResults` in that case.
+    """
+    from lexibrary.services.symbols import SymbolQueryService  # noqa: PLC0415
+
+    results = SearchResults()
+    if query is None or not query.strip():
+        return results
+
+    with SymbolQueryService(project_root) as service:
+        hits = service.search_symbols(query, limit=limit)
+    for hit in hits:
+        results.symbol_results.append(
+            _SymbolResult(
+                id=hit.symbol.id,
+                name=hit.symbol.name,
+                qualified_name=hit.symbol.qualified_name,
+                symbol_type=hit.symbol.symbol_type,
+                file_path=hit.symbol.file_path,
+                line_start=hit.symbol.line_start,
+                design_file_path=hit.design_file_path,
+            )
+        )
+    return results
 
 
 def _resolve_artifact_by_id(project_root: Path, artifact_id: str) -> SearchResults | None:
@@ -480,7 +573,12 @@ def unified_search(
         link_graph: Optional :class:`LinkGraph` instance for index-accelerated
             queries.  When ``None``, file-scanning fallback is used.
         artifact_type: Restrict search to a single artifact type.  Valid
-            values: ``"concept"``, ``"convention"``, ``"design"``, ``"stack"``.
+            values: ``"concept"``, ``"convention"``, ``"design"``,
+            ``"playbook"``, ``"stack"``, and ``"symbol"``. Symbol search
+            is routed to
+            :class:`~lexibrary.services.symbols.SymbolQueryService` and
+            does not accept tag/status/concept/resolution-type/stale/
+            deprecated filters.
         status: Filter results by artifact status value.
         include_deprecated: When ``True``, include deprecated concepts and
             conventions (hidden by default).
@@ -500,6 +598,27 @@ def unified_search(
     Returns:
         Grouped :class:`SearchResults`.
     """
+    # --- Symbol search early-route ---
+    # ``--type symbol`` bypasses the FTS / file-scanning artifact search
+    # and goes straight to :class:`SymbolQueryService.search_symbols`.
+    # All artifact-oriented filters (tags/status/concept/resolution-type/
+    # stale/deprecated) are incompatible with symbol search and raise
+    # ``ValueError`` here so the CLI handler can surface a clean error.
+    if artifact_type == "symbol":
+        if tag is not None or tags:
+            raise ValueError("--tag is not supported with --type symbol.")
+        if status is not None:
+            raise ValueError("--status is not supported with --type symbol.")
+        if include_deprecated:
+            raise ValueError("--all is not supported with --type symbol.")
+        if concept is not None:
+            raise ValueError("--concept is not supported with --type symbol.")
+        if resolution_type is not None:
+            raise ValueError("--resolution-type is not supported with --type symbol.")
+        if include_stale:
+            raise ValueError("--include-stale is not supported with --type symbol.")
+        return _symbol_search(project_root, query=query, limit=limit)
+
     # --- ID-pattern short-circuit ---
     # When the query matches an artifact ID pattern (e.g. CN-001, ST-042) and
     # no other filters are active, attempt a direct lookup by ID.  If the ID
@@ -1237,9 +1356,7 @@ def _search_stack_posts(
     if tag is not None:
         tag_norm = _normalize_tag(tag)
         matches = [
-            p
-            for p in matches
-            if any(_normalize_tag(t) == tag_norm for t in p.frontmatter.tags)
+            p for p in matches if any(_normalize_tag(t) == tag_norm for t in p.frontmatter.tags)
         ]
 
     # Multi-tag AND: filter for extra tags (normalised)
@@ -1247,9 +1364,7 @@ def _search_stack_posts(
         for et in extra_tags:
             et_norm = _normalize_tag(et)
             matches = [
-                p
-                for p in matches
-                if any(_normalize_tag(t) == et_norm for t in p.frontmatter.tags)
+                p for p in matches if any(_normalize_tag(t) == et_norm for t in p.frontmatter.tags)
             ]
 
     # Apply scope filter
@@ -1322,11 +1437,7 @@ def _search_conventions(
         matches = index.search(query)
         # AND fallback: if exact substring returned nothing and query is
         # compound, try matching all individual tokens.
-        if (
-            not matches
-            and normalized_query is not None
-            and normalized_query.is_compound
-        ):
+        if not matches and normalized_query is not None and normalized_query.is_compound:
             for conv in index.conventions:
                 searchable = (
                     conv.frontmatter.title.lower()
@@ -1427,11 +1538,7 @@ def _search_playbooks(
         matches = index.search(query)
         # AND fallback: if exact substring returned nothing and query is
         # compound, try matching all individual tokens.
-        if (
-            not matches
-            and normalized_query is not None
-            and normalized_query.is_compound
-        ):
+        if not matches and normalized_query is not None and normalized_query.is_compound:
             for pb in index.playbooks:
                 searchable = (
                     pb.frontmatter.title.lower()
@@ -1454,9 +1561,7 @@ def _search_playbooks(
     if tag is not None and query is not None:
         tag_norm = _normalize_tag(tag)
         matches = [
-            pb
-            for pb in matches
-            if any(_normalize_tag(t) == tag_norm for t in pb.frontmatter.tags)
+            pb for pb in matches if any(_normalize_tag(t) == tag_norm for t in pb.frontmatter.tags)
         ]
 
     # Multi-tag AND: filter for extra tags (normalised)

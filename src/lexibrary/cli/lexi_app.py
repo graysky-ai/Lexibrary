@@ -145,6 +145,7 @@ def lookup(
     from lexibrary.services.lookup_render import (  # noqa: PLC0415
         render_conventions,
         render_directory_link_summary,
+        render_key_symbols,
         render_related_concepts,
         render_siblings,
         render_triggered_playbooks,
@@ -307,6 +308,16 @@ def lookup(
     )
     if concepts_text:
         info(concepts_text)
+
+    # Key symbols (always shown in full mode when non-empty -- emitted
+    # after Dependencies / Reverse dependencies per the symbol-graph-2
+    # spec so users see caller/callee fan-out for the file at a glance).
+    key_symbols_text = render_key_symbols(
+        file_result.key_symbols,
+        file_result.key_symbols_total,
+    )
+    if key_symbols_text:
+        info(key_symbols_text)
 
     # Apply token budget truncation to supplementary sections
     total_budget = config.token_budgets.lookup_total_tokens
@@ -492,7 +503,7 @@ def status(
 # ---------------------------------------------------------------------------
 
 
-_VALID_ARTIFACT_TYPES = {"concept", "convention", "design", "playbook", "stack"}
+_VALID_ARTIFACT_TYPES = {"concept", "convention", "design", "playbook", "stack", "symbol"}
 _STACK_ONLY_FLAGS = ("--concept", "--resolution-type", "--include-stale")
 
 
@@ -507,7 +518,10 @@ def search(
         str | None,
         typer.Option(
             "--type",
-            help="Restrict to artifact type: concept, convention, design, playbook, or stack.",
+            help=(
+                "Restrict to artifact type: concept, convention, design, "
+                "playbook, stack, or symbol."
+            ),
         ),
     ] = None,
     tag: Annotated[
@@ -549,7 +563,7 @@ def search(
         ),
     ] = 20,
 ) -> None:
-    """Search across concepts, conventions, design files, playbooks, and Stack posts."""
+    """Search across concepts, conventions, design files, playbooks, Stack posts, and symbols."""
     from lexibrary.linkgraph import open_index  # noqa: PLC0415
     from lexibrary.search import unified_search  # noqa: PLC0415
 
@@ -558,6 +572,24 @@ def search(
         valid = ", ".join(sorted(_VALID_ARTIFACT_TYPES))
         error(f"Invalid --type: '{artifact_type}'. Must be one of: {valid}")
         raise typer.Exit(1)
+
+    # --- Symbol-specific flag validation ---
+    # ``--type symbol`` bypasses the artifact search entirely and hits the
+    # symbol graph, so artifact-oriented filters (tags, stack-only flags)
+    # are rejected in the CLI handler before ``unified_search`` is called.
+    if artifact_type == "symbol":
+        used_flags: list[str] = []
+        if tag:
+            used_flags.append("--tag")
+        if concept is not None:
+            used_flags.append("--concept")
+        if resolution_type is not None:
+            used_flags.append("--resolution-type")
+        if include_stale:
+            used_flags.append("--include-stale")
+        if used_flags:
+            error(f"{', '.join(used_flags)} cannot be used with --type symbol.")
+            raise typer.Exit(1)
 
     # --- Stack-specific flag validation ---
     # These flags only make sense with --type stack; auto-infer if unset,
@@ -686,3 +718,56 @@ def impact(
         info(render_quiet(result))
     else:
         info(render_tree(result))
+
+
+# ---------------------------------------------------------------------------
+# trace
+# ---------------------------------------------------------------------------
+
+
+@lexi_app.command("trace", help="Trace a symbol's callers and callees.")
+def trace(
+    symbol: Annotated[
+        str,
+        typer.Argument(
+            help=(
+                "Symbol name or fully-qualified name "
+                "(e.g. 'update_project' or "
+                "'lexibrary.archivist.pipeline.update_project'). "
+                "If the argument contains a '.', it is matched against "
+                "qualified_name; otherwise against the bare name."
+            ),
+        ),
+    ],
+    file: Annotated[
+        Path | None,
+        typer.Option(
+            "--file",
+            help=(
+                "Narrow the match to this file path. Combine with an "
+                "ambiguous bare name when the same symbol exists in "
+                "multiple files."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Trace a symbol across the symbol graph."""
+    from lexibrary.services.symbols import SymbolQueryService  # noqa: PLC0415
+    from lexibrary.services.symbols_render import render_trace  # noqa: PLC0415
+
+    project_root = require_project_root()
+    with SymbolQueryService(project_root) as svc:
+        response = svc.trace(symbol, file=file)
+
+    if not response.results:
+        warn(f"No symbol named {symbol!r} found in the symbol graph.")
+        hint("Run `lexi design update <file>` to refresh, or try `lexi search --type symbol`.")
+        raise typer.Exit(1)
+
+    for warning in response.stale:
+        warn(
+            f"Symbol graph may be stale for {warning.file_path} — "
+            f"run `lexi design update {warning.file_path}` to refresh."
+        )
+
+    render_trace(symbol, response.results)

@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import re
 
-import pytest
-
 from lexibrary.wiki.patterns import HTML_COMMENT_RE, WIKILINK_RE, extract_wikilinks
-
 
 # ---------------------------------------------------------------------------
 # WIKILINK_RE tests
 # ---------------------------------------------------------------------------
+
 
 class TestWikilinkRE:
     """Tests for the compiled WIKILINK_RE pattern."""
@@ -40,6 +38,7 @@ class TestWikilinkRE:
 # ---------------------------------------------------------------------------
 # HTML_COMMENT_RE tests
 # ---------------------------------------------------------------------------
+
 
 class TestHTMLCommentRE:
     """Tests for the compiled HTML_COMMENT_RE pattern."""
@@ -70,6 +69,7 @@ class TestHTMLCommentRE:
 # ---------------------------------------------------------------------------
 # extract_wikilinks tests
 # ---------------------------------------------------------------------------
+
 
 class TestExtractWikilinks:
     """Tests for the extract_wikilinks helper function."""

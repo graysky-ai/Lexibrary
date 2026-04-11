@@ -1,10 +1,4 @@
 comments:
-- body: New module implementing the curator risk taxonomy. Contains 29 action keys
-    (22 Low, 6 Medium, 1 High) as frozen dataclasses, plus get_risk_level() with override
-    support and should_dispatch() for autonomy gating. This is the central policy
-    lookup used by the coordinator to decide which actions to execute vs defer based
-    on autonomy mode.
-  date: '2026-04-09T05:02:52.616187Z'
 - body: 'Phase 2 (curator-2 bead 275.2): Added 12 new deprecation lifecycle action
     keys to RISK_TAXONOMY (total now 41: 30 low, 9 medium, 2 high). Updated deprecate_design_file
     function_ref from curator.consistency to curator.deprecation. Extended should_dispatch()
@@ -12,8 +6,38 @@ comments:
     even under full autonomy when the corresponding artifact kind maps to True. Added
     _ACTION_KEY_TO_ARTIFACT_KIND module-level mapping.'
   date: '2026-04-09T07:03:21.220283Z'
-- body: "Phase 3: Added 6 new risk taxonomy entries \u2014 budget trimming (condense_file:\
-    \ high, shorten_description: low, propose_condensation: medium) and comment auditing\
-    \ (flag_stale_comment: medium, audit_description: medium, audit_summary: medium).\
-    \ Totals now 31 Low, 13 Medium, 3 High = 47 entries."
-  date: '2026-04-09T11:08:25.637703Z'
+- body: "Phase 1.5 dispatcher refactor (openspec curator-fix group 3): every function_ref\
+    \ updated to point at the new public dispatcher function's dotted path (e.g. curator.staleness.dispatch_staleness_resolver).\
+    \ Action keys that do not yet have a dispatcher (consistency fixes, validation\
+    \ fixers, IWH actions) still point at pseudo-paths that will resolve in later\
+    \ groups (4-9) \u2014 group 4 lands the self-check test xfail-marked so CI stays\
+    \ green."
+  date: '2026-04-10T21:18:39.172283Z'
+- body: 'curator-fix Phase 2 (bead lexibrary-sq5.5): added 7 per-check validation
+    bridge entries (fix_hash_freshness, fix_orphan_artifacts, fix_aindex_coverage,
+    fix_orphaned_aindex, fix_orphaned_iwh, fix_orphaned_designs, fix_deprecated_ttl)
+    all pointing at curator.validation_fixers.fix_validation_issue. fix_orphaned_designs
+    is Medium risk (applies deprecation workflow which deletes/mutates files); the
+    other six are Low. The existing autofix_validation_issue umbrella entry was retained
+    and its function_ref updated to point at the new bridge. Taxonomy counts are now
+    37 Low / 14 Medium / 3 High = 54 total.'
+  date: '2026-04-10T21:36:06.504647Z'
+- body: 'Phase 4 (lexibrary-sq5.9): re-pointed function_ref for consume_superseded_iwh,
+    write_reactive_iwh, and flag_unresolvable_agent_design at the new lexibrary.curator.iwh_actions
+    module. Previously these pointed at non-existent attributes on lexibrary.curator.consistency
+    / lexibrary.curator.reconciliation, which made the taxonomy self-check (test_taxonomy_function_refs_resolve)
+    fail for those keys. Note: the test still xfails because 4 unrelated orphan keys
+    (mark_design_unlinked, prune_ephemeral_comments, promote_comment, rewrite_insights_section)
+    remain unclaimed by the curator-fix plan and need a follow-up plan to address.'
+  date: '2026-04-11T01:04:10.013585Z'
+- body: 'curator-fix-2 group 1 (CUR-01/02/06): removed 6 orphan/dead stub entries
+    whose function_ref values never resolved (mark_design_unlinked, prune_ephemeral_comments,
+    promote_comment, fix_broken_wikilink_exact, rewrite_insights_section, flag_conflicting_conventions);
+    also removed the two dead-code NOTE comments above the wikilink and convention
+    stubs. Banner totals updated from 37/14/3 to 35/12/3 (net 50 entries). promote_blocked_iwh
+    rationale rewritten to state it overwrites the blocked IWH with a warning signal
+    for human review, clarifying it does not create a Stack post. get_risk_level()
+    now logs a warning and returns ''low'' as a safe default when an override references
+    an unknown action key (previously raised KeyError), making the function robust
+    against stale user overrides that may linger across refactors.'
+  date: '2026-04-11T07:33:32.947260Z'

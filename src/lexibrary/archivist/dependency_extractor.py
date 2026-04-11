@@ -11,6 +11,10 @@ import logging
 from pathlib import Path
 
 from lexibrary.ast_parser.registry import get_parser
+from lexibrary.symbolgraph.python_imports import (
+    resolve_python_module,
+    resolve_python_relative_module,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,42 +56,6 @@ def extract_dependencies(file_path: Path, project_root: Path) -> list[str]:
     if extension in (".ts", ".tsx", ".js", ".jsx"):
         return _extract_js_deps(root, file_path, project_root)
     return []
-
-
-def _resolve_python_import(module_path: str, project_root: Path) -> str | None:
-    """Convert a dotted Python module path to a project-relative file path.
-
-    Checks src-layout then flat-layout conventions. Returns None for
-    third-party or otherwise unresolvable modules.
-
-    Args:
-        module_path: Dotted module path, e.g. ``"lexibrary.config.schema"``.
-        project_root: Absolute path to the project root.
-
-    Returns:
-        Project-relative path string if the module file exists, else None.
-    """
-    parts = module_path.split(".")
-    rel = Path(*parts)
-
-    for search_root in (project_root / "src", project_root):
-        # Try as a module file
-        candidate = search_root / rel.with_suffix(".py")
-        if candidate.exists():
-            try:
-                return str(candidate.relative_to(project_root))
-            except ValueError:
-                pass
-
-        # Try as a package (__init__.py)
-        candidate = search_root / rel / "__init__.py"
-        if candidate.exists():
-            try:
-                return str(candidate.relative_to(project_root))
-            except ValueError:
-                pass
-
-    return None
 
 
 def _resolve_js_import(
@@ -180,17 +148,17 @@ def _collect_import_statement(
         child_type = getattr(child, "type", "")
 
         if child_type == "dotted_name":
-            resolved = _resolve_python_import(_node_text(child), project_root)
+            resolved = resolve_python_module(_node_text(child), project_root)
             if resolved is not None:
-                deps.append(resolved)
+                deps.append(str(resolved.relative_to(project_root)))
 
         elif child_type == "aliased_import":
             # import foo.bar as baz — extract the dotted_name
             for sub in _children(child):
                 if getattr(sub, "type", "") == "dotted_name":
-                    resolved = _resolve_python_import(_node_text(sub), project_root)
+                    resolved = resolve_python_module(_node_text(sub), project_root)
                     if resolved is not None:
-                        deps.append(resolved)
+                        deps.append(str(resolved.relative_to(project_root)))
                     break
 
 
@@ -220,66 +188,22 @@ def _collect_import_from_statement(
                     module_name = _node_text(rel_child)
 
             if module_name:
-                resolved = _resolve_python_relative_import(
+                resolved = resolve_python_relative_module(
                     module_name,
                     dot_count,
                     source_dir,
                     project_root,
                 )
                 if resolved is not None:
-                    deps.append(resolved)
+                    deps.append(str(resolved.relative_to(project_root)))
             break  # only one module source per statement
 
         if child_type == "dotted_name":
             # from foo.bar import baz (absolute)
-            resolved = _resolve_python_import(_node_text(child), project_root)
+            resolved = resolve_python_module(_node_text(child), project_root)
             if resolved is not None:
-                deps.append(resolved)
+                deps.append(str(resolved.relative_to(project_root)))
             break  # only one module source per statement
-
-
-def _resolve_python_relative_import(
-    module_name: str,
-    dot_count: int,
-    source_dir: Path,
-    project_root: Path,
-) -> str | None:
-    """Resolve a Python relative import to a project-relative file path.
-
-    Args:
-        module_name: Module subpath after the dots, e.g. ``"module"``
-            in ``from .module import X``.
-        dot_count: Number of leading dots (1 = current package, 2 = parent …).
-        source_dir: Directory of the importing file.
-        project_root: Absolute path to the project root.
-
-    Returns:
-        Project-relative path string if the file exists, else None.
-    """
-    base_dir = source_dir
-    for _ in range(dot_count - 1):
-        base_dir = base_dir.parent
-
-    parts = module_name.split(".")
-    target = base_dir / Path(*parts)
-
-    # Try as a module file
-    candidate = target.with_suffix(".py")
-    if candidate.exists():
-        try:
-            return str(candidate.relative_to(project_root))
-        except ValueError:
-            return None
-
-    # Try as a package
-    candidate = target / "__init__.py"
-    if candidate.exists():
-        try:
-            return str(candidate.relative_to(project_root))
-        except ValueError:
-            return None
-
-    return None
 
 
 def _extract_js_deps(

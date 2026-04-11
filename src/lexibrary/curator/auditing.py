@@ -30,11 +30,14 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from lexibrary.baml_client.async_client import BamlAsyncClient, b
 from lexibrary.curator.config import CuratorConfig
-from lexibrary.curator.models import SubAgentResult
+from lexibrary.curator.models import SubAgentResult, TriageItem
+
+if TYPE_CHECKING:
+    from lexibrary.curator.dispatch_context import DispatchContext
 
 logger = logging.getLogger(__name__)
 
@@ -387,3 +390,50 @@ def summary_audit_to_sub_agent_result(
         + (", rewrite available" if result.rewrite else ""),
         llm_calls=1,
     )
+
+
+# ---------------------------------------------------------------------------
+# Dispatcher entry point (Phase 1.5)
+# ---------------------------------------------------------------------------
+
+
+async def dispatch_comment_audit(
+    item: TriageItem,
+    ctx: DispatchContext,
+) -> SubAgentResult:
+    """Dispatch a comment audit issue to the Comment Auditor sub-agent.
+
+    Calls :func:`audit_comment` and returns the result via the
+    :func:`comment_audit_to_sub_agent_result` converter.
+
+    Extracted from :class:`Coordinator._dispatch_comment_audit`
+    (Phase 1.5 dispatcher refactor).
+    """
+    audit_item = item.comment_audit_item
+    if audit_item is None:
+        return SubAgentResult(
+            success=False,
+            action_key="flag_stale_comment",
+            path=item.source_item.path,
+            message="No comment audit item available",
+        )
+
+    issue = CommentAuditIssue(
+        path=audit_item.path,
+        line_number=audit_item.line_number,
+        comment_text=audit_item.comment_text,
+        code_context=audit_item.code_context,
+        marker_type=audit_item.marker_type,  # type: ignore[arg-type]
+    )
+
+    try:
+        audit_result = await audit_comment(issue)
+        return comment_audit_to_sub_agent_result(issue, audit_result)
+    except Exception as exc:
+        ctx.summary.add("dispatch", exc, path=str(audit_item.path))
+        return SubAgentResult(
+            success=False,
+            action_key="flag_stale_comment",
+            path=audit_item.path,
+            message=f"Comment audit error: {exc}",
+        )

@@ -1,8 +1,7 @@
 comments:
-- body: New module implementing the Deprecation Analyst sub-agent wrapper (curator-2,
-    group 4). Provides input sanitisation to prevent template injection via Jinja2
-    syntax in artifact content, and an async BAML function wrapper following the ArchivistService
-    pattern. The needs_human_review() function strips code fences before checking
-    for suspicious patterns, ensuring template syntax inside code blocks is not falsely
-    flagged.
-  date: '2026-04-09T06:54:56.323078Z'
+- body: "Phase 1.5 dispatcher refactor (openspec curator-fix group 3): added public\
+    \ dispatch_deprecation_router(item, ctx) and dispatch_soft_deprecation(item, ctx,\
+    \ dep). The router is responsible for routing deprecation action keys to hard_delete,\
+    \ stack_transition, or soft_deprecation \u2014 delegating to curator.lifecycle\
+    \ dispatchers for the first two."
+  date: '2026-04-10T21:18:38.736675Z'

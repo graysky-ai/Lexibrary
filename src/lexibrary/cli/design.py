@@ -66,7 +66,16 @@ def design_update(
 
     if decision.action == "skip":
         msg = render_skip(decision)
-        warn(msg)
+        if decision.skip_code == "iwh_blocked":
+            # IWH signals must be acknowledged before proceeding — force a
+            # non-zero exit so exit-code-only scripts halt and the agent is
+            # nudged to read the blocking signal.
+            warn(msg)
+            raise typer.Exit(1)
+        # "protected", "up_to_date", or any future skip_code: informational.
+        # The command behaved as designed; route to stdout (no "Warning:"
+        # prefix) so scripted callers capturing stdout see what happened.
+        info(msg)
         return
 
     # --- action == "generate" ---

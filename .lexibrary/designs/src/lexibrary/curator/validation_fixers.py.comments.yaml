@@ -1,0 +1,10 @@
+comments:
+- body: "Validation bridge introduced by curator-fix Phase 2 (bead lexibrary-sq5.5).\
+    \ Translates curator TriageItems into validator ValidationIssues and routes them\
+    \ through the FIXERS registry. Uses lexibrary.validator.fixes.FIXERS as the single\
+    \ source of truth for which checks are auto-fixable. Missing fixer maps to outcome='no_fixer';\
+    \ exception maps to outcome='errored'; FixResult.fixed maps to 'fixed' or 'fixer_failed'.\
+    \ SubAgentResult.action_key is the narrow per-check key (e.g., fix_hash_freshness),\
+    \ not the umbrella autofix_validation_issue \u2014 honest counters depend on this\
+    \ distinction."
+  date: '2026-04-10T21:35:52.713347Z'

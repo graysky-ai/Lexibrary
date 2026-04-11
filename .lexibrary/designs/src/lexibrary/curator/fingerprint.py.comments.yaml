@@ -1,9 +1,0 @@
-comments:
-- body: 'New module created for curator-2 Group 8 (Stack Post Deduplication). Key
-    design decisions: (1) Fingerprint is SHA-256 of problem_type + artifact_path +
-    normalized error_signature, with newline separators. (2) Fingerprints are embedded
-    in post titles as [fp:<hex>] markers so they can be matched via full_text_search
-    from the link graph. (3) Fail-open behavior: if FTS raises, we create a new post
-    rather than crashing. (4) Only ''open'' status posts are considered duplicates
-    -- resolved/duplicate/outdated/stale posts are not matched.'
-  date: '2026-04-09T06:54:56.516120Z'

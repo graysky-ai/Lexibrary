@@ -1,0 +1,5 @@
+comments:
+- body: 'Group 3 of symbol-graph-2: added CallSite, SymbolDefinition, and SymbolExtract
+    models. SymbolDefinition validates symbol_type (function/method/class) and visibility
+    (public/private). See specs/symbol-extractor for field semantics.'
+  date: '2026-04-10T19:44:33.766379Z'

@@ -1,0 +1,16 @@
+comments:
+- body: "Phase 2 (symbol-graph-2) wires the three query methods to the real SymbolGraph\
+    \ query layer and introduces three response dataclasses: TraceResponse, SymbolsInFileResponse,\
+    \ and StaleSymbolWarning. trace() now dispatches by the presence of a dot in the\
+    \ argument (qualified_name vs bare name), accepts an optional file= kwarg to narrow\
+    \ cross-module collisions, and attaches staleness warnings computed by re-hashing\
+    \ the on-disk files and comparing against files.last_hash. search_symbols() does\
+    \ a LIKE match over name OR qualified_name using _SELECT_SYMBOL + query_raw; the\
+    \ query row is decoded via _row_to_symbol imported from the query module (services\
+    \ are allowed to use the module-private adapter because they live in the same\
+    \ subsystem contract). symbols_in_file() returns a wrapped SymbolsInFileResponse\
+    \ with a single stale warning field. The open() hint is updated to advise lexi\
+    \ design update <file> as the per-file refresh trigger. All staleness lookups\
+    \ go through SymbolGraph.query_raw \u2014 never through _conn directly \u2014\
+    \ so the service respects the read-only facade."
+  date: '2026-04-11T03:58:45.672040Z'

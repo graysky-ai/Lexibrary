@@ -1,5 +1,0 @@
-comments:
-- body: 'parse_design_file() now collects unknown ## headings (not in known set) into
-    preserved_sections dict. Uses footer position as upper bound to prevent preserved
-    sections from absorbing the HTML comment footer. Part of curator-1 group 3.'
-  date: '2026-04-09T05:10:05.364557Z'

@@ -1,8 +1,0 @@
-comments:
-- body: Added create_stack_post() function for programmatic Stack post creation. This
-    is the service-layer equivalent of 'lexi stack post' CLI command, designed for
-    use by the curator subsystem (promoted comments, blocked IWH signals). Uses atomic_write
-    for file creation (unlike the existing _save_post which uses raw write_text).
-    Function generates sequential IDs via next_artifact_id, renders via render_post_template,
-    and writes atomically.
-  date: '2026-04-09T05:02:55.822558Z'

@@ -1,7 +1,14 @@
 comments:
-- body: New module implementing reconciliation sub-agent for agent-edited design files.
-    Preserves agent-authored sections (Dragons, Key Concepts, Insights, Custom Notes)
-    while regenerating mechanical sections from source. Includes confidence threshold
-    check, IWH signal creation for low-confidence output, and full_regen recommendation
-    path. Uses BAML stub for now.
-  date: '2026-04-09T06:14:14.167777Z'
+- body: 'Phase 1.5 dispatcher refactor (openspec curator-fix group 3): added public
+    dispatch_reconciliation(item, ctx) extracted from Coordinator._dispatch_reconciliation.
+    Handles all reconcile_agent_* action keys.'
+  date: '2026-04-10T21:18:20.443223Z'
+- body: 'Phase 3a (bead lexibrary-sq5.7): replaced the inline write contract with
+    a single call to write_design_file_as_curator from the new write_contract module.
+    No behavioural change visible to callers since reconciliation already stamped
+    updated_by=''curator'' (the shared helper enforces the same value). The metadata
+    generator field remains ''curator-reconciliation'' so downstream blame tracking
+    can still distinguish reconciliation output from other curator sub-agents. Removed
+    direct imports of compute_hashes, serialize_design_file, and atomic_write since
+    the helper owns those calls now.'
+  date: '2026-04-10T21:37:51.646491Z'

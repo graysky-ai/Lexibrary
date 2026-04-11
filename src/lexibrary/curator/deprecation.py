@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import TYPE_CHECKING
 
 from lexibrary.baml_client.async_client import BamlAsyncClient, b
 from lexibrary.baml_client.types import (
@@ -17,7 +18,10 @@ from lexibrary.baml_client.types import (
     DeprecationResult,
     DeprecationWorkItem,
 )
-from lexibrary.curator.models import SubAgentResult
+from lexibrary.curator.models import DeprecationCollectItem, SubAgentResult, TriageItem
+
+if TYPE_CHECKING:
+    from lexibrary.curator.dispatch_context import DispatchContext
 
 logger = logging.getLogger(__name__)
 
@@ -138,3 +142,92 @@ def deprecation_result_to_sub_agent_result(
         message=result.rationale,
         llm_calls=1,
     )
+
+
+# ---------------------------------------------------------------------------
+# Dispatcher entry points (Phase 1.5)
+# ---------------------------------------------------------------------------
+
+
+def dispatch_deprecation_router(
+    item: TriageItem,
+    ctx: DispatchContext,
+) -> SubAgentResult:
+    """Route a deprecation candidate to the appropriate handler.
+
+    Dispatches to hard deletion, lifecycle deprecation, or the
+    Deprecation Analyst sub-agent depending on the action key.
+
+    Extracted from :class:`Coordinator._dispatch_deprecation`
+    (Phase 1.5 dispatcher refactor).
+    """
+    from lexibrary.curator.lifecycle import (  # noqa: PLC0415
+        dispatch_hard_delete,
+        dispatch_stack_transition,
+    )
+
+    dep = item.deprecation_item
+    if dep is None:
+        return SubAgentResult(
+            success=False,
+            action_key=item.action_key,
+            path=item.source_item.path,
+            message="No deprecation item available for dispatch",
+        )
+
+    action_key = item.action_key
+
+    # Hard deletion actions (TTL-expired, zero refs)
+    if action_key.startswith("hard_delete_"):
+        return dispatch_hard_delete(item, ctx, dep)
+
+    # Stack post transition
+    if action_key == "stack_post_transition":
+        return dispatch_stack_transition(item, ctx, dep)
+
+    # Soft deprecation (concept, convention, playbook, design_file)
+    return dispatch_soft_deprecation(item, ctx, dep)
+
+
+def dispatch_soft_deprecation(
+    item: TriageItem,
+    ctx: DispatchContext,
+    dep: DeprecationCollectItem,
+) -> SubAgentResult:
+    """Dispatch soft deprecation via the Deprecation Analyst sub-agent.
+
+    For now this is a stub that performs the deprecation directly
+    using the lifecycle module.  When the BAML sub-agent is wired
+    in, this will route through :func:`analyze_deprecation` first.
+
+    Extracted from :class:`Coordinator._dispatch_soft_deprecation`
+    (Phase 1.5 dispatcher refactor).
+    """
+    from lexibrary.curator.lifecycle import execute_deprecation  # noqa: PLC0415
+
+    target_status = "deprecated"
+    if dep.artifact_kind == "design_file" and dep.reason == "source_deleted":
+        target_status = "deprecated"
+
+    try:
+        execute_deprecation(
+            kind=dep.artifact_kind,
+            artifact_path=dep.artifact_path,
+            target_status=target_status,
+            deprecated_reason=dep.reason,
+        )
+        return SubAgentResult(
+            success=True,
+            action_key=item.action_key,
+            path=dep.artifact_path,
+            message=f"Deprecated {dep.artifact_kind}: {dep.artifact_path.name}",
+            llm_calls=1,
+        )
+    except Exception as exc:
+        ctx.summary.add("dispatch", exc, path=str(dep.artifact_path))
+        return SubAgentResult(
+            success=False,
+            action_key=item.action_key,
+            path=dep.artifact_path,
+            message=f"Deprecation failed: {exc}",
+        )

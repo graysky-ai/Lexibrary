@@ -1,9 +1,5 @@
 comments:
-- body: New module implementing the Comment Auditing sub-agent (Curator Phase 3).
-    Provides scan_todo_comments for regex-based TODO/FIXME/HACK detection with context
-    extraction, plus three async BAML wrappers (audit_comment, audit_description,
-    audit_summary) for LLM-powered staleness and quality assessment. The coordinator
-    helpers convert audit results to SubAgentResult for integration with the collect-triage-dispatch
-    pipeline. The quality_threshold from CuratorConfig.auditing is logged but not
-    enforced by these functions -- enforcement is the coordinator's responsibility.
-  date: '2026-04-09T11:21:34.935632Z'
+- body: 'Phase 1.5 dispatcher refactor (openspec curator-fix group 3): added public
+    async dispatch_comment_audit(item, ctx) extracted from Coordinator._dispatch_comment_audit.
+    Handles flag_stale_comment.'
+  date: '2026-04-10T21:18:27.876445Z'

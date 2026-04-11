@@ -1,0 +1,12 @@
+comments:
+- body: "Phase 2 (symbol-graph-2) render helpers for lexi trace. render_trace() is\
+    \ intentionally void (writes to stdout via info()) because a single trace result\
+    \ spans multiple blocks \u2014 a header line, a backticked file:line line, and\
+    \ one markdown_table per populated edge category (callers, callees, unresolved_callees).\
+    \ Empty categories are omitted entirely so a leaf symbol renders only its header.\
+    \ Callers must already have handled staleness warnings (via warn() on stderr)\
+    \ before invoking render_trace \u2014 staleness is a service-layer concern, not\
+    \ a render one. Phase 3 will extend this with class edges (inherits/instantiates/composes);\
+    \ Phase 4 will add enum/constant members. Both extensions plug in as additional\
+    \ ### sections under the same output contract."
+  date: '2026-04-11T05:13:11.369911Z'

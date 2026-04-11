@@ -1,7 +1,7 @@
 comments:
-- body: New CLI handler for the curator pipeline. Implements lexictl curate with --scope,
-    --check, --dry-run, and --last-run options. Follows the service extraction convention
-    with rendering delegated to curate_render.py. Heavy imports (coordinator, config
-    loader, validator) are deferred inside the function body per CLI module structure
-    convention.
-  date: '2026-04-09T05:57:22.958799Z'
+- body: 'curator-fix Phase 1: added --verbose flag. When set without --last-run, passes
+    stubbed/verbose/dispatched_details through to render_summary() for per-dispatch
+    detail lines. When combined with --last-run, forwards verbose=True to render_last_run()
+    which walks the persisted dispatched list from the JSON report. _handle_last_run()
+    now takes an optional verbose keyword.'
+  date: '2026-04-10T20:51:32.862988Z'

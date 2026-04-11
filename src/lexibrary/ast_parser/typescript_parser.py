@@ -5,34 +5,58 @@ and the TSX sub-grammar for .tsx files (both from tree-sitter-typescript).
 
 Extracts: functions, classes, interfaces, type aliases, enums, constants,
 and export declarations. Function bodies and JSX elements are ignored.
+
+Parse-tree entry points are split so callers that need multiple extractors
+against the same file can parse once and reuse the tree:
+
+- ``parse_ts_tree(file_path)`` runs ``tree_sitter.Parser.parse`` and returns
+  ``(tree, source_bytes)``.
+- ``extract_interface_from_tree(tree, source_bytes, file_path)`` consumes a
+  pre-parsed tuple.
+- ``extract_symbols_from_tree(tree, source_bytes, file_path)`` extracts
+  symbol definitions and call sites for the symbol graph.
+- ``extract_interface(file_path)`` and ``extract_symbols(file_path)`` are
+  thin wrappers that combine the above.
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from lexibrary.ast_parser.models import (
+    CallSite,
     ClassSig,
     ConstantSig,
     FunctionSig,
     InterfaceSkeleton,
     ParameterSig,
+    SymbolDefinition,
+    SymbolExtract,
 )
 from lexibrary.ast_parser.registry import get_parser
+
+if TYPE_CHECKING:
+    from tree_sitter import Tree
 
 logger = logging.getLogger(__name__)
 
 
-def extract_interface(file_path: Path) -> InterfaceSkeleton | None:
-    """Extract the public interface skeleton from a TypeScript or TSX file.
+def parse_ts_tree(file_path: Path) -> tuple[Tree, bytes] | None:
+    """Parse a TypeScript/TSX source file once and return tree + source bytes.
+
+    Reads the file bytes, invokes ``tree_sitter.Parser.parse`` exactly once,
+    and returns the ``(tree, source_bytes)`` tuple. Returns ``None`` when the
+    extension is unsupported, the grammar is unavailable, or the file cannot
+    be read.
 
     Args:
         file_path: Path to a .ts or .tsx source file.
 
     Returns:
-        InterfaceSkeleton with extracted interface, or None if the file
-        cannot be parsed (unsupported extension, missing grammar, read error).
+        ``(tree, source_bytes)`` or ``None`` on unsupported extension /
+        unavailable grammar / I/O failure.
     """
     extension = file_path.suffix
     if extension not in (".ts", ".tsx"):
@@ -49,8 +73,57 @@ def extract_interface(file_path: Path) -> InterfaceSkeleton | None:
         return None
 
     tree = parser.parse(source_bytes)
-    root = tree.root_node
+    return tree, source_bytes
 
+
+def extract_interface(file_path: Path) -> InterfaceSkeleton | None:
+    """Extract the public interface skeleton from a TypeScript or TSX file.
+
+    Thin wrapper around :func:`parse_ts_tree` and
+    :func:`extract_interface_from_tree`.
+
+    Args:
+        file_path: Path to a .ts or .tsx source file.
+
+    Returns:
+        InterfaceSkeleton with extracted interface, or None if the file
+        cannot be parsed (unsupported extension, missing grammar, read error).
+    """
+    parsed = parse_ts_tree(file_path)
+    if parsed is None:
+        return None
+    tree, source_bytes = parsed
+    return extract_interface_from_tree(tree, source_bytes, file_path)
+
+
+def extract_interface_from_tree(
+    tree: Tree,
+    source_bytes: bytes,
+    file_path: Path,
+) -> InterfaceSkeleton | None:
+    """Extract the public interface from a pre-parsed TypeScript/TSX tree.
+
+    Args:
+        tree: A ``tree_sitter.Tree`` produced by :func:`parse_ts_tree`.
+        source_bytes: The raw source bytes that ``tree`` was parsed from.
+            Retained for callers that want to derive additional artifacts
+            (symbol extraction, slicing) from the same buffer without
+            re-reading the file.
+        file_path: Path to the source file. Used to pick the ``tsx`` vs
+            ``typescript`` language tag and populate
+            :attr:`InterfaceSkeleton.file_path`.
+
+    Returns:
+        :class:`InterfaceSkeleton` describing the public API, or ``None`` if
+        the tree has no root node.
+    """
+    del source_bytes  # Present for symmetry with extract_symbols_from_tree.
+
+    root = tree.root_node
+    if root is None:
+        return None
+
+    extension = file_path.suffix
     language = "tsx" if extension == ".tsx" else "typescript"
 
     skeleton = InterfaceSkeleton(
@@ -65,6 +138,464 @@ def extract_interface(file_path: Path) -> InterfaceSkeleton | None:
 
     skeleton.exports = sorted(exports)
     return skeleton
+
+
+def extract_symbols(file_path: Path) -> SymbolExtract | None:
+    """Extract symbol definitions and call sites from a TypeScript/TSX file.
+
+    Thin wrapper around :func:`parse_ts_tree` and
+    :func:`extract_symbols_from_tree`.
+    """
+    parsed = parse_ts_tree(file_path)
+    if parsed is None:
+        return None
+    tree, source_bytes = parsed
+    return extract_symbols_from_tree(tree, source_bytes, file_path)
+
+
+def extract_symbols_from_tree(
+    tree: Tree,
+    source_bytes: bytes,
+    file_path: Path,
+) -> SymbolExtract | None:
+    """Extract symbol definitions and call sites from a pre-parsed tree.
+
+    Definitions include ``function_declaration``, ``class_declaration``,
+    ``method_definition`` inside classes, and ``lexical_declaration``
+    entries whose value is an ``arrow_function``. Calls are
+    ``call_expression`` descendants of each definition; ``type_arguments``
+    children (``foo<T>(...)``) are ignored.
+
+    Qualified names use the file stem as the module prefix and take the
+    form ``<stem>.<class?>.<name>``. TypeScript resolution uses the
+    fallback resolver in Phase 2, so the exact dotted format is not
+    load-bearing — consistency with the Python format is preferred.
+    """
+    del source_bytes  # Reserved for future walkers.
+
+    root = tree.root_node
+    if root is None:
+        return None
+
+    extension = file_path.suffix
+    language = "tsx" if extension == ".tsx" else "typescript"
+    module_path = file_path.stem
+
+    definitions: list[SymbolDefinition] = []
+    def_nodes: list[tuple[object, SymbolDefinition]] = []
+
+    for child in root.children:
+        _collect_ts_top_level_definitions(
+            child,
+            module_path,
+            definitions,
+            def_nodes,
+        )
+
+    calls = _collect_ts_calls(def_nodes)
+
+    return SymbolExtract(
+        file_path=str(file_path),
+        language=language,
+        definitions=definitions,
+        calls=calls,
+    )
+
+
+def _collect_ts_top_level_definitions(
+    node: object,
+    module_path: str,
+    definitions: list[SymbolDefinition],
+    def_nodes: list[tuple[object, SymbolDefinition]],
+) -> None:
+    """Collect a top-level TS/JS definition and recurse into classes."""
+    node_type = getattr(node, "type", "")
+
+    if node_type == "function_declaration":
+        _emit_ts_function(
+            node,
+            module_path,
+            definitions,
+            def_nodes,
+            parent_class=None,
+            force_private=False,
+        )
+    elif node_type == "class_declaration":
+        _emit_ts_class(
+            node,
+            module_path,
+            definitions,
+            def_nodes,
+            force_private=False,
+        )
+    elif node_type == "lexical_declaration":
+        _emit_ts_lexical_declaration(
+            node,
+            module_path,
+            definitions,
+            def_nodes,
+        )
+    elif node_type == "export_statement":
+        for child in getattr(node, "children", []):
+            _collect_ts_top_level_definitions(
+                child,
+                module_path,
+                definitions,
+                def_nodes,
+            )
+
+
+def _emit_ts_function(
+    node: object,
+    qualified_prefix: str,
+    definitions: list[SymbolDefinition],
+    def_nodes: list[tuple[object, SymbolDefinition]],
+    *,
+    parent_class: str | None,
+    force_private: bool,
+) -> None:
+    """Emit a ``function_declaration`` node as a definition."""
+    name = _child_text_by_type(node, "identifier")
+    if not name:
+        return
+
+    qualified_name = f"{qualified_prefix}.{name}" if qualified_prefix else name
+    line_start, line_end = _line_range(node)
+    visibility = "private" if force_private else _ts_visibility(name)
+    definition = SymbolDefinition(
+        name=name,
+        qualified_name=qualified_name,
+        symbol_type="function",
+        line_start=line_start,
+        line_end=line_end,
+        visibility=visibility,
+        parent_class=parent_class,
+    )
+    definitions.append(definition)
+    def_nodes.append((node, definition))
+
+
+def _emit_ts_class(
+    node: object,
+    qualified_prefix: str,
+    definitions: list[SymbolDefinition],
+    def_nodes: list[tuple[object, SymbolDefinition]],
+    *,
+    force_private: bool,
+) -> None:
+    """Emit a ``class_declaration`` node as a definition with its methods."""
+    name = _child_text_by_type(node, "type_identifier")
+    if not name:
+        return
+
+    qualified_name = f"{qualified_prefix}.{name}" if qualified_prefix else name
+    line_start, line_end = _line_range(node)
+    visibility = "private" if force_private else _ts_visibility(name)
+    class_def = SymbolDefinition(
+        name=name,
+        qualified_name=qualified_name,
+        symbol_type="class",
+        line_start=line_start,
+        line_end=line_end,
+        visibility=visibility,
+        parent_class=None,
+    )
+    definitions.append(class_def)
+    def_nodes.append((node, class_def))
+
+    class_prefix = qualified_name
+    for child in getattr(node, "children", []):
+        if getattr(child, "type", "") != "class_body":
+            continue
+        for member in getattr(child, "children", []):
+            member_type = getattr(member, "type", "")
+            if member_type == "method_definition":
+                _emit_ts_method(
+                    member,
+                    class_prefix,
+                    name,
+                    definitions,
+                    def_nodes,
+                )
+
+
+def _emit_ts_method(
+    node: object,
+    class_prefix: str,
+    parent_class: str,
+    definitions: list[SymbolDefinition],
+    def_nodes: list[tuple[object, SymbolDefinition]],
+) -> None:
+    """Emit a ``method_definition`` node as a method definition."""
+    method_name: str | None = None
+    for child in getattr(node, "children", []):
+        if getattr(child, "type", "") == "property_identifier":
+            method_name = _node_text(child)
+            break
+    if not method_name:
+        return
+
+    qualified_name = f"{class_prefix}.{method_name}" if class_prefix else method_name
+    line_start, line_end = _line_range(node)
+    definition = SymbolDefinition(
+        name=method_name,
+        qualified_name=qualified_name,
+        symbol_type="method",
+        line_start=line_start,
+        line_end=line_end,
+        visibility=_ts_visibility(method_name),
+        parent_class=parent_class,
+    )
+    definitions.append(definition)
+    def_nodes.append((node, definition))
+
+
+def _emit_ts_lexical_declaration(
+    node: object,
+    module_path: str,
+    definitions: list[SymbolDefinition],
+    def_nodes: list[tuple[object, SymbolDefinition]],
+) -> None:
+    """Emit ``const foo = () => ...`` as a function definition.
+
+    Plain constants (``const x = 42``) are not symbol-graph definitions —
+    they land in the interface skeleton but carry no calls.
+    """
+    for child in getattr(node, "children", []):
+        if getattr(child, "type", "") != "variable_declarator":
+            continue
+        name = _child_text_by_type(child, "identifier")
+        if not name:
+            continue
+        arrow: object | None = None
+        for sub in getattr(child, "children", []):
+            if getattr(sub, "type", "") == "arrow_function":
+                arrow = sub
+                break
+        if arrow is None:
+            continue
+
+        line_start, line_end = _line_range(child)
+        qualified_name = f"{module_path}.{name}" if module_path else name
+        definition = SymbolDefinition(
+            name=name,
+            qualified_name=qualified_name,
+            symbol_type="function",
+            line_start=line_start,
+            line_end=line_end,
+            visibility=_ts_visibility(name),
+            parent_class=None,
+        )
+        definitions.append(definition)
+        def_nodes.append((arrow, definition))
+
+
+def _collect_ts_calls(
+    def_nodes: list[tuple[object, SymbolDefinition]],
+) -> list[CallSite]:
+    """Walk every definition body and emit :class:`CallSite` entries.
+
+    The dedup key is ``(start_byte, end_byte)`` because tree-sitter's
+    Python bindings return fresh wrapper objects on every traversal.
+    """
+    if not def_nodes:
+        return []
+
+    definition_spans: list[tuple[SymbolDefinition, int, int]] = []
+    for def_node, definition in def_nodes:
+        start_row, end_row = _node_row_span(def_node)
+        definition_spans.append((definition, start_row, end_row))
+
+    definition_spans.sort(key=lambda item: (-item[1], item[2]))
+
+    seen_call_keys: set[tuple[int, int]] = set()
+    calls: list[CallSite] = []
+
+    for def_node, _definition in def_nodes:
+        for call_node in _iter_ts_call_descendants(def_node):
+            call_key = _node_byte_key(call_node)
+            if call_key in seen_call_keys:
+                continue
+            seen_call_keys.add(call_key)
+
+            call_row = _node_row_span(call_node)[0]
+            owner: SymbolDefinition | None = None
+            for candidate, start_row, end_row in definition_spans:
+                if start_row <= call_row <= end_row:
+                    owner = candidate
+                    break
+            if owner is None:
+                continue
+
+            call = _build_ts_call_site(call_node, owner.qualified_name)
+            if call is not None:
+                calls.append(call)
+
+    calls.sort(key=lambda c: (c.line, c.callee_name, c.caller_name))
+    return calls
+
+
+def _node_byte_key(node: object) -> tuple[int, int]:
+    """Return ``(start_byte, end_byte)`` for a tree-sitter node.
+
+    Used as a dedup key — see ``python_parser._node_byte_key`` for the
+    identity-stability rationale.
+    """
+    start = getattr(node, "start_byte", -1)
+    end = getattr(node, "end_byte", -1)
+    return int(start), int(end)
+
+
+def _iter_ts_call_descendants(node: object) -> list[object]:
+    """Return every ``call_expression`` descendant of ``node``."""
+    results: list[object] = []
+    stack: list[object] = list(getattr(node, "children", []))
+    while stack:
+        current = stack.pop(0)
+        if getattr(current, "type", "") == "call_expression":
+            results.append(current)
+        stack = list(getattr(current, "children", [])) + stack
+    return results
+
+
+def _build_ts_call_site(
+    call_node: object,
+    caller_qualified_name: str,
+) -> CallSite | None:
+    """Translate a ``call_expression`` into a :class:`CallSite`.
+
+    Mirrors the Python rules: identifier callees produce receiver-less
+    call sites, ``member_expression`` callees produce ``receiver.name``
+    call sites, and calls on literals/subscripts/lambdas/super chains are
+    skipped.
+    """
+    func_node = _call_function_child(call_node)
+    if func_node is None:
+        return None
+
+    line = _node_row_span(call_node)[0] + 1
+    func_type = getattr(func_node, "type", "")
+
+    if func_type == "identifier":
+        callee_name = _node_text(func_node) or ""
+        if not callee_name:
+            return None
+        if callee_name == "super":
+            return None
+        return CallSite(
+            caller_name=caller_qualified_name,
+            callee_name=callee_name,
+            receiver=None,
+            line=line,
+            is_method_call=False,
+        )
+
+    if func_type == "member_expression":
+        obj_node: object | None = None
+        prop_node: object | None = None
+        for child in getattr(func_node, "children", []):
+            child_type = getattr(child, "type", "")
+            if child_type == "property_identifier" and prop_node is None:
+                prop_node = child
+            elif child_type not in (".", "?.") and obj_node is None:
+                obj_node = child
+        if prop_node is None:
+            return None
+        prop_name = _node_text(prop_node) or ""
+        if not prop_name:
+            return None
+        receiver, display = _ts_member_receiver(obj_node)
+        if receiver is None:
+            return None
+        return CallSite(
+            caller_name=caller_qualified_name,
+            callee_name=f"{display}.{prop_name}",
+            receiver=receiver,
+            line=line,
+            is_method_call=True,
+        )
+
+    return None
+
+
+def _call_function_child(call_node: object) -> object | None:
+    """Return the function/callee subtree of a ``call_expression``.
+
+    tree-sitter-typescript exposes the callee through the ``function``
+    field; fall back to the first non-``type_arguments`` child when
+    ``child_by_field_name`` is not available on the node.
+    """
+    getter = getattr(call_node, "child_by_field_name", None)
+    if getter is not None:
+        result: object | None = getter("function")
+        if result is not None:
+            return result
+
+    for child in getattr(call_node, "children", []):
+        child_type = getattr(child, "type", "")
+        if child_type in ("(", "arguments", "type_arguments", ","):
+            continue
+        return cast("object", child)
+    return None
+
+
+def _ts_member_receiver(
+    obj_node: object | None,
+) -> tuple[str | None, str]:
+    """Mirror of :func:`_attribute_receiver` for TS/JS member expressions."""
+    if obj_node is None:
+        return None, ""
+    obj_type = getattr(obj_node, "type", "")
+
+    if obj_type == "call_expression":
+        inner_func = _call_function_child(obj_node)
+        if inner_func is not None and getattr(inner_func, "type", "") == "identifier":
+            inner_name = _node_text(inner_func) or ""
+            if inner_name == "super":
+                return "super", "super"
+        return None, ""
+
+    if obj_type in {
+        "string",
+        "template_string",
+        "number",
+        "true",
+        "false",
+        "null",
+        "undefined",
+        "array",
+        "object",
+        "subscript_expression",
+        "arrow_function",
+        "parenthesized_expression",
+        "function_expression",
+    }:
+        return None, ""
+
+    text = _node_text(obj_node) or ""
+    if not text:
+        return None, ""
+    return text, text
+
+
+def _line_range(node: object) -> tuple[int, int]:
+    """Return (line_start, line_end) 1-indexed."""
+    start_row, end_row = _node_row_span(node)
+    return start_row + 1, end_row + 1
+
+
+def _node_row_span(node: object) -> tuple[int, int]:
+    """Return (start_row, end_row) 0-indexed from tree-sitter positions."""
+    start = getattr(node, "start_point", (0, 0))
+    end = getattr(node, "end_point", start)
+    start_row = start[0] if isinstance(start, (tuple, list)) else 0
+    end_row = end[0] if isinstance(end, (tuple, list)) else start_row
+    return int(start_row), int(end_row)
+
+
+def _ts_visibility(name: str) -> str:
+    """TS/JS visibility rule: names starting with ``_`` are private."""
+    return "private" if name.startswith("_") else "public"
 
 
 def _process_top_level_node(

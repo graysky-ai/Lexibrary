@@ -412,6 +412,40 @@ class TestTriagePhase:
         result = coord._triage(collect)
         assert len(result.items) == 1
         assert result.items[0].issue_type == "consistency"
+        # wikilink_resolution has no entry in CHECK_TO_ACTION_KEY, so the
+        # classifier falls back to the umbrella key.
+        assert result.items[0].action_key == "autofix_validation_issue"
+
+    def test_triage_classifies_validation_uses_per_check_action_key(self, tmp_path: Path) -> None:
+        """CHECK_TO_ACTION_KEY drives action_key for checks with registered fixers."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        collect = CollectResult(
+            items=[
+                CollectItem(
+                    source="validation",
+                    path=Path("src/foo.py"),
+                    severity="warning",
+                    message="stale source hash",
+                    check="hash_freshness",
+                ),
+                CollectItem(
+                    source="validation",
+                    path=Path("designs/src/foo.py.md"),
+                    severity="warning",
+                    message="orphan design",
+                    check="orphaned_designs",
+                ),
+            ]
+        )
+
+        result = coord._triage(collect)
+        action_keys = {item.action_key for item in result.items}
+        assert "fix_hash_freshness" in action_keys
+        assert "fix_orphaned_designs" in action_keys
+        assert "autofix_validation_issue" not in action_keys
 
     def test_triage_classifies_iwh(self, tmp_path: Path) -> None:
         project = _setup_minimal_project(tmp_path)
@@ -630,6 +664,173 @@ class TestDispatchPhase:
         result = await coord._dispatch(triage, dry_run=True)
         assert len(result.dispatched) == 1
         assert "dry-run" in result.dispatched[0].message
+
+    @pytest.mark.asyncio
+    async def test_dispatch_validation_issue_calls_validation_fixers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Validation action keys route through ``fix_validation_issue``."""
+        from lexibrary.curator import validation_fixers
+
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        captured: dict[str, object] = {}
+
+        def fake_bridge(
+            item: TriageItem,
+            project_root: Path,
+            cfg: LexibraryConfig,
+        ) -> SubAgentResult:
+            captured["item"] = item
+            captured["project_root"] = project_root
+            captured["config"] = cfg
+            return SubAgentResult(
+                success=True,
+                action_key=item.action_key,
+                path=item.source_item.path,
+                message="fake fixed",
+                llm_calls=0,
+                outcome="fixed",
+            )
+
+        monkeypatch.setattr(validation_fixers, "fix_validation_issue", fake_bridge)
+
+        triage = TriageResult(
+            items=[
+                TriageItem(
+                    source_item=CollectItem(
+                        source="validation",
+                        path=Path("src/foo.py"),
+                        severity="warning",
+                        message="stale source hash",
+                        check="hash_freshness",
+                    ),
+                    issue_type="consistency",
+                    action_key="fix_hash_freshness",
+                    priority=40.0,
+                ),
+            ]
+        )
+
+        result = await coord._dispatch(triage)
+
+        assert "item" in captured
+        assert captured["project_root"] == project
+        assert captured["config"] is config
+
+        assert len(result.dispatched) == 1
+        assert len(result.deferred) == 0
+        dispatched = result.dispatched[0]
+        assert dispatched.action_key == "fix_hash_freshness"
+        assert dispatched.outcome == "fixed"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_validation_issue_not_stubbed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Validation dispatch reports outcome ``fixed``, not ``stubbed``."""
+        from lexibrary.curator import validation_fixers
+
+        project = _setup_minimal_project(tmp_path)
+
+        def fake_bridge(
+            item: TriageItem,
+            project_root: Path,
+            cfg: LexibraryConfig,
+        ) -> SubAgentResult:
+            return SubAgentResult(
+                success=True,
+                action_key=item.action_key,
+                path=item.source_item.path,
+                message="fake fixed",
+                llm_calls=0,
+                outcome="fixed",
+            )
+
+        monkeypatch.setattr(validation_fixers, "fix_validation_issue", fake_bridge)
+
+        triage = TriageResult(
+            items=[
+                TriageItem(
+                    source_item=CollectItem(
+                        source="validation",
+                        path=Path("designs/src/foo.py.md"),
+                        severity="warning",
+                        message="orphan design",
+                        check="orphaned_designs",
+                    ),
+                    issue_type="consistency",
+                    # fix_orphaned_designs is Medium risk → needs full autonomy
+                    action_key="fix_orphaned_designs",
+                    priority=40.0,
+                ),
+            ]
+        )
+
+        # Medium-risk dispatch requires full autonomy — rebuild with full config.
+        config_full = LexibraryConfig.model_validate({"curator": {"autonomy": "full"}})
+        coord_full = Coordinator(project, config_full)
+        result = await coord_full._dispatch(triage)
+
+        assert len(result.dispatched) == 1
+        dispatched = result.dispatched[0]
+        assert dispatched.outcome == "fixed"
+        assert dispatched.outcome != "stubbed"
+
+    @pytest.mark.asyncio
+    async def test_validation_fixer_not_called_in_dry_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Dry-run mode short-circuits before calling the validation bridge."""
+        from lexibrary.curator import validation_fixers
+
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        called: list[bool] = []
+
+        def fake_bridge(
+            item: TriageItem,
+            project_root: Path,
+            cfg: LexibraryConfig,
+        ) -> SubAgentResult:
+            called.append(True)
+            return SubAgentResult(
+                success=True,
+                action_key=item.action_key,
+                path=None,
+                message="should not be called",
+                llm_calls=0,
+                outcome="fixed",
+            )
+
+        monkeypatch.setattr(validation_fixers, "fix_validation_issue", fake_bridge)
+
+        triage = TriageResult(
+            items=[
+                TriageItem(
+                    source_item=CollectItem(
+                        source="validation",
+                        path=Path("src/foo.py"),
+                        severity="warning",
+                        message="stale source hash",
+                        check="hash_freshness",
+                    ),
+                    issue_type="consistency",
+                    action_key="fix_hash_freshness",
+                    priority=40.0,
+                ),
+            ]
+        )
+
+        result = await coord._dispatch(triage, dry_run=True)
+
+        assert called == []
+        assert len(result.dispatched) == 1
+        assert result.dispatched[0].outcome == "dry_run"
 
 
 # ---------------------------------------------------------------------------
@@ -1241,7 +1442,7 @@ class TestDeprecationDispatch:
         )
 
         # Mock the hard_delete to avoid actual file operations
-        with patch("lexibrary.curator.coordinator.Coordinator._dispatch_hard_delete") as mock_hd:
+        with patch("lexibrary.curator.lifecycle.dispatch_hard_delete") as mock_hd:
             mock_hd.return_value = SubAgentResult(
                 success=True,
                 action_key="hard_delete_concept_past_ttl",
@@ -1330,9 +1531,7 @@ class TestDeprecationDispatch:
         )
 
         # Mock the deprecation to avoid actual file operations
-        with patch(
-            "lexibrary.curator.coordinator.Coordinator._dispatch_soft_deprecation"
-        ) as mock_dep:
+        with patch("lexibrary.curator.deprecation.dispatch_soft_deprecation") as mock_dep:
             mock_dep.return_value = SubAgentResult(
                 success=True,
                 action_key="deprecate_concept",
@@ -1449,9 +1648,7 @@ class TestDeprecationDispatch:
         )
 
         # Mock the soft deprecation to return 1 LLM call
-        with patch(
-            "lexibrary.curator.coordinator.Coordinator._dispatch_soft_deprecation"
-        ) as mock_dep:
+        with patch("lexibrary.curator.deprecation.dispatch_soft_deprecation") as mock_dep:
             mock_dep.return_value = SubAgentResult(
                 success=True,
                 action_key="deprecate_concept",
@@ -1634,6 +1831,7 @@ class TestDeprecationReport:
                     path=Path(".lexibrary/concepts/a.md"),
                     message="dry-run: would dispatch",
                     llm_calls=0,
+                    outcome="dry_run",
                 ),
             ],
         )

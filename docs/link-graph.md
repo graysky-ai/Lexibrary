@@ -211,3 +211,4 @@ All three return empty results when the index is absent -- they never fail due t
 - [Concepts](concepts.md) -- How concepts are indexed
 - [Stack](stack.md) -- How Stack posts are indexed
 - [Search](search.md) -- How the link graph accelerates search queries
+- [Symbol Graph](symbol-graph.md) — symbol-level edges as a companion database.

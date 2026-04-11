@@ -1254,6 +1254,13 @@ class TestProcessConceptFile:
     ) -> None:
         """Linked files from the concept create concept_file_ref links."""
         concept_path = _create_concept_file(tmp_path)
+        # concept_file_ref links are only created when the referenced file
+        # exists on disk — the parser's regex happily extracts prose
+        # shorthand, and filtering here prevents phantom source rows.
+        for rel in ("src/auth/login.py", "src/auth/middleware.py"):
+            target = tmp_path / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("", encoding="utf-8")
         builder = IndexBuilder(db_conn, tmp_path)
         builder._process_concept_file(concept_path, "2025-06-15T12:00:00+00:00")
 
@@ -1265,6 +1272,37 @@ class TestProcessConceptFile:
         paths = sorted(r[0] for r in file_refs)
         assert "src/auth/login.py" in paths
         assert "src/auth/middleware.py" in paths
+
+    def test_concept_file_ref_skips_missing_files(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Prose-style backticked paths that don't exist on disk are skipped.
+
+        The concept parser uses a permissive regex that matches any
+        backticked token shaped like ``<segment>/<name>.<ext>`` — which
+        captures prose references inside a sentence as well as real file
+        refs. The builder must only materialise ``concept_file_ref`` links
+        for paths that actually exist, otherwise deleted or prose-only
+        references leak phantom source artifacts that the curator then
+        flags as orphans.
+        """
+        concept_path = _create_concept_file(tmp_path)
+        # Deliberately do NOT create src/auth/login.py or src/auth/middleware.py.
+        builder = IndexBuilder(db_conn, tmp_path)
+        builder._process_concept_file(concept_path, "2025-06-15T12:00:00+00:00")
+
+        file_refs = db_conn.execute(
+            "SELECT tgt.path FROM links l "
+            "JOIN artifacts tgt ON l.target_id = tgt.id "
+            "WHERE l.link_type = 'concept_file_ref'"
+        ).fetchall()
+        assert file_refs == []
+
+        stale_sources = db_conn.execute(
+            "SELECT path FROM artifacts WHERE kind = 'source' AND path IN (?, ?)",
+            ("src/auth/login.py", "src/auth/middleware.py"),
+        ).fetchall()
+        assert stale_sources == []
 
     def test_tags_inserted(self, db_conn: sqlite3.Connection, tmp_path: Path) -> None:
         """Tags from the concept frontmatter are inserted into the tags table."""
@@ -4511,3 +4549,175 @@ class TestProcessPlaybookFTS:
         # Tags should be in the FTS body
         assert "ops" in body
         assert "deployment" in body
+
+
+# ---------------------------------------------------------------------------
+# Playbook / concept resolver fallout tests (stale-artifact-row regression)
+# ---------------------------------------------------------------------------
+
+
+class TestResolverStalenessPrevention:
+    """Regression tests covering the four resolver bugs that allowed stale
+    artifact rows to survive even a full rebuild.
+
+    Root cause: during ``full_build``, ``_clear_all_data`` wipes every row,
+    but the subsequent scan re-created phantom stubs because:
+
+    1. Wikilinks naming a playbook fell through to concept stubs
+       (``_resolve_wikilink_target`` did not check ``PlaybookIndex``).
+    2. Stack post ``refs.concepts`` names were turned directly into
+       ``.lexibrary/concepts/<name>.md`` without consulting ``ConceptIndex``,
+       so aliases like "Deprecation Lifecycle" never found ``CN-015``.
+    3. Convention body wikilinks had the same hard-coded synthesis.
+    4. Concept ``linked_files`` were inserted as source artifacts even when
+       the referenced path was a prose shorthand that did not exist on disk.
+    """
+
+    def test_wikilink_resolves_to_playbook_title(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """[[Playbook Title]] in a design file should link to the playbook."""
+        playbook_dir = tmp_path / ".lexibrary" / "playbooks"
+        playbook_dir.mkdir(parents=True)
+        (playbook_dir / "PB-010-adding-a-cli-command.md").write_text(
+            "---\ntitle: Adding a new CLI command\nid: PB-010\nstatus: active\n"
+            "source: user\n---\n\n## Overview\n\nHow to add a CLI command.\n",
+            encoding="utf-8",
+        )
+
+        source_dir = tmp_path / "src"
+        source_dir.mkdir(parents=True, exist_ok=True)
+        (source_dir / "cli.py").write_text(
+            "from __future__ import annotations\n\ndef main() -> None:\n    pass\n",
+            encoding="utf-8",
+        )
+
+        design_dir = tmp_path / ".lexibrary" / "designs" / "src"
+        design_dir.mkdir(parents=True, exist_ok=True)
+        (design_dir / "cli.py.md").write_text(
+            "---\ndescription: CLI entry point\nid: DS-010\nupdated_by: archivist\n---\n\n"
+            "# src/cli.py\n\n"
+            "## Interface Contract\n\n"
+            "```python\ndef main() -> None: ...\n```\n\n"
+            "## Dependencies\n\n(none)\n\n"
+            "## Dependents\n\n(none)\n\n"
+            "## Wikilinks\n\n"
+            "- [[Adding a new CLI command]]\n\n"
+            "## Tags\n\n(none)\n\n"
+            "<!-- lexibrary:meta\nsource: src/cli.py\nsource_hash: abc\n"
+            "design_hash: def\ngenerated: 2025-06-15T12:00:00\n"
+            "generator: lexibrary-test\n-->\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        result = builder.full_build()
+        assert result.errors == []
+
+        targets = db_conn.execute(
+            "SELECT tgt.path, tgt.kind FROM links l "
+            "JOIN artifacts src ON l.source_id = src.id "
+            "JOIN artifacts tgt ON l.target_id = tgt.id "
+            "WHERE src.kind = 'design' AND l.link_type = 'wikilink'"
+        ).fetchall()
+        assert len(targets) == 1
+        target_path, target_kind = targets[0]
+        assert target_kind == "playbook"
+        assert target_path == ".lexibrary/playbooks/PB-010-adding-a-cli-command.md"
+
+        # And no phantom concept stub was created.
+        stub = db_conn.execute(
+            "SELECT 1 FROM artifacts WHERE path = '.lexibrary/concepts/Adding a new CLI command.md'"
+        ).fetchone()
+        assert stub is None
+
+    def test_stack_concept_ref_resolves_via_concept_index(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Stack ``refs.concepts`` should resolve names to the real concept file."""
+        concept_dir = tmp_path / ".lexibrary" / "concepts"
+        concept_dir.mkdir(parents=True)
+        (concept_dir / "CN-015-deprecation-lifecycle.md").write_text(
+            "---\ntitle: Deprecation Lifecycle\nid: CN-015\naliases: []\n"
+            "tags: []\nstatus: active\n---\nLifecycle concept body.\n",
+            encoding="utf-8",
+        )
+
+        stack_dir = tmp_path / ".lexibrary" / "stack"
+        stack_dir.mkdir(parents=True)
+        (stack_dir / "ST-200-example.md").write_text(
+            "---\n"
+            "id: ST-200\n"
+            "title: Example\n"
+            "tags:\n  - lifecycle\n"
+            "status: resolved\n"
+            "created: 2026-04-10\n"
+            "author: user\n"
+            "refs:\n"
+            "  concepts:\n    - Deprecation Lifecycle\n"
+            "  files: []\n"
+            "---\n\n"
+            "## Problem\n\nBody.\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        result = builder.full_build()
+        assert result.errors == []
+
+        targets = db_conn.execute(
+            "SELECT tgt.path, tgt.kind FROM links l "
+            "JOIN artifacts src ON l.source_id = src.id "
+            "JOIN artifacts tgt ON l.target_id = tgt.id "
+            "WHERE src.kind = 'stack' AND l.link_type = 'stack_concept_ref'"
+        ).fetchall()
+        assert len(targets) == 1
+        target_path, target_kind = targets[0]
+        assert target_kind == "concept"
+        assert target_path == ".lexibrary/concepts/CN-015-deprecation-lifecycle.md"
+
+        stub = db_conn.execute(
+            "SELECT 1 FROM artifacts WHERE path = '.lexibrary/concepts/Deprecation Lifecycle.md'"
+        ).fetchone()
+        assert stub is None
+
+    def test_convention_wikilink_resolves_via_concept_index(
+        self, db_conn: sqlite3.Connection, tmp_path: Path
+    ) -> None:
+        """Convention body [[Concept Title]] should resolve to the real concept."""
+        concept_dir = tmp_path / ".lexibrary" / "concepts"
+        concept_dir.mkdir(parents=True)
+        (concept_dir / "CN-042-atomic-file-writes.md").write_text(
+            "---\ntitle: Atomic File Writes\nid: CN-042\naliases: []\n"
+            "tags: []\nstatus: active\n---\nAtomic writes concept body.\n",
+            encoding="utf-8",
+        )
+
+        conv_dir = tmp_path / ".lexibrary" / "conventions"
+        conv_dir.mkdir(parents=True)
+        (conv_dir / "CV-012-design-file-write-contract.md").write_text(
+            "---\ntitle: Design File Write Contract\nid: CV-012\nscope: project\n"
+            "status: active\nsource: user\npriority: 0\n---\n"
+            "All writes use [[Atomic File Writes]] to avoid partial files.\n",
+            encoding="utf-8",
+        )
+
+        builder = IndexBuilder(db_conn, tmp_path)
+        result = builder.full_build()
+        assert result.errors == []
+
+        targets = db_conn.execute(
+            "SELECT tgt.path, tgt.kind FROM links l "
+            "JOIN artifacts src ON l.source_id = src.id "
+            "JOIN artifacts tgt ON l.target_id = tgt.id "
+            "WHERE src.kind = 'convention' AND l.link_type = 'convention_concept_ref'"
+        ).fetchall()
+        assert len(targets) == 1
+        target_path, target_kind = targets[0]
+        assert target_kind == "concept"
+        assert target_path == ".lexibrary/concepts/CN-042-atomic-file-writes.md"
+
+        stub = db_conn.execute(
+            "SELECT 1 FROM artifacts WHERE path = '.lexibrary/concepts/Atomic File Writes.md'"
+        ).fetchone()
+        assert stub is None

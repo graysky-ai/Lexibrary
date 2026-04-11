@@ -1,0 +1,23 @@
+comments:
+- body: 'Phase 2 symbol-graph-2 group 12: added the inline ''trace'' command. Dispatches
+    to SymbolQueryService.trace() via a context-managed service and delegates rendering
+    to services.symbols_render.render_trace. Staleness warnings from TraceResponse.stale
+    are emitted via warn() BEFORE calling render_trace so users see ''graph may be
+    stale'' hints on stderr while still getting the result on stdout. Not-found is
+    an exit-1 error with a hint suggesting ''lexi design update <file>'' or ''lexi
+    search --type symbol''. The service itself is imported lazily (noqa: PLC0415)
+    to keep cold-start import cost out of unrelated commands.'
+  date: '2026-04-11T05:13:20.072968Z'
+- body: "Wired render_key_symbols() into the file-lookup --full flow: after Related\
+    \ Concepts and before token-budget-managed supplementary sections, we emit the\
+    \ 'Key symbols' markdown table via info() when file_result.key_symbols is non-empty.\
+    \ Placement mirrors the spec requirement 'append after Dependencies/Reverse dependencies'\
+    \ \u2014 the dependents section is included in links_text which is still gated\
+    \ by the token budget, but the Key symbols block is emitted unconditionally so\
+    \ users always see caller/callee fan-out. Brief mode does not render the section\
+    \ (the data is still populated on file_result but brief output stays minimal)."
+  date: '2026-04-11T05:24:11.616149Z'
+- body: 'symbol-graph-2 group 13: added ''symbol'' to _VALID_ARTIFACT_TYPES and extended
+    the search handler to reject --tag / --concept / --resolution-type / --include-stale
+    when combined with --type symbol (exits 1 via error()).'
+  date: '2026-04-11T05:26:36.126664Z'

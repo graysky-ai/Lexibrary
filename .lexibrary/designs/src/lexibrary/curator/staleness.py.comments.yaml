@@ -1,0 +1,18 @@
+comments:
+- body: 'Phase 1.5 dispatcher refactor (openspec curator-fix group 3): added public
+    dispatch_staleness_resolver(item, ctx) extracted from Coordinator._dispatch_staleness_resolver.
+    The coordinator bound method is now a thin one-line delegate to this public function.
+    Risk taxonomy function_ref for regenerate_stale_design now resolves to curator.staleness.dispatch_staleness_resolver.'
+  date: '2026-04-10T21:18:15.798950Z'
+- body: 'Phase 3a (bead lexibrary-sq5.7): replaced the inline write contract (compute_hashes
+    + serialize_design_file + atomic_write) with a single call to write_design_file_as_curator
+    from the new write_contract module. Behavioural change: written files now carry
+    updated_by=''curator'' instead of ''archivist''. The name write_design_file_as_curator
+    captures the semantic that the curator sub-agent owns blame for any design file
+    rewrite, regardless of whether it is a full regeneration, reconciliation, or comment
+    integration. The generator field in StalenessMetadata remains ''curator-staleness-resolver''
+    to distinguish which sub-agent produced the content. Tests test_write_contract_updated_by_archivist
+    (now ..._updated_by_curator) and test_stale_non_agent_file_regenerated were updated
+    to assert curator authorship; atomic_write / serialize_design_file patch paths
+    moved from lexibrary.curator.staleness to lexibrary.curator.write_contract.'
+  date: '2026-04-10T21:37:46.312706Z'

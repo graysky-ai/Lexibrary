@@ -110,9 +110,7 @@ def _run_validate(
         _preferred_check = "orphaned_designs"
         _subordinate_check = "orphan_artifacts"
         _preferred_paths = {
-            issue.artifact
-            for issue in report.issues
-            if issue.check == _preferred_check
+            issue.artifact for issue in report.issues if issue.check == _preferred_check
         }
         deduped_issues = [
             issue
@@ -128,11 +126,7 @@ def _run_validate(
             for issue in deduped_issues
             if issue.check in DESTRUCTIVE_CHECKS and issue.check in FIXERS
         ]
-        safe_issues = [
-            issue
-            for issue in deduped_issues
-            if issue.check not in DESTRUCTIVE_CHECKS
-        ]
+        safe_issues = [issue for issue in deduped_issues if issue.check not in DESTRUCTIVE_CHECKS]
 
         # Gate destructive fixes behind a single user confirmation.
         run_destructive = False

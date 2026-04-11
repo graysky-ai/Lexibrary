@@ -1,0 +1,16 @@
+comments:
+- body: 'Phase 2 group 2 refactor: split the single-shot extract_interface() path
+    into parse_python_tree() (parses once, returns tree + source_bytes) and extract_interface_from_tree()
+    (consumes the pre-parsed tuple). extract_interface() is now a thin wrapper. Enables
+    group 8 to parse each source file exactly once per build_symbol_graph run and
+    feed the same tree to both interface and symbol extractors. Behaviour of InterfaceSkeleton
+    output is unchanged for group 2.'
+  date: '2026-04-10T15:18:24.959933Z'
+- body: 'Group 3 of symbol-graph-2: added extract_symbols_from_tree and extract_symbols
+    which walk the parse tree to produce SymbolDefinitions (functions, methods, classes,
+    nested defs) and CallSites (free-function, attribute, self.method, super().foo()).
+    Nested functions get visibility=''private'' and include ''<locals>'' in the qualified
+    name. Dunder visibility rule also changed: all ''__*__'' names are now public
+    (formerly only __init__/__new__ were allow-listed). Call attribution uses innermost-wins
+    based on row spans to keep nested-function calls attributed correctly.'
+  date: '2026-04-10T19:44:31.680585Z'

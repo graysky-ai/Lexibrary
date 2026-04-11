@@ -78,7 +78,7 @@ lexi lookup src/lexibrary/config/
 
 ### search
 
-Search across concepts, conventions, design files, playbooks, and Stack posts in a single query. This is the unified cross-artifact search command.
+Search across concepts, conventions, design files, playbooks, Stack posts, and symbols in a single query. This is the unified cross-artifact search command.
 
 ```
 lexi search [query] [--type TYPE] [--tag TAG] [--status STATUS] [--scope PATH]
@@ -95,8 +95,8 @@ lexi search [query] [--type TYPE] [--tag TAG] [--status STATUS] [--scope PATH]
 
 | Option | Description |
 |--------|-------------|
-| `--type` | Restrict to artifact type: `concept`, `convention`, `design`, `playbook`, or `stack`. |
-| `--tag` | Filter by tag (repeatable, AND logic). |
+| `--type` | Restrict to artifact type: `concept`, `convention`, `design`, `playbook`, `stack`, or `symbol`. |
+| `--tag` | Filter by tag (repeatable, AND logic). Not supported with `--type symbol`. |
 | `--status` | Filter by artifact status value. |
 | `--scope` | Filter by file scope path. |
 | `--all` | Include deprecated/hidden artifacts. |
@@ -109,6 +109,16 @@ At least one of `query`, `--tag`, `--scope`, or other filters must be provided.
 
 **Output:** Results grouped by artifact type with a formatted table for each type that has matches. When the link graph index is available, search is accelerated with full-text search.
 
+**Symbol search (`--type symbol`):** Dispatches directly to the symbol
+graph (`.lexibrary/symbols.db`) and runs a `LIKE` match against
+`symbols.name` and `symbols.qualified_name`. Results are rendered in a
+`### Symbols` section with a `| Name | Type | Location |` table
+(markdown mode), a `symbol  <qualified_name>  <file>:<line>` line (plain
+mode), or a `{"type": "symbol", ...}` entry (JSON mode). Stack-only
+filters (`--tag`, `--concept`, `--resolution-type`, `--include-stale`)
+are rejected with exit code 1 when combined with `--type symbol` — use
+`lexi trace` for resolved call graph queries. `--limit` still applies.
+
 **Examples:**
 
 ```bash
@@ -117,6 +127,9 @@ lexi search "change detection"
 
 # Search only Stack posts
 lexi search --type stack "timeout"
+
+# Search for a symbol by bare or partial name
+lexi search --type symbol update_project
 
 # Filter by tag
 lexi search --tag validation
@@ -179,6 +192,95 @@ lexi impact src/lexibrary/config/schema.py --depth 2
 # Get bare paths for piping
 lexi impact src/lexibrary/config/schema.py --quiet
 ```
+
+---
+
+### trace
+
+Trace a symbol's callers and callees through the symbol graph
+(`.lexibrary/symbols.db`). The symbol-level analogue of `lexi impact`:
+where `impact` answers "which files import me?", `trace` answers "which
+functions call me, and which functions do I call?". Use it when tracking
+a bug across more than two files or sizing the blast radius of a rename
+or signature change.
+
+```
+lexi trace <symbol> [--file PATH]
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `symbol` | Yes | A symbol name to trace. A bare name (e.g. `update_project`) is matched against `symbols.name` and may return multiple results. A dotted name (e.g. `lexibrary.archivist.pipeline.update_project`) is matched **exactly** against `symbols.qualified_name`. Any argument containing a `.` is treated as qualified. |
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--file` | Narrow a bare-name match to a single file path. Useful when the same symbol name exists in multiple modules. Ignored for qualified-name matches. |
+
+**What it outputs:**
+
+For each matching symbol, a section containing:
+
+1. **Header** — `## <qualified_name>  [<symbol_type>]` with the
+   `file_path:line_start` on the next line in backticks.
+2. **`### Callers`** — markdown table of `| Caller | Location |`
+   showing every in-project symbol that invokes this one. Omitted if
+   there are no callers.
+3. **`### Callees`** — markdown table of `| Callee | Location |`
+   showing every in-project symbol this one invokes. Omitted if there
+   are no callees.
+4. **`### Unresolved callees (external or dynamic)`** — table of
+   `| Name | Line |` rows for calls the symbol resolver could not map
+   to a definition. Typical entries are standard library calls
+   (`logger.info`, `sqlite3.connect`), dynamic dispatch, and (until
+   Phase 3) `super()` calls. Omitted if there are none.
+
+Multiple matches are separated by a blank line. All output is rendered
+via the same `info()` helper used by `lexi lookup`, so it is safe to
+pipe into other tools.
+
+**Stale-graph warning:** When the file containing the matched symbol has
+a stale `last_hash` in `symbols.db`, a
+`Symbol graph may be stale for <file> — run lexi design update <file>
+to refresh.` warning is printed to stderr. The command still exits 0
+and still renders the (possibly outdated) results.
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | At least one matching symbol was found and rendered |
+| 1 | No matching symbol exists in the symbol graph |
+
+On a miss, stderr contains `No symbol named ...` and a hint suggesting
+`lexi design update <file>` (to refresh the graph) or
+`lexi search --type symbol` (to fuzzy-find the right name).
+
+**Examples:**
+
+```bash
+# Trace every symbol named `update_project`
+lexi trace update_project
+
+# Trace exactly one symbol by qualified name
+lexi trace lexibrary.archivist.pipeline.update_project
+
+# Narrow an ambiguous bare name to a single file
+lexi trace build_index --file src/lexibrary/linkgraph/builder.py
+```
+
+**Related:**
+
+- [`lexi search --type symbol`](#search) — fuzzy-find a symbol by name
+  before tracing it.
+- [`lexi lookup --full`](#lookup) — lists the file's public symbols in
+  the "Key symbols" section with caller and callee counts.
+- Playbook: [[Tracing a symbol with lexi trace]] (`PB-008`).
+- [Symbol graph](symbol-graph.md) — what the symbol graph is and how it
+  is built.
 
 ---
 
@@ -1203,6 +1305,7 @@ See `lexictl curate --help` for full option documentation.
 | `lexi lookup <path> [--full]` | Get design file, conventions, known issues, IWH, and dependents |
 | `lexi search [query] [filters]` | Unified cross-artifact search |
 | `lexi impact <file> [--depth] [--quiet]` | Show reverse dependents (who imports this file) |
+| `lexi trace <symbol> [--file]` | Show callers, callees, and unresolved external calls for a symbol |
 | `lexi view <artifact_id>` | Display any artifact by its ID |
 | `lexi describe <dir> <desc>` | Update a directory's `.aindex` billboard description |
 | `lexi validate [--severity] [--check] [--json]` | Run consistency checks |

@@ -88,6 +88,10 @@ class UpdateStats:
     topology_failed: bool = False
     linkgraph_built: bool = False
     linkgraph_error: str | None = None
+    symbolgraph_built: bool = False
+    symbolgraph_error: str | None = None
+    symbolgraph_symbol_count: int = 0
+    symbolgraph_call_count: int = 0
     # Deprecation lifecycle stats
     designs_deprecated: int = 0
     designs_unlinked: int = 0
@@ -146,14 +150,16 @@ def _estimate_tokens(text: str) -> int:
     return len(text.split())
 
 
-_VALID_UPDATED_BY: frozenset[str] = frozenset({
-    "archivist",
-    "agent",
-    "bootstrap-quick",
-    "maintainer",
-    "curator",
-    "skeleton-fallback",
-})
+_VALID_UPDATED_BY: frozenset[str] = frozenset(
+    {
+        "archivist",
+        "agent",
+        "bootstrap-quick",
+        "maintainer",
+        "curator",
+        "skeleton-fallback",
+    }
+)
 
 
 def _check_invalid_updated_by(
@@ -623,7 +629,9 @@ async def update_file(
                 "Skipping skeleton-only file %s (use --unlimited to re-enrich)",
                 source_path.name,
             )
-            return FileResult(change=ChangeLevel.UNCHANGED, skip_reason="skeleton-only (use --unlimited)")
+            return FileResult(
+                change=ChangeLevel.UNCHANGED, skip_reason="skeleton-only (use --unlimited)"
+            )
         # unlimited=True: treat as needing generation (fall through to LLM path)
         logger.info(
             "Re-enriching skeleton-only file %s (unlimited mode)",
@@ -668,8 +676,7 @@ async def update_file(
         bad_value = _check_invalid_updated_by(design_path, _VALID_UPDATED_BY)
         if bad_value is not None:
             logger.error(
-                "Rejecting %s: design file has invalid updated_by=%r — "
-                "review with Curator",
+                "Rejecting %s: design file has invalid updated_by=%r — review with Curator",
                 source_path.name,
                 bad_value,
             )
@@ -848,6 +855,24 @@ async def update_file(
 
     # 10. Refresh parent .aindex
     aindex_refreshed = _refresh_parent_aindex(source_path, project_root, description)
+
+    # 11. Refresh the symbol-graph entry for this file so `lexi trace` and
+    #     `lexi lookup` stay accurate in the same agent session. Wrapped in
+    #     its own try/except so a symbol-graph failure can never fail the
+    #     design-update path — the symbol graph is a secondary artifact and
+    #     we prefer a stale graph over a failed update. The refresh is also
+    #     a no-op when the symbol graph is disabled or the DB does not
+    #     exist yet (first-run bootstrap is handled by the project
+    #     maintainer running a full build).
+    try:
+        from lexibrary.symbolgraph.builder import refresh_file as _refresh_symbols  # noqa: PLC0415
+
+        _refresh_symbols(project_root, config, source_path)
+    except Exception:
+        logger.exception(
+            "Symbol graph refresh failed for %s — continuing with design update",
+            source_path,
+        )
 
     return FileResult(
         change=change,
@@ -1293,6 +1318,19 @@ async def update_files(
             stats.linkgraph_error = "Link graph incremental update failed"
             stats.error_summary.add("linkgraph", exc)
 
+    # Build the symbol graph (full rebuild in Phase 1; Phase 6 adds incremental).
+    try:
+        from lexibrary.symbolgraph import build_symbol_graph  # noqa: PLC0415
+
+        symbol_result = build_symbol_graph(project_root, config)
+        stats.symbolgraph_built = True
+        stats.symbolgraph_symbol_count = symbol_result.symbol_count
+        stats.symbolgraph_call_count = symbol_result.call_count
+    except Exception as exc:
+        logger.exception("Failed to build symbol graph")
+        stats.symbolgraph_error = "Symbol graph build failed"
+        stats.error_summary.add("symbolgraph", exc)
+
     return stats
 
 
@@ -1405,6 +1443,19 @@ async def update_directory(
         logger.exception("Failed to build link graph index")
         stats.linkgraph_error = "Link graph full build failed"
         stats.error_summary.add("linkgraph", exc)
+
+    # Build the symbol graph (full rebuild in Phase 1; Phase 6 adds incremental).
+    try:
+        from lexibrary.symbolgraph import build_symbol_graph  # noqa: PLC0415
+
+        symbol_result = build_symbol_graph(project_root, config)
+        stats.symbolgraph_built = True
+        stats.symbolgraph_symbol_count = symbol_result.symbol_count
+        stats.symbolgraph_call_count = symbol_result.call_count
+    except Exception as exc:
+        logger.exception("Failed to build symbol graph")
+        stats.symbolgraph_error = "Symbol graph build failed"
+        stats.error_summary.add("symbolgraph", exc)
 
     return stats
 
@@ -1528,5 +1579,18 @@ async def update_project(
         logger.exception("Failed to build link graph index")
         stats.linkgraph_error = "Link graph full build failed"
         stats.error_summary.add("linkgraph", exc)
+
+    # Step 10: Build the symbol graph (full rebuild in Phase 1; Phase 6 adds incremental).
+    try:
+        from lexibrary.symbolgraph import build_symbol_graph  # noqa: PLC0415
+
+        symbol_result = build_symbol_graph(project_root, config)
+        stats.symbolgraph_built = True
+        stats.symbolgraph_symbol_count = symbol_result.symbol_count
+        stats.symbolgraph_call_count = symbol_result.call_count
+    except Exception as exc:
+        logger.exception("Failed to build symbol graph")
+        stats.symbolgraph_error = "Symbol graph build failed"
+        stats.error_summary.add("symbolgraph", exc)
 
     return stats

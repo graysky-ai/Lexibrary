@@ -37,9 +37,9 @@ def truncate(text: str, max_length: int = 100) -> str: ...
 
 <!-- lexibrary:meta
 source: src/utils/helpers.py
-source_hash: 3d9c98506f7848f3fa61d9d39795ab439bfb60584b02d988ce1dab96e605c92a
-interface_hash: eeee111122223333444455556666777788889999aaaabbbbccccddddeeeeffff
-design_hash: 3333333333333333333333333333333333333333333333333333333333333333
-generated: 2026-04-01T12:00:00.000000
+source_hash: a97fef3831e2a98c984df783c819b3bb94a2bb9f1bca2327b7cebc18e8751676
+interface_hash: 7f8639ce2d6978a3dbfd86f09c15af14639577105153cd278554b27653cef12b
+design_hash: 20f1523d3f4a923bd08d76164470cd240a15cadfdf5bea2ba780c1d14363d59b
+generated: 2026-04-11T07:30:23.172714
 generator: lexibrary-v2
 -->

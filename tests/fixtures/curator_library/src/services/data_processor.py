@@ -3,6 +3,7 @@
 Provides high-level data transformation and validation for the application.
 Includes batch processing, schema validation, and error recovery.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -76,7 +77,4 @@ def transform_records(
     mapping: dict[str, str],
 ) -> list[dict[str, Any]]:
     """Apply field name mapping to a list of records."""
-    return [
-        {mapping.get(k, k): v for k, v in record.items()}
-        for record in records
-    ]
+    return [{mapping.get(k, k): v for k, v in record.items()} for record in records]

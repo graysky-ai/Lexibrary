@@ -5,12 +5,14 @@ Handles regeneration of stale design files where `updated_by` is NOT
 via the archivist pipeline.  Agent-edited files are deferred for the
 reconciliation sub-agent (Phase 1.5b).
 
-The write contract follows the shared design file write sequence:
-1. Serialize via ``serialize_design_file()``
-2. Write via ``atomic_write()``
-3. ``updated_by`` set by the coordinator (``"archivist"`` for full regenerations)
-4. ``source_hash`` and ``interface_hash`` computed fresh by the coordinator
-5. ``design_hash`` computed by the serializer
+The write contract is owned by the shared helper
+:func:`lexibrary.curator.write_contract.write_design_file_as_curator`,
+which stamps ``updated_by="curator"``, recomputes
+``source_hash``/``interface_hash`` from the current source file,
+serializes via :func:`serialize_design_file` (which computes
+``design_hash`` as a footer field), and writes atomically.  This module
+is responsible only for building the in-memory :class:`DesignFile`;
+hashing and writing are delegated.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from lexibrary.artifacts.design_file import (
     DesignFile,
@@ -29,10 +32,11 @@ from lexibrary.artifacts.design_file_parser import (
     parse_design_file,
     parse_design_file_frontmatter,
 )
-from lexibrary.artifacts.design_file_serializer import serialize_design_file
-from lexibrary.ast_parser import compute_hashes
-from lexibrary.curator.models import SubAgentResult
-from lexibrary.utils.atomic import atomic_write
+from lexibrary.curator.models import SubAgentResult, TriageItem
+from lexibrary.curator.write_contract import write_design_file_as_curator
+
+if TYPE_CHECKING:
+    from lexibrary.curator.dispatch_context import DispatchContext
 
 logger = logging.getLogger(__name__)
 
@@ -150,18 +154,6 @@ def resolve_stale_design(
             llm_calls=regen_result.llm_calls,
         )
 
-    # Compute fresh hashes from current source
-    try:
-        fresh_source_hash, fresh_interface_hash = compute_hashes(work_item.source_path)
-    except Exception as exc:
-        return StalenessResult(
-            success=False,
-            source_path=work_item.source_path,
-            design_path=work_item.design_path,
-            message=f"Failed to compute hashes: {exc}",
-            llm_calls=regen_result.llm_calls,
-        )
-
     # Get existing frontmatter to preserve the design file ID
     existing_frontmatter = parse_design_file_frontmatter(work_item.design_path)
     design_id = (
@@ -180,14 +172,18 @@ def resolve_stale_design(
     if existing_df is not None:
         preserved_sections = dict(existing_df.preserved_sections)
 
-    # Build the regenerated DesignFile with fresh metadata
-    # updated_by is set by the coordinator: "archivist" for full regenerations
+    # Build the regenerated DesignFile.  ``updated_by`` and the
+    # ``source_hash``/``interface_hash`` metadata fields are set by
+    # :func:`write_design_file_as_curator` -- the helper both stamps
+    # curator authorship and recomputes hashes from the on-disk source.
+    # Passing empty-string placeholders here keeps the Pydantic model
+    # valid until the helper overwrites them.
     df = DesignFile(
         source_path=source_rel,
         frontmatter=DesignFileFrontmatter(
             description=description,
             id=design_id,
-            updated_by="archivist",
+            updated_by="archivist",  # overwritten by the shared write helper
             status="active",
         ),
         summary=regen_result.summary,
@@ -197,17 +193,17 @@ def resolve_stale_design(
         preserved_sections=preserved_sections,
         metadata=StalenessMetadata(
             source=source_rel,
-            source_hash=fresh_source_hash,
-            interface_hash=fresh_interface_hash,
+            source_hash="",  # overwritten by the shared write helper
+            interface_hash=None,
             generated=datetime.now(UTC),
             generator="curator-staleness-resolver",
         ),
     )
 
-    # Serialize and write atomically
+    # Delegate the write contract: the helper sets updated_by,
+    # recomputes hashes, serializes, and atomically writes.
     try:
-        content = serialize_design_file(df)
-        atomic_write(work_item.design_path, content)
+        write_design_file_as_curator(df, work_item.design_path, project_root)
     except Exception as exc:
         return StalenessResult(
             success=False,
@@ -220,8 +216,8 @@ def resolve_stale_design(
     logger.info(
         "Regenerated stale design file for %s (source_hash=%s, interface_hash=%s)",
         source_rel,
-        fresh_source_hash[:12],
-        fresh_interface_hash[:12] if fresh_interface_hash else "n/a",
+        df.metadata.source_hash[:12],
+        df.metadata.interface_hash[:12] if df.metadata.interface_hash else "n/a",
     )
 
     return StalenessResult(
@@ -242,6 +238,58 @@ def staleness_result_to_sub_agent_result(result: StalenessResult) -> SubAgentRes
         message=result.message,
         llm_calls=result.llm_calls,
     )
+
+
+def dispatch_staleness_resolver(
+    item: TriageItem,
+    ctx: DispatchContext,
+) -> SubAgentResult:
+    """Dispatch a staleness item to the Staleness Resolver.
+
+    For non-agent-edited files, the resolver regenerates the design
+    file via the archivist pipeline (BAML stub for now).  Agent-edited
+    files are returned as deferred.
+
+    Extracted from :class:`Coordinator._dispatch_staleness_resolver`
+    (Phase 1.5 dispatcher refactor).  The coordinator method is now a
+    one-line delegation.
+    """
+    from lexibrary.utils.paths import mirror_path  # noqa: PLC0415
+
+    source_path = item.source_item.path
+    if source_path is None:
+        return SubAgentResult(
+            success=False,
+            action_key="regenerate_stale_design",
+            path=None,
+            message="No source path available for staleness resolution",
+        )
+
+    design_path = mirror_path(ctx.project_root, source_path)
+
+    work_item = StalenessWorkItem(
+        source_path=source_path,
+        design_path=design_path,
+        source_hash_stale=item.source_item.source_hash_stale,
+        interface_hash_stale=item.source_item.interface_hash_stale,
+        updated_by=item.source_item.updated_by,
+    )
+
+    try:
+        result = resolve_stale_design(work_item, ctx.project_root)
+        return staleness_result_to_sub_agent_result(result)
+    except Exception as exc:
+        ctx.summary.add(
+            "dispatch",
+            exc,
+            path=str(source_path),
+        )
+        return SubAgentResult(
+            success=False,
+            action_key="regenerate_stale_design",
+            path=source_path,
+            message=f"Staleness resolver error: {exc}",
+        )
 
 
 # ---------------------------------------------------------------------------

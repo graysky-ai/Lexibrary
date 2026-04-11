@@ -112,6 +112,22 @@ class CuratorConfig(BaseModel):
     autonomy: Literal["auto_low", "full", "propose"] = "auto_low"
     max_llm_calls_per_run: int = Field(default=50, ge=1)
     risk_overrides: dict[str, Literal["low", "medium", "high"]] = Field(default_factory=dict)
+    # Consistency collection scope (Phase 3 — group 8).
+    # Controls which subset of :class:`ConsistencyChecker` checks run during
+    # ``_collect_consistency``.  ``"off"`` disables all consistency checks,
+    # ``"scope"`` runs the scope-bounded checks (wikilink hygiene,
+    # slug/alias collisions, bidirectional deps, orphaned .aindex, orphaned
+    # .comments.yaml, stale conventions/playbooks, and promotable blocked
+    # IWH), and ``"full"`` additionally runs the library-wide checks
+    # (domain term detection, orphan concept detection).
+    consistency_collect: Literal["off", "scope", "full"] = "scope"
+    # Post-sweep verification (Phase 5 — group 10).  When ``True``, the
+    # coordinator re-runs ``validate_library()`` after the dispatch phase
+    # and records a ``verification: {before, after, delta}`` block in the
+    # persisted JSON report.  This is strictly an observability toggle —
+    # it does NOT affect which fixes run, only whether a second validation
+    # pass is performed to measure the sweep's effect.
+    verify_after_sweep: bool = False
     deprecation: CuratorDeprecationConfig = Field(default_factory=CuratorDeprecationConfig)
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
     auditing: AuditingConfig = Field(default_factory=AuditingConfig)

@@ -40,9 +40,9 @@ class User:
 
 <!-- lexibrary:meta
 source: src/models/user.py
-source_hash: cccc111122223333444455556666777788889999aaaabbbbccccddddeeeeffff
-interface_hash: dddd111122223333444455556666777788889999aaaabbbbccccddddeeeeffff
-design_hash: 2222222222222222222222222222222222222222222222222222222222222222
-generated: 2026-03-10T08:00:00.000000
+source_hash: b104b590c96558ac05f1d1021ea421886b3a7cb68d39aa88c169e29f31c6eb25
+interface_hash: 39b041eeebaff2560ee868f3e87e007e0cd87aad601a99f5b3dd62ad74a06dce
+design_hash: 7c21fe0890b4ca13ef6038f7c2cfedb8b0f8a3b5d596c49bc5f8efe78bcf177d
+generated: 2026-04-11T07:30:23.171329
 generator: lexibrary-v2
 -->

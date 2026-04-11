@@ -510,6 +510,14 @@ ast:
     - javascript
 ```
 
+### `symbols`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `symbols.enabled` | bool | `true` | Enables the `.lexibrary/symbols.db` pipeline that indexes function, class, and enum-level relationships. |
+
+See [Symbol Graph](symbol-graph.md) for the full feature description.
+
 ## `curator` Section
 
 Configuration for the automated curator subsystem. The curator runs via `lexictl curate` and performs autonomous maintenance: detecting stale design files, checking consistency, managing deprecation workflows, and running migrations.

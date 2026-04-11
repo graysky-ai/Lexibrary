@@ -3482,7 +3482,6 @@ class TestAgentRuleContent:
         assert "lexi validate" in rules
 
 
-
 # ---------------------------------------------------------------------------
 # IWH commands
 # ---------------------------------------------------------------------------
@@ -3656,8 +3655,8 @@ class TestDesignUpdateCommand:
         finally:
             os.chdir(old_cwd)
 
-    def test_skip_decision_renders_warning(self, tmp_path: Path) -> None:
-        """When check_design_update returns skip, a warning is printed."""
+    def test_skip_up_to_date_emits_info(self, tmp_path: Path) -> None:
+        """up_to_date skip is informational: stdout via info(), exit 0, no Warning prefix."""
         from unittest.mock import patch  # noqa: PLC0415
 
         from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
@@ -3669,11 +3668,48 @@ class TestDesignUpdateCommand:
             reason="Design file is up to date",
             skip_code="up_to_date",
         )
-        with patch(
-            "lexibrary.services.design.check_design_update", return_value=skip_decision
-        ):
+        with patch("lexibrary.services.design.check_design_update", return_value=skip_decision):
             result = self._invoke(tmp_path, ["design", "update", str(source)])
         assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Skipped" in result.output  # type: ignore[union-attr]
+        assert "Warning:" not in result.output  # type: ignore[union-attr]
+
+    def test_skip_protected_emits_info(self, tmp_path: Path) -> None:
+        """protected skip is informational: stdout via info(), exit 0, no Warning prefix."""
+        from unittest.mock import patch  # noqa: PLC0415
+
+        from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
+
+        _setup_project(tmp_path)
+        source = tmp_path / "src" / "main.py"
+        skip_decision = DesignUpdateDecision(
+            action="skip",
+            reason="Design file was last updated by agent. Use --force / -f to override.",
+            skip_code="protected",
+        )
+        with patch("lexibrary.services.design.check_design_update", return_value=skip_decision):
+            result = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "Skipped" in result.output  # type: ignore[union-attr]
+        assert "Warning:" not in result.output  # type: ignore[union-attr]
+
+    def test_skip_iwh_blocked_warns_and_exits_nonzero(self, tmp_path: Path) -> None:
+        """iwh_blocked skip is a warning: stderr via warn(), exit 1, Warning prefix."""
+        from unittest.mock import patch  # noqa: PLC0415
+
+        from lexibrary.services.design import DesignUpdateDecision  # noqa: PLC0415
+
+        _setup_project(tmp_path)
+        source = tmp_path / "src" / "main.py"
+        skip_decision = DesignUpdateDecision(
+            action="skip",
+            reason="IWH signal blocks updates in src/",
+            skip_code="iwh_blocked",
+        )
+        with patch("lexibrary.services.design.check_design_update", return_value=skip_decision):
+            result = self._invoke(tmp_path, ["design", "update", str(source)])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert "Warning:" in result.output  # type: ignore[union-attr]
         assert "Skipped" in result.output  # type: ignore[union-attr]
 
     def test_generate_success(self, tmp_path: Path) -> None:
@@ -3855,9 +3891,7 @@ class TestDesignUpdateCommand:
                 return_value=MagicMock(),
             ),
         ):
-            result = self._invoke(
-                tmp_path, ["design", "update", str(source), "--force"]
-            )
+            result = self._invoke(tmp_path, ["design", "update", str(source), "--force"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         # Verify force=True was passed to check_design_update
         assert mock_check.call_args[1]["force"] is True
@@ -3892,9 +3926,7 @@ class TestDesignUpdateCommand:
                 return_value=MagicMock(),
             ),
         ):
-            result = self._invoke(
-                tmp_path, ["design", "update", str(source), "--unlimited"]
-            )
+            result = self._invoke(tmp_path, ["design", "update", str(source), "--unlimited"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         # Verify unlimited=True was passed to build_client_registry
         assert mock_registry.call_args[1]["unlimited"] is True

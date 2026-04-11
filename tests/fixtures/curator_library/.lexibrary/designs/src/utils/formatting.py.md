@@ -35,9 +35,9 @@ def code_block(text: str, lang: str = "") -> str: ...
 
 <!-- lexibrary:meta
 source: src/utils/formatting.py
-source_hash: 019ee7fbcab436116351a1037a9dcf6b6f02f82262c171c5f96ed45b68f67564
-interface_hash: ffff111122223333444455556666777788889999aaaabbbbccccddddeeeeffff
-design_hash: 4444444444444444444444444444444444444444444444444444444444444444
-generated: 2026-04-01T12:00:00.000000
+source_hash: e5ffd5a06d20de141e2e334fb9a9f39ab018a1a006480dd0bb724a4b8dd54252
+interface_hash: 5ed51f87dc0c012922f7caca69e99aaa906480c320cc11f91dce9f3bb329c564
+design_hash: bfa024d7675e4dfbc460712742b9bcf2784a7ea6b71f77459d4d3744b1ab3d9e
+generated: 2026-04-11T07:30:23.172430
 generator: lexibrary-v2
 -->

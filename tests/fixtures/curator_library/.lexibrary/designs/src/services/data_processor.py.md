@@ -443,9 +443,9 @@ This module follows semantic versioning within the internal API contract:
 
 <!-- lexibrary:meta
 source: src/services/data_processor.py
-source_hash: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
-interface_hash: b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3
-design_hash: c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
-generated: 2026-04-01T12:00:00.000000
+source_hash: bd2d2b2abec6ff158f407c88971310844e927be60e0866a221ebd5b2e4b52d5c
+interface_hash: 1212f3044d11a6a1331aaa38f36b74cd108c02036c5d2c150ed2482a6bb81d40
+design_hash: dd845cb1965e51c93ca06a1c7dae5cc06e00af7e498c7c8d1731d85be389f6e7
+generated: 2026-04-11T07:30:23.171801
 generator: lexibrary-v2
 -->

@@ -150,28 +150,114 @@ class TestIdempotency:
 
     @pytest.mark.asyncio
     async def test_second_run_no_new_modifications(self, tmp_path: Path) -> None:
-        """Two consecutive runs with no changes should produce identical reports.
+        """Consecutive runs with no changes converge and become idempotent.
 
-        After the first run completes, the second run should find no new
-        budget or audit issues beyond what already exists (unchanged state).
+        The coordinator may take multiple "settling" runs to apply one-off
+        validator fixes (e.g. generating a missing ``.aindex`` or removing
+        an orphan design file).  After at most 5 settling runs, ``fixed``
+        must stabilise and any subsequent run must produce an identical
+        report — the coordinator must not keep amplifying state.
+
+        Environment isolation: ``_uncommitted_files`` and ``_active_iwh_dirs``
+        are patched so the test does not depend on host git state or stray
+        IWH signals, and a minimal ``.lexibrary/config.yaml`` is written to
+        the fixture so ``load_config`` does not merge in the developer's
+        global ``~/.config/lexibrary/config.yaml``.
         """
         project = _setup_project(tmp_path)
         _make_source_file(project, "src/stable.py", "def stable(): pass\n")
         _make_design_file(project, "src/stable.py")
 
+        # Write a minimal project-level config file so any check that calls
+        # ``load_config`` internally does not merge in the global config.
+        (project / ".lexibrary" / "config.yaml").write_text("", encoding="utf-8")
+
         config = LexibraryConfig()
-        coord1 = Coordinator(project, config)
-        report1 = await coord1.run()
 
-        coord2 = Coordinator(project, config)
-        report2 = await coord2.run()
+        # Patch environment-dependent inputs so the test is reproducible
+        # on any developer machine regardless of host git or IWH state.
+        # Also redirect GLOBAL_CONFIG_PATH to a non-existent path so nested
+        # ``load_config`` calls inside validator checks cannot pick up the
+        # developer's ~/.config/lexibrary/config.yaml.
+        with (
+            patch(
+                "lexibrary.curator.coordinator._uncommitted_files",
+                return_value=set(),
+            ),
+            patch(
+                "lexibrary.curator.coordinator._active_iwh_dirs",
+                return_value=set(),
+            ),
+            patch(
+                "lexibrary.config.loader.GLOBAL_CONFIG_PATH",
+                tmp_path / "nonexistent-global-config.yaml",
+            ),
+        ):
+            # Convergence loop: run until ``report.fixed`` stabilises, up to
+            # 5 iterations.  This replaces the previous fixed 3-run pattern
+            # and tolerates coordinator runs that need more than one pass
+            # to settle one-off validator fixes.
+            prev_fixed: int | None = None
+            report: CuratorReport | None = None
+            for _ in range(5):
+                coord = Coordinator(project, config)
+                report = await coord.run()
+                if prev_fixed is not None and report.fixed == prev_fixed:
+                    break
+                prev_fixed = report.fixed
+            else:
+                pytest.fail(
+                    f"Coordinator did not converge in 5 iterations (last fixed={prev_fixed})"
+                )
 
-        # Both reports should have the same checked count
-        assert report2.checked == report1.checked
-        # No new fixes should occur on second run
-        assert report2.fixed == report1.fixed
-        assert report2.budget_condensed == report1.budget_condensed
-        assert report2.comments_flagged == report1.comments_flagged
+            assert report is not None  # for type checker; loop always assigns
+
+            # One more run: true idempotency assertion.  After convergence,
+            # a follow-up run must produce identical ``fixed``/``checked``
+            # and no new action dispatches.
+            coord_final = Coordinator(project, config)
+            final_report = await coord_final.run()
+
+        # Build per-action-key diffs so a failure tells us exactly which
+        # actions differ between runs instead of just "counts don't match".
+        def _action_counts(r: CuratorReport) -> dict[str, int]:
+            counts: dict[str, int] = {}
+            for detail in r.dispatched_details:
+                key = str(detail.get("action_key", ""))
+                counts[key] = counts.get(key, 0) + 1
+            return counts
+
+        def _counts_diff(converged_counts: dict[str, int], final_counts: dict[str, int]) -> str:
+            all_keys = sorted(set(converged_counts) | set(final_counts))
+            rows = []
+            for key in all_keys:
+                converged_n = converged_counts.get(key, 0)
+                final_n = final_counts.get(key, 0)
+                if converged_n != final_n:
+                    rows.append(f"  {key}: converged={converged_n} final={final_n}")
+            return "\n".join(rows) if rows else "  (no per-action-key differences)"
+
+        converged_counts = _action_counts(report)
+        final_counts = _action_counts(final_report)
+
+        assert final_report.fixed == report.fixed, (
+            f"Idempotency violated: converged fixed={report.fixed}, "
+            f"follow-up fixed={final_report.fixed}\n"
+            f"Action-key diff:\n{_counts_diff(converged_counts, final_counts)}"
+        )
+        assert final_report.checked == report.checked, (
+            f"Checked count changed: converged checked={report.checked}, "
+            f"follow-up checked={final_report.checked}\n"
+            f"Action-key diff:\n{_counts_diff(converged_counts, final_counts)}"
+        )
+        assert final_report.budget_condensed == report.budget_condensed, (
+            f"budget_condensed changed: converged={report.budget_condensed}, "
+            f"follow-up={final_report.budget_condensed}"
+        )
+        assert final_report.comments_flagged == report.comments_flagged, (
+            f"comments_flagged changed: converged={report.comments_flagged}, "
+            f"follow-up={final_report.comments_flagged}"
+        )
 
     @pytest.mark.asyncio
     async def test_idempotent_budget_detection(self, tmp_path: Path) -> None:

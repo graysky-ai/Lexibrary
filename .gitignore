@@ -13,6 +13,11 @@ BLUEPRINT_INSTRUCTIONS.md
 !.lexibrary/config.yaml
 !.lexibrary/TOPOLOGY.md
 .lexibrary/index.db
+.lexibrary/index.db-wal
+.lexibrary/index.db-shm
+.lexibrary/symbols.db
+.lexibrary/symbols.db-wal
+.lexibrary/symbols.db-shm
 _experiment/
 
 # Agent workflow artifacts

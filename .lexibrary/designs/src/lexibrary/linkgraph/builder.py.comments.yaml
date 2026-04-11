@@ -1,11 +1,19 @@
 comments:
-- body: Added _HTML_COMMENT_RE regex and HTML comment stripping in _extract_wikilinks().
-    Wikilinks inside HTML comments (e.g. <!-- [[HiddenLink]] -->) are now excluded
-    from extraction. This prevents phantom index entries from comment-embedded wikilinks.
-  date: '2026-04-07T21:18:39.982192Z'
 - body: Removed local _WIKILINK_RE, _HTML_COMMENT_RE, and _extract_wikilinks() definitions.
     Now imports extract_wikilinks from lexibrary.wiki.patterns (as _extract_wikilinks_impl).
     The re module import was also removed as it is no longer needed. This is a pure
     refactor with no behavioral change -- the shared function has identical behavior
     to the local one it replaces.
   date: '2026-04-07T22:14:55.141402Z'
+- body: "Resolver stub hygiene: _resolve_wikilink_target now consults PlaybookIndex\
+    \ (loaded alongside ConventionIndex/ConceptIndex in both full_build and incremental_update)\
+    \ before falling back to a concept stub. Added _resolve_concept_ref helper for\
+    \ callers that take concept names directly \u2014 stack_concept_ref and convention_concept_ref\
+    \ now route through the real concept path via ConceptIndex instead of synthesising\
+    \ .lexibrary/concepts/{name}.md. Concept linked_files are now skipped when the\
+    \ path does not exist on disk so prose shorthand (e.g. backticked archivist/dependency_extractor.py\
+    \ inside a sentence) no longer leaks phantom source artifacts. This fixes the\
+    \ class of bugs where lexictl update left stale concept/source rows in the artifacts\
+    \ table after a full rebuild: the rows were not surviving _clear_all_data \u2014\
+    \ they were being recreated as stubs by the scan for unresolvable references."
+  date: '2026-04-11T09:16:47.798228Z'

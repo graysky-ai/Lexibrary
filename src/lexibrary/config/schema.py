@@ -192,6 +192,24 @@ class ASTConfig(BaseModel):
     languages: list[str] = Field(default_factory=lambda: ["python", "typescript", "javascript"])
 
 
+class SymbolGraphConfig(BaseModel):
+    """Symbol-level code graph configuration (``.lexibrary/symbols.db``).
+
+    Phase 1 ships a single ``enabled`` toggle. Phase 5 will extend this model
+    with extraction knobs (see the comment block below).
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = True
+    # Phase 5 will add the following real fields (listed here as a
+    # forward-compatibility marker, not as live config):
+    #   include_enums: bool = True          — extract enum members as symbols
+    #   include_call_paths: bool = False    — record transitive call paths
+    #   call_path_depth: int = 2            — max hops when include_call_paths is on
+    #   include_data_flows: bool = False    — record data-flow edges
+
+
 class ConventionConfig(BaseModel):
     """Convention system configuration."""
 
@@ -289,6 +307,7 @@ class LexibraryConfig(BaseModel):
     iwh: IWHConfig = Field(default_factory=IWHConfig)
     deprecation: DeprecationConfig = Field(default_factory=DeprecationConfig)
     stack: StackConfig = Field(default_factory=StackConfig)
+    symbols: SymbolGraphConfig = Field(default_factory=SymbolGraphConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     token_budgets: TokenBudgetConfig = Field(default_factory=TokenBudgetConfig)
     mapping: MappingConfig = Field(default_factory=MappingConfig)

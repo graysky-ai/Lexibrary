@@ -21,8 +21,10 @@ Do not create an IWH signal if all work is complete.
 
 ## Before Reading or Editing Files
 
-- Always run `lexi lookup <file>` before reading or editing any source file under `src/`.
-  This does not apply to test files.
+- Always run `lexi lookup <file>` before reading or editing any source
+  file under `src/`. The output now includes a "Key symbols" section
+  with call counts per function — use it to size the blast radius of a
+  change. This does not apply to test files.
 
 ## After Editing Files
 
@@ -49,12 +51,20 @@ Do not create an IWH signal if all work is complete.
   existing patterns, conventions, and prior art across all artifact types.
   - For design file hits: `lexi lookup <path>`
   - For concept, convention, or stack hits: `lexi view <artifact-id>`
+- Use `lexi trace <symbol>` to see a function's callers, callees, and
+  unresolved external calls before deciding to rename it, change its
+  signature, or remove it. The symbol graph is refreshed per-file by
+  `lexi design update <file>` (run after every source edit) and fully
+  rebuilt on maintainer-only `lexictl update`.
 
 ## Debugging and Problem Solving
 
 - Always run `lexi search --type stack <query>` before starting to debug an
   issue — a solution may already exist. Use `lexi view <post-id>` to read
   matching posts.
+- Run `lexi trace <symbol>` when a bug traces through a call chain. The
+  trace shows every caller and callee with file:line locations, so you
+  can walk the chain without grepping.
 - For complex research or investigation, delegate to the `lexi-research`
   subagent rather than doing extensive exploration inline.
 - After solving a non-trivial bug, run `lexi stack post` to document

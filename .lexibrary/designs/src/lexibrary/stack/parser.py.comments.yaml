@@ -1,5 +1,0 @@
-comments:
-- body: Added clarifying comment above _HTML_COMMENT_RE explaining why this pattern
-    is intentionally different from wiki.patterns.HTML_COMMENT_RE. Part of wikilink-regex
-    consolidation (group 6). No logic change.
-  date: '2026-04-07T22:08:04.073873Z'

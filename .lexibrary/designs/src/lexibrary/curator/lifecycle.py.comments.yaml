@@ -1,8 +1,5 @@
 comments:
-- body: New module implementing curator Phase 2 lifecycle state machine. Validates
-    transitions per artifact type (design_file, concept, convention, playbook, stack_post)
-    using VALID_TRANSITIONS dict, enforces terminal states (design_file deprecated
-    is terminal), gates hard deletion on TTL + zero-reference checks via link graph,
-    and delegates actual mutations to existing lifecycle/ packages. InvalidTransitionError
-    is a new LexibraryError subclass.
-  date: '2026-04-09T06:56:13.092315Z'
+- body: 'Phase 1.5 dispatcher refactor (openspec curator-fix group 3): added public
+    dispatch_hard_delete(item, ctx, dep) and dispatch_stack_transition(item, ctx,
+    dep) extracted from Coordinator._dispatch_hard_delete and _dispatch_stack_transition.'
+  date: '2026-04-10T21:18:38.959614Z'

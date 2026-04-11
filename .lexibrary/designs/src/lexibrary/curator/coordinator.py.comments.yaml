@@ -1,41 +1,64 @@
 comments:
-- body: 'New file: implements the Coordinator class with four-phase pipeline (collect,
-    triage, dispatch, report). Collect integrates validate_library, hash-based staleness
-    detection, and IWH signal scanning. Dispatch uses sub-agent stubs (BAML wired
-    in later groups). Includes PID-file concurrency lock and scope isolation via git
-    status and IWH signal detection. ErrorSummary accumulates errors across phases
-    without aborting.'
-  date: '2026-04-09T05:24:53.164307Z'
-- body: 'Phase 1a: _dispatch_to_stub now routes regenerate_stale_design to _dispatch_staleness_resolver
-    which calls the Staleness Resolver sub-agent. Non-agent files are regenerated
-    via resolve_stale_design(); agent-edited files remain deferred through the reconciliation
-    action key.'
-  date: '2026-04-09T05:42:45.170837Z'
-- body: Added comment detection to collect phase (_collect_comments) and comment integration
-    dispatch (_dispatch_comment_integration). Comment items are triaged with issue_type='comment'
-    and action_key='integrate_sidecar_comments'. The collect phase sorts comment items
-    by count descending for priority.
-  date: '2026-04-09T05:45:36.138476Z'
-- body: Added agent-edit detection to collect phase via change_checker AGENT_UPDATED
-    classification. Enhanced staleness triage to carry risk_level. Added three-tier
-    risk classification (Low/Medium/High) for reconciliation based on interface hash
-    stability and agent content volume. Wired reconciliation dispatch to new reconciliation
-    sub-agent module.
-  date: '2026-04-09T06:14:06.684601Z'
-- body: 'Extended coordinator for deprecation workflow (Phase 2, Group 7): added _collect_deprecation_candidates
-    with 4 sub-collectors (orphan artifacts, deleted source designs, TTL-expired,
-    stale resolved stack posts), _classify_deprecation for triage with risk-based
-    ranking, deprecation dispatch routing (_dispatch_deprecation, _dispatch_hard_delete,
-    _dispatch_soft_deprecation, _dispatch_stack_transition) with confirmation overrides
-    and IWH signal generation for gated actions, migration dispatch cycle (_dispatch_migrations),
-    and extended _report with deprecated/hard_deleted/migrations_applied/migrations_proposed
-    counts.'
-  date: '2026-04-09T07:39:43.692193Z'
-- body: 'Phase 3 extensions: (1) _dispatch is now async to support awaiting BAML-based
-    sub-agents (budget trimmer, comment auditor). (2) Collect phase adds _collect_budget_issues()
-    and _collect_comment_audit_issues() steps. (3) Triage adds _classify_budget()
-    and _classify_comment_audit() classifiers. (4) Dispatch adds _dispatch_budget_condense()
-    and _dispatch_comment_audit() routers. (5) run() now accepts a trigger parameter
-    that flows through to CuratorReport. (6) _write_report() now serializes Phase
-    3 counters and trigger to JSON.'
-  date: '2026-04-09T11:45:06.399882Z'
+- body: 'curator-fix Phase 1: _report() now computes fixed/stubbed from SubAgentResult.outcome
+    rather than a message-string heuristic, and populates dispatched_details/deferred_details
+    for verbose rendering and JSON persistence. _write_report() adds schema_version=2
+    and the new detail lists while keeping all v1 keys (trigger/checked/fixed/deferred
+    count/errored) intact so existing readers don''t break. Dry-run dispatches now
+    set outcome=''dry_run'', and the stub fallback in _dispatch_to_stub sets outcome=''stubbed''.
+    Scope-isolation logic in _collect_staleness/_collect_comments/_collect_validation
+    now delegates to _should_skip_path from lexibrary.curator.collect_filters.'
+  date: '2026-04-10T20:51:19.503403Z'
+- body: 'Phase 1.5 dispatcher refactor (openspec curator-fix group 3): extracted every
+    _dispatch_* method body to public module-level functions in sibling curator modules,
+    introduced DispatchContext dataclass, and renamed _dispatch_to_stub to _route_to_handler
+    as a pure router (import-and-delegate with a stub fallback returning outcome=''stubbed''
+    for unrecognized keys). Added _ctx() which builds a DispatchContext snapshot;
+    _collect now stashes uncommitted/active_iwh on self._uncommitted/self._active_iwh
+    so handlers can consume them via ctx, and _dispatch stashes dry_run on self._dry_run.
+    The thin _dispatch_* wrappers remain as backward-compatible shims delegating to
+    the public dispatchers.'
+  date: '2026-04-10T21:18:03.510266Z'
+- body: "curator-fix Phase 2 (bead lexibrary-sq5.5): added CHECK_TO_ACTION_KEY module-level\
+    \ mapping and VALIDATION_ACTION_KEYS frozenset. _classify_validation now picks\
+    \ a narrow per-check action_key (e.g., fix_hash_freshness) when CHECK_TO_ACTION_KEY\
+    \ has an entry, falling back to the umbrella autofix_validation_issue otherwise.\
+    \ _route_to_handler has a new routing branch: any TriageItem whose action_key\
+    \ is in VALIDATION_ACTION_KEYS is delegated to lexibrary.curator.validation_fixers.fix_validation_issue,\
+    \ called directly with (item, self.project_root, self.config) \u2014 NOT wrapped\
+    \ in a DispatchContext because the bridge is a synchronous validator-fixer adapter,\
+    \ not a full dispatch handler."
+  date: '2026-04-10T21:35:59.715469Z'
+- body: "Phase 4 (lexibrary-sq5.9): added three routing branches in _route_to_handler\
+    \ for consume_superseded_iwh, write_reactive_iwh, and flag_unresolvable_agent_design.\
+    \ Each branch lazily imports the matching helper from lexibrary.curator.iwh_actions\
+    \ and dispatches with self._ctx(). The branches sit immediately above the stub\
+    \ fallback so any unrouted action keys still land on the honest stubbed counter.\
+    \ After this change, a default coordinator run against a clean fixture produces\
+    \ zero stubbed dispatches \u2014 verified by the new test_no_residual_stubs_in_default_run\
+    \ test."
+  date: '2026-04-11T01:04:02.852771Z'
+- body: 'curator-fix Phase 5 (group 10): added Phase 3c ''post-sweep verification''
+    step between migration dispatch and _report. Introduces Coordinator._verify_after_sweep
+    which, when curator_config.verify_after_sweep is True, calls validate_library()
+    a second time after dispatch and returns {before, after, delta}. The ''before''
+    count is captured inside _collect_validation via self._validation_before_count
+    so disabling the feature still only makes a single validator call. _report and
+    _write_report both forward a new verification kwarg; the persisted JSON report
+    only carries the ''verification'' key when populated, preserving shape compatibility
+    with default runs.'
+  date: '2026-04-11T01:17:07.062506Z'
+- body: "curator-fix-2 group 3 (CUR-05 + CUR-07 + CUR-09/PRE-01): (1) Migrated all\
+    \ 7 _report secondary counters (deprecated, hard_deleted, budget_condensed, budget_proposed,\
+    \ comments_flagged, descriptions_audited, summaries_audited) from the brittle\
+    \ d.message != 'dry-run: would dispatch' check to d.outcome != 'dry_run'. (2)\
+    \ Fixed _collect_iwh to set CollectItem.path to the mirror directory (computed\
+    \ via lexibrary.utils.paths.iwh_path) so consume_iwh can locate the .iwh file;\
+    \ source_dir is still used for scope filtering. _active_iwh_dirs continues to\
+    \ store absolute source-tree paths as required by _should_skip_path. (3) Moved\
+    \ detect_promotable_iwh() call above the 'if mode != full: return' guard so promote_blocked_iwh\
+    \ escalations are collected under the default consistency_collect='scope' mode.\
+    \ (4) Fixed _classify_iwh to tag blocked-scope scan items with issue_type='consistency_fix'\
+    \ so they route to _dispatch_consistency_fix \u2192 apply_promote_blocked_iwh\
+    \ instead of falling through the orphan stub path. Updated the _collect_consistency\
+    \ docstring to reflect the new scope/full split."
+  date: '2026-04-11T07:38:01.041421Z'

@@ -243,9 +243,7 @@ def _populate_index(
             conn.execute("INSERT INTO tags (artifact_id, tag) VALUES (?, ?)", tag_row)
     if fts:
         for fts_row in fts:
-            conn.execute(
-                "INSERT INTO artifacts_fts (rowid, title, body) VALUES (?, ?, ?)", fts_row
-            )
+            conn.execute("INSERT INTO artifacts_fts (rowid, title, body) VALUES (?, ?, ?)", fts_row)
     conn.commit()
     conn.close()
 
@@ -409,12 +407,8 @@ class TestLimitFlag:
         graph = LinkGraph.open(db_path)
         assert graph is not None
         try:
-            with patch.object(
-                graph, "full_text_search", wraps=graph.full_text_search
-            ) as mock_fts:
-                unified_search(
-                    project, query="authentication", link_graph=graph, limit=5
-                )
+            with patch.object(graph, "full_text_search", wraps=graph.full_text_search) as mock_fts:
+                unified_search(project, query="authentication", link_graph=graph, limit=5)
                 mock_fts.assert_called_once()
                 call_kwargs = mock_fts.call_args.kwargs
                 assert call_kwargs.get("limit") == 5
@@ -472,9 +466,7 @@ class TestLimitFlag:
         graph = LinkGraph.open(db_path)
         assert graph is not None
         try:
-            results = unified_search(
-                project, query="auth", link_graph=graph, limit=1
-            )
+            results = unified_search(project, query="auth", link_graph=graph, limit=1)
             # Should return at most 1 result
             total = (
                 len(results.concepts)
@@ -496,9 +488,7 @@ class TestLimitFlag:
 class TestSuggestionsField:
     """Unit tests for the suggestions field on SearchResults."""
 
-    def test_suggestions_populated_when_suggest_true_and_zero_results(
-        self, tmp_path: Path
-    ) -> None:
+    def test_suggestions_populated_when_suggest_true_and_zero_results(self, tmp_path: Path) -> None:
         """Suggestions are populated when suggest=True and no results found.
 
         Uses a query that produces no results (neither substring nor fuzzy
@@ -524,9 +514,7 @@ class TestSuggestionsField:
     def test_suggestions_empty_when_suggest_false(self, tmp_path: Path) -> None:
         """Suggestions are empty when suggest=False even with zero results."""
         project = _setup_project(tmp_path)
-        _create_concept_file(
-            project, "Authentication", concept_id="CN-001", tags=["security"]
-        )
+        _create_concept_file(project, "Authentication", concept_id="CN-001", tags=["security"])
 
         results = unified_search(project, query="authenticaton", suggest=False)
         assert results.suggestions == []
@@ -534,9 +522,7 @@ class TestSuggestionsField:
     def test_suggestions_empty_when_results_exist(self, tmp_path: Path) -> None:
         """Suggestions are empty when actual results are found (regardless of suggest flag)."""
         project = _setup_project(tmp_path)
-        _create_concept_file(
-            project, "Authentication", concept_id="CN-001", tags=["security"]
-        )
+        _create_concept_file(project, "Authentication", concept_id="CN-001", tags=["security"])
 
         results = unified_search(project, query="authentication", suggest=True)
         assert results.has_results()
@@ -560,9 +546,7 @@ class TestSuggestionsField:
     def test_suggestions_with_link_graph_path(self, tmp_path: Path) -> None:
         """Suggestions work through the FTS code path with a link graph."""
         project = _setup_project(tmp_path)
-        _create_concept_file(
-            project, "Authentication", concept_id="CN-001", tags=["security"]
-        )
+        _create_concept_file(project, "Authentication", concept_id="CN-001", tags=["security"])
 
         db_path = _create_linkgraph_db(project)
         # No FTS data — so FTS returns nothing, triggering concept fallback,
@@ -635,9 +619,7 @@ class TestTagNormalization:
         """_normalize_tag strips leading/trailing whitespace."""
         assert _normalize_tag("  error_handling  ") == "error-handling"
 
-    def test_tag_filter_underscore_matches_hyphen_in_design_files(
-        self, tmp_path: Path
-    ) -> None:
+    def test_tag_filter_underscore_matches_hyphen_in_design_files(self, tmp_path: Path) -> None:
         """Design file with tag 'error-handling' is found when filtering by 'error_handling'.
 
         Design files apply _normalize_tag inline in their tag filter, so
@@ -657,9 +639,7 @@ class TestTagNormalization:
         assert len(results.design_files) == 1
         assert results.design_files[0].description == "Error handler module"
 
-    def test_tag_filter_hyphen_matches_underscore_in_design_files(
-        self, tmp_path: Path
-    ) -> None:
+    def test_tag_filter_hyphen_matches_underscore_in_design_files(self, tmp_path: Path) -> None:
         """Design file with tag 'error_handling' is found when filtering by 'error-handling'."""
         project = _setup_project(tmp_path)
         _create_design_file(
@@ -674,9 +654,7 @@ class TestTagNormalization:
         assert results.has_results()
         assert len(results.design_files) == 1
 
-    def test_tag_normalization_in_convention_extra_tags(
-        self, tmp_path: Path
-    ) -> None:
+    def test_tag_normalization_in_convention_extra_tags(self, tmp_path: Path) -> None:
         """Convention extra_tags AND filter normalises underscores and hyphens.
 
         The multi-tag AND path in _search_conventions uses _normalize_tag for
@@ -694,15 +672,11 @@ class TestTagNormalization:
 
         # Use 'patterns' as the primary tag (exact match) and 'error_handling'
         # as an extra tag (normalised match via _normalize_tag).
-        results = unified_search(
-            project, tags=["patterns", "error_handling"]
-        )
+        results = unified_search(project, tags=["patterns", "error_handling"])
         assert results.has_results()
         assert len(results.conventions) == 1
 
-    def test_tag_filter_underscore_matches_hyphen_in_stack_posts(
-        self, tmp_path: Path
-    ) -> None:
+    def test_tag_filter_underscore_matches_hyphen_in_stack_posts(self, tmp_path: Path) -> None:
         """Stack post with tag 'error-handling' is found when filtering by 'error_handling'.
 
         Stack posts apply _normalize_tag in their tag filter so underscore/
@@ -756,9 +730,7 @@ class TestUnifiedSearchCompoundQuery:
         graph = LinkGraph.open(db_path)
         assert graph is not None
         try:
-            results = unified_search(
-                project, query="lookup_render", link_graph=graph
-            )
+            results = unified_search(project, query="lookup_render", link_graph=graph)
             # The compound query should match because the FTS expression is
             # "lookup render" OR ("lookup" AND "render") and the document
             # contains both tokens
@@ -766,9 +738,7 @@ class TestUnifiedSearchCompoundQuery:
         finally:
             graph.close()
 
-    def test_compound_query_fallback_path_without_link_graph(
-        self, tmp_path: Path
-    ) -> None:
+    def test_compound_query_fallback_path_without_link_graph(self, tmp_path: Path) -> None:
         """A compound query uses AND fallback in file-scanning path (no link graph)."""
         project = _setup_project(tmp_path)
 
@@ -787,9 +757,7 @@ class TestUnifiedSearchCompoundQuery:
         assert results.has_results()
         assert len(results.conventions) == 1
 
-    def test_compound_query_no_match_when_tokens_missing(
-        self, tmp_path: Path
-    ) -> None:
+    def test_compound_query_no_match_when_tokens_missing(self, tmp_path: Path) -> None:
         """A compound query does NOT match when some tokens are missing from content."""
         project = _setup_project(tmp_path)
 
@@ -837,9 +805,7 @@ class TestUnifiedSearchCompoundQuery:
         assert results.has_results()
         assert len(results.stack_posts) == 1
 
-    def test_normalized_query_passed_through_unified_search(
-        self, tmp_path: Path
-    ) -> None:
+    def test_normalized_query_passed_through_unified_search(self, tmp_path: Path) -> None:
         """unified_search() creates and passes NormalizedQuery to internal functions."""
         project = _setup_project(tmp_path)
         db_path = _create_linkgraph_db(project)
@@ -847,13 +813,9 @@ class TestUnifiedSearchCompoundQuery:
         graph = LinkGraph.open(db_path)
         assert graph is not None
         try:
-            with patch(
-                "lexibrary.search._fts_search", wraps=None
-            ) as mock_fts:
+            with patch("lexibrary.search._fts_search", wraps=None) as mock_fts:
                 mock_fts.return_value = SearchResults()
-                unified_search(
-                    project, query="lookup_render", link_graph=graph
-                )
+                unified_search(project, query="lookup_render", link_graph=graph)
                 mock_fts.assert_called_once()
                 call_kwargs = mock_fts.call_args.kwargs
                 nq = call_kwargs.get("normalized_query")
@@ -863,3 +825,91 @@ class TestUnifiedSearchCompoundQuery:
                 assert nq.is_compound is True
         finally:
             graph.close()
+
+
+# ---------------------------------------------------------------------------
+# Symbol-graph search integration (symbol-graph-2 group 13)
+# ---------------------------------------------------------------------------
+
+
+class TestUnifiedSearchSymbolIntegration:
+    """End-to-end integration tests for ``--type symbol`` routing.
+
+    These tests seed a real ``symbols.db`` via the shared Phase 2 fixture
+    and drive ``unified_search`` through the full symbol-query service so
+    the routing path is exercised against actual SQL.
+    """
+
+    def test_unified_search_symbol_returns_non_empty_results(self, tmp_path: Path) -> None:
+        """A seeded symbols.db plus ``artifact_type='symbol'`` yields at
+        least one ``SymbolSearchHit`` wrapped in a ``_SymbolResult``."""
+        from tests.test_symbolgraph.conftest import (  # noqa: PLC0415
+            make_linkgraph,
+            make_project,
+            seed_phase2_fixture,
+        )
+
+        project = make_project(tmp_path)
+        make_linkgraph(project)
+        seed_phase2_fixture(project)
+
+        results = unified_search(
+            project,
+            query="foo",
+            artifact_type="symbol",
+        )
+
+        assert results.has_results()
+        assert len(results.symbol_results) >= 1
+        names = {sym.name for sym in results.symbol_results}
+        assert "foo" in names
+        # Qualified name matches the Phase 2 fixture layout.
+        qualified = {sym.qualified_name for sym in results.symbol_results}
+        assert "a.foo" in qualified
+        # Field types line up with the ``_SymbolResult`` dataclass.
+        first = results.symbol_results[0]
+        assert isinstance(first.id, int)
+        assert first.file_path == "src/a.py"
+        assert isinstance(first.line_start, int)
+
+    def test_unified_search_symbol_limit_honoured(self, tmp_path: Path) -> None:
+        """The ``limit`` kwarg is propagated to ``search_symbols`` and caps
+        the returned list accordingly."""
+        from tests.test_symbolgraph.conftest import (  # noqa: PLC0415
+            make_linkgraph,
+            make_project,
+            seed_phase2_fixture,
+        )
+
+        project = make_project(tmp_path)
+        make_linkgraph(project)
+        seed_phase2_fixture(project)
+
+        results = unified_search(
+            project,
+            query="ba",  # matches both ``bar`` and ``baz``
+            artifact_type="symbol",
+            limit=1,
+        )
+        assert len(results.symbol_results) == 1
+
+    def test_unified_search_symbol_no_match(self, tmp_path: Path) -> None:
+        """A query that doesn't match any seeded symbol yields an empty
+        ``symbol_results`` list without raising."""
+        from tests.test_symbolgraph.conftest import (  # noqa: PLC0415
+            make_linkgraph,
+            make_project,
+            seed_phase2_fixture,
+        )
+
+        project = make_project(tmp_path)
+        make_linkgraph(project)
+        seed_phase2_fixture(project)
+
+        results = unified_search(
+            project,
+            query="nothing_matches_this",
+            artifact_type="symbol",
+        )
+        assert results.symbol_results == []
+        assert not results.has_results()

@@ -1,0 +1,9 @@
+comments:
+- body: "Phase 1.5 dispatcher refactor (openspec curator-fix group 3): new DispatchContext\
+    \ dataclass exposes the subset of Coordinator state each extracted dispatch function\
+    \ needs (project_root, config, summary, lexibrary_dir, dry_run, uncommitted, active_iwh).\
+    \ Note: the tasks.md Shared Content Blocks section refers to a 'CuratorSummary'\
+    \ type that does NOT exist in this codebase \u2014 the actual summary field uses\
+    \ ErrorSummary from lexibrary.errors, which is what Coordinator.summary already\
+    \ is."
+  date: '2026-04-10T21:18:10.167923Z'

@@ -24,6 +24,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from lexibrary.artifacts.aindex import AIndexFile  # noqa: F401
 from lexibrary.artifacts.concept import ConceptFile  # noqa: F401
@@ -38,6 +39,7 @@ from lexibrary.linkgraph.schema import (
     ensure_schema,
     set_pragmas,
 )
+from lexibrary.playbooks.index import PlaybookIndex
 from lexibrary.playbooks.parser import parse_playbook_file
 from lexibrary.stack.models import StackPost  # noqa: F401
 from lexibrary.stack.parser import parse_stack_post  # noqa: F401
@@ -45,6 +47,9 @@ from lexibrary.utils.hashing import hash_file
 from lexibrary.utils.paths import DESIGNS_DIR, LEXIBRARY_DIR
 from lexibrary.wiki.parser import parse_concept_file  # noqa: F401
 from lexibrary.wiki.patterns import extract_wikilinks as _extract_wikilinks_impl
+
+if TYPE_CHECKING:
+    from lexibrary.wiki.index import ConceptIndex
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +117,7 @@ class IndexBuilder:
         self.project_root = project_root
         self._convention_index: ConventionIndex | None = None
         self._concept_index: ConceptIndex | None = None
+        self._playbook_index: PlaybookIndex | None = None
 
     # -- housekeeping -------------------------------------------------------
 
@@ -449,8 +455,16 @@ class IndexBuilder:
             target_id = self._get_or_create_artifact(target_path, target_kind, title=wikilink_name)
             self._insert_link(concept_id, target_id, "wikilink")
 
-        # 4. concept_file_ref links from concept to referenced source files
+        # 4. concept_file_ref links from concept to referenced source files.
+        # The concept parser extracts any backticked path-like token from the
+        # body via regex, which picks up prose shorthand such as
+        # `archivist/dependency_extractor.py` inside a sentence. Only insert
+        # a source artifact when the referenced file actually exists on disk,
+        # otherwise we leak phantom source rows that the curator then flags
+        # as orphaned.
         for file_ref in concept_file.linked_files:
+            if not (self.project_root / file_ref).is_file():
+                continue
             target_id = self._get_or_create_artifact(file_ref, "source")
             self._insert_link(concept_id, target_id, "concept_file_ref")
 
@@ -480,6 +494,24 @@ class IndexBuilder:
         )
 
     # -- convention-aware wikilink resolution (task group 6) -----------------
+
+    def _resolve_concept_ref(self, name: str) -> str:
+        """Resolve a named concept reference to its project-relative file path.
+
+        Used by stack post ``concepts`` refs and convention wikilinks, where
+        the artifact is explicitly expected to be a concept. When the name
+        matches a real concept (by title or alias) the actual file path is
+        returned; otherwise a synthetic stub path is returned so the curator
+        can still surface a dangling reference.
+        """
+        if self._concept_index is not None:
+            concept = self._concept_index.find(name)
+            if concept is not None and concept.file_path is not None:
+                try:
+                    return str(concept.file_path.relative_to(self.project_root))
+                except ValueError:
+                    return str(concept.file_path)
+        return f".lexibrary/concepts/{name}.md"
 
     def _resolve_wikilink_target(self, wikilink_name: str) -> tuple[str, str]:
         """Resolve a wikilink name to an artifact path and kind.
@@ -548,6 +580,23 @@ class IndexBuilder:
                 except ValueError:
                     concept_relpath = str(concept.file_path)
                 return concept_relpath, "concept"
+
+        # Check playbook titles/aliases. Without this, wikilinks targeting a
+        # playbook (e.g. `[[Adding a new CLI command]]`) fall through to a
+        # phantom concept stub even when the playbook exists on disk.
+        if self._playbook_index is not None:
+            needle = wikilink_name.strip().lower()
+            for pb in self._playbook_index.playbooks:
+                title_match = pb.frontmatter.title.strip().lower() == needle
+                alias_match = any(
+                    alias.strip().lower() == needle for alias in pb.frontmatter.aliases
+                )
+                if (title_match or alias_match) and pb.file_path is not None:
+                    try:
+                        pb_relpath = str(pb.file_path.relative_to(self.project_root))
+                    except ValueError:
+                        pb_relpath = str(pb.file_path)
+                    return pb_relpath, "playbook"
 
         # Fallback: treat as concept stub (no matching file on disk)
         concept_path = f".lexibrary/concepts/{wikilink_name}.md"
@@ -895,9 +944,12 @@ class IndexBuilder:
             target_id = self._get_or_create_artifact(file_ref, "source")
             self._insert_link(stack_id, target_id, "stack_file_ref")
 
-        # 3. stack_concept_ref links from Stack post to referenced concepts
+        # 3. stack_concept_ref links from Stack post to referenced concepts.
+        # Resolve via ConceptIndex so that names like "Deprecation Lifecycle"
+        # point at CN-015-deprecation-lifecycle.md rather than a stub path
+        # that the curator then flags as an orphan.
         for concept_ref in stack_post.frontmatter.refs.concepts:
-            concept_path = f".lexibrary/concepts/{concept_ref}.md"
+            concept_path = self._resolve_concept_ref(concept_ref)
             target_id = self._get_or_create_artifact(concept_path, "concept", title=concept_ref)
             self._insert_link(stack_id, target_id, "stack_concept_ref")
 
@@ -1038,12 +1090,15 @@ class IndexBuilder:
             ),
         )
 
-        # 3. Extract wikilinks and insert convention_concept_ref links
+        # 3. Extract wikilinks and insert convention_concept_ref links.
+        # Resolve through the shared wikilink resolver so the target lands on
+        # the real artifact (concept, convention, or playbook) rather than a
+        # synthetic concept stub that the curator then flags.
         wikilink_names = _extract_wikilinks_impl(conv_file.body)
         for wikilink_name in wikilink_names:
-            concept_path = f".lexibrary/concepts/{wikilink_name}.md"
-            concept_id = self._get_or_create_artifact(concept_path, "concept", title=wikilink_name)
-            self._insert_link(conv_id, concept_id, "convention_concept_ref")
+            target_path, target_kind = self._resolve_wikilink_target(wikilink_name)
+            target_id = self._get_or_create_artifact(target_path, target_kind, title=wikilink_name)
+            self._insert_link(conv_id, target_id, "convention_concept_ref")
 
         # 4. FTS row -- body = rule + "\n" + body + aliases + tags
         fts_body_parts = []
@@ -1234,6 +1289,17 @@ class IndexBuilder:
             self._concept_index = _ConceptIndex.load(concepts_dir)
         else:
             self._concept_index = None
+
+        # Step 2d: Load PlaybookIndex so wikilinks naming a playbook resolve to
+        # the actual playbook file instead of falling through to a phantom
+        # concept stub (e.g. `[[Adding a new CLI command]]` → the playbook,
+        # not `.lexibrary/concepts/Adding a new CLI command.md`).
+        playbooks_dir = self.project_root / LEXIBRARY_DIR / "playbooks"
+        if playbooks_dir.is_dir():
+            self._playbook_index = PlaybookIndex(playbooks_dir)
+            self._playbook_index.load()
+        else:
+            self._playbook_index = None
 
         # Step 3-5: Main build wrapped in a transaction.
         # After ensure_schema commits, the first DML statement
@@ -1621,8 +1687,12 @@ class IndexBuilder:
             target_id = self._get_or_create_artifact(target_path, target_kind, title=wikilink_name)
             self._insert_link(concept_id, target_id, "wikilink")
 
-        # Re-insert concept_file_ref links
+        # Re-insert concept_file_ref links. See _process_concept_file for
+        # why we gate on real files — the parser's regex picks up prose
+        # shorthand that would otherwise leak phantom source rows.
         for file_ref in concept_file.linked_files:
+            if not (self.project_root / file_ref).is_file():
+                continue
             target_id = self._get_or_create_artifact(file_ref, "source")
             self._insert_link(concept_id, target_id, "concept_file_ref")
 
@@ -1714,9 +1784,10 @@ class IndexBuilder:
             target_id = self._get_or_create_artifact(file_ref, "source")
             self._insert_link(stack_id, target_id, "stack_file_ref")
 
-        # Re-insert stack_concept_ref links
+        # Re-insert stack_concept_ref links. See _process_stack_post for
+        # why we resolve through ConceptIndex.
         for concept_ref in stack_post.frontmatter.refs.concepts:
-            concept_path = f".lexibrary/concepts/{concept_ref}.md"
+            concept_path = self._resolve_concept_ref(concept_ref)
             target_id = self._get_or_create_artifact(concept_path, "concept", title=concept_ref)
             self._insert_link(stack_id, target_id, "stack_concept_ref")
 
@@ -1949,12 +2020,13 @@ class IndexBuilder:
             ),
         )
 
-        # Extract wikilinks and insert convention_concept_ref links
+        # Extract wikilinks and insert convention_concept_ref links.
+        # See _process_convention_file for why we use the shared resolver.
         wikilink_names = _extract_wikilinks_impl(conv_file.body)
         for wikilink_name in wikilink_names:
-            concept_path = f".lexibrary/concepts/{wikilink_name}.md"
-            concept_id = self._get_or_create_artifact(concept_path, "concept", title=wikilink_name)
-            self._insert_link(conv_id, concept_id, "convention_concept_ref")
+            target_path, target_kind = self._resolve_wikilink_target(wikilink_name)
+            target_id = self._get_or_create_artifact(target_path, target_kind, title=wikilink_name)
+            self._insert_link(conv_id, target_id, "convention_concept_ref")
 
         # FTS row (includes aliases and tags)
         fts_body_parts = []
@@ -2107,6 +2179,16 @@ class IndexBuilder:
             self._concept_index = _ConceptIndex.load(concepts_dir)
         else:
             self._concept_index = None
+
+        # Load PlaybookIndex so wikilinks naming a playbook resolve to the
+        # actual playbook file instead of falling through to a phantom
+        # concept stub.
+        playbooks_dir = self.project_root / LEXIBRARY_DIR / "playbooks"
+        if playbooks_dir.is_dir():
+            self._playbook_index = PlaybookIndex(playbooks_dir)
+            self._playbook_index.load()
+        else:
+            self._playbook_index = None
 
         for file_path in changed_paths:
             # Normalise to absolute path for file existence checks

@@ -698,8 +698,12 @@ def check_design_frontmatter(
 
     valid_statuses = {"active", "unlinked", "deprecated"}
     valid_updated_by = {
-        "archivist", "agent", "bootstrap-quick", "maintainer",
-        "curator", "skeleton-fallback",
+        "archivist",
+        "agent",
+        "bootstrap-quick",
+        "maintainer",
+        "curator",
+        "skeleton-fallback",
     }
 
     for md_path in sorted(designs_dir.rglob("*.md")):
@@ -1533,8 +1537,7 @@ def check_linkgraph_version(
                 message="Could not open linkgraph database",
                 artifact=artifact,
                 suggestion=(
-                    "Delete the index file and ask the user to run "
-                    "`lexictl update` to rebuild it."
+                    "Delete the index file and ask the user to run `lexictl update` to rebuild it."
                 ),
             )
         )
@@ -1551,8 +1554,7 @@ def check_linkgraph_version(
                 message="Could not read schema version from linkgraph database",
                 artifact=artifact,
                 suggestion=(
-                    "Delete the index file and ask the user to run "
-                    "`lexictl update` to rebuild it."
+                    "Delete the index file and ask the user to run `lexictl update` to rebuild it."
                 ),
             )
         )
@@ -1568,8 +1570,7 @@ def check_linkgraph_version(
                 message="No schema version found in linkgraph database",
                 artifact=artifact,
                 suggestion=(
-                    "Delete the index file and ask the user to run "
-                    "`lexictl update` to rebuild it."
+                    "Delete the index file and ask the user to run `lexictl update` to rebuild it."
                 ),
             )
         )
@@ -2298,8 +2299,7 @@ def check_aindex_coverage(
                     message=f"Directory not indexed: {dir_rel}",
                     artifact=dir_rel,
                     suggestion=(
-                        f"Ask the user to run `lexictl update` to index "
-                        f"the directory '{dir_rel}'."
+                        f"Ask the user to run `lexictl update` to index the directory '{dir_rel}'."
                     ),
                 )
             )
@@ -2682,7 +2682,7 @@ def check_orphan_artifacts(
                 conn.close()
 
     # The prefix used by the project root in artifact paths stored in the DB
-    _LEXIBRARY_PREFIX = ".lexibrary/"
+    lexibrary_prefix = ".lexibrary/"
 
     # Check each artifact's backing file
     for artifact_path, kind in rows:
@@ -2693,8 +2693,8 @@ def check_orphan_artifacts(
             # The DB stores paths like ``.lexibrary/designs/src/foo.py.md``
             # but fixers expect ``designs/src/foo.py.md``.
             normalized_path = artifact_path
-            if normalized_path.startswith(_LEXIBRARY_PREFIX):
-                normalized_path = normalized_path[len(_LEXIBRARY_PREFIX) :]
+            if normalized_path.startswith(lexibrary_prefix):
+                normalized_path = normalized_path[len(lexibrary_prefix) :]
 
             issues.append(
                 ValidationIssue(
@@ -3163,7 +3163,6 @@ def check_convention_stale(
 
         if all_exist and not any_has_files:
             rel_convention = str(md_path.relative_to(lexibrary_dir))
-            empty_dirs = ", ".join(scope_paths)
             issues.append(
                 ValidationIssue(
                     severity="info",
@@ -3401,26 +3400,32 @@ def check_duplicate_slugs(
     project_root: Path,
     lexibrary_dir: Path,
 ) -> list[ValidationIssue]:
-    """Detect duplicate slugs across concept, convention, and playbook filenames.
+    """Detect duplicate slugs within a single artifact type.
 
     Artifact files may have ID-prefixed filenames (e.g. ``CN-001-error-handling.md``).
     This check strips the ID prefix before comparing slugs, then flags cases where
-    two files from different artifact types share the same slug.
+    two or more files *of the same artifact type* share the same slug.
+
+    Slugs are only required to be unique within a type because:
+    - Filesystem paths are unique via ID prefix (e.g. ``CN-019-…`` vs ``PB-004-…``).
+    - Wikilinks resolve by title, not slug.
+    - Per-type index lookups (``ConceptIndex.find()``, ``PlaybookIndex.find()``)
+      operate in separate namespaces.
 
     Args:
         project_root: Root directory of the project.
         lexibrary_dir: Path to the .lexibrary directory.
 
     Returns:
-        List of warning-severity ValidationIssues for duplicate slugs.
+        List of warning-severity ValidationIssues for within-type duplicate slugs.
     """
     issues: list[ValidationIssue] = []
 
     # Regex to strip ID prefix from filenames: XX-NNN- at the start of the stem
     _id_prefix_re = re.compile(r"^[A-Z]{2}-\d{3,}-")
 
-    # Collect slugs: slug -> list of (artifact_rel_path,)
-    slug_sources: dict[str, list[str]] = {}
+    # Collect slugs per artifact type: (kind, slug) -> list of rel_path
+    slug_sources: dict[tuple[str, str], list[str]] = {}
 
     artifact_dirs = {
         "concepts": lexibrary_dir / "concepts",
@@ -3436,9 +3441,9 @@ def check_duplicate_slugs(
             # Strip ID prefix if present (e.g. CN-001-error-handling -> error-handling)
             slug = _id_prefix_re.sub("", stem)
             rel_path = f"{kind}/{md_path.name}"
-            slug_sources.setdefault(slug, []).append(rel_path)
+            slug_sources.setdefault((kind, slug), []).append(rel_path)
 
-    for slug, sources in sorted(slug_sources.items()):
+    for (kind, slug), sources in sorted(slug_sources.items()):
         if len(sources) <= 1:
             continue
         for source in sources:
@@ -3447,7 +3452,8 @@ def check_duplicate_slugs(
                     severity="warning",
                     check="duplicate_slugs",
                     message=(
-                        f"Slug '{slug}' is used by multiple files: {', '.join(sorted(sources))}"
+                        f"Slug '{slug}' is used by multiple {kind} files: "
+                        f"{', '.join(sorted(sources))}"
                     ),
                     artifact=source,
                     suggestion=(

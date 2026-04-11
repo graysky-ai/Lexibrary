@@ -20,9 +20,11 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from lexibrary.curator.models import DeprecationCollectItem, SubAgentResult, TriageItem
 from lexibrary.exceptions import LexibraryError
 
 if TYPE_CHECKING:
+    from lexibrary.curator.dispatch_context import DispatchContext
     from lexibrary.linkgraph.query import LinkGraph
 
 logger = logging.getLogger(__name__)
@@ -39,9 +41,7 @@ class InvalidTransitionError(LexibraryError):
         self.kind = kind
         self.current = current
         self.target = target
-        super().__init__(
-            f"Invalid transition for {kind}: '{current}' -> '{target}' is not allowed"
-        )
+        super().__init__(f"Invalid transition for {kind}: '{current}' -> '{target}' is not allowed")
 
 
 # ---------------------------------------------------------------------------
@@ -528,3 +528,82 @@ def _get_sidecar_path(kind: str, artifact_path: Path) -> Path | None:
         return playbook_comment_path(artifact_path)
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Dispatcher entry points (Phase 1.5)
+# ---------------------------------------------------------------------------
+
+
+def dispatch_hard_delete(
+    item: TriageItem,
+    ctx: DispatchContext,
+    dep: DeprecationCollectItem,
+) -> SubAgentResult:
+    """Execute hard deletion of a TTL-expired deprecated artifact.
+
+    Extracted from :class:`Coordinator._dispatch_hard_delete`
+    (Phase 1.5 dispatcher refactor).
+    """
+    from lexibrary.linkgraph.query import open_index  # noqa: PLC0415
+
+    link_graph = open_index(ctx.project_root)
+    try:
+        execute_hard_delete(
+            kind=dep.artifact_kind,
+            artifact_path=dep.artifact_path,
+            ttl_commits=ctx.config.curator.deprecation.ttl_commits,
+            commits_since_deprecation=dep.commits_since_deprecation,
+            link_graph=link_graph,
+        )
+        return SubAgentResult(
+            success=True,
+            action_key=item.action_key,
+            path=dep.artifact_path,
+            message=f"Hard-deleted {dep.artifact_kind}: {dep.artifact_path.name}",
+            llm_calls=0,
+        )
+    except Exception as exc:
+        ctx.summary.add("dispatch", exc, path=str(dep.artifact_path))
+        return SubAgentResult(
+            success=False,
+            action_key=item.action_key,
+            path=dep.artifact_path,
+            message=f"Hard deletion failed: {exc}",
+        )
+    finally:
+        if link_graph is not None:
+            link_graph.close()
+
+
+def dispatch_stack_transition(
+    item: TriageItem,
+    ctx: DispatchContext,
+    dep: DeprecationCollectItem,
+) -> SubAgentResult:
+    """Dispatch a stack post state transition (e.g. resolved -> stale).
+
+    Extracted from :class:`Coordinator._dispatch_stack_transition`
+    (Phase 1.5 dispatcher refactor).
+    """
+    try:
+        execute_deprecation(
+            kind="stack_post",
+            artifact_path=dep.artifact_path,
+            target_status="stale",
+        )
+        return SubAgentResult(
+            success=True,
+            action_key=item.action_key,
+            path=dep.artifact_path,
+            message=f"Transitioned stack post to stale: {dep.artifact_path.name}",
+            llm_calls=0,
+        )
+    except Exception as exc:
+        ctx.summary.add("dispatch", exc, path=str(dep.artifact_path))
+        return SubAgentResult(
+            success=False,
+            action_key=item.action_key,
+            path=dep.artifact_path,
+            message=f"Stack transition failed: {exc}",
+        )

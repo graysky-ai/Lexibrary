@@ -1,0 +1,12 @@
+comments:
+- body: "curator-fix-2 group 1 (CUR-02): apply_promote_blocked_iwh and apply_flag_stale_convention\
+    \ docstrings now carry an 'Escalation-only:' label and describe the actual side-effects\
+    \ accurately. apply_promote_blocked_iwh no longer claims to write a 'sibling'\
+    \ warning IWH \u2014 it overwrites the blocked .iwh in place with a scope=warning\
+    \ signal, losing the original body content. apply_flag_stale_convention keeps\
+    \ the same mechanics but the new label makes it clear the helper does not modify\
+    \ the convention body; human review decides whether to rewrite scope or deprecate.\
+    \ The tasks.md naming mismatch comment block above CONSISTENCY_ACTION_KEYS (documenting\
+    \ the fix_broken_wikilink_exact / flag_conflicting_conventions stubs) was also\
+    \ removed now that those entries no longer exist in the risk taxonomy."
+  date: '2026-04-11T07:33:42.170205Z'

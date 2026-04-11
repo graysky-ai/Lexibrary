@@ -19,7 +19,14 @@ from typing import Literal
 class CollectItem:
     """A single signal discovered during the collect phase."""
 
-    source: Literal["validation", "staleness", "iwh", "agent_edit", "deprecation"]
+    source: Literal[
+        "validation",
+        "staleness",
+        "iwh",
+        "agent_edit",
+        "deprecation",
+        "consistency",
+    ]
     path: Path | None
     severity: Literal["error", "warning", "info"]
     message: str
@@ -31,6 +38,14 @@ class CollectItem:
     # Agent-edit detection metadata
     agent_edit_reason: str = ""
     design_body_length: int = 0
+    # Consistency-specific metadata (Phase 3 — group 8)
+    # ``action_hint`` carries the raw ``FixInstruction.action`` string emitted
+    # by :class:`lexibrary.curator.consistency.ConsistencyChecker`.  Triage
+    # maps it to a canonical ``action_key`` via ``CONSISTENCY_ACTION_KEYS``.
+    # ``fix_instruction_detail`` carries the human-readable detail for
+    # reporting and IWH signals.
+    action_hint: str = ""
+    fix_instruction_detail: str = ""
 
 
 @dataclass
@@ -108,6 +123,7 @@ class TriageItem:
     issue_type: Literal[
         "staleness",
         "consistency",
+        "consistency_fix",
         "comment",
         "orphan",
         "reconciliation",
@@ -149,6 +165,15 @@ class SubAgentResult:
     path: Path | None = None
     message: str = ""
     llm_calls: int = 0
+    outcome: Literal[
+        "fixed",
+        "stubbed",
+        "deferred",
+        "fixer_failed",
+        "no_fixer",
+        "dry_run",
+        "errored",
+    ] = "fixed"
 
 
 @dataclass
@@ -188,6 +213,11 @@ class CuratorReport:
     comments_flagged: int = 0
     descriptions_audited: int = 0
     summaries_audited: int = 0
+    # Phase 1 (curator-fix): honest counters & detail lists
+    schema_version: int = 2
+    stubbed: int = 0
+    dispatched_details: list[dict[str, object]] = field(default_factory=list)
+    deferred_details: list[dict[str, object]] = field(default_factory=list)
     trigger: Literal[
         "on_demand",
         "reactive_post_edit",
@@ -195,3 +225,8 @@ class CuratorReport:
         "reactive_validation_failure",
         "scheduled",
     ] = "on_demand"
+    # Phase 5 (curator-fix): optional post-sweep verification block.
+    # Populated only when ``CuratorConfig.verify_after_sweep`` is ``True``;
+    # shape is ``{"before": int, "after": int, "delta": int}`` where delta
+    # is ``before - after`` (positive means issues were resolved).
+    verification: dict[str, int] | None = None

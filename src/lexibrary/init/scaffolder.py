@@ -17,9 +17,18 @@ if TYPE_CHECKING:
 LEXIBRARY_DIR = ".lexibrary"
 
 # Patterns for generated artifacts that should be gitignored.
-# The link graph index.db needs an explicit entry (it's inside .lexibrary/
-# but called out for clarity).
-_GENERATED_GITIGNORE_PATTERNS = [".lexibrary/index.db", ".lexibrary/tmp/"]
+# The link graph index.db and symbol graph symbols.db each need explicit
+# entries (they live inside .lexibrary/ but are called out for clarity),
+# along with their SQLite WAL/SHM sidecars.
+_GENERATED_GITIGNORE_PATTERNS = [
+    ".lexibrary/index.db",
+    ".lexibrary/index.db-wal",
+    ".lexibrary/index.db-shm",
+    ".lexibrary/symbols.db",
+    ".lexibrary/symbols.db-wal",
+    ".lexibrary/symbols.db-shm",
+    ".lexibrary/tmp/",
+]
 
 LEXIGNORE_HEADER = read_template("scaffolder/lexignore_header.txt")
 
@@ -99,9 +108,11 @@ def _generate_config_yaml(answers: WizardAnswers) -> str:
 def _ensure_generated_files_gitignored(project_root: Path) -> bool:
     """Ensure generated artifacts are listed in ``.gitignore``.
 
-    Appends ``.lexibrary/index.db`` and ``.lexibrary/tmp/`` to the
-    project's ``.gitignore`` if not already present.  Creates the
-    ``.gitignore`` file if it does not exist.
+    Appends every entry in :data:`_GENERATED_GITIGNORE_PATTERNS` (the link
+    graph ``index.db``, the symbol graph ``symbols.db``, their WAL/SHM
+    sidecars, and ``.lexibrary/tmp/``) to the project's ``.gitignore`` if
+    not already present.  Creates the ``.gitignore`` file if it does not
+    exist.
 
     Args:
         project_root: Root directory of the project.

@@ -36,9 +36,7 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def _make_source_file(
-    tmp_path: Path, rel: str, content: str = "print('hello')"
-) -> Path:
+def _make_source_file(tmp_path: Path, rel: str, content: str = "print('hello')") -> Path:
     """Create a source file at the given relative path."""
     source = tmp_path / rel
     source.parent.mkdir(parents=True, exist_ok=True)
@@ -208,8 +206,12 @@ class TestCheckInvalidUpdatedBy:
     """Unit tests for the _check_invalid_updated_by helper."""
 
     _VALID = {
-        "archivist", "agent", "bootstrap-quick",
-        "maintainer", "curator", "skeleton-fallback",
+        "archivist",
+        "agent",
+        "bootstrap-quick",
+        "maintainer",
+        "curator",
+        "skeleton-fallback",
     }
 
     def test_valid_archivist_returns_none(self, tmp_path: Path) -> None:
@@ -260,9 +262,7 @@ class TestCheckInvalidUpdatedBy:
     def test_no_updated_by_field_returns_none(self, tmp_path: Path) -> None:
         """Frontmatter without updated_by field is not flagged as invalid."""
         design_path = tmp_path / "no_updated_by.md"
-        design_path.write_text(
-            "---\ndescription: A file.\nid: DS-001\n---\n\n# src/foo.py\n"
-        )
+        design_path.write_text("---\ndescription: A file.\nid: DS-001\n---\n\n# src/foo.py\n")
         assert _check_invalid_updated_by(design_path, self._VALID) is None
 
 
@@ -304,7 +304,8 @@ class TestFrontmatterGuard:
 
         # Create design file with valid updated_by but stale hash (triggers LLM path)
         _make_design_file(
-            tmp_path, source_rel,
+            tmp_path,
+            source_rel,
             source_hash="stale_hash",
             updated_by="archivist",
         )
@@ -325,7 +326,8 @@ class TestFrontmatterGuard:
         source = _make_source_file(tmp_path, source_rel, "def bar(): pass")
 
         _make_design_file(
-            tmp_path, source_rel,
+            tmp_path,
+            source_rel,
             source_hash="stale_hash",
             updated_by="curator",
         )
@@ -383,9 +385,7 @@ class TestPreservedSectionsInPipeline:
     they are carried over into the new design file."""
 
     @pytest.mark.asyncio()
-    async def test_curator_file_regenerated_with_insights_preserved(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_curator_file_regenerated_with_insights_preserved(self, tmp_path: Path) -> None:
         """Curator-authored design file retains its Insights section after regen."""
         source_rel = "src/foo.py"
         source = _make_source_file(tmp_path, source_rel, "def bar(): pass")
@@ -418,15 +418,14 @@ class TestPreservedSectionsInPipeline:
         assert "Updated summary." in content
 
     @pytest.mark.asyncio()
-    async def test_archivist_file_no_insights_fully_regenerated(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_archivist_file_no_insights_fully_regenerated(self, tmp_path: Path) -> None:
         """Archivist-authored file without Insights is fully regenerated (no extra sections)."""
         source_rel = "src/foo.py"
         source = _make_source_file(tmp_path, source_rel, "def bar(): pass")
 
         _make_design_file(
-            tmp_path, source_rel,
+            tmp_path,
+            source_rel,
             source_hash="stale_hash",
             updated_by="archivist",
         )
@@ -481,9 +480,7 @@ class TestPreservedSectionsInPipeline:
         assert stale_insight in content
 
     @pytest.mark.asyncio()
-    async def test_preserved_sections_are_parseable_after_regen(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_preserved_sections_are_parseable_after_regen(self, tmp_path: Path) -> None:
         """After regeneration, the design file with preserved sections can be parsed."""
         source_rel = "src/foo.py"
         source = _make_source_file(tmp_path, source_rel, "def bar(): pass")
@@ -510,9 +507,7 @@ class TestPreservedSectionsInPipeline:
         assert insights_text in parsed.preserved_sections["Insights"]
 
     @pytest.mark.asyncio()
-    async def test_multiple_preserved_sections_carried_over(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_multiple_preserved_sections_carried_over(self, tmp_path: Path) -> None:
         """Multiple preserved sections (Insights + Notes) are all carried over."""
         source_rel = "src/foo.py"
         source = _make_source_file(tmp_path, source_rel, "def bar(): pass")
@@ -576,9 +571,7 @@ class TestPreservedSectionsInPipeline:
         assert "Additional context about this module." in content
 
     @pytest.mark.asyncio()
-    async def test_new_file_no_existing_design_no_preserved_sections(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_new_file_no_existing_design_no_preserved_sections(self, tmp_path: Path) -> None:
         """Brand new file with no existing design file has no preserved sections."""
         source_rel = "src/foo.py"
         source = _make_source_file(tmp_path, source_rel, "def bar(): pass")

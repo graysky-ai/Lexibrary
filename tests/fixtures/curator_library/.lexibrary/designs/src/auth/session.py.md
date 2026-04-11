@@ -39,9 +39,9 @@ class SessionManager:
 
 <!-- lexibrary:meta
 source: src/auth/session.py
-source_hash: aaaa111122223333444455556666777788889999aaaabbbbccccddddeeeeffff
-interface_hash: bbbb111122223333444455556666777788889999aaaabbbbccccddddeeeeffff
-design_hash: 1111111111111111111111111111111111111111111111111111111111111111
-generated: 2026-03-20T14:00:00.000000
+source_hash: 50be241f7cc47fb39f59d2d34040f9d568b98b77975694ceefd96f45b639fc4f
+interface_hash: fc381f492cff69d93d7d0b0c27ccc7d80e370cebdf757f0056b4cef30f2178b5
+design_hash: 9b41ff161bd57667e7e3b14c2bea413b0c1874c5fd945f6cc23aafb4279737bb
+generated: 2026-04-11T07:30:23.170929
 generator: lexibrary-v2
 -->

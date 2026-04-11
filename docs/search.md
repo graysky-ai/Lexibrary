@@ -1,6 +1,6 @@
 # Unified Search
 
-The `lexi search` command searches across all artifact types -- concepts, design files, and Stack posts -- in a single query. It is the primary discovery tool for finding everything the project knows about a topic.
+The `lexi search` command searches across all artifact types -- concepts, design files, Stack posts, and symbols -- in a single query. It is the primary discovery tool for finding everything the project knows about a topic.
 
 ## The Command
 
@@ -17,6 +17,7 @@ Search results are grouped by artifact type:
 - **Concepts** -- matched by title, aliases, tags, and body text
 - **Design files** -- matched by source path, description, and tags
 - **Stack posts** -- matched by title, tags, problem description, and findings
+- **Symbols** -- matched by `symbols.name` and `symbols.qualified_name` (see `--type symbol` below)
 
 Each group is displayed as a separate table. Groups with no matches are omitted.
 
@@ -45,6 +46,16 @@ lexi search --scope src/lexibrary/config/
 ```
 
 Filters to only artifacts whose source path starts with the given prefix. This is useful for narrowing results to a specific package or directory. Note: concepts are not file-scoped, so they are omitted when a scope filter is active.
+
+### Type Filter
+
+```bash
+lexi search update_project --type symbol
+```
+
+Restricts results to a single artifact type. Supported values: `concept`, `convention`, `design`, `playbook`, `stack`, and `symbol`.
+
+`--type symbol` routes the query directly to the symbol graph at `.lexibrary/symbols.db` and runs a `LIKE` match against `symbols.name` and `symbols.qualified_name` -- useful for fuzzy-finding a symbol before running `lexi trace`. Symbol search does not support `--tag` or any stack-only flags (`--concept`, `--resolution-type`, `--include-stale`); combining them exits with code 1 and an error explaining the mismatch. `--limit` still applies.
 
 ### Combining Filters
 

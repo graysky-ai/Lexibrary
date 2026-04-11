@@ -235,8 +235,15 @@ class TestResolveStaleDesign:
         result = resolve_stale_design(work_item, project)
         assert result.success is True
 
-    def test_write_contract_updated_by_archivist(self, tmp_path: Path) -> None:
-        """Written file has updated_by=archivist."""
+    def test_write_contract_updated_by_curator(self, tmp_path: Path) -> None:
+        """Written file has updated_by=curator (shared write helper).
+
+        Phase 3a migrated the staleness resolver to call
+        :func:`write_design_file_as_curator`, which stamps curator
+        authorship regardless of the value the dispatcher built into
+        the in-memory :class:`DesignFile`.  Prior to the migration the
+        resolver wrote ``updated_by="archivist"`` inline.
+        """
         project = _setup_minimal_project(tmp_path)
         source = _make_source_file(project, "src/foo.py", "def foo(): pass\n")
         design = _make_design_file(
@@ -256,7 +263,7 @@ class TestResolveStaleDesign:
         # Verify the written file
         fm = parse_design_file_frontmatter(design)
         assert fm is not None
-        assert fm.updated_by == "archivist"
+        assert fm.updated_by == "curator"
 
     def test_write_contract_fresh_hashes(self, tmp_path: Path) -> None:
         """Written file has fresh source_hash and interface_hash."""
@@ -307,7 +314,13 @@ class TestResolveStaleDesign:
         assert len(metadata.design_hash) == 64  # SHA-256 hex
 
     def test_write_contract_atomic_write_used(self, tmp_path: Path) -> None:
-        """Verify atomic_write is called (not direct file write)."""
+        """Verify atomic_write is called (not direct file write).
+
+        The staleness resolver delegates to
+        :func:`write_design_file_as_curator`, so we patch
+        ``atomic_write`` in the shared helper module rather than in
+        the resolver.
+        """
         project = _setup_minimal_project(tmp_path)
         source = _make_source_file(project, "src/foo.py", "def foo(): pass\n")
         design = _make_design_file(
@@ -323,7 +336,7 @@ class TestResolveStaleDesign:
             updated_by="archivist",
         )
 
-        with patch("lexibrary.curator.staleness.atomic_write") as mock_write:
+        with patch("lexibrary.curator.write_contract.atomic_write") as mock_write:
             resolve_stale_design(work_item, project)
             mock_write.assert_called_once()
             # Verify the target path and content
@@ -332,7 +345,13 @@ class TestResolveStaleDesign:
             assert isinstance(call_args[0][1], str)  # content string
 
     def test_write_contract_serialize_design_file_used(self, tmp_path: Path) -> None:
-        """Verify output passes through serialize_design_file."""
+        """Verify output passes through serialize_design_file.
+
+        The staleness resolver delegates to
+        :func:`write_design_file_as_curator`, so we patch
+        ``serialize_design_file`` in the shared helper module rather
+        than in the resolver.
+        """
         project = _setup_minimal_project(tmp_path)
         source = _make_source_file(project, "src/foo.py", "def foo(): pass\n")
         design = _make_design_file(
@@ -349,7 +368,7 @@ class TestResolveStaleDesign:
         )
 
         with patch(
-            "lexibrary.curator.staleness.serialize_design_file",
+            "lexibrary.curator.write_contract.serialize_design_file",
             wraps=serialize_design_file,
         ) as mock_serialize:
             resolve_stale_design(work_item, project)
@@ -848,7 +867,11 @@ class TestPhase1aIntegration:
 
         fm = parse_design_file_frontmatter(design)
         assert fm is not None
-        assert fm.updated_by == "archivist"
+        # Phase 3a: the shared write helper stamps ``curator`` on every
+        # design file it persists -- authorship is now centralised in
+        # :func:`write_design_file_as_curator` rather than set by the
+        # individual dispatchers.
+        assert fm.updated_by == "curator"
 
     @patch("lexibrary.curator.coordinator._uncommitted_files", return_value=set())
     @patch("lexibrary.curator.coordinator._active_iwh_dirs", return_value=set())

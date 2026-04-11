@@ -108,6 +108,16 @@ During the update, Lexibrary also refreshes `.aindex` files. These are per-direc
 
 After design files are generated, Lexibrary builds a SQLite link graph index (`index.db`) that maps relationships between artifacts: import dependencies, wikilinks, tag assignments, concept references, and file references. This index accelerates queries like reverse dependency lookups and cross-artifact search.
 
+### 9. Symbol graph
+
+Alongside the link graph, Lexibrary builds a second SQLite database (`.lexibrary/symbols.db`) that records relationships **inside** files: function and method definitions, the call edges between them, and the external/dynamic calls that can't be resolved to a project symbol. Where the link graph answers "which files import this file?", the symbol graph answers "which functions call this function?".
+
+**Extraction.** Language-specific extractors in `src/lexibrary/symbolgraph/extractor_*.py` parse each source file with [tree-sitter](https://tree-sitter.github.io/) to find function, method, and class definitions and every `call` node inside their bodies. The parser maintains a per-file tree-sitter cache so both the symbol extractor and the other AST-backed analyses share a single parsed tree per file, keeping the cost of a full rebuild close to the cost of the link-graph rebuild alone.
+
+**Resolution.** Once every definition is written to the database, a second pass resolves call sites. The Python resolver (`resolver_python.py`) handles free functions in the same file, `self.method()` inside a class, `from module import name`, `import module`, and relative imports, sharing its module-to-file logic with `archivist/dependency_extractor.py` (the `python_imports` table) so the symbol graph and the link graph agree on where an imported name lives. TypeScript and JavaScript resolution is intra-file fuzzy matching only until Phase 6 adds `tsconfig.json`-aware resolvers. Calls that can't be mapped to a definition — standard library calls, dynamic dispatch, `super()` until Phase 3 — are stored in `unresolved_calls` rather than dropped.
+
+**Consumption.** Three commands read the symbol graph. `lexi trace <symbol>` shows callers, callees, and unresolved calls for a function or method; `lexi search --type symbol <query>` fuzzy-finds a symbol by name or qualified name; and `lexi lookup <file> --full` appends a "Key symbols" section listing the file's public functions, classes, and methods with inbound and outbound call counts. Individual files are refreshed on `lexi design update <file>`; a full rebuild happens during `lexictl update`.
+
 ## How Operators and Agents Collaborate
 
 The operator-agent collaboration model follows a clear separation of concerns:
@@ -182,3 +192,5 @@ Each artifact type follows a different lifecycle pattern for initialization, cre
 - [Library Structure](library-structure.md) -- Anatomy of the `.lexibrary/` directory
 - [Design Files](design-files.md) -- Deep dive into how `lexictl update` works
 - [Configuration](configuration.md) -- Full config.yaml reference
+- [Link Graph](link-graph.md) -- How the file-level SQLite index is built and queried
+- [Symbol Graph](symbol-graph.md) -- How the symbol-level SQLite index is built and queried

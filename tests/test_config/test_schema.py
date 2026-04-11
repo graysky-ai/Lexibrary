@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from lexibrary.config.schema import (
@@ -18,6 +19,7 @@ from lexibrary.config.schema import (
     MappingConfig,
     StackConfig,
     SweepConfig,
+    SymbolGraphConfig,
     TokenBudgetConfig,
     TopologyConfig,
 )
@@ -789,3 +791,35 @@ def test_topology_config_importable_from_package() -> None:
     from lexibrary.config import TopologyConfig as PackageTopologyConfig
 
     assert PackageTopologyConfig is TopologyConfig
+
+
+# --- SymbolGraphConfig tests ---
+
+
+def test_symbols_config_defaults() -> None:
+    """LexibraryConfig().symbols defaults to SymbolGraphConfig(enabled=True)."""
+    config = LexibraryConfig()
+    assert isinstance(config.symbols, SymbolGraphConfig)
+    assert config.symbols.enabled is True
+
+
+def test_symbols_config_disabled_from_yaml() -> None:
+    """symbols.enabled can be set to False via YAML-loaded dict."""
+    yaml_snippet = "symbols:\n  enabled: false\n"
+    data = yaml.safe_load(yaml_snippet)
+    config = LexibraryConfig.model_validate(data)
+    assert config.symbols.enabled is False
+
+
+def test_symbols_config_extra_fields_ignored() -> None:
+    """SymbolGraphConfig tolerates unknown extra fields without raising."""
+    config = SymbolGraphConfig.model_validate({"enabled": True, "unknown_field": "value"})
+    assert config.enabled is True
+    assert not hasattr(config, "unknown_field")
+
+
+def test_symbols_config_importable_from_package() -> None:
+    """SymbolGraphConfig is re-exported from lexibrary.config."""
+    from lexibrary.config import SymbolGraphConfig as PackageSymbolGraphConfig
+
+    assert PackageSymbolGraphConfig is SymbolGraphConfig

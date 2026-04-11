@@ -103,13 +103,7 @@ class TestScanTodoComments:
 
     def test_finds_multiple_markers(self, tmp_path: Path) -> None:
         """scan_todo_comments finds all three marker types in one file."""
-        content = (
-            "# TODO: first thing\n"
-            "x = 1\n"
-            "# FIXME: second thing\n"
-            "y = 2\n"
-            "# HACK: third thing\n"
-        )
+        content = "# TODO: first thing\nx = 1\n# FIXME: second thing\ny = 2\n# HACK: third thing\n"
         src = _make_source_file(tmp_path, "module.py", content)
         issues = scan_todo_comments(src)
         assert len(issues) == 3
@@ -144,7 +138,7 @@ class TestScanTodoComments:
     def test_clean_file_no_markers(self, tmp_path: Path) -> None:
         """scan_todo_comments returns empty list for a file with no markers."""
         content = (
-            "\"\"\"A clean module.\"\"\"\n"
+            '"""A clean module."""\n'
             "\n"
             "from __future__ import annotations\n"
             "\n"
@@ -183,9 +177,7 @@ class TestScanTodoComments:
 
     def test_context_at_file_start(self, tmp_path: Path) -> None:
         """Context extraction clamps at beginning of file."""
-        content = "# TODO: first line marker\n" + "\n".join(
-            f"line_{i}" for i in range(30)
-        )
+        content = "# TODO: first line marker\n" + "\n".join(f"line_{i}" for i in range(30))
         src = _make_source_file(tmp_path, "start.py", content)
 
         issues = scan_todo_comments(src)

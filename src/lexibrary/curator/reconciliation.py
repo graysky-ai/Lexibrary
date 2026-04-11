@@ -9,12 +9,14 @@ reconciliation sub-agent preserves agent-authored knowledge (Key Concepts,
 Dragons, Custom Notes, Insights) while regenerating mechanical sections
 (Summary, Interface, Dependencies, Dependents) from the current source.
 
-The write contract follows the shared design file write sequence:
-1. Serialize via ``serialize_design_file()``
-2. Write via ``atomic_write()``
-3. ``updated_by`` set to ``"curator"`` (reconciliation, not regeneration)
-4. ``source_hash`` and ``interface_hash`` computed fresh
-5. ``design_hash`` computed by the serializer
+The write contract is owned by the shared helper
+:func:`lexibrary.curator.write_contract.write_design_file_as_curator`,
+which stamps ``updated_by="curator"``, recomputes
+``source_hash``/``interface_hash`` from the current source file,
+serializes via :func:`serialize_design_file` (which computes
+``design_hash`` as a footer field), and writes atomically.  This module
+is responsible only for building the in-memory :class:`DesignFile` that
+merges agent-authored sections with regenerated mechanical sections.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from lexibrary.artifacts.design_file import (
     DesignFile,
@@ -33,10 +36,11 @@ from lexibrary.artifacts.design_file_parser import (
     parse_design_file,
     parse_design_file_frontmatter,
 )
-from lexibrary.artifacts.design_file_serializer import serialize_design_file
-from lexibrary.ast_parser import compute_hashes
-from lexibrary.curator.models import SubAgentResult
-from lexibrary.utils.atomic import atomic_write
+from lexibrary.curator.models import SubAgentResult, TriageItem
+from lexibrary.curator.write_contract import write_design_file_as_curator
+
+if TYPE_CHECKING:
+    from lexibrary.curator.dispatch_context import DispatchContext
 
 logger = logging.getLogger(__name__)
 
@@ -165,18 +169,6 @@ def reconcile_agent_design(
             deferred=True,
         )
 
-    # Compute fresh hashes from current source
-    try:
-        fresh_source_hash, fresh_interface_hash = compute_hashes(work_item.source_path)
-    except Exception as exc:
-        return ReconciliationResult(
-            success=False,
-            source_path=work_item.source_path,
-            design_path=work_item.design_path,
-            message=f"Failed to compute hashes: {exc}",
-            llm_calls=stub_result.llm_calls,
-        )
-
     # Get existing frontmatter to preserve design file ID and description
     existing_frontmatter = parse_design_file_frontmatter(work_item.design_path)
     design_id = (
@@ -213,14 +205,16 @@ def reconcile_agent_design(
     if stub_result.insights:
         preserved_sections["Insights"] = stub_result.insights
 
-    # Build the reconciled DesignFile with fresh metadata
-    # updated_by is set by the coordinator: "curator" for reconciliations
+    # Build the reconciled DesignFile.  ``updated_by`` and hash
+    # metadata are set by :func:`write_design_file_as_curator` below.
+    # Passing placeholder values here keeps the Pydantic model valid
+    # until the helper overwrites them.
     df = DesignFile(
         source_path=source_rel,
         frontmatter=DesignFileFrontmatter(
             description=description,
             id=design_id,
-            updated_by="curator",
+            updated_by="curator",  # re-stamped by the shared write helper
             status="active",
         ),
         summary=stub_result.summary,
@@ -230,17 +224,17 @@ def reconcile_agent_design(
         preserved_sections=preserved_sections,
         metadata=StalenessMetadata(
             source=source_rel,
-            source_hash=fresh_source_hash,
-            interface_hash=fresh_interface_hash,
+            source_hash="",  # overwritten by the shared write helper
+            interface_hash=None,
             generated=datetime.now(UTC),
             generator="curator-reconciliation",
         ),
     )
 
-    # Serialize and write atomically
+    # Delegate the write contract: the helper sets updated_by,
+    # recomputes hashes, serializes, and atomically writes.
     try:
-        content = serialize_design_file(df)
-        atomic_write(work_item.design_path, content)
+        write_design_file_as_curator(df, work_item.design_path, project_root)
     except Exception as exc:
         return ReconciliationResult(
             success=False,
@@ -254,8 +248,8 @@ def reconcile_agent_design(
         "Reconciled agent-edited design file for %s "
         "(source_hash=%s, interface_hash=%s, confidence=%.2f)",
         source_rel,
-        fresh_source_hash[:12],
-        fresh_interface_hash[:12] if fresh_interface_hash else "n/a",
+        df.metadata.source_hash[:12],
+        df.metadata.interface_hash[:12] if df.metadata.interface_hash else "n/a",
         stub_result.confidence,
     )
 
@@ -282,6 +276,63 @@ def reconciliation_result_to_sub_agent_result(
         message=result.message,
         llm_calls=result.llm_calls,
     )
+
+
+def dispatch_reconciliation(
+    item: TriageItem,
+    ctx: DispatchContext,
+) -> SubAgentResult:
+    """Dispatch an agent-edit reconciliation item.
+
+    Sends the work item to the Reconciliation sub-agent (Opus) via BAML
+    stub.  On successful return: passes through ``serialize_design_file()``,
+    sets ``updated_by: curator``, computes fresh hashes, writes via
+    ``atomic_write()``.
+
+    On low-confidence or malformed output: does NOT write, creates IWH
+    signal (scope: warning), records failure in report, leaves existing
+    stale file in place.
+
+    Extracted from :class:`Coordinator._dispatch_reconciliation`
+    (Phase 1.5 dispatcher refactor).
+    """
+    from lexibrary.utils.paths import mirror_path  # noqa: PLC0415
+
+    source_path = item.source_item.path
+    if source_path is None:
+        return SubAgentResult(
+            success=False,
+            action_key=item.action_key,
+            path=None,
+            message="No source path available for reconciliation",
+        )
+
+    design_path = mirror_path(ctx.project_root, source_path)
+
+    work_item = ReconciliationWorkItem(
+        source_path=source_path,
+        design_path=design_path,
+        source_hash_stale=item.source_item.source_hash_stale,
+        interface_hash_stale=item.source_item.interface_hash_stale,
+        updated_by=item.source_item.updated_by,
+        risk_level=item.risk_level or "low",
+    )
+
+    try:
+        result = reconcile_agent_design(work_item, ctx.project_root)
+        return reconciliation_result_to_sub_agent_result(result)
+    except Exception as exc:
+        ctx.summary.add(
+            "dispatch",
+            exc,
+            path=str(source_path),
+        )
+        return SubAgentResult(
+            success=False,
+            action_key=item.action_key,
+            path=source_path,
+            message=f"Reconciliation error: {exc}",
+        )
 
 
 def _write_low_confidence_iwh(

@@ -1,5 +1,0 @@
-comments:
-- body: New module extracted from bootstrap() in lexictl_app.py as part of the decompose-lexictl-cli
-    change (Group 5). Follows the same (level, message) tuple pattern as update_render.py
-    for dispatch consistency.
-  date: '2026-04-08T08:20:38.721616Z'

@@ -18,6 +18,7 @@ from lexibrary.conventions.index import ConventionIndex
 from lexibrary.wiki.index import ConceptIndex
 
 if TYPE_CHECKING:
+    from lexibrary.artifacts.playbook import PlaybookFile
     from lexibrary.playbooks.index import PlaybookIndex
 
 _BRACKET_RE = re.compile(r"^\[\[(.+?)\]\]$")
@@ -165,7 +166,17 @@ class WikilinkResolver:
                 path=None,
             )
 
-        # Fuzzy match (concepts + conventions)
+        # Playbook exact title match (case-insensitive) — no prefix required
+        pb = self._find_playbook_exact(stripped)
+        if pb is not None:
+            return ResolvedLink(
+                raw=raw,
+                name=pb.frontmatter.title,
+                kind="playbook",
+                path=pb.file_path,
+            )
+
+        # Fuzzy match (concepts + conventions + playbooks)
         all_names = self._all_names_and_aliases()
         close = get_close_matches(stripped.lower(), [n.lower() for n in all_names], n=3, cutoff=0.6)
 
@@ -181,6 +192,16 @@ class WikilinkResolver:
                         name=concept.frontmatter.title,
                         kind="concept",
                         path=None,
+                    )
+                # The fuzzy best match may be a playbook title; resolve it
+                # rather than emitting it as a nonsensical suggestion.
+                playbook_hit = self._find_playbook_exact(best)
+                if playbook_hit is not None:
+                    return ResolvedLink(
+                        raw=raw,
+                        name=playbook_hit.frontmatter.title,
+                        kind="playbook",
+                        path=playbook_hit.file_path,
                     )
 
             # Return as unresolved with suggestions
@@ -291,6 +312,16 @@ class WikilinkResolver:
                 m = _FRONTMATTER_ID_RE.match(line)
                 if m and m.group(1).upper() == design_id.upper():
                     return md_file
+        return None
+
+    def _find_playbook_exact(self, name: str) -> PlaybookFile | None:
+        """Find a playbook by exact title (case-insensitive)."""
+        if self._playbook_index is None:
+            return None
+        needle = name.strip().lower()
+        for pb in self._playbook_index.playbooks:
+            if pb.frontmatter.title.strip().lower() == needle:
+                return pb
         return None
 
     def _find_convention_exact(self, name: str) -> ConventionFile | None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import fields as dataclass_fields
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from unittest.mock import MagicMock, patch
 from lexibrary.services.lookup import (
     ConceptSummary,
     DirectoryLookupResult,
+    KeySymbolSummary,
     LookupResult,
     SiblingSummary,
     build_directory_lookup,
@@ -17,6 +19,7 @@ from lexibrary.services.lookup import (
     estimate_tokens,
     truncate_lookup_sections,
 )
+from lexibrary.services.lookup_render import render_key_symbols
 
 # ---------------------------------------------------------------------------
 # Dataclass construction tests
@@ -956,3 +959,469 @@ class TestBuildDirectoryLookupNewFields:
         assert result is not None
         assert result.import_count == 0
         assert result.imported_file_count == 0
+
+
+# ---------------------------------------------------------------------------
+# 14 — Key symbols section (symbol-graph-2 Group 14)
+# ---------------------------------------------------------------------------
+#
+# These tests exercise the ``key_symbols`` field on ``LookupResult`` end to
+# end by standing up a real ``.lexibrary/symbols.db`` seeded with the exact
+# symbol rows each scenario needs. They do **not** mock the
+# ``SymbolQueryService`` — doing so would sidestep the "exactly one
+# ``symbol_call_counts`` query" guarantee, which is the main perf contract
+# for this feature.
+
+
+def _seed_key_symbols_fixture(
+    project_root: Path,
+    rel_file: str,
+    *,
+    symbols: list[dict[str, object]],
+    calls: list[tuple[int, int]] | None = None,
+) -> dict[str, int]:
+    """Seed ``symbols.db`` with the rows needed for a Key symbols test.
+
+    *symbols* is a list of dicts with keys ``name``, ``qualified_name``,
+    ``symbol_type``, ``line_start``, ``line_end``, ``visibility`` (plus
+    optional ``parent_class``). *calls* is a list of ``(caller_idx,
+    callee_idx)`` index pairs referring to positions in *symbols* — each
+    tuple inserts one resolved call edge so the
+    ``symbol_call_counts`` query returns non-zero caller/callee counts
+    for the linked symbols.
+
+    Returns a ``{name: symbol_id}`` map so callers can cross-reference
+    the inserted rows (for the "single-query" spy test that wants the
+    exact id set).
+    """
+    from lexibrary.symbolgraph.query import open_symbol_graph  # noqa: PLC0415
+
+    # ``open_symbol_graph`` creates ``.lexibrary/symbols.db`` with an
+    # empty schema when the file does not yet exist. We deliberately
+    # skip the full ``build_symbol_graph`` walker so the test controls
+    # exactly which files / symbols end up in the DB (otherwise the
+    # walker would scan ``tmp_path`` and insert any ``*.py`` files it
+    # finds, which collides with our explicit inserts below).
+    graph = open_symbol_graph(project_root)
+    assert graph is not None
+    try:
+        conn: sqlite3.Connection = graph._conn  # noqa: SLF001
+
+        cur = conn.execute(
+            "INSERT INTO files (path, language, last_hash) VALUES (?, ?, ?)",
+            (rel_file, "python", "deadbeef"),
+        )
+        file_id = int(cur.lastrowid or 0)
+
+        ids: dict[str, int] = {}
+        symbol_ids_in_order: list[int] = []
+        for row in symbols:
+            cur = conn.execute(
+                "INSERT INTO symbols "
+                "(file_id, name, qualified_name, symbol_type, line_start, "
+                "line_end, visibility, parent_class) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    file_id,
+                    row["name"],
+                    row.get("qualified_name"),
+                    row["symbol_type"],
+                    row["line_start"],
+                    row.get("line_end"),
+                    row["visibility"],
+                    row.get("parent_class"),
+                ),
+            )
+            sid = int(cur.lastrowid or 0)
+            ids[str(row["name"])] = sid
+            symbol_ids_in_order.append(sid)
+
+        for line_offset, (caller_idx, callee_idx) in enumerate(calls or []):
+            conn.execute(
+                "INSERT INTO calls (caller_id, callee_id, line, call_context) VALUES (?, ?, ?, ?)",
+                (
+                    symbol_ids_in_order[caller_idx],
+                    symbol_ids_in_order[callee_idx],
+                    100 + line_offset,  # arbitrary distinct line per edge
+                    "call",
+                ),
+            )
+
+        conn.commit()
+    finally:
+        graph.close()
+
+    return ids
+
+
+def _make_linkgraph_db(project_root: Path) -> None:
+    """Create an empty but schema-valid ``index.db`` for lookup tests.
+
+    ``build_file_lookup`` calls :func:`lexibrary.linkgraph.open_index`
+    under the hood; the service returns ``None`` unless a valid
+    ``index.db`` exists, which disables the dependents / concept-link
+    code paths we don't care about here. Providing an empty but valid
+    DB keeps those paths on the happy-no-results branch without affecting
+    key_symbols assertions.
+    """
+    from lexibrary.linkgraph.schema import (  # noqa: PLC0415
+        ensure_schema as ensure_linkgraph_schema,
+    )
+
+    db_path = project_root / ".lexibrary" / "index.db"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        ensure_linkgraph_schema(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class TestKeySymbolSummaryDataclass:
+    """Covers the KeySymbolSummary dataclass surface (task 14.1 / scenario 1)."""
+
+    def test_construction_with_all_fields(self) -> None:
+        """KeySymbolSummary exposes every spec-mandated field."""
+        summary = KeySymbolSummary(
+            name="foo",
+            qualified_name=None,
+            symbol_type="function",
+            line_start=1,
+            caller_count=0,
+            callee_count=0,
+        )
+        assert summary.name == "foo"
+        assert summary.qualified_name is None
+        assert summary.symbol_type == "function"
+        assert summary.line_start == 1
+        assert summary.caller_count == 0
+        assert summary.callee_count == 0
+
+    def test_field_names(self) -> None:
+        """The dataclass field names match the spec verbatim."""
+        names = {f.name for f in dataclass_fields(KeySymbolSummary)}
+        assert names == {
+            "name",
+            "qualified_name",
+            "symbol_type",
+            "line_start",
+            "caller_count",
+            "callee_count",
+        }
+
+
+class TestBuildFileLookupKeySymbols:
+    """Exercise build_file_lookup()'s ``key_symbols`` population."""
+
+    def _patched_lookup(
+        self,
+        *,
+        target: Path,
+        project_root: Path,
+        config: object,
+        full: bool = False,
+    ) -> LookupResult | None:
+        """Run build_file_lookup with the ambient aindex / design patches.
+
+        The ``key_symbols`` tests don't care about siblings, conventions,
+        concepts, or issues — the patches here short-circuit those code
+        paths so only the symbol-graph branch stays live.
+        """
+        with (
+            patch("lexibrary.artifacts.aindex_parser.parse_aindex", return_value=None),
+            patch(
+                "lexibrary.artifacts.design_file_parser.parse_design_file_frontmatter",
+                return_value=None,
+            ),
+            patch(
+                "lexibrary.artifacts.design_file_parser.parse_design_file_metadata",
+                return_value=None,
+            ),
+            patch(
+                "lexibrary.artifacts.design_file_parser.parse_design_file",
+                return_value=None,
+            ),
+            patch(
+                "lexibrary.utils.paths.mirror_path",
+                return_value=Path("/nonexistent"),
+            ),
+            patch("lexibrary.services.lookup._build_iwh_peek", return_value=""),
+        ):
+            return build_file_lookup(target, project_root, config, full=full)
+
+    def test_lookup_includes_key_symbols_section(self, tmp_path: Path) -> None:
+        """A file with two public functions yields two KeySymbolSummary entries."""
+        project_root = _setup_minimal_project(tmp_path)
+        _make_linkgraph_db(project_root)
+
+        _seed_key_symbols_fixture(
+            project_root,
+            rel_file="src/pkg/mymodule.py",
+            symbols=[
+                {
+                    "name": "foo",
+                    "qualified_name": "pkg.mymodule.foo",
+                    "symbol_type": "function",
+                    "line_start": 10,
+                    "line_end": 20,
+                    "visibility": "public",
+                },
+                {
+                    "name": "bar",
+                    "qualified_name": "pkg.mymodule.bar",
+                    "symbol_type": "function",
+                    "line_start": 30,
+                    "line_end": 40,
+                    "visibility": "public",
+                },
+            ],
+            calls=[(0, 1)],  # foo calls bar -> bar has caller_count 1, foo callee_count 1
+        )
+
+        config = _make_config()
+        target = project_root / "src" / "pkg" / "mymodule.py"
+
+        result = self._patched_lookup(target=target, project_root=project_root, config=config)
+
+        assert result is not None
+        assert len(result.key_symbols) == 2
+        assert result.key_symbols_total == 2
+        by_name = {s.name: s for s in result.key_symbols}
+        assert set(by_name) == {"foo", "bar"}
+        assert by_name["foo"].symbol_type == "function"
+        assert by_name["foo"].line_start == 10
+        assert by_name["foo"].qualified_name == "pkg.mymodule.foo"
+        # foo -> bar was the only edge, so bar has one caller and foo has
+        # one callee; everybody else is at 0.
+        assert by_name["bar"].caller_count == 1
+        assert by_name["bar"].callee_count == 0
+        assert by_name["foo"].caller_count == 0
+        assert by_name["foo"].callee_count == 1
+
+    def test_lookup_skips_key_symbols_when_disabled(self, tmp_path: Path) -> None:
+        """config.symbols.enabled = False ⇒ key_symbols is [] without opening the service."""
+        project_root = _setup_minimal_project(tmp_path)
+        _make_linkgraph_db(project_root)
+
+        # Seed the DB so we'd notice if the service opened it anyway.
+        _seed_key_symbols_fixture(
+            project_root,
+            rel_file="src/pkg/mymodule.py",
+            symbols=[
+                {
+                    "name": "foo",
+                    "qualified_name": "pkg.mymodule.foo",
+                    "symbol_type": "function",
+                    "line_start": 10,
+                    "line_end": 20,
+                    "visibility": "public",
+                },
+            ],
+        )
+
+        from lexibrary.config.schema import (  # noqa: PLC0415
+            ConceptConfig,
+            ConventionConfig,
+            LexibraryConfig,
+            PlaybookConfig,
+            StackConfig,
+            SymbolGraphConfig,
+        )
+
+        config = LexibraryConfig(
+            scope_root="project",
+            conventions=ConventionConfig(),
+            playbooks=PlaybookConfig(),
+            stack=StackConfig(),
+            concepts=ConceptConfig(),
+            symbols=SymbolGraphConfig(enabled=False),
+        )
+
+        target = project_root / "src" / "pkg" / "mymodule.py"
+
+        # A tripwire patch on the service class itself — the disabled
+        # branch MUST short-circuit before constructing the service.
+        with patch(
+            "lexibrary.services.symbols.SymbolQueryService.__init__",
+            side_effect=AssertionError(
+                "SymbolQueryService was constructed even though config.symbols.enabled is False"
+            ),
+        ):
+            result = self._patched_lookup(target=target, project_root=project_root, config=config)
+
+        assert result is not None
+        assert result.key_symbols == []
+        assert result.key_symbols_total == 0
+
+    def test_lookup_skips_key_symbols_when_db_missing(self, tmp_path: Path) -> None:
+        """Missing symbols.db ⇒ key_symbols is [] and no exception is raised."""
+        project_root = _setup_minimal_project(tmp_path)
+        _make_linkgraph_db(project_root)
+
+        # Deliberately do NOT call _seed_key_symbols_fixture — no
+        # symbols.db exists for this test.
+        assert not (project_root / ".lexibrary" / "symbols.db").exists()
+
+        config = _make_config()
+        target = project_root / "src" / "pkg" / "mymodule.py"
+
+        result = self._patched_lookup(target=target, project_root=project_root, config=config)
+
+        assert result is not None
+        assert result.key_symbols == []
+        assert result.key_symbols_total == 0
+
+    def test_lookup_uses_single_call_counts_query(self, tmp_path: Path) -> None:
+        """symbol_call_counts must be called exactly once per lookup_file."""
+        project_root = _setup_minimal_project(tmp_path)
+        _make_linkgraph_db(project_root)
+
+        _seed_key_symbols_fixture(
+            project_root,
+            rel_file="src/pkg/mymodule.py",
+            symbols=[
+                {
+                    "name": "foo",
+                    "qualified_name": "pkg.mymodule.foo",
+                    "symbol_type": "function",
+                    "line_start": 1,
+                    "line_end": 5,
+                    "visibility": "public",
+                },
+                {
+                    "name": "bar",
+                    "qualified_name": "pkg.mymodule.bar",
+                    "symbol_type": "function",
+                    "line_start": 7,
+                    "line_end": 12,
+                    "visibility": "public",
+                },
+                {
+                    "name": "baz",
+                    "qualified_name": "pkg.mymodule.baz",
+                    "symbol_type": "function",
+                    "line_start": 14,
+                    "line_end": 18,
+                    "visibility": "public",
+                },
+            ],
+            # Three call edges give each symbol a non-zero count so the
+            # test notices if the implementation short-circuited the
+            # count-fetch for zero-count rows.
+            calls=[(0, 1), (1, 2), (0, 2)],
+        )
+
+        config = _make_config()
+        target = project_root / "src" / "pkg" / "mymodule.py"
+
+        from lexibrary.symbolgraph.query import SymbolGraph  # noqa: PLC0415
+
+        original = SymbolGraph.symbol_call_counts
+        call_count = 0
+
+        def spy(self: SymbolGraph, file_path: str) -> dict[int, tuple[int, int]]:
+            nonlocal call_count
+            call_count += 1
+            return original(self, file_path)
+
+        with patch.object(SymbolGraph, "symbol_call_counts", spy):
+            result = self._patched_lookup(target=target, project_root=project_root, config=config)
+
+        assert result is not None
+        assert len(result.key_symbols) == 3
+        # Exactly one aggregation query — no N+1 per symbol.
+        assert call_count == 1
+
+
+class TestRenderKeySymbols:
+    """Covers render_key_symbols() format + overflow marker."""
+
+    def test_render_key_symbols_table_format(self) -> None:
+        """Three-symbol render output includes the markdown header and every row."""
+        symbols = [
+            KeySymbolSummary(
+                name="foo",
+                qualified_name="pkg.mymodule.foo",
+                symbol_type="function",
+                line_start=10,
+                caller_count=2,
+                callee_count=0,
+            ),
+            KeySymbolSummary(
+                name="bar",
+                qualified_name="pkg.mymodule.bar",
+                symbol_type="function",
+                line_start=25,
+                caller_count=0,
+                callee_count=3,
+            ),
+            KeySymbolSummary(
+                name="run",
+                qualified_name="pkg.mymodule.Runner.run",
+                symbol_type="method",
+                line_start=50,
+                caller_count=1,
+                callee_count=1,
+            ),
+        ]
+
+        output = render_key_symbols(symbols, key_symbols_total=3)
+
+        # Header + table columns present
+        assert "### Key symbols" in output
+        assert "| Symbol" in output
+        assert "| Type" in output
+        assert "| Line" in output
+        assert "| Callers → Callees" in output
+
+        # Each symbol row is present
+        assert "foo" in output
+        assert "bar" in output
+        # Methods render as ``Class.method`` (the last two dotted segments).
+        assert "Runner.run" in output
+
+        # Count arrows rendered as ``callers → callees``
+        assert "2 → 0" in output
+        assert "0 → 3" in output
+        assert "1 → 1" in output
+
+        # Line numbers surfaced as plain strings
+        assert " 10 " in output or "| 10" in output or " 10\n" in output
+        assert "25" in output
+        assert "50" in output
+
+        # No overflow marker when displayed count == total.
+        assert "more" not in output
+
+    def test_render_key_symbols_overflow_marker(self) -> None:
+        """Ten rendered entries with a total of fifteen appends '… and 5 more'."""
+        symbols = [
+            KeySymbolSummary(
+                name=f"sym{i}",
+                qualified_name=f"pkg.mymodule.sym{i}",
+                symbol_type="function",
+                line_start=i,
+                caller_count=0,
+                callee_count=0,
+            )
+            for i in range(10)
+        ]
+
+        output = render_key_symbols(symbols, key_symbols_total=15)
+
+        assert "### Key symbols" in output
+        for i in range(10):
+            assert f"sym{i}" in output
+        # sym10..sym14 are the ones omitted — they are not in the render
+        # output because only 10 rows were supplied.
+        for i in range(10, 15):
+            assert f"sym{i}" not in output
+        assert "… and 5 more" in output
+
+    def test_render_key_symbols_empty_returns_empty_string(self) -> None:
+        """Empty key_symbols returns empty string so the CLI can omit the section."""
+        assert render_key_symbols([], key_symbols_total=0) == ""
+
+    def test_render_key_symbols_non_summary_objects_filtered(self) -> None:
+        """Non-KeySymbolSummary objects are filtered (parallels render_siblings)."""
+        assert render_key_symbols(["not a summary"], key_symbols_total=0) == ""

@@ -99,23 +99,17 @@ class TestAutoLowMode:
         assert should_dispatch("apply_migration_edits", "auto_low", {}) is False
 
     @pytest.mark.parametrize("action_key", sorted(LOW_DEPRECATION_KEYS))
-    def test_auto_low_dispatches_all_low_deprecation_actions(
-        self, action_key: str
-    ) -> None:
+    def test_auto_low_dispatches_all_low_deprecation_actions(self, action_key: str) -> None:
         """All low-risk deprecation actions dispatch under ``auto_low``."""
         assert should_dispatch(action_key, "auto_low", {}) is True
 
     @pytest.mark.parametrize("action_key", sorted(MEDIUM_DEPRECATION_KEYS))
-    def test_auto_low_blocks_all_medium_deprecation_actions(
-        self, action_key: str
-    ) -> None:
+    def test_auto_low_blocks_all_medium_deprecation_actions(self, action_key: str) -> None:
         """All medium-risk deprecation actions are blocked under ``auto_low``."""
         assert should_dispatch(action_key, "auto_low", {}) is False
 
     @pytest.mark.parametrize("action_key", sorted(HIGH_DEPRECATION_KEYS))
-    def test_auto_low_blocks_all_high_deprecation_actions(
-        self, action_key: str
-    ) -> None:
+    def test_auto_low_blocks_all_high_deprecation_actions(self, action_key: str) -> None:
         """All high-risk deprecation actions are blocked under ``auto_low``."""
         assert should_dispatch(action_key, "auto_low", {}) is False
 
@@ -127,10 +121,7 @@ class TestAutoLowMode:
     def test_auto_low_with_override_elevating_low_to_medium(self) -> None:
         """Override can elevate low to medium, blocking dispatch under ``auto_low``."""
         overrides = {"hard_delete_concept_past_ttl": "medium"}
-        assert (
-            should_dispatch("hard_delete_concept_past_ttl", "auto_low", overrides)
-            is False
-        )
+        assert should_dispatch("hard_delete_concept_past_ttl", "auto_low", overrides) is False
 
 
 # ---------------------------------------------------------------------------
@@ -166,9 +157,7 @@ class TestFullMode:
     def test_full_with_override_elevating_to_high_still_dispatches(self) -> None:
         """Even with an override elevating risk to high, full dispatches."""
         overrides = {"hard_delete_concept_past_ttl": "high"}
-        assert (
-            should_dispatch("hard_delete_concept_past_ttl", "full", overrides) is True
-        )
+        assert should_dispatch("hard_delete_concept_past_ttl", "full", overrides) is True
 
 
 # ---------------------------------------------------------------------------
@@ -276,15 +265,11 @@ class TestConfirmationPolicy:
         """When both kinds require confirmation, both deprecation actions are blocked."""
         overrides = {"concept": True, "convention": True}
         assert (
-            should_dispatch(
-                "deprecate_concept", "full", {}, confirmation_overrides=overrides
-            )
+            should_dispatch("deprecate_concept", "full", {}, confirmation_overrides=overrides)
             is False
         )
         assert (
-            should_dispatch(
-                "deprecate_convention", "full", {}, confirmation_overrides=overrides
-            )
+            should_dispatch("deprecate_convention", "full", {}, confirmation_overrides=overrides)
             is False
         )
 
@@ -316,6 +301,5 @@ class TestDataAlignment:
     def test_deprecation_key_levels_match_taxonomy(self) -> None:
         for key, expected_level in DEPRECATION_KEYS.items():
             assert RISK_TAXONOMY[key].level == expected_level, (
-                f"{key}: expected {expected_level!r}, "
-                f"got {RISK_TAXONOMY[key].level!r}"
+                f"{key}: expected {expected_level!r}, got {RISK_TAXONOMY[key].level!r}"
             )

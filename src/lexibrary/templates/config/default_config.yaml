@@ -135,3 +135,13 @@ ast:
     - python
     - typescript
     - javascript
+
+# Symbol-level code graph (.lexibrary/symbols.db)
+# Extracted by the AST parser during `lexictl update`.
+symbols:
+  enabled: true
+  # Phase 5 will add:
+  #   include_enums: true
+  #   include_call_paths: false
+  #   call_path_depth: 2
+  #   include_data_flows: false

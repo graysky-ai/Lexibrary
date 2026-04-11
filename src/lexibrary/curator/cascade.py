@@ -177,9 +177,7 @@ class LinkGraphSnapshot:
             if self._link_graph is None:
                 self._reverse_deps_cache[cache_key] = []
             else:
-                self._reverse_deps_cache[cache_key] = self._link_graph.reverse_deps(
-                    path, link_type
-                )
+                self._reverse_deps_cache[cache_key] = self._link_graph.reverse_deps(path, link_type)
         return self._reverse_deps_cache[cache_key]
 
     def traverse(

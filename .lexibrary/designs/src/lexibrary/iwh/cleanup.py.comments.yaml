@@ -1,6 +1,0 @@
-comments:
-- body: 'Extended iwh_cleanup() signature to accept keyword-only remove_all: bool
-    = False. When True, all parseable signals with existing source directories are
-    treated as expired (skipping TTL age check). Orphan detection and unparseable-file
-    handling remain unchanged. Default behavior (remove_all=False) is fully preserved.'
-  date: '2026-04-08T08:09:05.852921Z'
