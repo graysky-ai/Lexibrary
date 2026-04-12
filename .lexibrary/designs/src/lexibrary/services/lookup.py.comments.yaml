@@ -34,3 +34,9 @@ comments:
     still opened via the standalone open_index() fallback so link-graph data remains
     available.'
   date: '2026-04-11T19:26:56.125059Z'
+- body: 'symbol-graph-5 Group 7: LookupResult gained enum_notes (list[EnumNote]) and
+    call_path_notes (list[CallPathNote]) fields populated from the parsed design file.
+    The existing parse_design_file call in build_file_lookup was hoisted to the top
+    of the function so the enrichment population and the wikilink fallback branch
+    share a single parse.'
+  date: '2026-04-11T23:43:20.107244Z'

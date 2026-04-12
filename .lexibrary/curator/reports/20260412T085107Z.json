@@ -1,0 +1,262 @@
+{
+  "schema_version": 2,
+  "timestamp": "20260412T085107Z",
+  "trigger": "on_demand",
+  "checked": 29,
+  "fixed": 19,
+  "stubbed": 0,
+  "deferred": 3,
+  "errored": 0,
+  "errors": [],
+  "sub_agent_calls": {
+    "autofix_validation_issue": 3,
+    "integrate_sidecar_comments": 15,
+    "flag_stale_playbook": 4,
+    "consume_superseded_iwh": 4
+  },
+  "dispatched": [
+    {
+      "action_key": "autofix_validation_issue",
+      "path": ".lexibrary/stack/ST-035-promoted-added-playbook-exact-title-match-step-8-in-the.md",
+      "message": "no_fixer_registered: wikilink_resolution",
+      "success": false,
+      "outcome": "no_fixer",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/risk_taxonomy.py",
+      "message": "Integrated comments for src/lexibrary/curator/risk_taxonomy.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/cli/lexictl_app.py",
+      "message": "Integrated comments for src/lexibrary/cli/lexictl_app.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/coordinator.py",
+      "message": "Integrated comments for src/lexibrary/curator/coordinator.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/staleness.py",
+      "message": "Integrated comments for src/lexibrary/curator/staleness.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/auditing.py",
+      "message": "Integrated comments for src/lexibrary/curator/auditing.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/budget.py",
+      "message": "Integrated comments for src/lexibrary/curator/budget.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/comments.py",
+      "message": "Integrated comments for src/lexibrary/curator/comments.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/config.py",
+      "message": "Integrated comments for src/lexibrary/curator/config.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/deprecation.py",
+      "message": "Integrated comments for src/lexibrary/curator/deprecation.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/dispatch_context.py",
+      "message": "Integrated comments for src/lexibrary/curator/dispatch_context.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/lifecycle.py",
+      "message": "Integrated comments for src/lexibrary/curator/lifecycle.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/curator/reconciliation.py",
+      "message": "Integrated comments for src/lexibrary/curator/reconciliation.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/linkgraph/builder.py",
+      "message": "Integrated comments for src/lexibrary/linkgraph/builder.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/validator/checks.py",
+      "message": "Integrated comments for src/lexibrary/validator/checks.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "integrate_sidecar_comments",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/wiki/index.py",
+      "message": "Integrated comments for src/lexibrary/wiki/index.py",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 1
+    },
+    {
+      "action_key": "flag_stale_playbook",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/playbooks/PB-001-adding-a-new-artifact-type.md",
+      "message": "Flagged stale playbook PB-001-adding-a-new-artifact-type.md",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "flag_stale_playbook",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/playbooks/PB-002-adding-a-new-cli-command.md",
+      "message": "Flagged stale playbook PB-002-adding-a-new-cli-command.md",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "flag_stale_playbook",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/playbooks/PB-003-adding-a-new-design-file.md",
+      "message": "Flagged stale playbook PB-003-adding-a-new-design-file.md",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "flag_stale_playbook",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/playbooks/PB-003-adding-a-new-design-file.md",
+      "message": "Flagged stale playbook PB-003-adding-a-new-design-file.md",
+      "success": true,
+      "outcome": "fixed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "autofix_validation_issue",
+      "path": ".lexibrary/designs/src/lexibrary/validator/checks.py.md",
+      "message": "no_fixer_registered: bidirectional_deps",
+      "success": false,
+      "outcome": "no_fixer",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "autofix_validation_issue",
+      "path": "designs/src/lexibrary/curator/models.py.md",
+      "message": "no_fixer_registered: lookup_token_budget_exceeded",
+      "success": false,
+      "outcome": "no_fixer",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "consume_superseded_iwh",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/.lexibrary/concepts",
+      "message": "No IWH signal found at /Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/.lexibrary/concepts",
+      "success": false,
+      "outcome": "fixer_failed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "consume_superseded_iwh",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/.lexibrary/conventions",
+      "message": "No IWH signal found at /Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/.lexibrary/conventions",
+      "success": false,
+      "outcome": "fixer_failed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "consume_superseded_iwh",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/conventions",
+      "message": "No IWH signal found at /Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/conventions",
+      "success": false,
+      "outcome": "fixer_failed",
+      "llm_calls": 0
+    },
+    {
+      "action_key": "consume_superseded_iwh",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/playbooks",
+      "message": "No IWH signal found at /Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/designs/playbooks",
+      "success": false,
+      "outcome": "fixer_failed",
+      "llm_calls": 0
+    }
+  ],
+  "deferred_details": [
+    {
+      "action_key": "deprecate_convention",
+      "issue_type": "deprecation",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/.lexibrary/conventions/CV-017-symbol-graph-extension.md",
+      "check": "deprecation",
+      "message": "Deprecation candidate: orphan_zero_refs (convention)",
+      "risk_level": "medium"
+    },
+    {
+      "action_key": "flag_stale_comment",
+      "issue_type": "comment_audit",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/archivist/topology.py",
+      "check": "comment_audit",
+      "message": "TODO at line 910: # TODO: review sentinel strategy after detail_dirs",
+      "risk_level": "medium"
+    },
+    {
+      "action_key": "flag_stale_comment",
+      "issue_type": "comment_audit",
+      "path": "/Users/shanngray/AI_Projects/Lexibrarian/src/lexibrary/crawler/engine.py",
+      "check": "comment_audit",
+      "message": "TODO at line 217: # TODO: Add a 'stale' flag or column to track files where we fell back to",
+      "risk_level": "medium"
+    }
+  ],
+  "deprecated": 0,
+  "hard_deleted": 0,
+  "migrations_applied": 0,
+  "migrations_proposed": 0,
+  "budget_condensed": 0,
+  "budget_proposed": 0,
+  "comments_flagged": 0,
+  "descriptions_audited": 0,
+  "summaries_audited": 0
+}

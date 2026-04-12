@@ -1,0 +1,18 @@
+comments:
+- body: "symbol-graph-5 group 5 reorder: build_symbol_graph now runs BEFORE the design-file\
+    \ loop in update_project() so the new SymbolQueryService wrapped around the loop\
+    \ can read fresh enum/call-path context for each file. The link graph (build_index)\
+    \ stays in its late post-loop position \u2014 it must still see freshly-written\
+    \ design-file wikilinks. Only update_project() gets the reorder; update_files()\
+    \ and update_directory() keep their late symbol-graph builds because they are\
+    \ incremental/targeted entry points where the reorder has no value. The _open_symbol_service_for_enrichment()\
+    \ helper wraps SymbolQueryService.__enter__/__exit__ so the pipeline opens the\
+    \ service exactly once per run and tests can spy on __enter__. update_file() gains\
+    \ a symbol_context kwarg that forwards through DesignFileRequest; group 8 wires\
+    \ the BAML call site."
+  date: '2026-04-11T23:30:46.295861Z'
+- body: 'Thread changed_paths into symbol graph build calls: update_files passes file_paths
+    and update_directory passes changed_file_paths for incremental rebuilds. update_project
+    intentionally omits changed_paths (full build) because its pre-loop symbol graph
+    build must produce a complete graph for design-file enrichment.'
+  date: '2026-04-12T03:38:01.080065Z'

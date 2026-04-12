@@ -20,7 +20,13 @@ from lexibrary.services.lookup import (
     estimate_tokens,
     truncate_lookup_sections,
 )
-from lexibrary.services.lookup_render import render_class_hierarchy, render_key_symbols
+from lexibrary.services.lookup_render import (
+    render_call_path_notes,
+    render_class_hierarchy,
+    render_data_flow_notes,
+    render_enum_notes,
+    render_key_symbols,
+)
 
 # ---------------------------------------------------------------------------
 # Dataclass construction tests
@@ -1996,3 +2002,353 @@ class TestRenderClassHierarchy:
         assert "Bar" in output
         assert "Baz" in output
         assert "BaseModel*" in output
+
+
+# ---------------------------------------------------------------------------
+# 7 — Lookup rendering for enrichment sections (symbol-graph-5 Group 7)
+# ---------------------------------------------------------------------------
+#
+# These tests cover the new ``### Enums & constants`` and ``### Call paths``
+# sections that ``lexi lookup`` surfaces from the parsed design file.  The
+# direct ``render_*`` tests parallel ``TestRenderKeySymbols`` and
+# ``TestRenderClassHierarchy``, while ``TestLookupRendersEnrichment`` exercises
+# the end-to-end population path through ``build_file_lookup``.
+
+
+class TestRenderEnumNotes:
+    """Covers ``render_enum_notes()`` format + edge cases."""
+
+    def test_empty_returns_empty_string(self) -> None:
+        """Empty list yields an empty string so the CLI can omit the section."""
+        assert render_enum_notes([]) == ""
+
+    def test_non_enum_note_objects_filtered(self) -> None:
+        """Non-EnumNote items are filtered (parallels render_key_symbols)."""
+        assert render_enum_notes(["not a note"]) == ""
+
+    def test_render_single_note_with_values(self) -> None:
+        """A note with values renders the bullet plus an indented Values line."""
+        from lexibrary.artifacts.design_file import EnumNote  # noqa: PLC0415
+
+        notes = [
+            EnumNote(
+                name="BuildStatus",
+                role="Tracks pipeline execution state.",
+                values=["PENDING", "RUNNING", "SUCCESS"],
+            )
+        ]
+        output = render_enum_notes(notes)
+
+        assert "### Enums & constants" in output
+        assert "- **BuildStatus** — Tracks pipeline execution state." in output
+        assert "  Values: PENDING, RUNNING, SUCCESS" in output
+
+    def test_render_note_without_values_omits_values_line(self) -> None:
+        """A note with no values omits the indented continuation line."""
+        from lexibrary.artifacts.design_file import EnumNote  # noqa: PLC0415
+
+        notes = [
+            EnumNote(name="MAX_RETRIES", role="Cap on retry attempts.", values=[]),
+        ]
+        output = render_enum_notes(notes)
+
+        assert "### Enums & constants" in output
+        assert "- **MAX_RETRIES** — Cap on retry attempts." in output
+        assert "Values:" not in output
+
+    def test_render_multiple_notes(self) -> None:
+        """Every note appears in the output in order."""
+        from lexibrary.artifacts.design_file import EnumNote  # noqa: PLC0415
+
+        notes = [
+            EnumNote(name="Color", role="UI palette key.", values=["RED", "BLUE"]),
+            EnumNote(name="Mode", role="Run mode.", values=["FAST", "SAFE"]),
+            EnumNote(name="LIMIT", role="Cap.", values=[]),
+        ]
+        output = render_enum_notes(notes)
+
+        assert "Color" in output
+        assert "Mode" in output
+        assert "LIMIT" in output
+        assert output.index("Color") < output.index("Mode") < output.index("LIMIT")
+        assert "  Values: RED, BLUE" in output
+        assert "  Values: FAST, SAFE" in output
+
+
+class TestRenderCallPathNotes:
+    """Covers ``render_call_path_notes()`` format + edge cases."""
+
+    def test_empty_returns_empty_string(self) -> None:
+        """Empty list yields an empty string so the CLI can omit the section."""
+        assert render_call_path_notes([]) == ""
+
+    def test_non_call_path_note_objects_filtered(self) -> None:
+        """Non-CallPathNote items are filtered (parallels render_key_symbols)."""
+        assert render_call_path_notes(["not a note"]) == ""
+
+    def test_render_single_note_with_key_hops(self) -> None:
+        """A note with key_hops renders the bullet plus the indented Key hops line."""
+        from lexibrary.artifacts.design_file import CallPathNote  # noqa: PLC0415
+
+        notes = [
+            CallPathNote(
+                entry="update_project()",
+                narrative=(
+                    "Orchestrates a full project build: discovers source files, "
+                    "regenerates changed design files, refreshes aindexes, rebuilds "
+                    "the link graph, then the symbol graph."
+                ),
+                key_hops=[
+                    "discover_source_files",
+                    "update_file",
+                    "build_index",
+                    "build_symbol_graph",
+                ],
+            )
+        ]
+        output = render_call_path_notes(notes)
+
+        assert "### Call paths" in output
+        assert "- **update_project()** — Orchestrates a full project build" in output
+        assert (
+            "  Key hops: discover_source_files, update_file, build_index, build_symbol_graph"
+        ) in output
+
+    def test_render_note_without_key_hops_omits_hops_line(self) -> None:
+        """A note with no key_hops omits the indented continuation line."""
+        from lexibrary.artifacts.design_file import CallPathNote  # noqa: PLC0415
+
+        notes = [
+            CallPathNote(entry="seed()", narrative="Seeds the database.", key_hops=[]),
+        ]
+        output = render_call_path_notes(notes)
+
+        assert "### Call paths" in output
+        assert "- **seed()** — Seeds the database." in output
+        assert "Key hops:" not in output
+
+    def test_render_multiple_notes(self) -> None:
+        """Every note appears in the output in order."""
+        from lexibrary.artifacts.design_file import CallPathNote  # noqa: PLC0415
+
+        notes = [
+            CallPathNote(entry="alpha()", narrative="First.", key_hops=["a"]),
+            CallPathNote(entry="beta()", narrative="Second.", key_hops=["b"]),
+        ]
+        output = render_call_path_notes(notes)
+
+        assert "alpha()" in output
+        assert "beta()" in output
+        assert output.index("alpha()") < output.index("beta()")
+
+
+class TestLookupRendersEnrichment:
+    """End-to-end tests covering the enrichment surface in build_file_lookup.
+
+    These tests verify that the parsed design file's enum_notes and
+    call_path_notes flow through to the resulting LookupResult and that
+    rendering through render_enum_notes / render_call_path_notes yields the
+    expected sections (or remains empty when enrichment is absent).
+    """
+
+    def _build_design_file(
+        self,
+        *,
+        enum_notes: list[object] | None = None,
+        call_path_notes: list[object] | None = None,
+    ) -> object:
+        """Construct a minimal DesignFile that build_file_lookup can consume."""
+        from lexibrary.artifacts.design_file import (  # noqa: PLC0415
+            DesignFile,
+            DesignFileFrontmatter,
+            StalenessMetadata,
+        )
+
+        return DesignFile(
+            source_path="src/pkg/mymodule.py",
+            frontmatter=DesignFileFrontmatter(
+                description="A module",
+                id="design-mymodule",
+            ),
+            summary="Test module summary.",
+            interface_contract="No public contract.",
+            dependencies=[],
+            dependents=[],
+            tests=None,
+            complexity_warning=None,
+            enum_notes=enum_notes or [],  # type: ignore[arg-type]
+            call_path_notes=call_path_notes or [],  # type: ignore[arg-type]
+            wikilinks=[],
+            tags=[],
+            stack_refs=[],
+            preserved_sections={},
+            metadata=StalenessMetadata(
+                source="src/pkg/mymodule.py",
+                source_hash="abc123",
+                generated=datetime(2026, 1, 1),
+                generator="test",
+            ),
+        )
+
+    def _run_build_file_lookup(
+        self,
+        tmp_path: Path,
+        design_file: object,
+    ) -> LookupResult | None:
+        """Invoke build_file_lookup with the supplied design file mocked in."""
+        project_root = _setup_minimal_project(tmp_path)
+        target = project_root / "src" / "pkg" / "mymodule.py"
+        # Use a real design path so design_path.exists() returns True.
+        design_path = project_root / ".lexibrary" / "designs" / "src" / "pkg" / "mymodule.py.md"
+        design_path.parent.mkdir(parents=True, exist_ok=True)
+        design_path.write_text("placeholder", encoding="utf-8")
+
+        config = _make_config()
+
+        with (
+            patch("lexibrary.artifacts.aindex_parser.parse_aindex", return_value=None),
+            patch(
+                "lexibrary.artifacts.design_file_parser.parse_design_file_frontmatter",
+                return_value=None,
+            ),
+            patch(
+                "lexibrary.artifacts.design_file_parser.parse_design_file_metadata",
+                return_value=None,
+            ),
+            patch(
+                "lexibrary.artifacts.design_file_parser.parse_design_file",
+                return_value=design_file,
+            ),
+            patch(
+                "lexibrary.utils.paths.mirror_path",
+                return_value=design_path,
+            ),
+            patch("lexibrary.linkgraph.query.open_index", return_value=None),
+            patch("lexibrary.services.lookup._build_iwh_peek", return_value=""),
+        ):
+            return build_file_lookup(target, project_root, config)
+
+    def test_lookup_renders_enum_notes(self, tmp_path: Path) -> None:
+        """build_file_lookup populates enum_notes; renderer emits the section."""
+        from lexibrary.artifacts.design_file import EnumNote  # noqa: PLC0415
+
+        design_file = self._build_design_file(
+            enum_notes=[
+                EnumNote(
+                    name="BuildStatus",
+                    role="Tracks pipeline execution state.",
+                    values=["PENDING", "RUNNING", "SUCCESS"],
+                )
+            ]
+        )
+
+        result = self._run_build_file_lookup(tmp_path, design_file)
+
+        assert result is not None
+        assert len(result.enum_notes) == 1
+        assert result.enum_notes[0].name == "BuildStatus"
+
+        output = render_enum_notes(result.enum_notes)
+        assert "### Enums & constants" in output
+        assert "BuildStatus" in output
+        assert "Values: PENDING, RUNNING, SUCCESS" in output
+
+    def test_lookup_renders_call_paths(self, tmp_path: Path) -> None:
+        """build_file_lookup populates call_path_notes; renderer emits the section."""
+        from lexibrary.artifacts.design_file import CallPathNote  # noqa: PLC0415
+
+        design_file = self._build_design_file(
+            call_path_notes=[
+                CallPathNote(
+                    entry="update_project()",
+                    narrative="Orchestrates a full project build.",
+                    key_hops=["discover_source_files", "update_file"],
+                )
+            ]
+        )
+
+        result = self._run_build_file_lookup(tmp_path, design_file)
+
+        assert result is not None
+        assert len(result.call_path_notes) == 1
+        assert result.call_path_notes[0].entry == "update_project()"
+
+        output = render_call_path_notes(result.call_path_notes)
+        assert "### Call paths" in output
+        assert "update_project()" in output
+        assert "Key hops: discover_source_files, update_file" in output
+
+    def test_lookup_skips_enrichment_sections_when_empty(self, tmp_path: Path) -> None:
+        """Empty enum_notes / call_path_notes yield empty rendered output."""
+        design_file = self._build_design_file(enum_notes=[], call_path_notes=[])
+
+        result = self._run_build_file_lookup(tmp_path, design_file)
+
+        assert result is not None
+        assert result.enum_notes == []
+        assert result.call_path_notes == []
+
+        # Renderer returns empty string so the CLI omits both headings.
+        assert render_enum_notes(result.enum_notes) == ""
+        assert render_call_path_notes(result.call_path_notes) == ""
+
+
+# ---------------------------------------------------------------------------
+# Data flow notes rendering (symbol-graph-7)
+# ---------------------------------------------------------------------------
+
+
+class TestRenderDataFlowNotes:
+    """Covers ``render_data_flow_notes()`` format + edge cases."""
+
+    def test_lookup_renders_data_flows(self) -> None:
+        """Non-empty data_flow_notes render a ``### Data flows`` section."""
+        from lexibrary.artifacts.design_file import DataFlowNote  # noqa: PLC0415
+
+        notes = [
+            DataFlowNote(
+                parameter="changed_paths",
+                location="build_index()",
+                effect=(
+                    "`None` triggers a full build; a non-None list triggers incremental update."
+                ),
+            ),
+            DataFlowNote(
+                parameter="config",
+                location="render()",
+                effect="Controls output format and verbosity.",
+            ),
+        ]
+        output = render_data_flow_notes(notes)
+
+        assert "### Data flows" in output
+        assert (
+            "- **changed_paths** in **build_index()** \u2014 `None` triggers a full build"
+        ) in output
+        assert "- **config** in **render()** \u2014 Controls output format" in output
+        # Verify ordering matches input
+        assert output.index("changed_paths") < output.index("config")
+
+    def test_lookup_skips_data_flows_when_empty(self) -> None:
+        """Empty data_flow_notes yield an empty string so the CLI omits it."""
+        assert render_data_flow_notes([]) == ""
+
+    def test_non_data_flow_note_objects_filtered(self) -> None:
+        """Non-DataFlowNote items are filtered out defensively."""
+        assert render_data_flow_notes(["not a note"]) == ""
+
+    def test_render_single_data_flow_note(self) -> None:
+        """A single note renders correctly with heading and bullet."""
+        from lexibrary.artifacts.design_file import DataFlowNote  # noqa: PLC0415
+
+        notes = [
+            DataFlowNote(
+                parameter="mode",
+                location="process()",
+                effect="Selects processing strategy.",
+            ),
+        ]
+        output = render_data_flow_notes(notes)
+
+        assert "### Data flows" in output
+        assert "- **mode** in **process()** \u2014 Selects processing strategy." in output

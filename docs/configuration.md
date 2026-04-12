@@ -515,8 +515,25 @@ ast:
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `symbols.enabled` | bool | `true` | Enables the `.lexibrary/symbols.db` pipeline that indexes function, class, and enum-level relationships. |
+| `symbols.include_enums` | bool | `true` | When `true`, the archivist feeds extracted enums and constants into the design-file prompt so the generated prose can name them explicitly. Turned on by default -- cost is minimal. |
+| `symbols.include_call_paths` | bool | `false` | Opt-in. When `true`, the archivist feeds call-path summaries (caller <- this <- callees) into the design-file prompt. Increases prompt size by roughly `call_path_depth x 50` tokens per file. |
+| `symbols.include_data_flows` | bool | `false` | Opt-in. When `true`, the archivist feeds branch-parameter context into the design-file prompt so the LLM can generate data flow notes. Gated on a deterministic AST signal: files without branching parameters never trigger the LLM call, keeping cost at zero for most files. |
+| `symbols.call_path_depth` | int | `2` | How many hops to include in each direction when `include_call_paths` is enabled. Depth 1 = direct callers/callees only; depth 2 = adds the next ring out. |
+| `symbols.max_enum_items` | int | `20` | Maximum number of enum/constant entries rendered in a single prompt block. Files with more entries are truncated with a trailing `... N more` marker so the LLM knows the list is incomplete. |
+| `symbols.max_call_path_items` | int | `10` | Maximum number of call-path entries rendered in a single prompt block. Files with more functions/methods are truncated. |
 
-See [Symbol Graph](symbol-graph.md) for the full feature description.
+```yaml
+symbols:
+  enabled: true
+  include_enums: true
+  include_call_paths: false
+  include_data_flows: false
+  call_path_depth: 2
+  max_enum_items: 20
+  max_call_path_items: 10
+```
+
+See [Symbol Graph](symbol-graph.md) for the full feature description, including the design-file enrichment pipeline and cost trade-offs for enabling `include_call_paths` and `include_data_flows`.
 
 ## `curator` Section
 
@@ -781,6 +798,15 @@ ast:
     - python
     - typescript
     - javascript
+
+symbols:
+  enabled: true
+  include_enums: true
+  include_call_paths: false
+  include_data_flows: false
+  call_path_depth: 2
+  max_enum_items: 20
+  max_call_path_items: 10
 
 curator:
   autonomy: auto_low

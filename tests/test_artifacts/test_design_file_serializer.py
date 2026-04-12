@@ -6,13 +6,20 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from lexibrary.artifacts.design_file import DesignFile, DesignFileFrontmatter, StalenessMetadata
+from lexibrary.artifacts.design_file import (
+    CallPathNote,
+    DataFlowNote,
+    DesignFile,
+    DesignFileFrontmatter,
+    EnumNote,
+    StalenessMetadata,
+)
 from lexibrary.artifacts.design_file_parser import parse_design_file
 from lexibrary.artifacts.design_file_serializer import serialize_design_file
 
 
 def _meta(**overrides: object) -> StalenessMetadata:
-    base: dict = {
+    base: dict[str, object] = {
         "source": "src/lexibrary/cli.py",
         "source_hash": "abc123",
         "design_hash": "def456",
@@ -24,13 +31,16 @@ def _meta(**overrides: object) -> StalenessMetadata:
 
 
 def _frontmatter(**overrides: object) -> DesignFileFrontmatter:
-    base: dict = {"description": "CLI entry point for the lexi command.", "id": "DS-001"}
+    base: dict[str, object] = {
+        "description": "CLI entry point for the lexi command.",
+        "id": "DS-001",
+    }
     base.update(overrides)
     return DesignFileFrontmatter(**base)
 
 
 def _design_file(**overrides: object) -> DesignFile:
-    base: dict = {
+    base: dict[str, object] = {
         "source_path": "src/lexibrary/cli.py",
         "frontmatter": _frontmatter(),
         "summary": "CLI entry point for the lexi command.",
@@ -426,3 +436,333 @@ class TestSerializeDesignFileNewlineCollapse:
         # First field should be description (insertion order), not id (alphabetical)
         first_key = fm_lines[0].split(":")[0]
         assert first_key == "description"
+
+
+class TestSerializeDesignFileEnrichment:
+    """Tests for Enums & constants and Call paths enrichment sections (Task 6.5)."""
+
+    def test_serializer_emits_enum_notes(self) -> None:
+        """Serializer emits `## Enums & constants` with entries and Values lines."""
+        df = _design_file(
+            enum_notes=[
+                EnumNote(
+                    name="BuildStatus",
+                    role="Tracks pipeline execution state.",
+                    values=["PENDING", "RUNNING", "FAILED", "SUCCESS"],
+                ),
+                EnumNote(
+                    name="MAX_RETRIES",
+                    role="Upper bound on retry attempts before failing a job.",
+                    values=["3"],
+                ),
+            ]
+        )
+        result = serialize_design_file(df)
+        assert "## Enums & constants" in result
+        assert "- **BuildStatus** — Tracks pipeline execution state." in result
+        assert "  Values: PENDING, RUNNING, FAILED, SUCCESS." in result
+        assert "- **MAX_RETRIES** — Upper bound on retry attempts before failing a job." in result
+        assert "  Values: 3." in result
+
+    def test_serializer_emits_call_paths(self) -> None:
+        """Serializer emits `## Call paths` with entries and Key hops lines."""
+        df = _design_file(
+            call_path_notes=[
+                CallPathNote(
+                    entry="update_project()",
+                    narrative=(
+                        "Orchestrates a full project build: discovers source files, "
+                        "regenerates changed design files, refreshes aindexes, rebuilds "
+                        "the link graph, then the symbol graph."
+                    ),
+                    key_hops=[
+                        "discover_source_files",
+                        "update_file",
+                        "build_index",
+                        "build_symbol_graph",
+                    ],
+                )
+            ]
+        )
+        result = serialize_design_file(df)
+        assert "## Call paths" in result
+        assert "- **update_project()** — Orchestrates a full project build" in result
+        assert (
+            "  Key hops: discover_source_files, update_file, build_index, build_symbol_graph."
+        ) in result
+
+    def test_serializer_omits_empty_enrichment_sections(self) -> None:
+        """Empty enum_notes / call_path_notes lists produce no section headings."""
+        df = _design_file(enum_notes=[], call_path_notes=[])
+        result = serialize_design_file(df)
+        assert "## Enums & constants" not in result
+        assert "## Call paths" not in result
+
+    def test_serializer_omits_values_line_when_no_values(self) -> None:
+        """An enum note with an empty values list should emit only the header line."""
+        df = _design_file(
+            enum_notes=[
+                EnumNote(
+                    name="Marker",
+                    role="A sentinel used to signal completion.",
+                    values=[],
+                )
+            ]
+        )
+        result = serialize_design_file(df)
+        assert "## Enums & constants" in result
+        assert "- **Marker** — A sentinel used to signal completion." in result
+        # Confirm no Values line was emitted for this entry
+        enum_body = result.split("## Enums & constants")[1].split("##")[0]
+        assert "Values:" not in enum_body
+
+    def test_serializer_omits_key_hops_line_when_no_hops(self) -> None:
+        """A call-path note with no key hops should emit only the header line."""
+        df = _design_file(
+            call_path_notes=[
+                CallPathNote(
+                    entry="noop()",
+                    narrative="A no-op for testing.",
+                    key_hops=[],
+                )
+            ]
+        )
+        result = serialize_design_file(df)
+        assert "## Call paths" in result
+        assert "- **noop()** — A no-op for testing." in result
+        call_body = result.split("## Call paths")[1].split("##")[0]
+        assert "Key hops:" not in call_body
+
+    def test_enrichment_sections_placed_between_complexity_and_wikilinks(self) -> None:
+        """Enum/Call-path sections sit after Complexity Warning and before Wikilinks."""
+        df = _design_file(
+            complexity_warning="High cyclomatic complexity.",
+            enum_notes=[
+                EnumNote(
+                    name="BuildStatus",
+                    role="Tracks pipeline execution state.",
+                    values=["PENDING", "SUCCESS"],
+                )
+            ],
+            call_path_notes=[
+                CallPathNote(
+                    entry="run()",
+                    narrative="Kicks off a build.",
+                    key_hops=["prepare", "execute"],
+                )
+            ],
+            wikilinks=["Config"],
+        )
+        result = serialize_design_file(df)
+        complexity_idx = result.index("## Complexity Warning")
+        enums_idx = result.index("## Enums & constants")
+        calls_idx = result.index("## Call paths")
+        wikilinks_idx = result.index("## Wikilinks")
+        assert complexity_idx < enums_idx < calls_idx < wikilinks_idx
+
+    def test_roundtrip_design_file_with_enrichment(self, tmp_path: Path) -> None:
+        """Serialize → write → parse preserves enrichment fields."""
+        df = _design_file(
+            enum_notes=[
+                EnumNote(
+                    name="BuildStatus",
+                    role="Tracks pipeline execution state.",
+                    values=["PENDING", "RUNNING", "FAILED", "SUCCESS"],
+                ),
+                EnumNote(
+                    name="MAX_RETRIES",
+                    role="Upper bound on retry attempts before failing a job.",
+                    values=["3"],
+                ),
+            ],
+            call_path_notes=[
+                CallPathNote(
+                    entry="update_project()",
+                    narrative="Orchestrates a full project build.",
+                    key_hops=[
+                        "discover_source_files",
+                        "update_file",
+                        "build_index",
+                        "build_symbol_graph",
+                    ],
+                )
+            ],
+        )
+        content = serialize_design_file(df)
+        f = tmp_path / "roundtrip.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+        assert len(parsed.enum_notes) == 2
+        assert parsed.enum_notes[0].name == "BuildStatus"
+        assert parsed.enum_notes[0].role == "Tracks pipeline execution state."
+        assert parsed.enum_notes[0].values == ["PENDING", "RUNNING", "FAILED", "SUCCESS"]
+        assert parsed.enum_notes[1].name == "MAX_RETRIES"
+        assert parsed.enum_notes[1].values == ["3"]
+        assert len(parsed.call_path_notes) == 1
+        assert parsed.call_path_notes[0].entry == "update_project()"
+        assert parsed.call_path_notes[0].narrative == "Orchestrates a full project build."
+        assert parsed.call_path_notes[0].key_hops == [
+            "discover_source_files",
+            "update_file",
+            "build_index",
+            "build_symbol_graph",
+        ]
+
+
+class TestSerializeDesignFileDataFlows:
+    """Tests for `## Data flows` section serialization and round-trip."""
+
+    def test_serializer_emits_data_flows(self) -> None:
+        """Serializer emits `## Data flows` with correct bullet format."""
+        df = _design_file(
+            data_flow_notes=[
+                DataFlowNote(
+                    parameter="changed_paths",
+                    location="build_index()",
+                    effect=(
+                        "`None` triggers a full build;"
+                        " a non-None list triggers incremental update."
+                    ),
+                ),
+                DataFlowNote(
+                    parameter="config",
+                    location="render()",
+                    effect="Controls output format and verbosity level.",
+                ),
+            ]
+        )
+        result = serialize_design_file(df)
+        assert "## Data flows" in result
+        assert (
+            "- **changed_paths** in **build_index()** \u2014 "
+            "`None` triggers a full build;"
+            " a non-None list triggers incremental update."
+        ) in result
+        assert (
+            "- **config** in **render()** — Controls output format and verbosity level."
+        ) in result
+
+    def test_serializer_omits_empty_data_flows(self) -> None:
+        """Empty data_flow_notes list produces no Data flows section."""
+        df = _design_file(data_flow_notes=[])
+        result = serialize_design_file(df)
+        assert "## Data flows" not in result
+
+    def test_data_flows_placed_after_call_paths_before_wikilinks(self) -> None:
+        """Data flows section sits after Call paths and before Wikilinks."""
+        df = _design_file(
+            call_path_notes=[
+                CallPathNote(
+                    entry="run()",
+                    narrative="Kicks off a build.",
+                    key_hops=["prepare", "execute"],
+                )
+            ],
+            data_flow_notes=[
+                DataFlowNote(
+                    parameter="config",
+                    location="run()",
+                    effect="Selects build mode.",
+                ),
+            ],
+            wikilinks=["Config"],
+        )
+        result = serialize_design_file(df)
+        calls_idx = result.index("## Call paths")
+        flows_idx = result.index("## Data flows")
+        wikilinks_idx = result.index("## Wikilinks")
+        assert calls_idx < flows_idx < wikilinks_idx
+
+    def test_roundtrip_with_data_flows(self, tmp_path: Path) -> None:
+        """Serialize -> write -> parse preserves data flow notes."""
+        df = _design_file(
+            data_flow_notes=[
+                DataFlowNote(
+                    parameter="changed_paths",
+                    location="build_index()",
+                    effect=(
+                        "`None` triggers a full build;"
+                        " a non-None list triggers incremental update."
+                    ),
+                ),
+                DataFlowNote(
+                    parameter="config",
+                    location="render()",
+                    effect="Controls output format and verbosity level.",
+                ),
+            ]
+        )
+        content = serialize_design_file(df)
+        f = tmp_path / "roundtrip.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+        assert len(parsed.data_flow_notes) == 2
+        assert parsed.data_flow_notes[0].parameter == "changed_paths"
+        assert parsed.data_flow_notes[0].location == "build_index()"
+        assert "`None` triggers a full build" in parsed.data_flow_notes[0].effect
+        assert parsed.data_flow_notes[1].parameter == "config"
+        assert parsed.data_flow_notes[1].location == "render()"
+        assert "output format" in parsed.data_flow_notes[1].effect
+
+    def test_roundtrip_with_preserved_sections_and_data_flows(self, tmp_path: Path) -> None:
+        """Round-trip preserves data flows alongside preserved sections and ordering is stable."""
+        df = _design_file(
+            preserved_sections={"Agent Notes": "Some agent-authored content."},
+            call_path_notes=[
+                CallPathNote(
+                    entry="run()",
+                    narrative="Kicks off a build.",
+                    key_hops=["prepare"],
+                )
+            ],
+            data_flow_notes=[
+                DataFlowNote(
+                    parameter="mode",
+                    location="run()",
+                    effect="Selects between full and incremental build.",
+                ),
+            ],
+            wikilinks=["Config"],
+        )
+        content = serialize_design_file(df)
+        f = tmp_path / "roundtrip_preserved.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+
+        # Data flow notes preserved
+        assert len(parsed.data_flow_notes) == 1
+        assert parsed.data_flow_notes[0].parameter == "mode"
+        assert parsed.data_flow_notes[0].location == "run()"
+
+        # Preserved sections preserved
+        assert "Agent Notes" in parsed.preserved_sections
+        assert parsed.preserved_sections["Agent Notes"] == "Some agent-authored content."
+
+        # Call path notes preserved
+        assert len(parsed.call_path_notes) == 1
+
+        # Wikilinks preserved
+        assert parsed.wikilinks == ["Config"]
+
+        # Re-serialize and verify ordering is stable
+        content2 = serialize_design_file(parsed)
+        f2 = tmp_path / "roundtrip_preserved_2.md"
+        f2.write_text(content2)
+        parsed2 = parse_design_file(f2)
+        assert parsed2 is not None
+        assert len(parsed2.data_flow_notes) == 1
+        assert parsed2.data_flow_notes[0].parameter == "mode"
+
+    def test_roundtrip_without_data_flows(self, tmp_path: Path) -> None:
+        """Round-trip of a file without data flows does not introduce the section."""
+        df = _design_file(data_flow_notes=[])
+        content = serialize_design_file(df)
+        f = tmp_path / "roundtrip_no_flows.md"
+        f.write_text(content)
+        parsed = parse_design_file(f)
+        assert parsed is not None
+        assert parsed.data_flow_notes == []
+        assert "## Data flows" not in content

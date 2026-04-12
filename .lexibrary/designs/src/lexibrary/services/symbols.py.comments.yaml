@@ -28,3 +28,18 @@ comments:
     0.5 is the sentinel callers use to distinguish ''matched on name'' from ''matched
     via a member value''.'
   date: '2026-04-11T20:13:58.068241Z'
+- body: "Phase-5 group 4 added three new public surfaces: the CallContextResult dataclass,\
+    \ SymbolQueryService.members_of(), and SymbolQueryService.call_context(). members_of()\
+    \ is a thin facade over SymbolGraph.members_of() \u2014 returns empty list when\
+    \ the symbol graph is None. call_context() queries by symbol ID (not name) so\
+    \ the archivist enrichment helper can walk call graphs without colliding when\
+    \ multiple files define symbols with the same short name. It uses _SELECT_SYMBOL\
+    \ + query_raw to materialise the SymbolRow from an id, then walks callers_of/callees_of\
+    \ via private _walk_callers/_walk_callees BFS helpers up to the requested hop\
+    \ depth. Return type is CallContextResult | None (not CallContextResult) because\
+    \ a SymbolRow cannot be constructed when the graph is missing or the id does not\
+    \ resolve \u2014 callers treat None as 'skip enrichment'. The spec (specs/symbol-query-service/spec.md)\
+    \ literally says to return CallContextResult, but since SymbolRow is required,\
+    \ None is the only sound degradation path. Phase-5 enrichment helper (group 5)\
+    \ will skip symbols where call_context() returns None."
+  date: '2026-04-11T23:07:50.831038Z'

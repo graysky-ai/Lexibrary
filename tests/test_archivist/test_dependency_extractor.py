@@ -278,3 +278,40 @@ class TestResolveJsImport:
 
         result = _resolve_js_import("./module.ts", src, tmp_path)
         assert result == "src/module.ts"
+
+    def test_resolves_tsx_extension(self, tmp_path: Path) -> None:
+        """``./component`` resolves to component.tsx when .tsx exists."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "component.tsx").write_text("")
+
+        result = _resolve_js_import("./component", src, tmp_path)
+        assert result == "src/component.tsx"
+
+    def test_resolves_parent_directory_import(self, tmp_path: Path) -> None:
+        """``../shared`` resolves to file in parent directory."""
+        src = tmp_path / "src"
+        sub = src / "sub"
+        sub.mkdir(parents=True)
+        (src / "shared.ts").write_text("")
+
+        result = _resolve_js_import("../shared", sub, tmp_path)
+        assert result == "src/shared.ts"
+
+    def test_explicit_extension_not_found(self, tmp_path: Path) -> None:
+        """``./missing.ts`` returns None when file does not exist."""
+        src = tmp_path / "src"
+        src.mkdir()
+
+        result = _resolve_js_import("./missing.ts", src, tmp_path)
+        assert result is None
+
+    def test_resolves_index_js(self, tmp_path: Path) -> None:
+        """``./components`` resolves to components/index.js when index.ts not present."""
+        src = tmp_path / "src"
+        components = src / "components"
+        components.mkdir(parents=True)
+        (components / "index.js").write_text("")
+
+        result = _resolve_js_import("./components", src, tmp_path)
+        assert result == "src/components/index.js"

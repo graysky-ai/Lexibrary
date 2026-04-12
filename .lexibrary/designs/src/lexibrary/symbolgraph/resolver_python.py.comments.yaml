@@ -1,9 +1,0 @@
-comments:
-- body: "Phase 3 (symbol-graph-3) adds two methods: resolve_class_name maps bare class\
-    \ names to symbols.id with symbol_type='class', reusing steps 3-7 of the callee\
-    \ resolver but constrained to class rows. resolve_self_method_with_mro walks inherits\
-    \ edges in class_edges BFS-style to find a method on an ancestor class, enabling\
-    \ self.foo() calls to resolve to inherited methods. resolve() calls the MRO walker\
-    \ as a fallback after _resolve_self_method misses \u2014 the fast path still handles\
-    \ same-class methods without needing class_edges."
-  date: '2026-04-11T10:58:56.733098Z'

@@ -716,3 +716,258 @@ generator: lexibrary-v2
         df = parse_design_file(f)
         assert df is not None
         assert df.stack_refs == []
+
+
+class TestParseDesignFileEnrichment:
+    """Tests for parsing Enums & constants and Call paths enrichment sections."""
+
+    _WITH_ENUM_NOTES = """\
+---
+description: File with enum notes.
+id: DS-100
+updated_by: archivist
+---
+
+# src/lexibrary/status.py
+
+## Interface Contract
+
+```python
+pass
+```
+
+## Dependencies
+
+(none)
+
+## Dependents
+
+(none)
+
+## Enums & constants
+
+- **BuildStatus** — Tracks pipeline execution state.
+  Values: PENDING, RUNNING, FAILED, SUCCESS.
+- **MAX_RETRIES** — Upper bound on retry attempts before failing a job.
+  Values: 3.
+
+<!-- lexibrary:meta
+source: src/lexibrary/status.py
+source_hash: abc123
+design_hash: def456
+generated: 2026-01-01T12:00:00
+generator: lexibrary-v2
+-->
+"""
+
+    _WITH_CALL_PATHS = """\
+---
+description: File with call path notes.
+id: DS-101
+updated_by: archivist
+---
+
+# src/lexibrary/archivist/pipeline.py
+
+## Interface Contract
+
+```python
+pass
+```
+
+## Dependencies
+
+(none)
+
+## Dependents
+
+(none)
+
+## Call paths
+
+- **update_project()** — Orchestrates a full project build, rebuilding design files and graphs.
+  Key hops: discover_source_files, update_file, build_index, build_symbol_graph.
+
+<!-- lexibrary:meta
+source: src/lexibrary/archivist/pipeline.py
+source_hash: abc123
+design_hash: def456
+generated: 2026-01-01T12:00:00
+generator: lexibrary-v2
+-->
+"""
+
+    def test_parser_reads_enum_notes_section(self, tmp_path: Path) -> None:
+        """Parser extracts multiple enum notes with names, roles, and values."""
+        f = tmp_path / "enums.md"
+        f.write_text(self._WITH_ENUM_NOTES)
+        df = parse_design_file(f)
+        assert df is not None
+        assert len(df.enum_notes) == 2
+
+        first = df.enum_notes[0]
+        assert first.name == "BuildStatus"
+        assert first.role == "Tracks pipeline execution state."
+        assert first.values == ["PENDING", "RUNNING", "FAILED", "SUCCESS"]
+
+        second = df.enum_notes[1]
+        assert second.name == "MAX_RETRIES"
+        assert second.role == "Upper bound on retry attempts before failing a job."
+        assert second.values == ["3"]
+
+    def test_parser_reads_call_paths_section(self, tmp_path: Path) -> None:
+        """Parser extracts call path notes with entry, narrative, and key hops."""
+        f = tmp_path / "call_paths.md"
+        f.write_text(self._WITH_CALL_PATHS)
+        df = parse_design_file(f)
+        assert df is not None
+        assert len(df.call_path_notes) == 1
+
+        note = df.call_path_notes[0]
+        assert note.entry == "update_project()"
+        assert "Orchestrates a full project build" in note.narrative
+        assert note.key_hops == [
+            "discover_source_files",
+            "update_file",
+            "build_index",
+            "build_symbol_graph",
+        ]
+
+    def test_parser_handles_missing_enrichment_sections(self, tmp_path: Path) -> None:
+        """Parser returns empty lists when enrichment sections are absent."""
+        f = tmp_path / "no_enrichment.md"
+        f.write_text(_FULL_DESIGN_FILE)
+        df = parse_design_file(f)
+        assert df is not None
+        assert df.enum_notes == []
+        assert df.call_path_notes == []
+
+    def test_parser_does_not_treat_enrichment_as_preserved_section(self, tmp_path: Path) -> None:
+        """Enums & constants and Call paths should not end up in preserved_sections."""
+        f = tmp_path / "enums.md"
+        f.write_text(self._WITH_ENUM_NOTES)
+        df = parse_design_file(f)
+        assert df is not None
+        assert "Enums & constants" not in df.preserved_sections
+        assert "Call paths" not in df.preserved_sections
+
+    def test_parser_handles_entry_without_continuation(self, tmp_path: Path) -> None:
+        """Entries with no `Values:` / `Key hops:` line get empty value lists."""
+        content = """\
+---
+description: Minimal enum entry.
+id: DS-102
+updated_by: archivist
+---
+
+# src/lexibrary/marker.py
+
+## Interface Contract
+
+```python
+pass
+```
+
+## Dependencies
+
+(none)
+
+## Dependents
+
+(none)
+
+## Enums & constants
+
+- **Marker** — A sentinel used to signal completion.
+
+<!-- lexibrary:meta
+source: src/lexibrary/marker.py
+source_hash: abc123
+design_hash: def456
+generated: 2026-01-01T12:00:00
+generator: lexibrary-v2
+-->
+"""
+        f = tmp_path / "marker.md"
+        f.write_text(content)
+        df = parse_design_file(f)
+        assert df is not None
+        assert len(df.enum_notes) == 1
+        assert df.enum_notes[0].name == "Marker"
+        assert df.enum_notes[0].role == "A sentinel used to signal completion."
+        assert df.enum_notes[0].values == []
+
+
+class TestParseDesignFileDataFlows:
+    """Tests for parsing the `## Data flows` section."""
+
+    _WITH_DATA_FLOWS = """\
+---
+description: File with data flow notes.
+id: DS-200
+updated_by: archivist
+---
+
+# src/lexibrary/archivist/pipeline.py
+
+## Interface Contract
+
+```python
+pass
+```
+
+## Dependencies
+
+(none)
+
+## Dependents
+
+(none)
+
+## Data flows
+
+- **changed_paths** in **build_index()** — `None` triggers full build; non-None is incremental.
+- **config** in **render()** — Controls output format and verbosity level.
+
+<!-- lexibrary:meta
+source: src/lexibrary/archivist/pipeline.py
+source_hash: abc123
+design_hash: def456
+generated: 2026-01-01T12:00:00
+generator: lexibrary-v2
+-->
+"""
+
+    def test_parser_reads_data_flows_section(self, tmp_path: Path) -> None:
+        """Parser extracts data flow notes with parameter, location, and effect."""
+        f = tmp_path / "data_flows.md"
+        f.write_text(self._WITH_DATA_FLOWS)
+        df = parse_design_file(f)
+        assert df is not None
+        assert len(df.data_flow_notes) == 2
+
+        first = df.data_flow_notes[0]
+        assert first.parameter == "changed_paths"
+        assert first.location == "build_index()"
+        assert "`None` triggers full build" in first.effect
+
+        second = df.data_flow_notes[1]
+        assert second.parameter == "config"
+        assert second.location == "render()"
+        assert "output format" in second.effect
+
+    def test_parser_data_flows_missing_section_is_empty_list(self, tmp_path: Path) -> None:
+        """Files without a Data flows section return an empty list."""
+        f = tmp_path / "design.md"
+        f.write_text(_FULL_DESIGN_FILE)
+        df = parse_design_file(f)
+        assert df is not None
+        assert df.data_flow_notes == []
+
+    def test_parser_does_not_treat_data_flows_as_preserved_section(self, tmp_path: Path) -> None:
+        """Data flows should not end up in preserved_sections."""
+        f = tmp_path / "data_flows.md"
+        f.write_text(self._WITH_DATA_FLOWS)
+        df = parse_design_file(f)
+        assert df is not None
+        assert "Data flows" not in df.preserved_sections

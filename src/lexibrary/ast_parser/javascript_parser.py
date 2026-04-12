@@ -286,7 +286,12 @@ def _emit_js_function(
     *,
     parent_class: str | None,
 ) -> None:
-    """Emit a ``function_declaration`` node as a definition."""
+    """Emit a ``function_declaration`` node as a definition.
+
+    Also walks the body for nested function declarations, function
+    expressions, and arrow functions assigned to ``const``, emitting each
+    as a separate ``SymbolDefinition`` row.
+    """
     name_node = _sym_find_child_by_type(node, "identifier")
     if name_node is None:
         return
@@ -296,6 +301,8 @@ def _emit_js_function(
 
     qualified_name = f"{qualified_prefix}.{name}" if qualified_prefix else name
     line_start, line_end = _line_range(node)
+    body_node = _find_body_node_js(node)
+    branch_params = _extract_branch_parameters_js(node, body_node)
     definition = SymbolDefinition(
         name=name,
         qualified_name=qualified_name,
@@ -304,9 +311,25 @@ def _emit_js_function(
         line_end=line_end,
         visibility=_js_visibility(name),
         parent_class=parent_class,
+        branch_parameters=branch_params,
     )
     definitions.append(definition)
     def_nodes.append((node, definition))
+
+    if body_node is not None:
+        nested_prefix = f"{qualified_name}.<locals>"
+        _walk_nested_functions_js(
+            body_node,
+            nested_prefix,
+            definitions,
+            def_nodes,
+        )
+        _walk_nested_lexical_functions_js(
+            body_node,
+            nested_prefix,
+            definitions,
+            def_nodes,
+        )
 
 
 def _emit_js_class(
@@ -369,6 +392,8 @@ def _emit_js_method(
 
     qualified_name = f"{class_prefix}.{method_name}" if class_prefix else method_name
     line_start, line_end = _line_range(node)
+    body_node = _find_body_node_js(node)
+    branch_params = _extract_branch_parameters_js(node, body_node)
     definition = SymbolDefinition(
         name=method_name,
         qualified_name=qualified_name,
@@ -377,9 +402,25 @@ def _emit_js_method(
         line_end=line_end,
         visibility=_js_visibility(method_name),
         parent_class=parent_class,
+        branch_parameters=branch_params,
     )
     definitions.append(definition)
     def_nodes.append((node, definition))
+
+    if body_node is not None:
+        nested_prefix = f"{qualified_name}.<locals>"
+        _walk_nested_functions_js(
+            body_node,
+            nested_prefix,
+            definitions,
+            def_nodes,
+        )
+        _walk_nested_lexical_functions_js(
+            body_node,
+            nested_prefix,
+            definitions,
+            def_nodes,
+        )
 
 
 def _emit_js_lexical_declaration(
@@ -419,6 +460,8 @@ def _emit_js_lexical_declaration(
         if arrow is not None:
             line_start, line_end = _line_range(child)
             qualified_name = f"{module_path}.{name}" if module_path else name
+            arrow_body = _find_body_node_js(arrow)
+            branch_params = _extract_branch_parameters_js(arrow, arrow_body)
             definition = SymbolDefinition(
                 name=name,
                 qualified_name=qualified_name,
@@ -427,9 +470,24 @@ def _emit_js_lexical_declaration(
                 line_end=line_end,
                 visibility=_js_visibility(name),
                 parent_class=None,
+                branch_parameters=branch_params,
             )
             definitions.append(definition)
             def_nodes.append((arrow, definition))
+            if arrow_body is not None:
+                arrow_nested_prefix = f"{qualified_name}.<locals>"
+                _walk_nested_functions_js(
+                    arrow_body,
+                    arrow_nested_prefix,
+                    definitions,
+                    def_nodes,
+                )
+                _walk_nested_lexical_functions_js(
+                    arrow_body,
+                    arrow_nested_prefix,
+                    definitions,
+                    def_nodes,
+                )
             continue
 
         literal_node = _js_variable_declarator_literal_rhs(child)
@@ -488,6 +546,313 @@ def _js_variable_declarator_literal_rhs(node: object) -> object | None:
             return cast("object", child)
         return None
     return None
+
+
+# -- Branch parameter extraction (JavaScript) --
+# These helpers identify which function parameters drive branching decisions.
+# Nearly identical to the TypeScript helpers but use JS-specific helper names.
+
+# JS node types whose bodies define a new scope to prune during
+# branch-condition walking.
+_JS_NESTED_SCOPE_TYPES = frozenset(
+    {"function_declaration", "function_expression", "arrow_function", "class_declaration"},
+)
+
+# Subset of nested scope types that are named functions and should be
+# emitted as separate ``SymbolDefinition`` rows.
+_JS_NESTED_FN_TYPES = frozenset(
+    {"function_declaration", "function_expression"},
+)
+
+# JS branch node types whose condition subtree may contain branch-driving
+# identifiers.
+_JS_BRANCH_NODE_TYPES = frozenset(
+    {"if_statement", "while_statement", "switch_statement", "ternary_expression", "for_statement"},
+)
+
+
+def _walk_body_excluding_nested_scopes_js(body_node: object) -> list[object]:
+    """Return all descendant nodes of a JS body, pruning nested scope bodies.
+
+    Walks the subtree and collects every node except those inside the body
+    of nested ``function_declaration``, ``function_expression``,
+    ``arrow_function``, or ``class_declaration``. The nested definition
+    nodes themselves ARE returned, but their children are NOT descended into.
+    """
+    results: list[object] = []
+    stack: list[object] = list(getattr(body_node, "children", []))
+    while stack:
+        current = stack.pop(0)
+        results.append(current)
+        current_type = getattr(current, "type", "")
+        if current_type in _JS_NESTED_SCOPE_TYPES:
+            continue
+        stack = list(getattr(current, "children", [])) + stack
+    return results
+
+
+def _function_param_names_js(func_node: object) -> set[str]:
+    """Extract raw parameter names from a JS function node.
+
+    Walks ``formal_parameters`` children to find bare ``identifier`` entries.
+    Returns a set of parameter names (no type annotations in JS).
+    """
+    names: set[str] = set()
+    for child in getattr(func_node, "children", []):
+        if getattr(child, "type", "") == "formal_parameters":
+            for param in getattr(child, "children", []):
+                param_type = getattr(param, "type", "")
+                if param_type == "identifier":
+                    text = _sym_node_text(param)
+                    if text:
+                        names.add(text)
+                elif param_type == "assignment_pattern":
+                    # Default parameter: ``param = defaultVal``
+                    for sub in getattr(param, "children", []):
+                        if getattr(sub, "type", "") == "identifier":
+                            text = _sym_node_text(sub)
+                            if text:
+                                names.add(text)
+                            break
+                elif param_type == "rest_pattern":
+                    # Rest parameter: ``...args``
+                    for sub in getattr(param, "children", []):
+                        if getattr(sub, "type", "") == "identifier":
+                            text = _sym_node_text(sub)
+                            if text:
+                                names.add(text)
+                            break
+            break
+    return names
+
+
+def _collect_branch_identifiers_js(body_node: object) -> set[str]:
+    """Collect all identifier root-names from branch conditions in a JS body.
+
+    Uses the scope-pruned walker. ``this`` references are excluded.
+    """
+    nodes = _walk_body_excluding_nested_scopes_js(body_node)
+    ids: set[str] = set()
+    for node in nodes:
+        node_type = getattr(node, "type", "")
+        if node_type not in _JS_BRANCH_NODE_TYPES:
+            continue
+
+        condition_node: object | None = None
+        if node_type in ("if_statement", "while_statement"):
+            getter = getattr(node, "child_by_field_name", None)
+            if getter is not None:
+                condition_node = getter("condition")
+            if condition_node is None:
+                for child in getattr(node, "children", []):
+                    if getattr(child, "type", "") == "parenthesized_expression":
+                        condition_node = child
+                        break
+        elif node_type == "switch_statement":
+            getter = getattr(node, "child_by_field_name", None)
+            if getter is not None:
+                condition_node = getter("value")
+            if condition_node is None:
+                for child in getattr(node, "children", []):
+                    if getattr(child, "type", "") == "parenthesized_expression":
+                        condition_node = child
+                        break
+        elif node_type == "ternary_expression":
+            named = [c for c in getattr(node, "children", []) if getattr(c, "is_named", False)]
+            if named:
+                condition_node = named[0]
+        elif node_type == "for_statement":
+            getter = getattr(node, "child_by_field_name", None)
+            if getter is not None:
+                condition_node = getter("condition")
+
+        if condition_node is not None:
+            _collect_root_identifiers_js(condition_node, ids)
+    ids.discard("this")
+    return ids
+
+
+def _collect_root_identifiers_js(node: object, out: set[str]) -> None:
+    """Recursively collect root identifier names from a JS expression subtree.
+
+    For ``member_expression`` chains (``config.verbose``), only the
+    leftmost identifier (``config``) is recorded.
+    """
+    node_type = getattr(node, "type", "")
+    if node_type == "identifier":
+        text = _sym_node_text(node)
+        if text:
+            out.add(text)
+        return
+    if node_type == "member_expression":
+        for child in getattr(node, "children", []):
+            child_type = getattr(child, "type", "")
+            if child_type not in (".", "?."):
+                _collect_root_identifiers_js(child, out)
+                return
+        return
+    for child in getattr(node, "children", []):
+        _collect_root_identifiers_js(child, out)
+
+
+def _extract_branch_parameters_js(
+    func_node: object,
+    body_node: object | None,
+) -> list[str]:
+    """Return sorted parameter names appearing in branch conditions for JS."""
+    if body_node is None:
+        return []
+
+    param_names = _function_param_names_js(func_node)
+    if not param_names:
+        return []
+
+    branch_ids = _collect_branch_identifiers_js(body_node)
+    return sorted(branch_ids & param_names)
+
+
+def _find_body_node_js(func_node: object) -> object | None:
+    """Find the body node (``statement_block``) of a JS function."""
+    for child in getattr(func_node, "children", []):
+        if getattr(child, "type", "") == "statement_block":
+            return cast("object", child)
+    return None
+
+
+def _walk_nested_functions_js(
+    body_node: object,
+    nested_prefix: str,
+    definitions: list[SymbolDefinition],
+    def_nodes: list[tuple[object, SymbolDefinition]],
+) -> None:
+    """Recursively emit nested functions inside a JS body.
+
+    Mirrors ``_walk_nested_functions_ts`` — see its docstring for details.
+    """
+    stack: list[object] = list(getattr(body_node, "children", []))
+    while stack:
+        current = stack.pop(0)
+        current_type = getattr(current, "type", "")
+
+        if current_type in _JS_NESTED_FN_TYPES:
+            nested_name = _sym_find_child_by_type(current, "identifier")
+            n_name: str | None = None
+            if nested_name is not None:
+                n_name = _sym_node_text(nested_name)
+
+            if not n_name:
+                continue
+
+            nested_qualified = f"{nested_prefix}.{n_name}" if nested_prefix else n_name
+            n_line_start, n_line_end = _line_range(current)
+            nested_body = _find_body_node_js(current)
+            nested_branch = _extract_branch_parameters_js(current, nested_body)
+            nested_def = SymbolDefinition(
+                name=n_name,
+                qualified_name=nested_qualified,
+                symbol_type="function",
+                line_start=n_line_start,
+                line_end=n_line_end,
+                visibility="private",
+                parent_class=None,
+                branch_parameters=nested_branch,
+            )
+            definitions.append(nested_def)
+            def_nodes.append((current, nested_def))
+
+            if nested_body is not None:
+                _walk_nested_functions_js(
+                    nested_body,
+                    f"{nested_qualified}.<locals>",
+                    definitions,
+                    def_nodes,
+                )
+                _walk_nested_lexical_functions_js(
+                    nested_body,
+                    f"{nested_qualified}.<locals>",
+                    definitions,
+                    def_nodes,
+                )
+            continue
+
+        if current_type in _JS_NESTED_SCOPE_TYPES:
+            continue
+
+        stack = list(getattr(current, "children", [])) + stack
+
+
+def _walk_nested_lexical_functions_js(
+    body_node: object,
+    nested_prefix: str,
+    definitions: list[SymbolDefinition],
+    def_nodes: list[tuple[object, SymbolDefinition]],
+) -> None:
+    """Emit nested ``const name = () => ...`` arrow/function expressions in a JS body."""
+    stack: list[object] = list(getattr(body_node, "children", []))
+    while stack:
+        current = stack.pop(0)
+        current_type = getattr(current, "type", "")
+
+        if current_type in _JS_NESTED_SCOPE_TYPES:
+            continue
+
+        if current_type in ("lexical_declaration", "variable_declaration"):
+            for vd in getattr(current, "children", []):
+                if getattr(vd, "type", "") != "variable_declarator":
+                    continue
+                vd_name_node = _sym_find_child_by_type(vd, "identifier")
+                if vd_name_node is None:
+                    continue
+                vd_name = _sym_node_text(vd_name_node)
+                if not vd_name:
+                    continue
+
+                fn_node: object | None = None
+                found_eq = False
+                for sub in getattr(vd, "children", []):
+                    sub_type = getattr(sub, "type", "")
+                    if sub_type == "=":
+                        found_eq = True
+                    elif found_eq and sub_type in ("arrow_function", "function_expression"):
+                        fn_node = sub
+                        break
+
+                if fn_node is None:
+                    continue
+
+                vd_qualified = f"{nested_prefix}.{vd_name}" if nested_prefix else vd_name
+                vd_ls, vd_le = _line_range(vd)
+                vd_body = _find_body_node_js(fn_node)
+                vd_branch = _extract_branch_parameters_js(fn_node, vd_body)
+                vd_def = SymbolDefinition(
+                    name=vd_name,
+                    qualified_name=vd_qualified,
+                    symbol_type="function",
+                    line_start=vd_ls,
+                    line_end=vd_le,
+                    visibility="private",
+                    parent_class=None,
+                    branch_parameters=vd_branch,
+                )
+                definitions.append(vd_def)
+                def_nodes.append((fn_node, vd_def))
+
+                if vd_body is not None:
+                    _walk_nested_functions_js(
+                        vd_body,
+                        f"{vd_qualified}.<locals>",
+                        definitions,
+                        def_nodes,
+                    )
+                    _walk_nested_lexical_functions_js(
+                        vd_body,
+                        f"{vd_qualified}.<locals>",
+                        definitions,
+                        def_nodes,
+                    )
+            continue
+
+        stack = list(getattr(current, "children", [])) + stack
 
 
 def _collect_js_calls(

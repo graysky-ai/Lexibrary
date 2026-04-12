@@ -43,6 +43,7 @@ _EXPECTED_TABLES: frozenset[str] = frozenset(
         "unresolved_calls",
         "class_edges",
         "class_edges_unresolved",
+        "symbol_branch_parameters",
     }
 )
 
@@ -380,15 +381,17 @@ def test_build_symbol_graph_incremental_flag_reports_correct_build_type(
 ) -> None:
     """Passing ``changed_paths=[]`` marks the run as incremental.
 
-    Phase 1 still performs a full schema ensure on the incremental path —
-    this test only pins the result's ``build_type`` contract so Phase 6 can
-    rely on it without breaking the default call shape.
+    Phase 6 implements a real incremental path that delegates to
+    :func:`refresh_file` per changed file. With an empty list and no
+    pre-existing DB, no database is created (``refresh_file`` never
+    bootstraps a new DB). The contract pinned here is the ``build_type``
+    label on the result.
     """
     config = LexibraryConfig()
 
     result = build_symbol_graph(tmp_path, config, changed_paths=[])
 
     assert result.build_type == "incremental"
-    # The DB is still created — Phase 1 does not differentiate the branches
-    # beyond the reported build_type.
-    assert symbols_db_path(tmp_path).exists()
+    # The incremental path with no changed files and no prior DB does not
+    # create a new DB — that requires a full build first.
+    assert result.file_count == 0

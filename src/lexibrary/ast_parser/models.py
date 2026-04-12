@@ -131,6 +131,26 @@ class ClassEdgeSite(BaseModel):
     line: int
 
 
+class CompositionSite(BaseModel):
+    """A composition edge emitted from a class definition's parse tree.
+
+    Represents a "has-a" relationship where ``source_class`` owns an
+    attribute (``attribute_name``) whose type annotation resolves to
+    ``target_name``. These edges are emitted by the AST parsers when they
+    encounter annotated class-body assignments (``db: Database``) or
+    ``__init__`` self-attribute annotations (``self.cache: LRUCache``).
+
+    The builder's composition pass resolves ``target_name`` against known
+    ``class`` symbols in ``symbols.db`` and persists the result in the
+    ``class_edges`` table with ``edge_type='composes'``.
+    """
+
+    source_class: str
+    target_name: str
+    attribute_name: str
+    line: int
+
+
 class SymbolDefinition(BaseModel):
     """A function, method, or class definition location inside a file.
 
@@ -154,6 +174,15 @@ class SymbolDefinition(BaseModel):
     line_end: int
     visibility: str
     parent_class: str | None = None
+    branch_parameters: list[str] = Field(default_factory=list)
+    """Parameter names appearing in branch conditions within the function body.
+
+    Empty for non-function symbols (classes, enums, constants). For
+    functions and methods, contains the sorted list of parameter names
+    that appear in ``if``, ``while``, ``match``, ternary, or ``switch``
+    conditions — excluding ``self``/``cls``/``this`` and parameters that
+    appear only in ``assert`` statements.
+    """
 
     @field_validator("symbol_type")
     @classmethod
@@ -178,11 +207,13 @@ class SymbolExtract(BaseModel):
     Call extraction and class-edge extraction run off the same parse tree
     and share this container. ``class_edges`` records ``inherits`` and
     ``instantiates`` edges emitted by the parsers; the symbol-graph builder
-    resolves them against known symbols in pass 3. ``enums`` maps each
-    enum's qualified name to its list of member signatures, and
-    ``constants`` holds module-level constant assignments with literal
-    RHS values — both are emitted alongside ``definitions`` and consumed
-    by the builder to populate ``symbol_members`` rows.
+    resolves them against known symbols in pass 3. ``compositions`` records
+    ``composes`` edges extracted from annotated class-body and ``__init__``
+    attributes. ``enums`` maps each enum's qualified name to its list of
+    member signatures, and ``constants`` holds module-level constant
+    assignments with literal RHS values — both are emitted alongside
+    ``definitions`` and consumed by the builder to populate
+    ``symbol_members`` rows.
     """
 
     file_path: str
@@ -190,5 +221,6 @@ class SymbolExtract(BaseModel):
     definitions: list[SymbolDefinition] = Field(default_factory=list)
     calls: list[CallSite] = Field(default_factory=list)
     class_edges: list[ClassEdgeSite] = Field(default_factory=list)
+    compositions: list[CompositionSite] = Field(default_factory=list)
     enums: list[tuple[str, list[EnumMemberSig]]] = Field(default_factory=list)
     constants: list[ConstantValue] = Field(default_factory=list)

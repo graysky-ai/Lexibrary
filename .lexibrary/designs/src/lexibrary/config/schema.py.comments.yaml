@@ -1,0 +1,8 @@
+comments:
+- body: 'Phase 5: extended SymbolGraphConfig with five enrichment flags (include_enums,
+    include_call_paths, call_path_depth, max_enum_items, max_call_path_items) that
+    gate archivist design-file prompt enrichment from the symbol graph. Defaults keep
+    enums on (cheap) and call paths opt-in (prompt-bloat guard). ConfigDict(extra=ignore)
+    preserves backward compatibility with pre-Phase-5 YAML that only sets ''enabled:
+    true''.'
+  date: '2026-04-11T23:05:20.907537Z'

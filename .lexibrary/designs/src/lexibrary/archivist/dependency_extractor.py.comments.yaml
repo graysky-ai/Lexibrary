@@ -1,0 +1,6 @@
+comments:
+- body: 'Phase 6 refactor: _resolve_js_import now delegates to resolve_js_module from
+    resolver_js.py. The private helper constants _JS_EXTENSIONS and _JS_INDEX_NAMES
+    have been extracted to the shared location. The thin wrapper maintains backward
+    compatibility for existing callers.'
+  date: '2026-04-12T03:15:01.552823Z'

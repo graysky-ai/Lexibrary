@@ -6,7 +6,11 @@ function ArchivistGenerateDesignFile(
   interface_skeleton: string?,
   language: string?,
   existing_design_file: string?,
-  available_artifacts: string[]?
+  available_artifacts: string[]?,
+  symbol_enums: string?,
+  symbol_call_paths: string?,
+  symbol_branch_parameters: string?,
+  include_data_flows: bool?
 ) -> DesignFileOutput {
   client ConfigDriven
   prompt #"
@@ -37,6 +41,21 @@ function ArchivistGenerateDesignFile(
     {% endfor %}
     {% endif %}
 
+    {% if symbol_enums %}
+    --- ENUMS AND CONSTANTS DEFINED IN THIS FILE ---
+    {{ symbol_enums }}
+    {% endif %}
+
+    {% if symbol_call_paths %}
+    --- CALL PATHS INTO AND OUT OF THIS FILE ---
+    {{ symbol_call_paths }}
+    {% endif %}
+
+    {% if symbol_branch_parameters %}
+    --- BRANCH PARAMETERS (functions whose parameters drive branching) ---
+    {{ symbol_branch_parameters }}
+    {% endif %}
+
     INSTRUCTIONS:
     1. **summary**: Write a single sentence describing *why* this file exists
        and its role in the project — not just *what* it contains.
@@ -61,6 +80,22 @@ function ArchivistGenerateDesignFile(
        reader should understand using short noun phrases.
     7. **tags**: Provide 3-7 short lowercase labels categorizing the file
        (e.g. "config", "parser", "pydantic-model", "cli", "async").
+    8. **enum_notes**: For every enum or named constant listed in the "ENUMS
+       AND CONSTANTS" section, produce an entry with its role in the system.
+       Keep role descriptions to one clause. If no enums are listed, leave
+       enum_notes null.
+    9. **call_path_notes**: If a "CALL PATHS" section is provided, write 1-3
+       narrative entries summarising the most important call paths. Focus on
+       the flow of *behaviour*, not the mechanical call sequence. Leave null
+       if no call paths are provided.
+    10. **data_flow_notes**: If `include_data_flows` is true and a "BRANCH
+       PARAMETERS" section is provided, write one DataFlowNote per entry in
+       that section. Use the function name as `location`, the parameter name
+       as `parameter`, and write one sentence describing how the parameter
+       value affects the function's behaviour as `effect`. Do NOT invent
+       parameters not listed in the BRANCH PARAMETERS section. If
+       `include_data_flows` is false or null, or no BRANCH PARAMETERS section
+       is present, leave data_flow_notes null.
 
     When updating an existing design file, preserve any human/agent-added
     context that remains accurate. Prefer updating over replacing.

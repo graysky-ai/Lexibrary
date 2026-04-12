@@ -8,11 +8,13 @@ composed from multiple blocks (header, file:line line, and one table per
 edge category) with blank-line separators between results.
 
 Phase 3 (``symbol-graph-3``) extends :func:`render_trace` with class
-hierarchy sections (``Base classes``, ``Subclasses and instantiation
-sites``, and a trailing ``Unresolved bases`` line). Phase 4
-(``symbol-graph-4``) adds a trailing ``### Members`` block that renders
-enum variants and constant values. All extensions plug in after the
-existing call sections so the public contract stays stable.
+hierarchy sections (``Class relationships``, ``Subclasses,
+instantiation, and composition``, and trailing ``Unresolved bases`` /
+``Unresolved compositions`` lines). Phase 4 (``symbol-graph-4``) adds a
+trailing ``### Members`` block that renders enum variants and constant
+values. Phase 6 (``symbol-graph-6``) renames the headings and adds
+composition edge rendering. All extensions plug in after the existing
+call sections so the public contract stays stable.
 """
 
 from __future__ import annotations
@@ -36,15 +38,20 @@ def render_trace(query: str, results: list[TraceResult]) -> None:
     - ``### Unresolved callees (external or dynamic)`` — a Markdown
       table of outbound unresolved edges, omitted when
       ``unresolved_callees`` is empty.
-    - ``### Base classes`` — a Markdown table of resolved outbound
-      class edges (the symbol's base classes), omitted when ``parents``
-      is empty.
-    - ``### Subclasses and instantiation sites`` — a Markdown table of
-      resolved inbound class edges (subclasses plus instantiation sites),
-      omitted when ``children`` is empty.
-    - ``Unresolved bases: ...`` — a trailing line listing every
-      unresolved outbound class edge target (e.g. ``BaseModel``,
-      ``Enum``), omitted when ``unresolved_parents`` is empty.
+    - ``### Class relationships`` — a Markdown table of resolved
+      outbound class edges (base classes and compositions) with a
+      ``Relationship`` column showing the edge type, omitted when
+      ``parents`` is empty.
+    - ``### Subclasses, instantiation, and composition`` — a Markdown
+      table of resolved inbound class edges (subclasses, instantiation
+      sites, and composition targets), omitted when ``children`` is
+      empty.
+    - ``Unresolved bases: ...`` — a trailing line listing unresolved
+      outbound ``inherits`` edges (e.g. ``BaseModel``, ``Enum``),
+      omitted when no unresolved inherits edges exist.
+    - ``Unresolved compositions: ...`` — a trailing line listing
+      unresolved outbound ``composes`` edges, omitted when no
+      unresolved composes edges exist.
     - ``### Members`` — a Markdown table of enum variants or constant
       values keyed by ``(name, value, ordinal)``, omitted when
       ``members`` is empty. The ``ordinal`` column is blank when the
@@ -102,19 +109,20 @@ def render_trace(query: str, results: list[TraceResult]) -> None:
 
         if result.parents:
             info("")
-            info("### Base classes")
+            info("### Class relationships")
             parent_rows = [
                 [
+                    p.edge_type,
                     p.target.qualified_name or p.target.name,
                     f"{p.target.file_path}:{p.line if p.line is not None else p.target.line_start}",
                 ]
                 for p in result.parents
             ]
-            info(markdown_table(["Base", "Location"], parent_rows))
+            info(markdown_table(["Relationship", "Target", "Location"], parent_rows))
 
         if result.children:
             info("")
-            info("### Subclasses and instantiation sites")
+            info("### Subclasses, instantiation, and composition")
             child_rows = [
                 [
                     c.edge_type,
@@ -126,8 +134,18 @@ def render_trace(query: str, results: list[TraceResult]) -> None:
             info(markdown_table(["Type", "Source", "Location"], child_rows))
 
         if result.unresolved_parents:
-            info("")
-            info("Unresolved bases: " + ", ".join(u.target_name for u in result.unresolved_parents))
+            unresolved_bases = [
+                u.target_name for u in result.unresolved_parents if u.edge_type == "inherits"
+            ]
+            unresolved_compositions = [
+                u.target_name for u in result.unresolved_parents if u.edge_type == "composes"
+            ]
+            if unresolved_bases:
+                info("")
+                info("Unresolved bases: " + ", ".join(unresolved_bases))
+            if unresolved_compositions:
+                info("")
+                info("Unresolved compositions: " + ", ".join(unresolved_compositions))
 
         if result.members:
             info("")

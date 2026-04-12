@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lexibrary.artifacts.convention import ConventionFile
+    from lexibrary.artifacts.design_file import CallPathNote, DataFlowNote, EnumNote
     from lexibrary.artifacts.playbook import PlaybookFile
 
 _logger = logging.getLogger(__name__)
@@ -201,6 +202,42 @@ class LookupResult:
     ``class_edges_unresolved`` tables when ``config.symbols.enabled`` is
     True and ``symbols.db`` exists. Empty when symbols are disabled, the
     graph is missing, or the file declares no classes.
+    """
+
+    enum_notes: list[EnumNote] = field(default_factory=list)
+    """Enum/constant notes parsed from the design file's ``## Enums & constants``
+    section.
+
+    Populated from :class:`lexibrary.artifacts.design_file.DesignFile.enum_notes`
+    when the design file exists and contains the enrichment section.  Empty
+    when the design file is missing, the section is absent, or parsing fails.
+    Surfaced by :func:`lexibrary.services.lookup_render.render_enum_notes` in
+    full-mode lookup output.
+    """
+
+    call_path_notes: list[CallPathNote] = field(default_factory=list)
+    """Narrative call-path notes parsed from the design file's ``## Call paths``
+    section.
+
+    Populated from
+    :class:`lexibrary.artifacts.design_file.DesignFile.call_path_notes` when
+    the design file exists and contains the enrichment section.  Empty when
+    the design file is missing, the section is absent, or parsing fails.
+    Surfaced by
+    :func:`lexibrary.services.lookup_render.render_call_path_notes` in
+    full-mode lookup output.
+    """
+
+    data_flow_notes: list[DataFlowNote] = field(default_factory=list)
+    """Data-flow notes parsed from the design file's ``## Data flows`` section.
+
+    Populated from
+    :class:`lexibrary.artifacts.design_file.DesignFile.data_flow_notes` when
+    the design file exists and contains the enrichment section.  Empty when
+    the design file is missing, the section is absent, or parsing fails.
+    Surfaced by
+    :func:`lexibrary.services.lookup_render.render_data_flow_notes` in
+    full-mode lookup output.
     """
 
 
@@ -400,6 +437,8 @@ def build_file_lookup(
     if not isinstance(config, LexibraryConfig):
         return None
 
+    from lexibrary.artifacts.design_file import DesignFile  # noqa: PLC0415
+
     rel_target = str(target.relative_to(project_root))
 
     # Compute mirror path and check design file
@@ -408,6 +447,13 @@ def build_file_lookup(
     description: str | None = None
     is_stale = False
     design_content: str | None = None
+    # Parsed design file is cached so the concept-population branch and the
+    # enrichment-section population both reuse a single parse.  Stays ``None``
+    # when the design file is missing or unparseable.
+    parsed_design_file: DesignFile | None = None
+    enum_notes_list: list[EnumNote] = []
+    call_path_notes_list: list[CallPathNote] = []
+    data_flow_notes_list: list[DataFlowNote] = []
 
     if design_path.exists():
         # Check staleness
@@ -424,6 +470,16 @@ def build_file_lookup(
         fm = parse_design_file_frontmatter(design_path)
         if fm is not None:
             description = fm.description
+
+        # Parse the full design file once so the symbol-graph enrichment
+        # sections (``## Enums & constants`` and ``## Call paths``) can be
+        # surfaced by the renderer.  The concept-population branch reuses
+        # this parse for wikilink fallback.
+        parsed_design_file = parse_design_file(design_path)
+        if parsed_design_file is not None:
+            enum_notes_list = list(parsed_design_file.enum_notes)
+            call_path_notes_list = list(parsed_design_file.call_path_notes)
+            data_flow_notes_list = list(parsed_design_file.data_flow_notes)
 
         if full:
             design_content = design_path.read_text(encoding="utf-8")
@@ -603,10 +659,8 @@ def build_file_lookup(
                 linkgraph_available = False
 
             wikilink_names: list[str] = []
-            if design_path.exists():
-                design_file = parse_design_file(design_path)
-                if design_file is not None:
-                    wikilink_names = design_file.wikilinks
+            if parsed_design_file is not None:
+                wikilink_names = parsed_design_file.wikilinks
 
             for name in wikilink_names:
                 concept_file = concept_index.find(name)
@@ -656,6 +710,9 @@ def build_file_lookup(
         key_symbols=key_symbols,
         key_symbols_total=key_symbols_total,
         classes=classes_list,
+        enum_notes=enum_notes_list,
+        call_path_notes=call_path_notes_list,
+        data_flow_notes=data_flow_notes_list,
     )
 
 

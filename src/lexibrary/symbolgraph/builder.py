@@ -26,7 +26,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lexibrary.config.schema import LexibraryConfig
-from lexibrary.symbolgraph.resolver_base import FallbackResolver
+from lexibrary.symbolgraph.resolver_base import FallbackResolver, SymbolResolver
+from lexibrary.symbolgraph.resolver_js import JsTsResolver
 from lexibrary.symbolgraph.resolver_python import PythonResolver
 from lexibrary.symbolgraph.schema import (
     SCHEMA_VERSION,
@@ -49,6 +50,14 @@ _PY_EXTENSIONS: frozenset[str] = frozenset({".py", ".pyi"})
 _TS_EXTENSIONS: frozenset[str] = frozenset({".ts", ".tsx"})
 _JS_EXTENSIONS: frozenset[str] = frozenset({".js", ".jsx", ".mjs", ".cjs"})
 
+INCREMENTAL_THRESHOLD: float = 0.30
+"""Maximum ratio of ``len(changed_paths) / total_files`` for which the builder
+uses per-file incremental refresh instead of a full rebuild. When the ratio
+exceeds this threshold the full-rebuild path is faster because the SQLite
+single-transaction approach avoids per-file connection churn. The default
+0.30 means that changes touching more than 30 % of the project's source files
+trigger a full rebuild automatically."""
+
 
 @dataclass
 class SymbolBuildResult:
@@ -69,6 +78,7 @@ class SymbolBuildResult:
     class_edge_count: int = 0
     class_edge_unresolved_count: int = 0
     member_count: int = 0
+    branch_parameter_count: int = 0
     duration_ms: int = 0
     errors: list[str] = field(default_factory=list)
     build_type: str = "full"  # 'full' | 'incremental'
@@ -107,9 +117,7 @@ def build_symbol_graph(
         later phases wire those extractors in.
     """
     started = time.monotonic()
-    result = SymbolBuildResult(
-        build_type="full" if changed_paths is None else "incremental",
-    )
+    result = SymbolBuildResult(build_type="full")
 
     if not config.symbols.enabled:
         logger.debug("symbols.enabled=False — skipping symbol graph build")
@@ -131,14 +139,39 @@ def build_symbol_graph(
     # computation fails on any unresolved project root.
     project_root = project_root.resolve()
 
+    # Incremental path: when the caller provides a bounded set of changed
+    # files and the ratio stays under :data:`INCREMENTAL_THRESHOLD`, delegate
+    # to :func:`_incremental_rebuild` which calls :func:`refresh_file` per
+    # file instead of wiping and recreating the entire DB.
+    if changed_paths is not None:
+        source_files = discover_source_files(project_root, config)
+        total = len(source_files)
+        # Use the incremental path when:
+        # - there are no source files at all (nothing to rebuild), OR
+        # - the changed set is within the threshold fraction of total files
+        if total == 0 or len(changed_paths) <= INCREMENTAL_THRESHOLD * total:
+            inc_result = _incremental_rebuild(
+                project_root,
+                config,
+                changed_paths,
+            )
+            inc_result.duration_ms = int((time.monotonic() - started) * 1000)
+            return inc_result
+        # Above the threshold — fall through to the full rebuild below.
+        logger.debug(
+            "changed_paths (%d) exceeds %.0f%% of total files (%d) — full rebuild",
+            len(changed_paths),
+            INCREMENTAL_THRESHOLD * 100,
+            total,
+        )
+
     db_path = symbols_db_path(project_root)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     try:
         set_pragmas(conn)
-        # Force rebuild: Phase 2 always wipes and recreates so cross-file
-        # resolution sees a consistent snapshot. Incremental refresh lands
-        # in Phase 6.
+        # Force rebuild: wipe and recreate so cross-file resolution sees a
+        # consistent snapshot.
         ensure_schema(conn, force=True)
 
         source_files = discover_source_files(project_root, config)
@@ -180,7 +213,7 @@ def build_symbol_graph(
                 file_id_map[rel_path] = file_id
 
                 for definition in extract.definitions:
-                    conn.execute(
+                    sym_cursor = conn.execute(
                         "INSERT INTO symbols "
                         "(file_id, name, qualified_name, symbol_type, "
                         " line_start, line_end, visibility, parent_class) "
@@ -197,6 +230,14 @@ def build_symbol_graph(
                         ),
                     )
 
+                    # Populate ``symbol_branch_parameters`` for functions
+                    # and methods that have parameters appearing in branch
+                    # conditions within their body.
+                    if definition.branch_parameters and sym_cursor.lastrowid:
+                        result.branch_parameter_count += _insert_branch_parameters(
+                            conn, sym_cursor.lastrowid, definition.branch_parameters
+                        )
+
                 # Populate ``symbol_members`` for enums and constants. The
                 # parser emits ``enum`` symbols directly (Decision D6), so
                 # the matching parent row is already in place from the
@@ -210,24 +251,38 @@ def build_symbol_graph(
 
             # ---- Pass 2: call resolution ---------------------------------
             python_resolver = PythonResolver(conn, project_root, config)
+            js_resolver = JsTsResolver(conn, project_root, config)
             fallback_resolver = FallbackResolver(conn)
+
+            js_ts_suffixes = _TS_EXTENSIONS | _JS_EXTENSIONS
 
             for src, extract in extracts:
                 rel_path = str(src.relative_to(project_root))
                 file_id = file_id_map[rel_path]
                 suffix = src.suffix.lower()
-                is_python = suffix in _PY_EXTENSIONS
-                resolver = python_resolver if is_python else fallback_resolver
+                resolver: SymbolResolver
+                if suffix in _PY_EXTENSIONS:
+                    resolver = python_resolver
+                elif suffix in js_ts_suffixes:
+                    resolver = js_resolver
+                else:
+                    resolver = fallback_resolver
 
                 # Prime the Python resolver's import cache with the already
                 # parsed tree so it never re-parses the file.
-                if is_python and src in tree_cache:
+                if suffix in _PY_EXTENSIONS and src in tree_cache:
                     tree, source_bytes = tree_cache[src]
                     python_resolver._imports_for(  # noqa: SLF001 — intentional priming
                         rel_path,
                         tree=tree,
                         source_bytes=source_bytes,
                     )
+
+                # Prime the JS/TS resolver's import cache from the tree
+                # cache so it can resolve cross-file calls.
+                if suffix in js_ts_suffixes and src in tree_cache:
+                    _, source_bytes = tree_cache[src]
+                    js_resolver.prime_imports(rel_path, source_bytes)
 
                 for call in extract.calls:
                     caller_id = _lookup_symbol_id(conn, file_id, call.caller_name)
@@ -260,26 +315,31 @@ def build_symbol_graph(
             # parsers in pass 1 into concrete ``class_edges`` rows. Runs
             # after pass 2 so every class definition is already in the
             # ``symbols`` table before we try to resolve inheritance /
-            # instantiation targets against it. Uses the same resolver
-            # dispatch as pass 2: Python files use
-            # :class:`PythonResolver`, everything else uses
-            # :class:`FallbackResolver` (which returns ``None`` for every
-            # class-name lookup until Phase 6 ships a real TS/JS class
-            # resolver). Target-id sanity check for ``instantiates``
-            # edges filters out PascalCase functions that would otherwise
-            # look like classes to ``resolve_class_name``.
+            # instantiation targets against it. Uses the same three-way
+            # resolver dispatch as pass 2: Python files use
+            # :class:`PythonResolver`, JS/TS files use
+            # :class:`JsTsResolver`, everything else uses
+            # :class:`FallbackResolver`. Target-id sanity check for
+            # ``instantiates`` edges filters out PascalCase functions
+            # that would otherwise look like classes to
+            # ``resolve_class_name``.
             for src, extract in extracts:
                 rel_path = str(src.relative_to(project_root))
                 file_id = file_id_map[rel_path]
                 suffix = src.suffix.lower()
-                is_python = suffix in _PY_EXTENSIONS
-                resolver = python_resolver if is_python else fallback_resolver
+                resolver3: SymbolResolver
+                if suffix in _PY_EXTENSIONS:
+                    resolver3 = python_resolver
+                elif suffix in js_ts_suffixes:
+                    resolver3 = js_resolver
+                else:
+                    resolver3 = fallback_resolver
 
                 for edge in extract.class_edges:
                     source_id = _lookup_symbol_id(conn, file_id, edge.source_name)
                     if source_id is None:
                         continue
-                    target_id = resolver.resolve_class_name(
+                    target_id = resolver3.resolve_class_name(
                         edge.target_name,
                         caller_file_id=file_id,
                         caller_file_path=rel_path,
@@ -307,6 +367,52 @@ def build_symbol_graph(
                         (source_id, target_id, edge.edge_type, edge.line, None),
                     )
                     result.class_edge_count += 1
+
+            # ---- Pass 3b: composition edge resolution --------------------
+            # Resolves :class:`CompositionSite` entries emitted by the
+            # parsers in pass 1 into ``class_edges`` rows with
+            # ``edge_type='composes'``. Structurally identical to the
+            # class-edge pass above but iterates ``extract.compositions``
+            # instead of ``extract.class_edges``. Uses
+            # ``resolver.resolve_class_name`` because the target of a
+            # composition is a class.
+            for src, extract in extracts:
+                rel_path = str(src.relative_to(project_root))
+                file_id = file_id_map[rel_path]
+                suffix = src.suffix.lower()
+                comp_resolver: SymbolResolver
+                if suffix in _PY_EXTENSIONS:
+                    comp_resolver = python_resolver
+                elif suffix in js_ts_suffixes:
+                    comp_resolver = js_resolver
+                else:
+                    comp_resolver = fallback_resolver
+
+                for site in extract.compositions:
+                    source_id = _lookup_symbol_id(conn, file_id, site.source_class)
+                    if source_id is None:
+                        continue
+                    target_id = comp_resolver.resolve_class_name(
+                        site.target_name,
+                        caller_file_id=file_id,
+                        caller_file_path=rel_path,
+                    )
+                    if target_id is not None:
+                        conn.execute(
+                            "INSERT OR IGNORE INTO class_edges "
+                            "(source_id, target_id, edge_type, line, context) "
+                            "VALUES (?, ?, ?, ?, ?)",
+                            (source_id, target_id, "composes", site.line, None),
+                        )
+                        result.class_edge_count += 1
+                    else:
+                        conn.execute(
+                            "INSERT OR IGNORE INTO class_edges_unresolved "
+                            "(source_id, target_name, edge_type, line) "
+                            "VALUES (?, ?, ?, ?)",
+                            (source_id, site.target_name, "composes", site.line),
+                        )
+                        result.class_edge_unresolved_count += 1
 
             # ---- Pass 4: transitive enum promotion -----------------------
             # Runs after Phase 3's class edges are resolved so the
@@ -344,6 +450,54 @@ def build_symbol_graph(
         conn.close()
 
     result.duration_ms = int((time.monotonic() - started) * 1000)
+    return result
+
+
+def _incremental_rebuild(
+    project_root: Path,
+    config: LexibraryConfig,
+    changed_paths: list[Path],
+) -> SymbolBuildResult:
+    """Per-file incremental rebuild for a bounded set of changed files.
+
+    Delegates to :func:`refresh_file` for each path in *changed_paths*,
+    aggregating the per-file counters into a single
+    :class:`SymbolBuildResult` with ``build_type="incremental"``.
+
+    This avoids the full wipe-and-rebuild path when only a small fraction
+    of the project was modified. The caller
+    (:func:`build_symbol_graph`) gates entry here using
+    :data:`INCREMENTAL_THRESHOLD`.
+
+    Parameters
+    ----------
+    project_root:
+        Resolved project root containing ``.lexibrary/symbols.db``.
+    config:
+        The loaded :class:`LexibraryConfig`.
+    changed_paths:
+        Absolute paths to the files that changed since the last build.
+
+    Returns
+    -------
+    SymbolBuildResult
+        Aggregated counters across all refreshed files.
+        ``build_type`` is always ``"incremental"``.
+    """
+    result = SymbolBuildResult(build_type="incremental")
+
+    for path in changed_paths:
+        file_result = refresh_file(project_root, config, path)
+        result.file_count += file_result.file_count
+        result.symbol_count += file_result.symbol_count
+        result.call_count += file_result.call_count
+        result.unresolved_call_count += file_result.unresolved_call_count
+        result.class_edge_count += file_result.class_edge_count
+        result.class_edge_unresolved_count += file_result.class_edge_unresolved_count
+        result.member_count += file_result.member_count
+        result.branch_parameter_count += file_result.branch_parameter_count
+        result.errors.extend(file_result.errors)
+
     return result
 
 
@@ -534,7 +688,7 @@ def refresh_file(
                 return result
 
             for definition in extract.definitions:
-                conn.execute(
+                sym_cursor = conn.execute(
                     "INSERT INTO symbols "
                     "(file_id, name, qualified_name, symbol_type, "
                     " line_start, line_end, visibility, parent_class) "
@@ -551,6 +705,13 @@ def refresh_file(
                     ),
                 )
 
+                # Populate ``symbol_branch_parameters`` for functions
+                # and methods in the refreshed file.
+                if definition.branch_parameters and sym_cursor.lastrowid:
+                    result.branch_parameter_count += _insert_branch_parameters(
+                        conn, sym_cursor.lastrowid, definition.branch_parameters
+                    )
+
             # Populate ``symbol_members`` for enums and constants in the
             # refreshed file. The old symbol rows were already deleted at
             # Step 2 above, and the CASCADE on ``symbol_members.symbol_id``
@@ -563,22 +724,33 @@ def refresh_file(
             result.symbol_count += len(extract.definitions)
 
             # Step 4 — resolve calls in the new extract using the same
-            # two-resolver dispatch as pass 2 of :func:`build_symbol_graph`.
+            # three-resolver dispatch as pass 2 of :func:`build_symbol_graph`.
             python_resolver = PythonResolver(conn, project_root, config)
+            js_resolver = JsTsResolver(conn, project_root, config)
             fallback_resolver = FallbackResolver(conn)
 
+            js_ts_suffixes = _TS_EXTENSIONS | _JS_EXTENSIONS
             suffix = file_path.suffix.lower()
-            is_python = suffix in _PY_EXTENSIONS
-            resolver = python_resolver if is_python else fallback_resolver
+            resolver: SymbolResolver
+            if suffix in _PY_EXTENSIONS:
+                resolver = python_resolver
+            elif suffix in js_ts_suffixes:
+                resolver = js_resolver
+            else:
+                resolver = fallback_resolver
 
             # Prime the Python resolver's import cache with the already
             # parsed tree so it never re-parses the file.
-            if is_python:
+            if suffix in _PY_EXTENSIONS:
                 python_resolver._imports_for(  # noqa: SLF001 — intentional priming
                     rel_path,
                     tree=tree,
                     source_bytes=source_bytes,
                 )
+
+            # Prime the JS/TS resolver's import cache from the source.
+            if suffix in js_ts_suffixes:
+                js_resolver.prime_imports(rel_path, source_bytes)
 
             for call in extract.calls:
                 caller_id = _lookup_symbol_id(conn, new_file_id, call.caller_name)
@@ -792,6 +964,31 @@ def _lookup_symbol_id(
     if row is None:
         return None
     return int(row[0])
+
+
+def _insert_branch_parameters(
+    conn: sqlite3.Connection,
+    symbol_id: int,
+    branch_parameters: list[str],
+) -> int:
+    """Insert ``symbol_branch_parameters`` rows for a function/method symbol.
+
+    Each parameter name from ``branch_parameters`` is inserted with
+    ``INSERT OR IGNORE`` so duplicate (symbol_id, parameter_name) pairs
+    are silently skipped.
+
+    Returns the number of rows inserted so the caller can update
+    ``SymbolBuildResult.branch_parameter_count``.
+    """
+    inserted = 0
+    for param_name in branch_parameters:
+        conn.execute(
+            "INSERT OR IGNORE INTO symbol_branch_parameters "
+            "(symbol_id, parameter_name) VALUES (?, ?)",
+            (symbol_id, param_name),
+        )
+        inserted += 1
+    return inserted
 
 
 def _insert_enum_members(

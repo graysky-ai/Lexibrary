@@ -23,3 +23,10 @@ comments:
     entirely when TraceResult.members is empty so non-enum, non-constant traces are
     unaffected.'
   date: '2026-04-11T20:14:01.744707Z'
+- body: 'Phase 6 composition rendering: renamed ''### Base classes'' to ''### Class
+    relationships'' with a new Relationship column showing edge_type (inherits/composes).
+    Renamed ''### Subclasses and instantiation sites'' to ''### Subclasses, instantiation,
+    and composition''. Split unresolved parents rendering into separate ''Unresolved
+    bases'' and ''Unresolved compositions'' lines filtered by edge_type. The children
+    table was already forward-compatible since it had a Type column showing edge_type.'
+  date: '2026-04-12T03:38:38.879282Z'

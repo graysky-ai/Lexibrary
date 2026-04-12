@@ -44,6 +44,7 @@ from lexibrary.ast_parser.models import (
     CallSite,
     ClassEdgeSite,
     ClassSig,
+    CompositionSite,
     ConstantSig,
     ConstantValue,
     EnumMemberSig,
@@ -112,6 +113,166 @@ _PY_LITERAL_SIMPLE_TYPES = frozenset(
         "none",
     }
 )
+
+# Python builtin type names that should be skipped during composition
+# extraction because they represent primitives, not user-defined classes.
+_PY_BUILTINS = frozenset(
+    {
+        "int",
+        "str",
+        "bool",
+        "float",
+        "list",
+        "dict",
+        "tuple",
+        "set",
+        "bytes",
+        "None",
+    }
+)
+
+# Generic wrapper type names whose inner type arguments are the real
+# composition targets.
+_PY_GENERIC_WRAPPERS = frozenset(
+    {
+        "list",
+        "List",
+        "dict",
+        "Dict",
+        "Optional",
+        "Union",
+        "set",
+        "Set",
+        "frozenset",
+        "FrozenSet",
+        "Sequence",
+        "Iterable",
+        "Iterator",
+        "Collection",
+        "Mapping",
+        "MutableMapping",
+        "MutableSequence",
+        "MutableSet",
+        "Deque",
+        "DefaultDict",
+        "OrderedDict",
+        "Counter",
+        "ChainMap",
+        "Tuple",
+    }
+)
+
+
+def _is_generic_param(name: str) -> bool:
+    """Return ``True`` if ``name`` is a single uppercase letter (generic type parameter)."""
+    return len(name) == 1 and name.isupper()
+
+
+def _strip_annotation_to_target(annotation_text: str) -> str | None:
+    """Strip a Python type annotation down to its composition target name.
+
+    Generic wrappers are unwrapped: ``list[X]`` becomes ``X``,
+    ``dict[str, Engine]`` becomes ``Engine`` (last non-builtin type arg),
+    ``Optional[X]`` becomes ``X``, ``Union[X, None]`` becomes ``X``,
+    and ``X | None`` becomes ``X``.
+
+    Returns ``None`` when the result is a builtin type, a single-letter
+    generic parameter, or the annotation cannot be meaningfully reduced.
+    """
+    text = annotation_text.strip()
+    if not text:
+        return None
+
+    # Handle ``X | None`` union syntax first (PEP 604).
+    if "|" in text:
+        parts = [p.strip() for p in text.split("|")]
+        # Filter out None and builtins.
+        candidates = [p for p in parts if p and p not in _PY_BUILTINS and not _is_generic_param(p)]
+        if len(candidates) == 1:
+            # Recurse in case the remaining candidate is itself a generic.
+            return _strip_annotation_to_target(candidates[0])
+        # Multiple non-builtin candidates: ambiguous, skip.
+        return None
+
+    # Handle subscript wrappers: ``Wrapper[...]``.
+    bracket_start = text.find("[")
+    if bracket_start != -1 and text.endswith("]"):
+        outer = text[:bracket_start].strip()
+        inner = text[bracket_start + 1 : -1].strip()
+
+        if outer in _PY_GENERIC_WRAPPERS or outer.lower() in {"list", "dict", "set", "tuple"}:
+            # Split the inner part on commas, respecting nested brackets.
+            args = _split_type_args(inner)
+
+            if outer in ("Optional",):
+                # Optional[X] -> X
+                if args:
+                    return _strip_annotation_to_target(args[0])
+                return None
+
+            if outer in ("Union",):
+                # Union[X, None] -> X
+                non_none = [
+                    a
+                    for a in args
+                    if a.strip() not in _PY_BUILTINS and not _is_generic_param(a.strip())
+                ]
+                if len(non_none) == 1:
+                    return _strip_annotation_to_target(non_none[0])
+                return None
+
+            if outer.lower() in ("dict", "mapping", "mutablemapping", "defaultdict", "ordereddict"):
+                # dict[K, V] -> last non-builtin type arg
+                for arg in reversed(args):
+                    result = _strip_annotation_to_target(arg)
+                    if result is not None:
+                        return result
+                return None
+
+            # list[X], set[X], etc. -> X
+            if args:
+                return _strip_annotation_to_target(args[0])
+            return None
+
+        # Non-wrapper subscript, e.g. ``MyClass[T]`` -> ``MyClass``
+        if outer and outer not in _PY_BUILTINS and not _is_generic_param(outer):
+            return outer
+        return None
+
+    # Plain identifier.
+    if text in _PY_BUILTINS or _is_generic_param(text):
+        return None
+    # Skip dotted module references (e.g. ``os.PathLike``).
+    if "." in text:
+        return None
+    return text
+
+
+def _split_type_args(inner: str) -> list[str]:
+    """Split comma-separated type arguments, respecting nested brackets.
+
+    ``"str, Engine"`` -> ``["str", "Engine"]``
+    ``"dict[str, int], None"`` -> ``["dict[str, int]", "None"]``
+    """
+    args: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for char in inner:
+        if char in ("[", "("):
+            depth += 1
+            current.append(char)
+        elif char in ("]", ")"):
+            depth -= 1
+            current.append(char)
+        elif char == "," and depth == 0:
+            args.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+    remaining = "".join(current).strip()
+    if remaining:
+        args.append(remaining)
+    return args
 
 
 def parse_python_tree(file_path: Path) -> tuple[Tree, bytes] | None:
@@ -332,6 +493,7 @@ def extract_symbols_from_tree(
 
     calls: list[CallSite] = _collect_all_calls(def_nodes)
     class_edges: list[ClassEdgeSite] = _collect_all_class_edges(def_nodes)
+    compositions: list[CompositionSite] = _collect_all_compositions(def_nodes)
 
     return SymbolExtract(
         file_path=str(file_path),
@@ -339,6 +501,7 @@ def extract_symbols_from_tree(
         definitions=definitions,
         calls=calls,
         class_edges=class_edges,
+        compositions=compositions,
         enums=enums,
         constants=constants,
     )
@@ -911,6 +1074,9 @@ def _emit_definition(
     visibility = _visibility_for(name, force_private=force_private)
     qualified_name = f"{qualified_prefix}.{name}" if qualified_prefix else name
     line_start, line_end = _line_range(node)
+    body_node = _child_by_field(node, "body")
+    branch_params = _extract_branch_parameters_python(node, body_node)
+
     fn_def = SymbolDefinition(
         name=name,
         qualified_name=qualified_name,
@@ -919,11 +1085,11 @@ def _emit_definition(
         line_end=line_end,
         visibility=visibility,
         parent_class=parent_class,
+        branch_parameters=branch_params,
     )
     definitions.append(fn_def)
     def_nodes.append((node, fn_def))
 
-    body_node = _child_by_field(node, "body")
     if body_node is None:
         return
 
@@ -934,6 +1100,281 @@ def _emit_definition(
         definitions,
         def_nodes,
     )
+
+
+# -- Branch parameter extraction (Python) --
+# These helpers identify which function parameters drive branching decisions
+# (if/while/match/ternary conditions).
+
+# Python node types whose condition subtree may contain branch-driving identifiers.
+_PY_BRANCH_NODE_TYPES = frozenset(
+    {"if_statement", "while_statement", "match_statement", "conditional_expression"}
+)
+
+# The ``self`` and ``cls`` implicit parameters are never counted as branch
+# parameters — they are receiver references, not caller-controlled inputs.
+_PY_SELF_CLS = frozenset({"self", "cls"})
+
+# Types pruned when walking a body for non-assert identifiers.
+_PY_NON_ASSERT_PRUNE_TYPES = frozenset(
+    {"function_definition", "class_definition", "assert_statement"},
+)
+
+# Node types that define a nested scope — their bodies are pruned by the
+# scope-pruned walker.
+_PY_NESTED_SCOPE_TYPES = frozenset({"function_definition", "class_definition"})
+
+
+def _extract_branch_parameters_python(
+    func_node: object,
+    body_node: object | None,
+) -> list[str]:
+    """Return sorted parameter names appearing in branch conditions.
+
+    Walks the function's parameter list to build a set of parameter names,
+    then walks the body (excluding nested scope bodies) to find identifiers
+    in branch conditions. Returns the intersection, sorted, after excluding
+    ``self``/``cls`` and parameters that appear *only* in ``assert``
+    statements.
+
+    A parameter referenced via attribute access (e.g. ``config.verbose``)
+    records the root name (``config``).
+    """
+    if body_node is None:
+        return []
+
+    param_names = _function_param_names_python(func_node)
+    if not param_names:
+        return []
+
+    # Collect identifiers from branch conditions (scope-pruned).
+    branch_ids = _collect_branch_identifiers_python(body_node)
+    # Collect identifiers that appear ONLY in assert statements.
+    assert_only_ids = _collect_assert_only_identifiers_python(body_node, param_names)
+
+    # Intersect with parameter names, excluding self/cls and assert-only params.
+    result = sorted(
+        (branch_ids & param_names) - _PY_SELF_CLS - assert_only_ids,
+    )
+    return result
+
+
+def _function_param_names_python(func_node: object) -> set[str]:
+    """Extract raw parameter names from a Python ``function_definition``.
+
+    Returns a set of bare names (no ``*``/``**`` prefixes, no type
+    annotations). ``self`` and ``cls`` are included in the returned set —
+    the caller filters them out when appropriate.
+    """
+    params_node = _child_by_field(func_node, "parameters")
+    if params_node is None:
+        return set()
+
+    names: set[str] = set()
+    for child in _named_children(params_node):
+        child_type = getattr(child, "type", "")
+        if child_type == "identifier":
+            text = _node_text(child)
+            if text:
+                names.add(text)
+        elif child_type in (
+            "typed_parameter",
+            "typed_default_parameter",
+            "default_parameter",
+        ):
+            # The first identifier child is the parameter name.
+            for sub in _children(child):
+                if getattr(sub, "type", "") == "identifier":
+                    text = _node_text(sub)
+                    if text:
+                        names.add(text)
+                    break
+        elif child_type in ("list_splat_pattern", "dictionary_splat_pattern"):
+            # *args / **kwargs — extract the identifier inside.
+            for sub in _children(child):
+                if getattr(sub, "type", "") == "identifier":
+                    text = _node_text(sub)
+                    if text:
+                        names.add(text)
+                    break
+    return names
+
+
+def _collect_branch_identifiers_python(body_node: object) -> set[str]:
+    """Collect all identifier root-names from branch conditions in a function body.
+
+    Uses the scope-pruned walker to avoid descending into nested
+    function/class bodies. For each branch node found, extracts
+    identifiers from its condition subtree. Attribute-access chains like
+    ``config.verbose`` record only the root name (``config``).
+    """
+    nodes = _walk_body_excluding_nested_scopes(body_node)
+    ids: set[str] = set()
+    for node in nodes:
+        node_type = getattr(node, "type", "")
+        if node_type not in _PY_BRANCH_NODE_TYPES:
+            continue
+
+        # Locate the condition/subject subtree.
+        condition_node: object | None = None
+        if node_type in ("if_statement", "while_statement"):
+            condition_node = _child_by_field(node, "condition")
+        elif node_type == "match_statement":
+            # The subject is the first named child after ``match`` keyword.
+            for child in _named_children(node):
+                child_t = getattr(child, "type", "")
+                if child_t not in ("match", "match_body", "case_clause", "block"):
+                    condition_node = child
+                    break
+        elif node_type == "conditional_expression":
+            # Ternary: ``a if cond else b`` — the condition is the middle child.
+            # tree-sitter-python names it via positional children, not a field.
+            # Structure: <consequence> <if> <condition> <else> <alternative>
+            named = _named_children(node)
+            if len(named) >= 2:
+                condition_node = named[1]
+
+        if condition_node is not None:
+            _collect_root_identifiers(condition_node, ids)
+    return ids
+
+
+def _collect_root_identifiers(node: object, out: set[str]) -> None:
+    """Recursively collect root identifier names from an expression subtree.
+
+    For ``attribute`` / ``member_expression`` chains (``config.verbose``),
+    only the leftmost identifier (``config``) is recorded. Plain
+    ``identifier`` nodes are recorded directly.
+    """
+    node_type = getattr(node, "type", "")
+    if node_type == "identifier":
+        text = _node_text(node)
+        if text:
+            out.add(text)
+        return
+    if node_type == "attribute":
+        # Walk down the ``object`` chain to the leftmost identifier.
+        obj = _child_by_field(node, "object")
+        if obj is not None:
+            _collect_root_identifiers(obj, out)
+        return
+    # Recurse into all children for compound expressions.
+    for child in _children(node):
+        _collect_root_identifiers(child, out)
+
+
+def _collect_assert_only_identifiers_python(
+    body_node: object,
+    param_names: set[str],
+) -> set[str]:
+    """Return parameter names that appear ONLY in ``assert`` statements.
+
+    A parameter appearing in an ``assert`` but also in a branch condition
+    or elsewhere is NOT assert-only. This helper walks the scope-pruned
+    body to find all ``assert_statement`` nodes and all non-assert nodes
+    that contain parameter identifiers, then returns the set of parameters
+    found in assert statements but NOT found elsewhere.
+    """
+    nodes = _walk_body_excluding_nested_scopes(body_node)
+
+    in_assert: set[str] = set()
+    outside_assert: set[str] = set()
+
+    for node in nodes:
+        node_type = getattr(node, "type", "")
+        if node_type == "assert_statement":
+            # Collect all identifiers inside this assert.
+            _collect_all_identifier_names(node, in_assert, param_names)
+        elif node_type == "identifier":
+            text = _node_text(node)
+            if text and text in param_names:
+                # Check if this identifier is inside an assert_statement.
+                # Since the walker returns flat nodes, we cannot easily check
+                # ancestry. Instead, we collect identifiers from the top-level
+                # body scan, excluding assert_statement subtrees.
+                pass
+
+    # Re-walk: collect identifiers NOT inside assert statements.
+    _collect_non_assert_identifiers(body_node, outside_assert, param_names)
+
+    return in_assert - outside_assert
+
+
+def _collect_all_identifier_names(
+    node: object,
+    out: set[str],
+    filter_set: set[str],
+) -> None:
+    """Recursively collect all identifier names from a subtree that are in filter_set."""
+    node_type = getattr(node, "type", "")
+    if node_type == "identifier":
+        text = _node_text(node)
+        if text and text in filter_set:
+            out.add(text)
+        return
+    if node_type == "attribute":
+        obj = _child_by_field(node, "object")
+        if obj is not None:
+            _collect_all_identifier_names(obj, out, filter_set)
+        return
+    for child in _children(node):
+        _collect_all_identifier_names(child, out, filter_set)
+
+
+def _collect_non_assert_identifiers(
+    body_node: object,
+    out: set[str],
+    param_names: set[str],
+) -> None:
+    """Collect parameter identifiers from the body, skipping assert statement subtrees.
+
+    Uses a manual stack walk that prunes ``assert_statement`` and nested
+    scope bodies (``function_definition``/``class_definition``).
+    """
+    stack: list[object] = list(getattr(body_node, "children", []))
+    while stack:
+        current = stack.pop(0)
+        current_type = getattr(current, "type", "")
+        if current_type in _PY_NON_ASSERT_PRUNE_TYPES:
+            continue
+        if current_type == "identifier":
+            text = _node_text(current)
+            if text and text in param_names:
+                out.add(text)
+        elif current_type == "attribute":
+            obj = _child_by_field(current, "object")
+            if obj is not None:
+                _collect_all_identifier_names(obj, out, param_names)
+            # Don't recurse into attribute children further.
+            continue
+        stack = list(getattr(current, "children", [])) + stack
+
+
+def _walk_body_excluding_nested_scopes(
+    body_node: object,
+) -> list[object]:
+    """Yield all descendant nodes of a function body, pruning nested scope bodies.
+
+    Walks the subtree rooted at ``body_node`` and collects every node
+    except those inside the *body* of a nested ``function_definition`` or
+    ``class_definition``. The nested definition nodes themselves ARE
+    yielded (so callers can detect their presence), but their body
+    subtrees are NOT descended into. This ensures that branch-condition
+    identifiers used only inside an inner function or class are not
+    attributed to the enclosing function.
+    """
+    results: list[object] = []
+    stack: list[object] = list(getattr(body_node, "children", []))
+    while stack:
+        current = stack.pop(0)
+        results.append(current)
+        current_type = getattr(current, "type", "")
+        if current_type in _PY_NESTED_SCOPE_TYPES:
+            # Yield the definition node itself, but do NOT descend into
+            # its body — the body belongs to a different scope.
+            continue
+        stack = list(getattr(current, "children", [])) + stack
+    return results
 
 
 def _walk_nested_definitions(
@@ -1152,6 +1593,226 @@ def _collect_all_class_edges(
     # snapshot tests stay deterministic.
     edges.sort(key=lambda e: (e.line, e.target_name, e.source_name, e.edge_type))
     return edges
+
+
+def _collect_all_compositions(
+    def_nodes: list[tuple[object, SymbolDefinition]],
+) -> list[CompositionSite]:
+    """Emit ``CompositionSite`` entries from class body and ``__init__`` annotations.
+
+    Two sources of composition edges are extracted:
+
+    - **Class-body annotated assignments:** ``annotated_assignment`` nodes
+      at the top level of a ``class_definition`` body, e.g.
+      ``db: Database = field()``.
+    - **``__init__`` self annotations:** ``annotated_assignment`` nodes
+      inside ``__init__`` methods where the LHS is ``self.attr: Type``.
+
+    Annotation text is fed through :func:`_strip_annotation_to_target`
+    which unwraps generic wrappers and filters builtins and single-letter
+    generic parameters. Only annotations that reduce to a concrete
+    user-defined class name produce a ``CompositionSite``.
+    """
+    compositions: list[CompositionSite] = []
+
+    for def_node, definition in def_nodes:
+        if definition.symbol_type not in ("class", "enum"):
+            continue
+
+        body_node = _child_by_field(def_node, "body")
+        if body_node is None:
+            continue
+
+        class_name = definition.qualified_name
+
+        # Walk direct children of the class body for annotated assignments.
+        # In tree-sitter-python, bare annotations (``db: Database``) parse
+        # as ``assignment`` nodes with a ``type`` field, while annotations
+        # with a value (``db: Database = Database()``) parse as
+        # ``annotated_assignment``. Both are handled here.
+        for member in _children(body_node):
+            member_type = getattr(member, "type", "")
+
+            if member_type == "expression_statement":
+                for inner in _named_children(member):
+                    inner_type = getattr(inner, "type", "")
+                    if (
+                        inner_type in ("annotated_assignment", "assignment")
+                        and _child_by_field(inner, "type") is not None
+                    ):
+                        # Only process assignments that have a type annotation.
+                        comp = _composition_from_annotated_assignment(inner, class_name)
+                        if comp is not None:
+                            compositions.append(comp)
+
+            # Walk __init__ for self.attr: Type patterns.
+            elif member_type == "function_definition":
+                _collect_init_compositions(member, class_name, compositions)
+            elif member_type == "decorated_definition":
+                inner_def = _child_by_field(member, "definition")
+                if (
+                    inner_def is not None
+                    and getattr(inner_def, "type", "") == "function_definition"
+                ):
+                    _collect_init_compositions(inner_def, class_name, compositions)
+
+    compositions.sort(key=lambda c: (c.line, c.target_name, c.source_class))
+    return compositions
+
+
+def _composition_from_annotated_assignment(
+    node: object,
+    class_qualified_name: str,
+) -> CompositionSite | None:
+    """Extract a :class:`CompositionSite` from a type-annotated assignment node.
+
+    Handles both ``annotated_assignment`` (``db: Database = Database()``)
+    and ``assignment`` (``db: Database``) nodes that have a ``type`` field.
+    The LHS must be a bare ``identifier`` (not ``self.attr``). The type
+    annotation is fed through :func:`_strip_annotation_to_target`.
+    Returns ``None`` when the annotation reduces to a builtin or generic
+    parameter.
+    """
+    # LHS: identifier
+    left_node = _child_by_field(node, "left")
+    if left_node is None:
+        # Fall back to first identifier child.
+        for child in _named_children(node):
+            if getattr(child, "type", "") == "identifier":
+                left_node = child
+                break
+    if left_node is None:
+        return None
+    if getattr(left_node, "type", "") != "identifier":
+        return None
+
+    attr_name = _node_text(left_node)
+    if not attr_name:
+        return None
+
+    # Type annotation
+    type_node = _child_by_field(node, "type")
+    if type_node is None:
+        # Walk children looking for ``type`` node.
+        for child in _children(node):
+            if getattr(child, "type", "") == "type":
+                type_node = child
+                break
+    if type_node is None:
+        return None
+
+    annotation_text = _node_text(type_node)
+    if not annotation_text:
+        return None
+
+    target = _strip_annotation_to_target(annotation_text)
+    if target is None:
+        return None
+
+    line_start, _ = _line_range(node)
+    return CompositionSite(
+        source_class=class_qualified_name,
+        target_name=target,
+        attribute_name=attr_name,
+        line=line_start,
+    )
+
+
+def _collect_init_compositions(
+    func_node: object,
+    class_qualified_name: str,
+    compositions: list[CompositionSite],
+) -> None:
+    """Walk an ``__init__`` function body for ``self.attr: Type`` annotations.
+
+    Only annotated assignments with a ``self.attr`` LHS pattern are
+    collected. Non-``__init__`` methods are skipped.
+    """
+    name_node = _child_by_field(func_node, "name")
+    if name_node is None:
+        return
+    if _node_text(name_node) != "__init__":
+        return
+
+    body_node = _child_by_field(func_node, "body")
+    if body_node is None:
+        return
+
+    for child in _children(body_node):
+        child_type = getattr(child, "type", "")
+
+        if child_type == "expression_statement":
+            for inner in _named_children(child):
+                inner_type = getattr(inner, "type", "")
+                if (
+                    inner_type in ("annotated_assignment", "assignment")
+                    and _child_by_field(inner, "type") is not None
+                ):
+                    comp = _composition_from_self_annotated(inner, class_qualified_name)
+                    if comp is not None:
+                        compositions.append(comp)
+
+
+def _composition_from_self_annotated(
+    node: object,
+    class_qualified_name: str,
+) -> CompositionSite | None:
+    """Extract a :class:`CompositionSite` from ``self.attr: Type`` in ``__init__``.
+
+    The LHS must be an ``attribute`` node whose object is ``self``.
+    """
+    # LHS: self.attr (attribute node)
+    left_node = _child_by_field(node, "left")
+    if left_node is None:
+        for child in _named_children(node):
+            if getattr(child, "type", "") == "attribute":
+                left_node = child
+                break
+    if left_node is None:
+        return None
+    if getattr(left_node, "type", "") != "attribute":
+        return None
+
+    # Verify the object is ``self``.
+    obj_node = _child_by_field(left_node, "object")
+    if obj_node is None:
+        return None
+    if _node_text(obj_node) != "self":
+        return None
+
+    # Get attribute name.
+    attr_node = _child_by_field(left_node, "attribute")
+    if attr_node is None:
+        return None
+    attr_name = _node_text(attr_node)
+    if not attr_name:
+        return None
+
+    # Type annotation
+    type_node = _child_by_field(node, "type")
+    if type_node is None:
+        for child in _children(node):
+            if getattr(child, "type", "") == "type":
+                type_node = child
+                break
+    if type_node is None:
+        return None
+
+    annotation_text = _node_text(type_node)
+    if not annotation_text:
+        return None
+
+    target = _strip_annotation_to_target(annotation_text)
+    if target is None:
+        return None
+
+    line_start, _ = _line_range(node)
+    return CompositionSite(
+        source_class=class_qualified_name,
+        target_name=target,
+        attribute_name=attr_name,
+        line=line_start,
+    )
 
 
 def _base_class_name(node: object) -> str:

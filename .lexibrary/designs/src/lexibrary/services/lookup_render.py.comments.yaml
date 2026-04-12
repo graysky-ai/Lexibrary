@@ -16,3 +16,9 @@ comments:
     Returns an empty string when classes is empty so the CLI can omit the whole section
     without a conditional there.'
   date: '2026-04-11T17:21:13.111593Z'
+- body: 'symbol-graph-5 Group 7: added pure render_enum_notes() and render_call_path_notes()
+    helpers that emit ''### Enums & constants'' and ''### Call paths'' sections from
+    the parsed DesignFile enrichment fields. Both follow the module convention of
+    returning a string (no direct info() calls); the CLI handler in lexi_app.py prints
+    them after render_class_hierarchy in full-mode lookup output.'
+  date: '2026-04-11T23:43:13.331992Z'

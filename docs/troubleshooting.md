@@ -495,6 +495,120 @@ lexictl update
 
 See [Link Graph -- Schema Version](link-graph.md#schema-version) for details.
 
+## Symbol Graph Issues
+
+### `lexi trace` reports "No symbol named X"
+
+**Symptoms:** Running `lexi trace SomeSymbol` exits with code 1 and prints `No symbol named SomeSymbol` to stderr.
+
+**Cause:** The symbol does not exist in `symbols.db`. Possible reasons:
+
+- The file defining the symbol has not been indexed yet (new file, never updated).
+- The symbol is in a file excluded by ignore patterns or outside `scope_root`.
+- The name is misspelled or uses an unexpected casing.
+- `symbols.enabled` is `false` in the config, so the symbol graph is not being built.
+
+**Fix:**
+
+1. Verify the symbol name is correct:
+   ```bash
+   lexi search --type symbol SomeSymbol
+   ```
+   This runs a fuzzy match and may surface the correct spelling.
+
+2. If the symbol is new, refresh the file's symbol graph entry:
+   ```bash
+   lexi design update path/to/file.py
+   ```
+
+3. If the file has never been indexed, run a full update:
+   ```bash
+   lexictl update
+   ```
+
+4. Verify symbols are enabled:
+   ```bash
+   grep "enabled" .lexibrary/config.yaml
+   ```
+
+### Trace output shows unexpected unresolved callees
+
+**Symptoms:** `lexi trace` shows many entries in "Unresolved callees (external or dynamic)" that you expect to be resolved (e.g., calls to other project functions).
+
+**Cause:** The resolver could not map the call site to a definition. Common reasons:
+
+- The called function is in a file that has not been indexed yet.
+- The import path is dynamic or uses patterns the resolver does not handle (e.g., `importlib.import_module`).
+- For TypeScript/JavaScript, the `tsconfig.json` path aliases may not match the actual import specifiers.
+- The symbol graph is stale -- the file was edited since the last rebuild.
+
+**Fix:**
+
+1. Check for a stale-graph warning in the trace output. If present, refresh:
+   ```bash
+   lexi design update path/to/caller_file.py
+   ```
+
+2. For cross-file resolution issues, ensure both the caller and callee files are indexed:
+   ```bash
+   lexi design update path/to/callee_file.py
+   lexi design update path/to/caller_file.py
+   ```
+
+3. For TypeScript path alias issues, verify `tsconfig.json` is at the project root and that `baseUrl` and `paths` are correct.
+
+4. Run a full rebuild to resolve all cross-file references:
+   ```bash
+   lexictl update
+   ```
+
+### Symbol graph is out of sync after a rename
+
+**Symptoms:** After renaming a function or class, `lexi trace` shows stale entries -- the old name still appears, or callers of the old name are not updated.
+
+**Cause:** The symbol graph indexes each file independently. When you rename a symbol in file A, the graph updates file A, but files B and C that call the old name still have stale call records pointing at the old symbol.
+
+**Fix:**
+
+1. Refresh the renamed file:
+   ```bash
+   lexi design update path/to/renamed_file.py
+   ```
+
+2. Refresh all callers. Use `lexi impact` to find files that import the renamed file, then update each:
+   ```bash
+   lexi impact path/to/renamed_file.py --quiet | xargs -I{} lexi design update {}
+   ```
+
+3. Alternatively, run a full rebuild to catch all stale references:
+   ```bash
+   lexictl update
+   ```
+
+### `symbols.db` is corrupt or missing
+
+**Symptoms:** Symbol graph commands (`lexi trace`, `lexi search --type symbol`) fail with SQLite errors, or the database file is absent.
+
+**Cause:** The database was deleted, moved, or corrupted (e.g., by an interrupted write). Since `symbols.db` is gitignored and rebuilt from source, data loss is not permanent.
+
+**Fix:**
+
+1. Delete the corrupt database (if present) and rebuild:
+   ```bash
+   rm -f .lexibrary/symbols.db
+   lexictl update
+   ```
+
+2. If the error persists, check file permissions on the `.lexibrary/` directory.
+
+3. If you see a schema version mismatch error, the database was built by a different version of Lexibrary. The rebuild will recreate it with the current schema:
+   ```bash
+   rm -f .lexibrary/symbols.db
+   lexictl update
+   ```
+
+See [Symbol Graph](symbol-graph.md) for details on the schema, extraction, and resolution pipeline.
+
 ## Related Documentation
 
 - [Configuration](configuration.md) -- Full `config.yaml` reference
@@ -503,6 +617,7 @@ See [Link Graph -- Schema Version](link-graph.md#schema-version) for details.
 - [Validation](validation.md) -- The 13 validation checks and their meanings
 - [Ignore Patterns](ignore-patterns.md) -- Pattern sources, precedence, and debugging
 - [Link Graph](link-graph.md) -- The SQLite index, rebuilding, and graceful degradation
+- [Symbol Graph](symbol-graph.md) -- The symbol-level SQLite index and query commands
 - [CI Integration](ci-integration.md) -- Git hooks, periodic sweeps, and CI pipeline recipes
 - [Project Setup](project-setup.md) -- Init wizard, re-init guard, changing settings
 - [Upgrading](upgrading.md) -- Version upgrade guide

@@ -8,11 +8,111 @@ from pathlib import Path
 
 import yaml
 
-from lexibrary.artifacts.design_file import DesignFile, DesignFileFrontmatter, StalenessMetadata
+from lexibrary.artifacts.design_file import (
+    CallPathNote,
+    DataFlowNote,
+    DesignFile,
+    DesignFileFrontmatter,
+    EnumNote,
+    StalenessMetadata,
+)
 
 # Multiline HTML comment footer: <!-- lexibrary:meta\nkey: value\n-->
 _FOOTER_RE = re.compile(r"<!--\s*lexibrary:meta\n(.*?)\n-->", re.DOTALL)
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
+
+# Entry-line pattern for enrichment bullets: `- **{name}** — {body}`
+# Accepts either em-dash (—) or plain dash (-) as the separator for flexibility.
+_ENRICHMENT_BULLET_RE = re.compile(r"^-\s+\*\*(?P<name>[^*]+)\*\*\s*[—-]\s*(?P<body>.*)$")
+
+# Data flow bullet pattern: `- **{parameter}** in **{location}** — {effect}`
+_DATA_FLOW_BULLET_RE = re.compile(
+    r"^-\s+\*\*(?P<parameter>[^*]+)\*\*\s+in\s+\*\*(?P<location>[^*]+)\*\*\s*[—-]\s*(?P<effect>.*)$"
+)
+
+
+def _split_csv(raw: str) -> list[str]:
+    """Split a comma-separated list, trimming whitespace and trailing period."""
+    stripped = raw.strip().rstrip(".")
+    return [item.strip() for item in stripped.split(",") if item.strip()]
+
+
+def _parse_enrichment_entries(
+    section_lines: list[str], continuation_label: str
+) -> list[tuple[str, str, list[str]]]:
+    """Parse a section of bullet entries where each entry may have a continuation line.
+
+    Format:
+        - **{name}** — {body}
+          {continuation_label}: v1, v2, v3.
+
+    The continuation line is optional. Returns a list of (name, body, values)
+    tuples where `values` is empty when no continuation line is present.
+    """
+    entries: list[tuple[str, str, list[str]]] = []
+    current: tuple[str, str, list[str]] | None = None
+    continuation_prefix = f"{continuation_label}:"
+    for raw_line in section_lines:
+        stripped = raw_line.rstrip()
+        if not stripped.strip():
+            continue
+        match = _ENRICHMENT_BULLET_RE.match(stripped.strip())
+        if match:
+            if current is not None:
+                entries.append(current)
+            current = (match.group("name").strip(), match.group("body").strip(), [])
+            continue
+        # Continuation line — must be indented and belong to the current entry
+        if current is None:
+            continue
+        indented = raw_line.startswith(" ") or raw_line.startswith("\t")
+        if not indented:
+            continue
+        content = stripped.strip()
+        if content.startswith(continuation_prefix):
+            values_raw = content[len(continuation_prefix) :]
+            current = (current[0], current[1], _split_csv(values_raw))
+    if current is not None:
+        entries.append(current)
+    return entries
+
+
+def _parse_enum_notes(section_lines: list[str]) -> list[EnumNote]:
+    """Parse the `## Enums & constants` section body into EnumNote objects."""
+    return [
+        EnumNote(name=name, role=role, values=values)
+        for name, role, values in _parse_enrichment_entries(section_lines, "Values")
+    ]
+
+
+def _parse_call_path_notes(section_lines: list[str]) -> list[CallPathNote]:
+    """Parse the `## Call paths` section body into CallPathNote objects."""
+    return [
+        CallPathNote(entry=entry, narrative=narrative, key_hops=key_hops)
+        for entry, narrative, key_hops in _parse_enrichment_entries(section_lines, "Key hops")
+    ]
+
+
+def _parse_data_flow_notes(section_lines: list[str]) -> list[DataFlowNote]:
+    """Parse the `## Data flows` section body into DataFlowNote objects.
+
+    Each bullet has the format: `- **{parameter}** in **{location}** — {effect}`
+    """
+    notes: list[DataFlowNote] = []
+    for raw_line in section_lines:
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        match = _DATA_FLOW_BULLET_RE.match(stripped)
+        if match:
+            notes.append(
+                DataFlowNote(
+                    parameter=match.group("parameter").strip(),
+                    location=match.group("location").strip(),
+                    effect=match.group("effect").strip(),
+                )
+            )
+    return notes
 
 
 def _parse_footer(footer_body: str) -> StalenessMetadata | None:
@@ -207,6 +307,9 @@ def parse_design_file(path: Path) -> DesignFile | None:
     # --- Optional sections ---
     tests = _section_text("Tests") or None
     complexity_warning = _section_text("Complexity Warning") or None
+    enum_notes = _parse_enum_notes(_section_lines("Enums & constants"))
+    call_path_notes = _parse_call_path_notes(_section_lines("Call paths"))
+    data_flow_notes = _parse_data_flow_notes(_section_lines("Data flows"))
     wikilinks = _wikilink_list("Wikilinks")
     tags = _bullet_list("Tags")
     # Recognize both "## Stack" (new) and "## Guardrails" (legacy) for backward compat
@@ -219,6 +322,9 @@ def parse_design_file(path: Path) -> DesignFile | None:
         "Dependents",
         "Tests",
         "Complexity Warning",
+        "Enums & constants",
+        "Call paths",
+        "Data flows",
         "Wikilinks",
         "Tags",
         "Stack",
@@ -258,6 +364,9 @@ def parse_design_file(path: Path) -> DesignFile | None:
         dependents=dependents,
         tests=tests,
         complexity_warning=complexity_warning,
+        enum_notes=enum_notes,
+        call_path_notes=call_path_notes,
+        data_flow_notes=data_flow_notes,
         wikilinks=wikilinks,
         tags=tags,
         stack_refs=stack_refs,

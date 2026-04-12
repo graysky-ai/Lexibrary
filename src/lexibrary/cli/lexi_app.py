@@ -143,9 +143,12 @@ def lookup(
         truncate_lookup_sections,
     )
     from lexibrary.services.lookup_render import (  # noqa: PLC0415
+        render_call_path_notes,
         render_class_hierarchy,
         render_conventions,
+        render_data_flow_notes,
         render_directory_link_summary,
+        render_enum_notes,
         render_key_symbols,
         render_related_concepts,
         render_siblings,
@@ -326,6 +329,29 @@ def lookup(
     class_hierarchy_text = render_class_hierarchy(file_result.classes)
     if class_hierarchy_text:
         info(class_hierarchy_text)
+
+    # Enums & constants (symbol-graph-5) -- emits after Class hierarchy so
+    # users see the named values defined by the file alongside the structural
+    # symbol-graph sections.  Sourced from the design file's
+    # ``## Enums & constants`` enrichment section.
+    enum_notes_text = render_enum_notes(file_result.enum_notes)
+    if enum_notes_text:
+        info(enum_notes_text)
+
+    # Call paths (symbol-graph-5) -- emits after Enums & constants so the
+    # narrative call-flow notes sit next to the structural symbol-graph
+    # sections.  Sourced from the design file's ``## Call paths`` enrichment
+    # section.
+    call_path_notes_text = render_call_path_notes(file_result.call_path_notes)
+    if call_path_notes_text:
+        info(call_path_notes_text)
+
+    # Data flows (symbol-graph-7) -- emits after Call paths.  Sourced from
+    # the design file's ``## Data flows`` enrichment section, which is gated
+    # on deterministic AST signal (branch parameters).
+    data_flow_notes_text = render_data_flow_notes(file_result.data_flow_notes)
+    if data_flow_notes_text:
+        info(data_flow_notes_text)
 
     # Apply token budget truncation to supplementary sections
     total_budget = config.token_budgets.lookup_total_tokens

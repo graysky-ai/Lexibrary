@@ -1,0 +1,5 @@
+comments:
+- body: 'Phase 7: Added symbol_branch_parameters table DDL with CASCADE on symbols(id),
+    idx_branch_params_symbol index, and bumped SCHEMA_VERSION from 2 to 3. The new
+    table records which function/method parameters appear inside branch conditions.'
+  date: '2026-04-12T05:23:33.231572Z'

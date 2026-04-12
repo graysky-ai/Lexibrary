@@ -30,3 +30,8 @@ comments:
     is a cross-cutting prerequisite shared by Groups 2, 3, and 4; Group 1 added the
     EnumMemberSig and ConstantValue models but did not update the allow-list.'
   date: '2026-04-11T19:46:43.876006Z'
+- body: Added CompositionSite model and compositions field on SymbolExtract for Phase
+    6 composition edge tracking. CompositionSite captures has-a relationships from
+    annotated class attributes. The compositions list participates alongside class_edges
+    in the symbol graph builder's class-edge passes.
+  date: '2026-04-12T03:18:58.456475Z'

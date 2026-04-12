@@ -27,3 +27,8 @@ comments:
     per-symbol fan-out data for the file. The section is only emitted in full mode
     (brief mode still omits all symbol graph data).'
   date: '2026-04-11T17:21:18.360433Z'
+- body: 'symbol-graph-5 Group 7: lexi lookup full-mode output now emits two new sections
+    (Enums & constants, Call paths) after the Class hierarchy block via render_enum_notes
+    / render_call_path_notes from lookup_render. Both are skipped silently when the
+    underlying LookupResult fields are empty so files without enrichment are unaffected.'
+  date: '2026-04-11T23:43:24.894839Z'

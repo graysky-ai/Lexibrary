@@ -1,6 +1,0 @@
-comments:
-- body: 'symbol-graph-3 group 5: add class_edge_unresolved_count field to SymbolGraphHealth;
-    read_symbol_graph_health now counts rows in class_edges_unresolved alongside the
-    existing counters. _safe_default returns 0 for the new field when the DB is missing
-    or corrupt.'
-  date: '2026-04-11T11:15:11.234065Z'

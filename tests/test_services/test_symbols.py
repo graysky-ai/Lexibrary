@@ -22,6 +22,7 @@ import pytest
 from lexibrary.config.schema import LexibraryConfig
 from lexibrary.linkgraph.schema import ensure_schema as ensure_linkgraph_schema
 from lexibrary.services.symbols import (
+    CallContextResult,
     StaleSymbolWarning,
     SymbolQueryService,
     SymbolSearchHit,
@@ -887,3 +888,428 @@ def test_search_value_match_respects_limit(tmp_path: Path) -> None:
         # return four candidates; the combined cap is two.
         assert len(hits) == 2
         assert all(hit.score == 0.5 for hit in hits)
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — members_of() public method
+# ---------------------------------------------------------------------------
+
+
+def test_members_of_returns_public_members(tmp_path: Path) -> None:
+    """``members_of(enum_id)`` returns every variant row for an enum.
+
+    Seeds the Phase 4 fixture which reclassifies ``bar`` as an enum with
+    three members (PENDING, RUNNING, FAILED) and asserts that the public
+    service method surfaces all three without reaching into
+    ``_symbol_graph`` privates.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    ids = _seed_phase4_members_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        members = svc.members_of(ids["bar_id"])
+        assert len(members) == 3
+        names = [m.name for m in members]
+        assert names == ["PENDING", "RUNNING", "FAILED"]
+        # Parent metadata is threaded through every row.
+        assert all(m.parent.id == ids["bar_id"] for m in members)
+
+
+def test_members_of_returns_empty_for_non_enum(tmp_path: Path) -> None:
+    """Calling ``members_of`` on a plain function yields an empty list.
+
+    The Phase 2 seed defines ``foo`` and ``baz`` as plain functions with
+    no ``symbol_members`` rows. The service should return ``[]`` rather
+    than raising or returning ``None``.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    ids = _seed_phase2_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        assert svc.members_of(ids["foo_id"]) == []
+        assert svc.members_of(ids["baz_id"]) == []
+
+
+def test_members_of_returns_empty_when_symbol_graph_missing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Missing ``symbols.db`` → ``members_of`` returns ``[]`` instead of raising.
+
+    The lifecycle test already covers the graceful-degradation hint; this
+    test verifies the specific members_of branch returns the right empty
+    shape for the graceful-degradation path.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)  # index.db present, symbols.db missing.
+
+    with SymbolQueryService(project) as svc:
+        assert svc._symbol_graph is None
+        assert svc.members_of(42) == []
+    # Clear the captured hint so it does not leak between tests.
+    capsys.readouterr()
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — call_context() public method
+# ---------------------------------------------------------------------------
+
+
+def test_call_context_returns_callers_and_callees_by_id(tmp_path: Path) -> None:
+    """``call_context(bar_id, depth=1)`` returns direct callers and callees.
+
+    The Phase 2 fixture defines::
+
+        foo() -> bar()
+        baz() -> bar()
+        meth() -> baz()
+
+    So at ``depth=1``:
+    - ``bar`` has callers ``foo`` and ``baz``, no callees.
+    - ``baz`` has caller ``meth``, callee ``bar``.
+
+    We exercise ``baz`` specifically because it has both inbound and
+    outbound edges in a single symbol, letting us assert that both
+    directions are populated and the wrapper returns a fully-formed
+    :class:`CallContextResult` (not a ``TraceResponse``).
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    ids = _seed_phase2_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        result = svc.call_context(ids["baz_id"], depth=1)
+        assert isinstance(result, CallContextResult)
+        assert result.symbol.id == ids["baz_id"]
+        assert result.symbol.name == "baz"
+
+        # baz's only caller is meth.
+        caller_names = sorted(edge.caller.name for edge in result.callers)
+        assert caller_names == ["meth"]
+        # baz's only callee is bar.
+        callee_names = sorted(edge.callee.name for edge in result.callees)
+        assert callee_names == ["bar"]
+
+
+def test_call_context_does_not_collide_on_name_ambiguity(tmp_path: Path) -> None:
+    """Two files defining ``build_index`` — querying by id returns only that file's edges.
+
+    Seeds ``src/a.py`` with a function ``build_index`` that calls a
+    helper, and ``src/b.py`` with an *unrelated* function also named
+    ``build_index`` that has its own, different caller. When we query
+    the first via its primary-key id, the result must not leak edges
+    from the second, proving that ``call_context`` resolves by id
+    rather than short name.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    _make_symbolgraph(project)
+
+    # Seed two files and two distinct ``build_index`` symbols with
+    # disjoint callers / callees.
+    _write_source_file(project, "src/a.py", "# file a\n")
+    _write_source_file(project, "src/b.py", "# file b\n")
+    graph = open_symbol_graph(project)
+    try:
+        conn = graph._conn
+        cur = conn.execute(
+            "INSERT INTO files (path, language, last_hash) VALUES (?, ?, ?)",
+            ("src/a.py", "python", "hash-a"),
+        )
+        file_a_id = int(cur.lastrowid or 0)
+        cur = conn.execute(
+            "INSERT INTO files (path, language, last_hash) VALUES (?, ?, ?)",
+            ("src/b.py", "python", "hash-b"),
+        )
+        file_b_id = int(cur.lastrowid or 0)
+
+        def _add(file_id: int, name: str, qname: str, kind: str = "function") -> int:
+            cur = conn.execute(
+                "INSERT INTO symbols "
+                "(file_id, name, qualified_name, symbol_type, line_start, "
+                "line_end, visibility, parent_class) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+                (file_id, name, qname, kind, 1, 5, "public"),
+            )
+            return int(cur.lastrowid or 0)
+
+        # file_a: caller_a() -> build_index() -> helper_a()
+        caller_a_id = _add(file_a_id, "caller_a", "a.caller_a")
+        build_a_id = _add(file_a_id, "build_index", "a.build_index")
+        helper_a_id = _add(file_a_id, "helper_a", "a.helper_a")
+
+        # file_b: caller_b() -> build_index() -> helper_b()
+        caller_b_id = _add(file_b_id, "caller_b", "b.caller_b")
+        build_b_id = _add(file_b_id, "build_index", "b.build_index")
+        helper_b_id = _add(file_b_id, "helper_b", "b.helper_b")
+
+        for caller, callee, line in [
+            (caller_a_id, build_a_id, 2),
+            (build_a_id, helper_a_id, 3),
+            (caller_b_id, build_b_id, 2),
+            (build_b_id, helper_b_id, 3),
+        ]:
+            conn.execute(
+                "INSERT INTO calls (caller_id, callee_id, line, call_context) VALUES (?, ?, ?, ?)",
+                (caller, callee, line, "call"),
+            )
+        conn.commit()
+    finally:
+        graph.close()
+
+    with SymbolQueryService(project) as svc:
+        # Query the file_a variant by its primary-key id.
+        result_a = svc.call_context(build_a_id, depth=1)
+        assert result_a is not None
+        assert result_a.symbol.id == build_a_id
+        assert result_a.symbol.file_path == "src/a.py"
+
+        caller_ids = {edge.caller.id for edge in result_a.callers}
+        callee_ids = {edge.callee.id for edge in result_a.callees}
+        # Only file_a's edges — file_b's caller/helper must NOT appear.
+        assert caller_ids == {caller_a_id}
+        assert callee_ids == {helper_a_id}
+        assert caller_b_id not in caller_ids
+        assert helper_b_id not in callee_ids
+
+        # Sanity check the other direction: querying file_b by id
+        # returns only its own edges.
+        result_b = svc.call_context(build_b_id, depth=1)
+        assert result_b is not None
+        assert {edge.caller.id for edge in result_b.callers} == {caller_b_id}
+        assert {edge.callee.id for edge in result_b.callees} == {helper_b_id}
+
+
+def test_call_context_respects_depth(tmp_path: Path) -> None:
+    """``depth=2`` walks two hops; ``depth=1`` stays at one.
+
+    Builds a linear chain ``root -> mid -> leaf -> tail`` and a mirror
+    chain of inbound edges ``pre_root -> pre_mid -> root``. Querying
+    ``root``'s context:
+
+    - depth=1 should return ``pre_mid -> root`` (1 caller hop) and
+      ``root -> mid`` (1 callee hop).
+    - depth=2 should additionally include ``pre_root -> pre_mid`` and
+      ``mid -> leaf``.
+
+    The test asserts exact symbol names so a depth-off-by-one regression
+    is visible immediately.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    _make_symbolgraph(project)
+
+    _write_source_file(project, "src/chain.py", "# chain\n")
+    graph = open_symbol_graph(project)
+    try:
+        conn = graph._conn
+        cur = conn.execute(
+            "INSERT INTO files (path, language, last_hash) VALUES (?, ?, ?)",
+            ("src/chain.py", "python", "hash-chain"),
+        )
+        file_id = int(cur.lastrowid or 0)
+
+        def _add(name: str, line: int) -> int:
+            cur = conn.execute(
+                "INSERT INTO symbols "
+                "(file_id, name, qualified_name, symbol_type, line_start, "
+                "line_end, visibility, parent_class) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+                (file_id, name, f"chain.{name}", "function", line, line + 2, "public"),
+            )
+            return int(cur.lastrowid or 0)
+
+        pre_root = _add("pre_root", 1)
+        pre_mid = _add("pre_mid", 4)
+        root = _add("root", 7)
+        mid = _add("mid", 10)
+        leaf = _add("leaf", 13)
+        tail = _add("tail", 16)
+
+        # Outbound chain: root -> mid -> leaf -> tail
+        # Inbound chain:  pre_root -> pre_mid -> root
+        for caller, callee, line in [
+            (pre_root, pre_mid, 2),
+            (pre_mid, root, 5),
+            (root, mid, 8),
+            (mid, leaf, 11),
+            (leaf, tail, 14),
+        ]:
+            conn.execute(
+                "INSERT INTO calls (caller_id, callee_id, line, call_context) VALUES (?, ?, ?, ?)",
+                (caller, callee, line, "call"),
+            )
+        conn.commit()
+    finally:
+        graph.close()
+
+    with SymbolQueryService(project) as svc:
+        # depth=1: one hop in each direction.
+        d1 = svc.call_context(root, depth=1)
+        assert d1 is not None
+        d1_caller_names = {edge.caller.name for edge in d1.callers}
+        d1_callee_names = {edge.callee.name for edge in d1.callees}
+        assert d1_caller_names == {"pre_mid"}
+        assert d1_callee_names == {"mid"}
+
+        # depth=2: two hops in each direction.
+        d2 = svc.call_context(root, depth=2)
+        assert d2 is not None
+        d2_caller_names = {edge.caller.name for edge in d2.callers}
+        d2_callee_names = {edge.callee.name for edge in d2.callees}
+        # Inbound hop 1: pre_mid -> root. Hop 2: pre_root -> pre_mid.
+        assert d2_caller_names == {"pre_mid", "pre_root"}
+        # Outbound hop 1: root -> mid. Hop 2: mid -> leaf.
+        assert d2_callee_names == {"mid", "leaf"}
+        # depth=2 must NOT include the hop-3 tail.
+        assert "tail" not in d2_callee_names
+
+
+def test_call_context_returns_none_when_symbol_graph_missing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Missing ``symbols.db`` → ``call_context`` returns ``None``.
+
+    The method cannot materialise a :class:`SymbolRow` when there is no
+    graph to read from, so the graceful-degradation contract is
+    "return None and let callers skip enrichment" rather than
+    "return an empty wrapper around a fake symbol".
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)  # symbols.db deliberately missing.
+
+    with SymbolQueryService(project) as svc:
+        assert svc._symbol_graph is None
+        assert svc.call_context(42) is None
+        assert svc.call_context(42, depth=5) is None
+    capsys.readouterr()
+
+
+def test_call_context_returns_none_for_unknown_symbol_id(tmp_path: Path) -> None:
+    """An id that does not match any symbol row yields ``None`` (not an empty wrapper).
+
+    Protects against a regression where ``call_context`` returns a
+    result wrapping a partial/zero SymbolRow when the caller passes an
+    id that no longer exists — e.g. a stale id from a previous build.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    _seed_phase2_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        assert svc.call_context(999_999) is None
+
+
+# ---------------------------------------------------------------------------
+# Phase 7 — branch_parameters_of() + has_branching_parameters_in_file()
+# ---------------------------------------------------------------------------
+
+
+def _seed_phase7_branch_params_fixture(project_root: Path) -> dict[str, Any]:
+    """Seed ``symbols.db`` with branch parameter data for Phase 7 tests.
+
+    Builds on :func:`_seed_phase2_fixture` by inserting branch parameter
+    rows for ``foo`` (which branches on two parameters) and leaving
+    ``bar`` without any branch parameters.
+
+    Returns a dict of ids the tests need.
+    """
+    ids = _seed_phase2_fixture(project_root)
+
+    graph = open_symbol_graph(project_root)
+    conn = graph._conn
+    try:
+        # foo branches on two parameters: ``config`` and ``mode``
+        conn.execute(
+            "INSERT OR IGNORE INTO symbol_branch_parameters "
+            "(symbol_id, parameter_name) VALUES (?, ?)",
+            (ids["foo_id"], "config"),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO symbol_branch_parameters "
+            "(symbol_id, parameter_name) VALUES (?, ?)",
+            (ids["foo_id"], "mode"),
+        )
+        conn.commit()
+    finally:
+        graph.close()
+
+    return ids
+
+
+def test_branch_parameters_of_returns_list(tmp_path: Path) -> None:
+    """``branch_parameters_of(foo_id)`` returns the two seeded parameters.
+
+    The query returns parameters in alphabetical order, so
+    ``['config', 'mode']`` is the expected ordering regardless of
+    insertion order.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    ids = _seed_phase7_branch_params_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        params = svc.branch_parameters_of(ids["foo_id"])
+        assert params == ["config", "mode"]
+
+
+def test_branch_parameters_of_empty_for_function_without_branches(tmp_path: Path) -> None:
+    """``branch_parameters_of(bar_id)`` returns an empty list.
+
+    The Phase 7 fixture does not insert any branch parameter rows for
+    ``bar``, so the result must be ``[]`` — not ``None`` or an error.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    ids = _seed_phase7_branch_params_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        assert svc.branch_parameters_of(ids["bar_id"]) == []
+
+
+def test_has_branching_parameters_in_file_true_when_present(tmp_path: Path) -> None:
+    """``has_branching_parameters_in_file('src/a.py')`` returns ``True``.
+
+    The Phase 7 fixture seeds branch parameters for ``foo`` which is
+    declared in ``src/a.py``, so the file-level gate must return ``True``.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    _seed_phase7_branch_params_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        assert svc.has_branching_parameters_in_file("src/a.py") is True
+
+
+def test_has_branching_parameters_in_file_false_when_absent(tmp_path: Path) -> None:
+    """``has_branching_parameters_in_file('src/b.py')`` returns ``False``.
+
+    The Phase 7 fixture does not seed any branch parameters for symbols
+    in ``src/b.py``, so the file-level gate must return ``False``.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    _seed_phase7_branch_params_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        assert svc.has_branching_parameters_in_file("src/b.py") is False
+
+
+def test_has_branching_parameters_in_file_returns_false_for_unknown_path(
+    tmp_path: Path,
+) -> None:
+    """``has_branching_parameters_in_file('src/nonexistent.py')`` returns ``False``.
+
+    A path that does not match any file in ``symbols.db`` must return
+    ``False`` rather than raising — the file-level gate should be safe
+    to call with any path.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    _seed_phase7_branch_params_fixture(project)
+
+    with SymbolQueryService(project) as svc:
+        assert svc.has_branching_parameters_in_file("src/nonexistent.py") is False

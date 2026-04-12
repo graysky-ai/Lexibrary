@@ -20,8 +20,8 @@ def test_star_import_exposes_all_names() -> None:
         assert name in namespace, f"{name!r} missing from star import namespace"
 
 
-def test_schema_version_is_two() -> None:
-    """``SCHEMA_VERSION`` is re-exported and equals ``2`` in Phase 2."""
+def test_schema_version_is_three() -> None:
+    """``SCHEMA_VERSION`` is re-exported and equals ``3`` after Phase 7."""
     from lexibrary.symbolgraph import SCHEMA_VERSION
 
-    assert SCHEMA_VERSION == 2
+    assert SCHEMA_VERSION == 3

@@ -137,6 +137,28 @@ class SymbolsInFileResponse:
     stale: StaleSymbolWarning | None = None
 
 
+@dataclass
+class CallContextResult:
+    """Result of :meth:`SymbolQueryService.call_context` — a symbol plus edges.
+
+    ``symbol`` is the symbol that was queried, ``callers`` holds resolved
+    inbound call edges up to the requested hop depth, and ``callees``
+    holds resolved outbound call edges up to the requested depth. Both
+    edge lists default to empty — a symbol with no recorded edges (or a
+    missing symbol graph) yields a result where both lists are empty
+    rather than raising.
+
+    Unlike :class:`TraceResult`, this dataclass is keyed by symbol *id*
+    rather than name so the enrichment helper can resolve
+    call-context-by-id without colliding when multiple files define
+    symbols with the same short name.
+    """
+
+    symbol: SymbolRow
+    callers: list[CallRow] = field(default_factory=list)
+    callees: list[CallRow] = field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
@@ -331,6 +353,185 @@ class SymbolQueryService:
         symbols = self._symbol_graph.symbols_in_file(file_path)
         stale = self._detect_stale_single(file_path)
         return SymbolsInFileResponse(symbols=symbols, stale=stale)
+
+    def members_of(self, symbol_id: int) -> list[SymbolMemberRow]:
+        """Return the members (enum variants, constants) for *symbol_id*.
+
+        Public facade over
+        :meth:`~lexibrary.symbolgraph.query.SymbolGraph.members_of` so
+        callers such as the archivist enrichment helper can fetch enum
+        members without reaching into private ``_symbol_graph`` internals.
+
+        Returns an empty list when the symbol has no members (e.g. a
+        function or class with no recorded constants) or when the symbol
+        graph is unavailable (``_symbol_graph is None``).
+        """
+        if self._symbol_graph is None:
+            return []
+        return self._symbol_graph.members_of(symbol_id)
+
+    def branch_parameters_of(self, symbol_id: int) -> list[str]:
+        """Return the branch-parameter names for *symbol_id*.
+
+        Public facade over
+        :meth:`~lexibrary.symbolgraph.query.SymbolGraph.branch_parameters_of`
+        so callers such as the archivist enrichment helper can fetch
+        branch parameters without reaching into private ``_symbol_graph``
+        internals.
+
+        Returns an empty list when the symbol has no branch parameters
+        or when the symbol graph is unavailable (``_symbol_graph is
+        None``).
+        """
+        if self._symbol_graph is None:
+            return []
+        return self._symbol_graph.branch_parameters_of(symbol_id)
+
+    def has_branching_parameters_in_file(self, rel_path: str) -> bool:
+        """Return whether any symbol in *rel_path* has branch parameters.
+
+        Public facade over
+        :meth:`~lexibrary.symbolgraph.query.SymbolGraph.has_branching_parameters_in_file`
+        so callers such as the archivist gate can check file-level
+        eligibility without reaching into private ``_symbol_graph``
+        internals.
+
+        Returns ``False`` when the symbol graph is unavailable
+        (``_symbol_graph is None``).
+        """
+        if self._symbol_graph is None:
+            return False
+        return self._symbol_graph.has_branching_parameters_in_file(rel_path)
+
+    def call_context(self, symbol_id: int, *, depth: int = 2) -> CallContextResult | None:
+        """Return inbound and outbound call edges for *symbol_id* up to *depth* hops.
+
+        Fetches the symbol row matching *symbol_id* via a raw
+        :data:`~lexibrary.symbolgraph.query._SELECT_SYMBOL` query, then
+        walks :meth:`~lexibrary.symbolgraph.query.SymbolGraph.callers_of`
+        and :meth:`~lexibrary.symbolgraph.query.SymbolGraph.callees_of`
+        up to the requested hop *depth*. At each hop the walk follows the
+        unique symbol ids discovered on the previous hop, deduping across
+        hops so a cyclic call graph terminates cleanly.
+
+        Why resolve by id and not name? The archivist enrichment helper
+        iterates symbols declared in a specific file and needs to pull
+        their call context without colliding when two files define
+        functions with the same short name. :meth:`trace` routes through
+        ``symbols_by_name`` / ``symbols_by_qualified_name`` which is
+        name-based and returns every match across the project;
+        :meth:`call_context` resolves by primary key so there is exactly
+        one result.
+
+        Returns ``None`` when the symbol graph is unavailable or when no
+        symbol row matches *symbol_id*. Callers should treat ``None`` as
+        "no context available" and skip enrichment for that symbol.
+
+        Parameters
+        ----------
+        symbol_id:
+            The primary-key id of the symbol to query. Typically pulled
+            from a previous :meth:`symbols_in_file` call so the caller
+            already has a fully-populated :class:`SymbolRow`.
+        depth:
+            Maximum number of call-graph hops to walk in each direction.
+            ``depth=1`` returns only direct callers/callees;
+            ``depth=2`` (the default) also returns the symbols that
+            call the direct callers and the symbols called by the direct
+            callees. Higher depths fan out quickly in dense graphs, so
+            callers that enable enrichment should pick a value that
+            balances context against prompt budget.
+        """
+        if self._symbol_graph is None:
+            return None
+
+        rows = self._symbol_graph.query_raw(
+            _SELECT_SYMBOL + "WHERE s.id = ?",
+            (symbol_id,),
+        )
+        if not rows:
+            return None
+        symbol = _row_to_symbol(rows[0])
+
+        callers = self._walk_callers(symbol_id, depth)
+        callees = self._walk_callees(symbol_id, depth)
+        return CallContextResult(symbol=symbol, callers=callers, callees=callees)
+
+    # --- call-graph walking helpers ---------------------------------------
+
+    def _walk_callers(self, start_id: int, depth: int) -> list[CallRow]:
+        """Walk inbound call edges up to *depth* hops starting from *start_id*.
+
+        Breadth-first traversal that fans out from *start_id* one hop at
+        a time, collecting every :class:`CallRow` encountered. At each
+        hop the walk enqueues the ids of the *callers* discovered so far
+        for the next hop, so depth=2 returns callers-of-callers as well
+        as direct callers. Dedupes visited ids so a cyclic graph
+        terminates. Results preserve the SQL iteration order within each
+        hop (file path then call-site line).
+        """
+        if self._symbol_graph is None or depth <= 0:
+            return []
+
+        collected: list[CallRow] = []
+        seen_edge_keys: set[tuple[int, int, int]] = set()
+        frontier: list[int] = [start_id]
+        visited_ids: set[int] = {start_id}
+
+        for _ in range(depth):
+            next_frontier: list[int] = []
+            for sid in frontier:
+                for edge in self._symbol_graph.callers_of(sid):
+                    # Dedupe identical edges (caller, callee, line) so
+                    # the same row does not appear twice if the walker
+                    # revisits a node via another path.
+                    key = (edge.caller.id, edge.callee.id, edge.line)
+                    if key in seen_edge_keys:
+                        continue
+                    seen_edge_keys.add(key)
+                    collected.append(edge)
+                    if edge.caller.id not in visited_ids:
+                        visited_ids.add(edge.caller.id)
+                        next_frontier.append(edge.caller.id)
+            if not next_frontier:
+                break
+            frontier = next_frontier
+        return collected
+
+    def _walk_callees(self, start_id: int, depth: int) -> list[CallRow]:
+        """Walk outbound call edges up to *depth* hops starting from *start_id*.
+
+        Mirror of :meth:`_walk_callers` for the outbound direction. Fans
+        out breadth-first via
+        :meth:`~lexibrary.symbolgraph.query.SymbolGraph.callees_of` and
+        dedupes by edge key so cycles terminate. Results preserve the
+        SQL iteration order within each hop (call-site line then callee
+        file path).
+        """
+        if self._symbol_graph is None or depth <= 0:
+            return []
+
+        collected: list[CallRow] = []
+        seen_edge_keys: set[tuple[int, int, int]] = set()
+        frontier: list[int] = [start_id]
+        visited_ids: set[int] = {start_id}
+
+        for _ in range(depth):
+            next_frontier: list[int] = []
+            for sid in frontier:
+                for edge in self._symbol_graph.callees_of(sid):
+                    key = (edge.caller.id, edge.callee.id, edge.line)
+                    if key in seen_edge_keys:
+                        continue
+                    seen_edge_keys.add(key)
+                    collected.append(edge)
+                    if edge.callee.id not in visited_ids:
+                        visited_ids.add(edge.callee.id)
+                        next_frontier.append(edge.callee.id)
+            if not next_frontier:
+                break
+            frontier = next_frontier
+        return collected
 
     # --- staleness helpers -------------------------------------------------
 

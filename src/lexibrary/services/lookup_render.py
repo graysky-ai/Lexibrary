@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from lexibrary.artifacts.design_file import CallPathNote, DataFlowNote, EnumNote
     from lexibrary.artifacts.playbook import PlaybookFile
 
 
@@ -404,6 +405,99 @@ def render_class_hierarchy(classes: Sequence[object]) -> str:
         rows,
     )
     lines: list[str] = ["\n### Class hierarchy\n", table, ""]
+    return "\n".join(lines)
+
+
+def render_enum_notes(enum_notes: Sequence[EnumNote]) -> str:
+    """Render an ``### Enums & constants`` section for a file lookup.
+
+    *enum_notes* should be a list of
+    :class:`~lexibrary.artifacts.design_file.EnumNote` instances surfaced from
+    the parsed design file.  Each note becomes a markdown bullet of the form
+    ``- **{name}** — {role}`` with an indented ``Values:`` continuation line
+    when the note carries enum members.
+
+    Non-:class:`EnumNote` items in the sequence are filtered out so the
+    renderer mirrors the defensive behaviour of :func:`render_key_symbols`
+    and :func:`render_class_hierarchy`.
+
+    Returns an empty string when *enum_notes* is empty so the CLI can omit
+    the whole section.
+    """
+    from lexibrary.artifacts.design_file import EnumNote as _EnumNote  # noqa: PLC0415
+
+    typed: list[EnumNote] = [n for n in enum_notes if isinstance(n, _EnumNote)]
+    if not typed:
+        return ""
+
+    lines: list[str] = ["\n### Enums & constants\n"]
+    for note in typed:
+        lines.append(f"- **{note.name}** — {note.role}")
+        if note.values:
+            lines.append(f"  Values: {', '.join(note.values)}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_call_path_notes(call_path_notes: Sequence[CallPathNote]) -> str:
+    """Render an ``### Call paths`` section for a file lookup.
+
+    *call_path_notes* should be a list of
+    :class:`~lexibrary.artifacts.design_file.CallPathNote` instances surfaced
+    from the parsed design file.  Each note becomes a markdown bullet of the
+    form ``- **{entry}** — {narrative}`` with an indented ``Key hops:``
+    continuation line when the note carries hop names.
+
+    Non-:class:`CallPathNote` items in the sequence are filtered out so the
+    renderer mirrors the defensive behaviour of :func:`render_key_symbols`
+    and :func:`render_class_hierarchy`.
+
+    Returns an empty string when *call_path_notes* is empty so the CLI can
+    omit the whole section.
+    """
+    from lexibrary.artifacts.design_file import (  # noqa: PLC0415
+        CallPathNote as _CallPathNote,
+    )
+
+    typed: list[CallPathNote] = [n for n in call_path_notes if isinstance(n, _CallPathNote)]
+    if not typed:
+        return ""
+
+    lines: list[str] = ["\n### Call paths\n"]
+    for note in typed:
+        lines.append(f"- **{note.entry}** — {note.narrative}")
+        if note.key_hops:
+            lines.append(f"  Key hops: {', '.join(note.key_hops)}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_data_flow_notes(data_flow_notes: Sequence[DataFlowNote]) -> str:
+    """Render a ``### Data flows`` section for a file lookup.
+
+    *data_flow_notes* should be a list of
+    :class:`~lexibrary.artifacts.design_file.DataFlowNote` instances surfaced
+    from the parsed design file.  Each note becomes a markdown bullet of the
+    form ``- **{parameter}** in **{location}** — {effect}``.
+
+    Non-:class:`DataFlowNote` items in the sequence are filtered out so the
+    renderer mirrors the defensive behaviour of :func:`render_call_path_notes`.
+
+    Returns an empty string when *data_flow_notes* is empty so the CLI can
+    omit the whole section.
+    """
+    from lexibrary.artifacts.design_file import (  # noqa: PLC0415
+        DataFlowNote as _DataFlowNote,
+    )
+
+    typed: list[DataFlowNote] = [n for n in data_flow_notes if isinstance(n, _DataFlowNote)]
+    if not typed:
+        return ""
+
+    lines: list[str] = ["\n### Data flows\n"]
+    for note in typed:
+        lines.append(f"- **{note.parameter}** in **{note.location}** — {note.effect}")
+    lines.append("")
     return "\n".join(lines)
 
 

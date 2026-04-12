@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from baml_py import ClientRegistry
 from baml_py.baml_py import BamlClientError
@@ -13,6 +14,9 @@ from lexibrary.baml_client.async_client import BamlAsyncClient, b
 from lexibrary.baml_client.types import DesignFileOutput
 from lexibrary.exceptions import ArchivistTruncationError
 from lexibrary.llm.rate_limiter import RateLimiter
+
+if TYPE_CHECKING:
+    from lexibrary.archivist.symbol_graph_context import SymbolGraphPromptContext
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +31,14 @@ _TRUNCATION_PATTERN = re.compile(
 
 @dataclass
 class DesignFileRequest:
-    """Request for generating a design file from a source file."""
+    """Request for generating a design file from a source file.
+
+    ``symbol_context`` carries the optional symbol graph prompt context
+    rendered by
+    :func:`lexibrary.archivist.symbol_graph_context.render_symbol_graph_context`.
+    Group 5 stores it on the request; group 8 wires it through to the
+    BAML call site so the enums and call-path blocks reach the LLM.
+    """
 
     source_path: str
     source_content: str
@@ -35,6 +46,7 @@ class DesignFileRequest:
     language: str | None = None
     existing_design_file: str | None = None
     available_artifacts: list[str] | None = None
+    symbol_context: SymbolGraphPromptContext | None = None
 
 
 @dataclass
@@ -79,6 +91,17 @@ class ArchivistService:
         await self._rate_limiter.acquire()
         logger.debug("Rate limiter acquired for %s", request.source_path)
 
+        symbol_enums = request.symbol_context.enums_block if request.symbol_context else None
+        symbol_call_paths = (
+            request.symbol_context.call_paths_block if request.symbol_context else None
+        )
+        symbol_branch_parameters = (
+            request.symbol_context.branch_parameters_block if request.symbol_context else None
+        )
+        include_data_flows = (
+            request.symbol_context.include_data_flows if request.symbol_context else None
+        )
+
         try:
             client = self._get_baml_client()
             output = await client.ArchivistGenerateDesignFile(
@@ -88,6 +111,10 @@ class ArchivistService:
                 language=request.language,
                 existing_design_file=request.existing_design_file,
                 available_artifacts=request.available_artifacts,
+                symbol_enums=symbol_enums,
+                symbol_call_paths=symbol_call_paths,
+                symbol_branch_parameters=symbol_branch_parameters,
+                include_data_flows=include_data_flows,
             )
             return DesignFileResult(
                 source_path=request.source_path,

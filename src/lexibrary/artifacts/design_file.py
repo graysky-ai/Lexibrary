@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DesignFileFrontmatter(BaseModel):
@@ -32,6 +32,46 @@ class StalenessMetadata(BaseModel):
     generator: str
 
 
+class EnumNote(BaseModel):
+    """A single enum or constant note surfaced in the `## Enums & constants` section.
+
+    Mirrors `EnumNote` in `baml_src/types.baml`. The `values` list is the literal
+    enum members or constant values (e.g. ["PENDING", "RUNNING", "SUCCESS"]).
+    """
+
+    name: str
+    role: str
+    values: list[str] = Field(default_factory=list)
+
+
+class CallPathNote(BaseModel):
+    """A single narrative call-path note surfaced in the `## Call paths` section.
+
+    Mirrors `CallPathNote` in `baml_src/types.baml`. `entry` is the entry-point
+    symbol (e.g. `update_project()`) and `key_hops` lists the important symbols
+    visited along the way — not a mechanical call stack, but the narratively
+    meaningful hops.
+    """
+
+    entry: str
+    narrative: str
+    key_hops: list[str] = Field(default_factory=list)
+
+
+class DataFlowNote(BaseModel):
+    """A single data-flow note surfaced in the `## Data flows` section.
+
+    Mirrors `DataFlowNote` in `baml_src/types.baml`. Records how a parameter
+    appearing in branch conditions affects control flow: `parameter` is the
+    parameter name, `location` is the function where the branching occurs,
+    and `effect` is a one-sentence description of the behavioural impact.
+    """
+
+    parameter: str
+    location: str
+    effect: str
+
+
 class DesignFile(BaseModel):
     """Represents a design file artifact for a single source file."""
 
@@ -43,6 +83,9 @@ class DesignFile(BaseModel):
     dependents: list[str] = []
     tests: str | None = None
     complexity_warning: str | None = None
+    enum_notes: list[EnumNote] = Field(default_factory=list)
+    call_path_notes: list[CallPathNote] = Field(default_factory=list)
+    data_flow_notes: list[DataFlowNote] = Field(default_factory=list)
     wikilinks: list[str] = []
     tags: list[str] = []
     stack_refs: list[str] = []

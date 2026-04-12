@@ -22,9 +22,10 @@ Do not create an IWH signal if all work is complete.
 ## Before Reading or Editing Files
 
 - Always run `lexi lookup <file>` before reading or editing any source
-  file under `src/`. The output now includes a "Key symbols" section
-  with call counts per function — use it to size the blast radius of a
-  change. This does not apply to test files.
+  file under `src/`. Read the "Key symbols", "Class hierarchy", "Call
+  paths", "Data flows", and "Enums & constants" sections — they are
+  the distilled context you need before you start making changes. This
+  does not apply to test files.
 
 ## After Editing Files
 

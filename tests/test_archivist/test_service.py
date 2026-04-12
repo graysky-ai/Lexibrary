@@ -173,6 +173,10 @@ class TestGenerateDesignFile:
             language="python",
             existing_design_file=None,
             available_artifacts=None,
+            symbol_enums=None,
+            symbol_call_paths=None,
+            symbol_branch_parameters=None,
+            include_data_flows=None,
         )
 
     @pytest.mark.asyncio()
@@ -224,6 +228,10 @@ class TestGenerateDesignFile:
             language=None,
             existing_design_file=None,
             available_artifacts=None,
+            symbol_enums=None,
+            symbol_call_paths=None,
+            symbol_branch_parameters=None,
+            include_data_flows=None,
         )
 
 
@@ -370,6 +378,10 @@ class TestGenerateDesignFileWithArtifacts:
             language=None,
             existing_design_file=None,
             available_artifacts=artifacts,
+            symbol_enums=None,
+            symbol_call_paths=None,
+            symbol_branch_parameters=None,
+            include_data_flows=None,
         )
 
     @pytest.mark.asyncio()
@@ -400,6 +412,10 @@ class TestGenerateDesignFileWithArtifacts:
             language=None,
             existing_design_file=None,
             available_artifacts=None,
+            symbol_enums=None,
+            symbol_call_paths=None,
+            symbol_branch_parameters=None,
+            include_data_flows=None,
         )
 
 

@@ -15,12 +15,9 @@ from lexibrary.symbolgraph.python_imports import (
     resolve_python_module,
     resolve_python_relative_module,
 )
+from lexibrary.symbolgraph.resolver_js import resolve_js_module
 
 logger = logging.getLogger(__name__)
-
-# Extensions to try when resolving JS/TS imports without an explicit extension
-_JS_EXTENSIONS = (".ts", ".tsx", ".js", ".jsx")
-_JS_INDEX_NAMES = ("index.ts", "index.tsx", "index.js", "index.jsx")
 
 
 def extract_dependencies(file_path: Path, project_root: Path) -> list[str]:
@@ -65,12 +62,10 @@ def _resolve_js_import(
 ) -> str | None:
     """Resolve a JavaScript/TypeScript relative import to a project-relative path.
 
-    Only handles relative imports (``./`` or ``../``). The caller must
-    filter out bare module specifiers (npm packages) before calling.
-
-    Tries the literal path first, then appends common extensions
-    (``.ts``, ``.tsx``, ``.js``, ``.jsx``), and finally checks for
-    index files.
+    Delegates to :func:`lexibrary.symbolgraph.resolver_js.resolve_js_module`
+    for the actual resolution logic. This thin wrapper maintains the original
+    signature (accepts ``source_dir``, returns a project-relative string)
+    for backward compatibility.
 
     Args:
         import_path: Relative import path, e.g. ``"./module"``.
@@ -80,36 +75,22 @@ def _resolve_js_import(
     Returns:
         Project-relative path string if the file is found, else None.
     """
-    base = (source_dir / import_path).resolve()
-
-    # Already has a recognised extension — check directly
-    if base.suffix in _JS_EXTENSIONS:
-        if base.exists():
-            try:
-                return str(base.relative_to(project_root))
-            except ValueError:
-                return None
+    # resolve_js_module expects a caller *file* path, but we only have the
+    # directory. Create a synthetic file path in source_dir so the relative
+    # import resolution starts from the right place.
+    synthetic_caller = source_dir / "__caller__"
+    resolved = resolve_js_module(
+        synthetic_caller,
+        import_path,
+        project_root=project_root,
+        tsconfig=None,
+    )
+    if resolved is None:
         return None
-
-    # Try adding common extensions
-    for ext in _JS_EXTENSIONS:
-        candidate = base.with_suffix(ext)
-        if candidate.exists():
-            try:
-                return str(candidate.relative_to(project_root))
-            except ValueError:
-                return None
-
-    # Try index files (e.g. ./components → ./components/index.ts)
-    for name in _JS_INDEX_NAMES:
-        candidate = base / name
-        if candidate.exists():
-            try:
-                return str(candidate.relative_to(project_root))
-            except ValueError:
-                return None
-
-    return None
+    try:
+        return str(resolved.relative_to(project_root.resolve()))
+    except ValueError:
+        return None
 
 
 # ---------------------------------------------------------------------------

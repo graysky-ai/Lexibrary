@@ -91,14 +91,13 @@ def test_health_missing_db_does_not_create_file(tmp_path: Path) -> None:
 
 
 def test_health_empty_db(project_root: Path) -> None:
-    """Freshly-initialised DB → schema v2, built_at set, counts all zero."""
+    """Freshly-initialised DB → current schema version, built_at set, counts all zero."""
     _init_empty_db(project_root)
 
     health = read_symbol_graph_health(project_root)
 
     assert health.exists is True
     assert health.schema_version == SCHEMA_VERSION
-    assert health.schema_version == 2
     assert health.built_at is not None
     assert health.file_count == 0
     assert health.symbol_count == 0
@@ -189,7 +188,7 @@ def test_health_with_rows(project_root: Path) -> None:
     health = read_symbol_graph_health(project_root)
 
     assert health.exists is True
-    assert health.schema_version == 2
+    assert health.schema_version == SCHEMA_VERSION
     assert health.built_at is not None
     assert health.file_count == 1
     # Four symbols inserted above; the count reflects the full DDL table,

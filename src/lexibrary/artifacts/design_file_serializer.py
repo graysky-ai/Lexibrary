@@ -138,6 +138,31 @@ def serialize_design_file(data: DesignFile) -> str:
         parts.append(data.complexity_warning)
         parts.append("")
 
+    if data.enum_notes:
+        parts.append("## Enums & constants")
+        parts.append("")
+        for enum in data.enum_notes:
+            parts.append(f"- **{enum.name}** — {enum.role}")
+            if enum.values:
+                parts.append(f"  Values: {', '.join(enum.values)}.")
+        parts.append("")
+
+    if data.call_path_notes:
+        parts.append("## Call paths")
+        parts.append("")
+        for call_path in data.call_path_notes:
+            parts.append(f"- **{call_path.entry}** — {call_path.narrative}")
+            if call_path.key_hops:
+                parts.append(f"  Key hops: {', '.join(call_path.key_hops)}.")
+        parts.append("")
+
+    if data.data_flow_notes:
+        parts.append("## Data flows")
+        parts.append("")
+        for d in data.data_flow_notes:
+            parts.append(f"- **{d.parameter}** in **{d.location}** — {d.effect}")
+        parts.append("")
+
     if data.wikilinks:
         parts.append("## Wikilinks")
         parts.append("")

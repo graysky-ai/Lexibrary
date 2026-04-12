@@ -690,6 +690,51 @@ class SymbolGraph:
         rows = self._conn.execute(sql, (symbol_id,)).fetchall()
         return [_row_to_member(row) for row in rows]
 
+    # -- branch parameters --------------------------------------------------
+
+    def branch_parameters_of(self, symbol_id: int) -> list[str]:
+        """Return the branch-parameter names recorded for *symbol_id*.
+
+        Queries the ``symbol_branch_parameters`` table for the given
+        symbol and returns parameter names in alphabetical order. Returns
+        an empty list when the symbol has no recorded branch parameters
+        (e.g. a function with no parameter-driven branching, or a class).
+
+        The ``symbol_branch_parameters`` table is populated by
+        ``symbol-graph-7``. This method returns an empty list when the
+        table is empty for a given symbol.
+        """
+        sql = (
+            "SELECT parameter_name "
+            "FROM symbol_branch_parameters "
+            "WHERE symbol_id = ? "
+            "ORDER BY parameter_name"
+        )
+        rows = self._conn.execute(sql, (symbol_id,)).fetchall()
+        return [str(row[0]) for row in rows]
+
+    def has_branching_parameters_in_file(self, file_path: str) -> bool:
+        """Return whether any symbol in *file_path* has branch parameters.
+
+        Performs a single existence check by joining
+        ``symbol_branch_parameters`` through ``symbols`` to ``files``.
+        Returns ``True`` if at least one row exists, ``False`` otherwise.
+
+        Used as a file-level gate by the archivist to decide whether to
+        render branch parameters context for the BAML prompt — files
+        without any branching parameters skip the entire enrichment path.
+        """
+        sql = (
+            "SELECT 1 "
+            "FROM symbol_branch_parameters bp "
+            "JOIN symbols s ON s.id = bp.symbol_id "
+            "JOIN files f ON f.id = s.file_id "
+            "WHERE f.path = ? "
+            "LIMIT 1"
+        )
+        row = self._conn.execute(sql, (file_path,)).fetchone()
+        return row is not None
+
     # -- raw escape hatch ---------------------------------------------------
 
     def query_raw(self, sql: str, params: tuple[object, ...] = ()) -> list[sqlite3.Row]:

@@ -195,19 +195,43 @@ class ASTConfig(BaseModel):
 class SymbolGraphConfig(BaseModel):
     """Symbol-level code graph configuration (``.lexibrary/symbols.db``).
 
-    Phase 1 ships a single ``enabled`` toggle. Phase 5 will extend this model
-    with extraction knobs (see the comment block below).
+    Controls whether the symbol graph is built and how the archivist enriches
+    design-file prompts with enum/constant and call-path context drawn from
+    that graph.
     """
 
     model_config = ConfigDict(extra="ignore")
 
     enabled: bool = True
-    # Phase 5 will add the following real fields (listed here as a
-    # forward-compatibility marker, not as live config):
-    #   include_enums: bool = True          — extract enum members as symbols
-    #   include_call_paths: bool = False    — record transitive call paths
-    #   call_path_depth: int = 2            — max hops when include_call_paths is on
-    #   include_data_flows: bool = False    — record data-flow edges
+    """Controls whether ``.lexibrary/symbols.db`` is created and refreshed by
+    ``lexictl update``."""
+
+    include_enums: bool = True
+    """When True, feed extracted enums and constants into the design-file
+    prompt so the archivist can write prose that names them explicitly."""
+
+    include_call_paths: bool = False
+    """Opt-in: feed call-path summaries (caller ← this ← callees) into the
+    design-file prompt. Increases prompt size by roughly
+    ``call_path_depth × 50`` tokens per file."""
+
+    call_path_depth: int = 2
+    """How many hops to include in each direction when ``include_call_paths``
+    is on."""
+
+    max_enum_items: int = 20
+    """Maximum number of enums/constants to include in a single prompt. Files
+    with more entries are truncated with a trailing ``... N more`` marker."""
+
+    max_call_path_items: int = 10
+    """Maximum number of call-path entries to include in a single prompt.
+    Files with more functions/methods are truncated."""
+
+    include_data_flows: bool = False
+    """Opt-in (Phase 7): when True and the file contains functions whose
+    parameters drive branching (deterministic AST signal), the archivist
+    includes data-flow notes in the design-file prompt.  Files without
+    branching parameters never trigger the LLM call regardless of this flag."""
 
 
 class ConventionConfig(BaseModel):

@@ -22,6 +22,24 @@ class DesignFileDependency {
   description string
 }
 
+class EnumNote {
+  name string
+  role string
+  values string[]
+}
+
+class CallPathNote {
+  entry string
+  narrative string
+  key_hops string[]
+}
+
+class DataFlowNote {
+  parameter string
+  location string
+  effect string
+}
+
 class DesignFileOutput {
   summary string
   interface_contract string
@@ -30,4 +48,7 @@ class DesignFileOutput {
   complexity_warning string?
   wikilinks string[]
   tags string[]
+  enum_notes EnumNote[]?
+  call_path_notes CallPathNote[]?
+  data_flow_notes DataFlowNote[]?
 }

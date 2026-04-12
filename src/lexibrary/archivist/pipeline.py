@@ -5,13 +5,15 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from lexibrary.archivist.symbol_graph_context import SymbolGraphPromptContext
+    from lexibrary.services.symbols import SymbolQueryService
     from lexibrary.tokenizer.tiktoken_counter import TiktokenCounter
 
 from lexibrary.archivist.change_checker import (
@@ -554,6 +556,7 @@ async def update_file(
     *,
     force: bool = False,
     unlimited: bool = False,
+    symbol_context: SymbolGraphPromptContext | None = None,
 ) -> FileResult:
     """Generate or update the design file for a single source file.
 
@@ -568,6 +571,10 @@ async def update_file(
             preserved and passed as ``existing_design`` context to the LLM.
         unlimited: When True, bypass the size gate and re-enrich SKELETON_ONLY
             files instead of skipping them.
+        symbol_context: Optional pre-rendered symbol graph context for the
+            file's enum/constant and call-path blocks. Forwarded to the LLM
+            via ``DesignFileRequest``. When ``None``, no symbol enrichment
+            is included in the prompt.
 
     Returns a ``FileResult`` containing the change level and tracking flags.
     """
@@ -746,6 +753,7 @@ async def update_file(
         language=language,
         existing_design_file=existing_design,
         available_artifacts=available_artifacts,
+        symbol_context=symbol_context,
     )
 
     try:
@@ -1318,11 +1326,13 @@ async def update_files(
             stats.linkgraph_error = "Link graph incremental update failed"
             stats.error_summary.add("linkgraph", exc)
 
-    # Build the symbol graph (full rebuild in Phase 1; Phase 6 adds incremental).
+    # Build the symbol graph incrementally — only rebuild files the caller
+    # knows changed. The builder falls back to a full rebuild when the ratio
+    # of changed files exceeds INCREMENTAL_THRESHOLD.
     try:
         from lexibrary.symbolgraph import build_symbol_graph  # noqa: PLC0415
 
-        symbol_result = build_symbol_graph(project_root, config)
+        symbol_result = build_symbol_graph(project_root, config, changed_paths=file_paths)
         stats.symbolgraph_built = True
         stats.symbolgraph_symbol_count = symbol_result.symbol_count
         stats.symbolgraph_call_count = symbol_result.call_count
@@ -1444,11 +1454,13 @@ async def update_directory(
         stats.linkgraph_error = "Link graph full build failed"
         stats.error_summary.add("linkgraph", exc)
 
-    # Build the symbol graph (full rebuild in Phase 1; Phase 6 adds incremental).
+    # Build the symbol graph incrementally — only rebuild files that
+    # changed during this directory update. Falls back to full rebuild
+    # when the changed ratio exceeds INCREMENTAL_THRESHOLD.
     try:
         from lexibrary.symbolgraph import build_symbol_graph  # noqa: PLC0415
 
-        symbol_result = build_symbol_graph(project_root, config)
+        symbol_result = build_symbol_graph(project_root, config, changed_paths=changed_file_paths)
         stats.symbolgraph_built = True
         stats.symbolgraph_symbol_count = symbol_result.symbol_count
         stats.symbolgraph_call_count = symbol_result.call_count
@@ -1458,6 +1470,66 @@ async def update_directory(
         stats.error_summary.add("symbolgraph", exc)
 
     return stats
+
+
+@contextlib.contextmanager
+def _open_symbol_service_for_enrichment(
+    project_root: Path,
+    config: LexibraryConfig,
+    *,
+    enabled: bool,
+) -> Iterator[SymbolQueryService | None]:
+    """Yield an open :class:`SymbolQueryService` or ``None`` as a context manager.
+
+    Wraps :class:`SymbolQueryService` so ``update_project`` can always
+    open the enrichment service with ``with`` syntax even when the
+    underlying symbol graph is disabled, unbuilt, or fails to open.
+    When enrichment is possible the helper enters the service via its
+    own ``__enter__`` / ``__exit__`` protocol and forwards the entered
+    value to the caller; when enrichment is not possible it yields
+    ``None`` without touching the class.
+
+    Using the service's native context-manager protocol (rather than
+    calling :meth:`~SymbolQueryService.open` / :meth:`~SymbolQueryService.close`
+    directly) means tests can spy on ``SymbolQueryService.__enter__`` to
+    assert the pipeline opens the service exactly once per
+    ``update_project`` invocation regardless of how many files are in
+    scope.
+
+    Parameters
+    ----------
+    project_root:
+        Absolute path to the project root.
+    config:
+        Project config. ``config.symbols.enabled`` must be true for the
+        helper to attempt an open.
+    enabled:
+        Caller-supplied gate used by ``update_project`` to skip the
+        open when the symbol graph build itself failed earlier in the
+        run. Orthogonal to ``config.symbols.enabled``: both must be
+        true to get a live service.
+    """
+    if not config.symbols.enabled or not enabled:
+        yield None
+        return
+
+    from lexibrary.services.symbols import SymbolQueryService  # noqa: PLC0415
+
+    svc_instance = SymbolQueryService(project_root)
+    try:
+        entered = svc_instance.__enter__()
+    except Exception:
+        logger.exception(
+            "Failed to open SymbolQueryService for prompt enrichment — "
+            "continuing without symbol-graph context"
+        )
+        yield None
+        return
+
+    try:
+        yield entered
+    finally:
+        svc_instance.__exit__(None, None, None)
 
 
 async def update_project(
@@ -1506,41 +1578,103 @@ async def update_project(
 
     logger.info("Discovered %d source files for processing", len(source_files))
 
+    # Step 3: Build the symbol graph BEFORE the design-file generation loop
+    # so the archivist enrichment helper can read fresh enum and call-path
+    # context for each file it regenerates. This is the group-5 reorder from
+    # the symbol-graph-5 plan (see tests/test_archivist/test_pipeline_order.py
+    # for the full audit + interpretation). Only update_project() does this
+    # reorder — update_files() and update_directory() keep their late
+    # symbol-graph build because they are incremental/targeted entry points
+    # rather than full-project refreshes.
+    #
+    # changed_paths is intentionally omitted (full build) because this
+    # pre-loop build must produce a complete graph for design-file enrichment.
+    # update_files() and update_directory() pass changed_paths for incremental
+    # rebuilds since they run after their processing loops.
+    try:
+        from lexibrary.symbolgraph import build_symbol_graph  # noqa: PLC0415
+
+        symbol_result = build_symbol_graph(project_root, config)
+        stats.symbolgraph_built = True
+        stats.symbolgraph_symbol_count = symbol_result.symbol_count
+        stats.symbolgraph_call_count = symbol_result.call_count
+    except Exception as exc:
+        logger.exception("Failed to build symbol graph")
+        stats.symbolgraph_error = "Symbol graph build failed"
+        stats.error_summary.add("symbolgraph", exc)
+
     # Track which files were actually changed (for targeted re-indexing)
     changed_file_paths: list[Path] = []
 
-    # Process each file sequentially
-    for source_path in source_files:
-        stats.files_scanned += 1
+    # Step 4: Design-file generation loop. Open a single SymbolQueryService
+    # around the loop so the enrichment helper can walk the freshly-built
+    # symbol graph without re-opening the underlying sqlite3 connection per
+    # file. When symbols are disabled or the graph build failed we pass
+    # symbol_context=None to every update_file via the ``with
+    # _open_symbol_service_for_enrichment(...) as svc`` contract, whose
+    # value is either a live service (when enrichment is possible) or
+    # ``None`` (when it is not).
+    #
+    # SQLite concurrency note: update_project processes files with a plain
+    # ``for`` loop that awaits sequentially (no asyncio.gather / TaskGroup),
+    # so the single connection the service holds is only touched by one
+    # coroutine at a time. If this loop is ever converted to concurrent
+    # execution the render_symbol_graph_context() calls must be wrapped in
+    # asyncio.to_thread.
+    from lexibrary.archivist.symbol_graph_context import (  # noqa: PLC0415
+        render_symbol_graph_context,
+    )
 
-        try:
-            file_result = await update_file(
-                source_path,
-                project_root,
-                config,
-                archivist,
-                available_artifacts=available_artifacts,
-                force=force,
-                unlimited=unlimited,
-            )
-        except Exception as exc:
-            logger.exception("Unexpected error processing %s", source_path)
-            stats.files_failed += 1
-            stats.failed_files.append((str(source_path), str(exc)))
-            stats.error_summary.add("archivist", exc, path=str(source_path))
-            changed_file_paths.append(source_path)
+    with _open_symbol_service_for_enrichment(
+        project_root, config, enabled=stats.symbolgraph_built
+    ) as symbol_svc:
+        # Process each file sequentially
+        for source_path in source_files:
+            stats.files_scanned += 1
+
+            symbol_context: SymbolGraphPromptContext | None = None
+            if symbol_svc is not None:
+                try:
+                    symbol_context = render_symbol_graph_context(
+                        symbol_svc, project_root, source_path, config
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to render symbol graph context for %s — "
+                        "continuing without symbol-graph context",
+                        source_path,
+                    )
+                    symbol_context = None
+
+            try:
+                file_result = await update_file(
+                    source_path,
+                    project_root,
+                    config,
+                    archivist,
+                    available_artifacts=available_artifacts,
+                    force=force,
+                    unlimited=unlimited,
+                    symbol_context=symbol_context,
+                )
+            except Exception as exc:
+                logger.exception("Unexpected error processing %s", source_path)
+                stats.files_failed += 1
+                stats.failed_files.append((str(source_path), str(exc)))
+                stats.error_summary.add("archivist", exc, path=str(source_path))
+                changed_file_paths.append(source_path)
+                if progress_callback is not None:
+                    progress_callback(source_path, ChangeLevel.UNCHANGED, None)
+                continue
+
+            _accumulate_stats(stats, file_result, source_path=source_path)
+
+            # Track files that were actually created, updated, or failed
+            if file_result.change not in (ChangeLevel.UNCHANGED, ChangeLevel.AGENT_UPDATED):
+                changed_file_paths.append(source_path)
+
             if progress_callback is not None:
-                progress_callback(source_path, ChangeLevel.UNCHANGED, None)
-            continue
-
-        _accumulate_stats(stats, file_result, source_path=source_path)
-
-        # Track files that were actually created, updated, or failed
-        if file_result.change not in (ChangeLevel.UNCHANGED, ChangeLevel.AGENT_UPDATED):
-            changed_file_paths.append(source_path)
-
-        if progress_callback is not None:
-            progress_callback(source_path, file_result.change, file_result.skip_reason)
+                progress_callback(source_path, file_result.change, file_result.skip_reason)
 
     # Step 5: Re-index directories containing changed files (D-2, D-3).
     # Skipped when no files were actually created, updated, or failed (4.3).
@@ -1571,7 +1705,11 @@ async def update_project(
     # Step 8: Process enrichment queue — re-generate queued skeletons via LLM.
     await _process_enrichment_queue(project_root, config, archivist, stats)
 
-    # Step 9: Build the link graph index (full rebuild after all artifacts are up to date)
+    # Step 9: Build the link graph index (full rebuild after all artifacts are up to date).
+    # Stays at this late position even after the group-5 reorder: it must see the
+    # freshly-written design files from the loop above so outbound wikilinks are
+    # included in the rebuilt index. Moving it earlier would cause the link graph
+    # to reflect one-run-stale design-file state.
     try:
         build_index(project_root)
         stats.linkgraph_built = True
@@ -1579,18 +1717,5 @@ async def update_project(
         logger.exception("Failed to build link graph index")
         stats.linkgraph_error = "Link graph full build failed"
         stats.error_summary.add("linkgraph", exc)
-
-    # Step 10: Build the symbol graph (full rebuild in Phase 1; Phase 6 adds incremental).
-    try:
-        from lexibrary.symbolgraph import build_symbol_graph  # noqa: PLC0415
-
-        symbol_result = build_symbol_graph(project_root, config)
-        stats.symbolgraph_built = True
-        stats.symbolgraph_symbol_count = symbol_result.symbol_count
-        stats.symbolgraph_call_count = symbol_result.call_count
-    except Exception as exc:
-        logger.exception("Failed to build symbol graph")
-        stats.symbolgraph_error = "Symbol graph build failed"
-        stats.error_summary.add("symbolgraph", exc)
 
     return stats

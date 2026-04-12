@@ -1,8 +1,0 @@
-comments:
-- body: 'Graceful-degradation log calls in LinkGraph.open() demoted from WARNING to
-    DEBUG: both the schema-version-mismatch branch and the sqlite3.DatabaseError catch
-    return None and are handled by every caller. The WARNING-level noise was visible
-    on every lexi lookup invocation under transient SQLite contention from parallel
-    subagents, training agents to ignore lexi diagnostics. Messages are retained at
-    DEBUG so --verbose / debug logging still surfaces them for diagnosis.'
-  date: '2026-04-11T19:23:25.002799Z'

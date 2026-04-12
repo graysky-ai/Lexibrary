@@ -1,0 +1,7 @@
+comments:
+- body: "Added EnumNote and CallPathNote Pydantic models (mirroring baml_src/types.baml)\
+    \ plus two new fields on DesignFile (enum_notes, call_path_notes). Part of symbol-graph-5\
+    \ Phase 5 enrichment \u2014 these structured fields carry enum/constant context\
+    \ and narrative call-path data from the archivist pipeline into design files for\
+    \ surfacing via lexi lookup."
+  date: '2026-04-11T23:20:59.896042Z'

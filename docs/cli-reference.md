@@ -252,23 +252,26 @@ For each matching symbol, a section containing:
    Phase 3, `self.method()` calls are walked through the MRO, so a
    subclass method calling an inherited base method appears as a
    resolved callee rather than an unresolved one.
-5. **`### Base classes`** — Phase 3 markdown table of
-   `| Base | Location |` listing every class this symbol inherits
-   from or implements. Populated from Python `class Foo(Bar):`
-   declarations and TS/JS `extends` / `implements` clauses. Omitted
-   if the symbol has no resolved bases (or is not a class).
-6. **`### Subclasses and instantiation sites`** — Phase 3 markdown
+5. **`### Class relationships`** — markdown table of
+   `| Relationship | Target | Location |` listing every class this
+   symbol inherits from, implements, or composes. The `Relationship`
+   column shows the edge type (`inherits`, `composes`). Populated
+   from Python `class Foo(Bar):` declarations, TS/JS
+   `extends`/`implements` clauses, and type-annotated class
+   attributes (composition). Omitted if the symbol has no resolved
+   parent edges (or is not a class).
+6. **`### Subclasses, instantiation, and composition`** — markdown
    table of `| Type | Source | Location |` listing every class that
-   inherits from this one (`Type = inherits`) plus every call site
-   that constructs it (`Type = instantiates`). Populated from the
-   Python PascalCase instantiation heuristic
-   (`^[A-Z][A-Za-z0-9]*$`) and TS/JS `new` expressions. Omitted if
-   the symbol has no inbound class edges.
-7. **`Unresolved bases: ...`** — Phase 3 trailing line listing base
-   names the resolver could not map to a project symbol (typically
-   external libraries like Pydantic `BaseModel` or stdlib `Enum`).
-   Treat these as out-of-scope for refactoring. Omitted when there
-   are no unresolved bases.
+   inherits from this one (`Type = inherits`), every call site that
+   constructs it (`Type = instantiates`), and every class that holds
+   it as a typed attribute (`Type = composes`). Omitted if the symbol
+   has no inbound class edges.
+7. **`Unresolved bases: ...`** / **`Unresolved compositions: ...`** —
+   trailing lines listing names the resolver could not map to a
+   project symbol, split by edge type. Unresolved bases are typically
+   external libraries like Pydantic `BaseModel` or stdlib `Enum`.
+   Treat these as out-of-scope for refactoring. Either or both lines
+   may be omitted when there are no unresolved edges of that type.
 8. **`### Members`** — Phase 4 markdown table of
    `| Name | Value | Ordinal |` rows listing enum variants (in
    ordinal order) or the single row describing a module-level
@@ -331,12 +334,12 @@ Sample class output:
 ## lexibrary.config.schema.LexibraryConfig  [class]
 `src/lexibrary/config/schema.py:42`
 
-### Base classes
-| Base                                    | Location                                  |
-|-----------------------------------------|-------------------------------------------|
-| lexibrary.config.schema._ConfigBase     | src/lexibrary/config/schema.py:18         |
+### Class relationships
+| Relationship | Target                                  | Location                                  |
+|--------------|-----------------------------------------|-------------------------------------------|
+| inherits     | lexibrary.config.schema._ConfigBase     | src/lexibrary/config/schema.py:18         |
 
-### Subclasses and instantiation sites
+### Subclasses, instantiation, and composition
 | Type          | Source                                  | Location                                 |
 |---------------|------------------------------------------|------------------------------------------|
 | instantiates  | lexibrary.config.loader.load_config      | src/lexibrary/config/loader.py:87        |
@@ -1408,7 +1411,7 @@ See `lexictl curate --help` for full option documentation.
 | `lexi lookup <path> [--full]` | Get design file, conventions, known issues, IWH, and dependents |
 | `lexi search [query] [filters]` | Unified cross-artifact search |
 | `lexi impact <file> [--depth] [--quiet]` | Show reverse dependents (who imports this file) |
-| `lexi trace <symbol> [--file]` | Show callers, callees, and unresolved external calls for a symbol |
+| `lexi trace <symbol> [--file]` | Show callers, callees, class relationships, and unresolved calls for a symbol |
 | `lexi view <artifact_id>` | Display any artifact by its ID |
 | `lexi describe <dir> <desc>` | Update a directory's `.aindex` billboard description |
 | `lexi validate [--severity] [--check] [--json]` | Run consistency checks |

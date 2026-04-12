@@ -37,3 +37,10 @@ comments:
     \ heuristic to cover the conventional private-constant spelling required by the\
     \ test plan."
   date: '2026-04-11T19:50:10.835754Z'
+- body: 'Added composition extraction: _strip_annotation_to_target unwraps generic
+    wrappers (list, dict, Optional, Union, pipe-None) and filters builtins/single-letter
+    generics. _collect_all_compositions walks class bodies for annotated assignments
+    and __init__ self.attr: Type patterns. tree-sitter-python parses bare annotations
+    (db: Database) as assignment nodes with a type field, not annotated_assignment
+    nodes.'
+  date: '2026-04-12T03:19:06.235887Z'

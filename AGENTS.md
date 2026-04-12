@@ -62,8 +62,11 @@ Do not create an IWH signal if all work is complete.
 
 ## Before Reading or Editing Files
 
-- Always run `lexi lookup <file>` before reading or editing any source file under `src/`.
-  This does not apply to test files.
+- Always run `lexi lookup <file>` before reading or editing any source
+  file under `src/`. Read the "Key symbols", "Class hierarchy", "Call
+  paths", "Data flows", and "Enums & constants" sections — they are
+  the distilled context you need before you start making changes. This
+  does not apply to test files.
 
 ## After Editing Files
 
@@ -90,12 +93,30 @@ Do not create an IWH signal if all work is complete.
   existing patterns, conventions, and prior art across all artifact types.
   - For design file hits: `lexi lookup <path>`
   - For concept, convention, or stack hits: `lexi view <artifact-id>`
+- Use `lexi trace <symbol>` to see a function's callers, callees, and
+  unresolved external calls before deciding to rename it, change its
+  signature, or remove it. The symbol graph is refreshed per-file by
+  `lexi design update <file>` (run after every source edit) and fully
+  rebuilt on maintainer-only `lexictl update`.
+- When renaming or removing a class, run `lexi trace <ClassName>` first.
+  The trace now shows every subclass, every instantiation site, and
+  unresolved external bases (e.g. Pydantic `BaseModel`). Treat unresolved
+  bases as out-of-scope — they are not refactoring risks from lexi's
+  point of view.
 
 ## Debugging and Problem Solving
 
 - Always run `lexi search --type stack <query>` before starting to debug an
   issue — a solution may already exist. Use `lexi view <post-id>` to read
   matching posts.
+- Run `lexi trace <symbol>` when a bug traces through a call chain. The
+  trace shows every caller and callee with file:line locations, so you
+  can walk the chain without grepping.
+- When you see an unfamiliar string or integer literal appear in a bug
+  (e.g. `"pending"`, `"failed"`, status codes), run
+  `lexi search --type symbol <value>` — the symbol graph now indexes
+  enum member values and constants, so the canonical enum (if any)
+  surfaces directly.
 - For complex research or investigation, delegate to the `lexi-research`
   subagent rather than doing extensive exploration inline.
 - After solving a non-trivial bug, run `lexi stack post` to document

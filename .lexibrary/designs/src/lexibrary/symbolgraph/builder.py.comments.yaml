@@ -16,3 +16,16 @@ comments:
     helper. refresh_file() mirrors the same member-insertion calls so incremental
     reindex drops stale members via CASCADE on symbols.id.'
   date: '2026-04-11T20:02:46.551857Z'
+- body: 'Phase 6 adds three features: (1) Composition edge resolution pass (3b) that
+    iterates CompositionSite entries and inserts composes edges into class_edges/class_edges_unresolved.
+    (2) JsTsResolver dispatch alongside PythonResolver and FallbackResolver, selected
+    by file suffix. (3) Real incremental rebuild path: when changed_paths is provided
+    and under INCREMENTAL_THRESHOLD (30%), delegates to refresh_file per file instead
+    of full wipe-and-rebuild. All resolver dispatch blocks now use the SymbolResolver
+    protocol type for correct mypy narrowing.'
+  date: '2026-04-12T03:31:28.619360Z'
+- body: 'Phase 7: After inserting each function/method symbol row, the builder now
+    iterates defn.branch_parameters and inserts one symbol_branch_parameters row per
+    entry. Added branch_parameter_count field to SymbolBuildResult. The incremental
+    path also aggregates this count.'
+  date: '2026-04-12T05:23:37.810341Z'

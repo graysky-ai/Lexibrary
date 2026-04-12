@@ -823,3 +823,95 @@ def test_symbols_config_importable_from_package() -> None:
     from lexibrary.config import SymbolGraphConfig as PackageSymbolGraphConfig
 
     assert PackageSymbolGraphConfig is SymbolGraphConfig
+
+
+def test_symbols_config_default_enrichment_flags() -> None:
+    """SymbolGraphConfig() exposes the Phase 5 enrichment defaults."""
+    config = SymbolGraphConfig()
+    assert config.enabled is True
+    assert config.include_enums is True
+    assert config.include_call_paths is False
+    assert config.call_path_depth == 2
+    assert config.max_enum_items == 20
+    assert config.max_call_path_items == 10
+
+
+def test_symbols_config_override_enrichment() -> None:
+    """All five enrichment flags can be overridden via a YAML-loaded dict."""
+    yaml_snippet = (
+        "symbols:\n"
+        "  include_enums: false\n"
+        "  include_call_paths: true\n"
+        "  call_path_depth: 3\n"
+        "  max_enum_items: 50\n"
+        "  max_call_path_items: 25\n"
+    )
+    data = yaml.safe_load(yaml_snippet)
+    config = LexibraryConfig.model_validate(data)
+    assert config.symbols.include_enums is False
+    assert config.symbols.include_call_paths is True
+    assert config.symbols.call_path_depth == 3
+    assert config.symbols.max_enum_items == 50
+    assert config.symbols.max_call_path_items == 25
+    # The enabled flag default is preserved when not overridden.
+    assert config.symbols.enabled is True
+
+
+def test_symbols_config_accepts_phase1_yaml_without_new_keys() -> None:
+    """Pre-Phase-5 YAML containing only enabled: true loads with enrichment defaults."""
+    yaml_snippet = "symbols:\n  enabled: true\n"
+    data = yaml.safe_load(yaml_snippet)
+    config = LexibraryConfig.model_validate(data)
+    assert config.symbols.enabled is True
+    # All enrichment defaults apply because the YAML omits them.
+    assert config.symbols.include_enums is True
+    assert config.symbols.include_call_paths is False
+    assert config.symbols.call_path_depth == 2
+    assert config.symbols.max_enum_items == 20
+    assert config.symbols.max_call_path_items == 10
+
+
+# --- SymbolGraphConfig include_data_flows tests (Phase 7) ---
+
+
+def test_symbols_config_default_include_data_flows_false() -> None:
+    """SymbolGraphConfig().include_data_flows defaults to False (opt-in)."""
+    config = SymbolGraphConfig()
+    assert config.include_data_flows is False
+
+
+def test_symbols_config_override_include_data_flows_true() -> None:
+    """include_data_flows can be set to True via a YAML-loaded dict."""
+    yaml_snippet = "symbols:\n  include_data_flows: true\n"
+    data = yaml.safe_load(yaml_snippet)
+    config = LexibraryConfig.model_validate(data)
+    assert config.symbols.include_data_flows is True
+    # Other defaults preserved when not overridden.
+    assert config.symbols.enabled is True
+    assert config.symbols.include_enums is True
+    assert config.symbols.include_call_paths is False
+    assert config.symbols.max_call_path_items == 10
+
+
+def test_symbols_config_accepts_phase5_yaml_without_data_flows_key() -> None:
+    """Pre-Phase-7 YAML with Phase 5 keys but no include_data_flows loads cleanly."""
+    yaml_snippet = (
+        "symbols:\n"
+        "  enabled: true\n"
+        "  include_enums: true\n"
+        "  include_call_paths: false\n"
+        "  call_path_depth: 2\n"
+        "  max_enum_items: 20\n"
+        "  max_call_path_items: 10\n"
+    )
+    data = yaml.safe_load(yaml_snippet)
+    config = LexibraryConfig.model_validate(data)
+    # include_data_flows falls back to its Pydantic default of False.
+    assert config.symbols.include_data_flows is False
+    # All explicitly-set Phase 5 fields are respected.
+    assert config.symbols.enabled is True
+    assert config.symbols.include_enums is True
+    assert config.symbols.include_call_paths is False
+    assert config.symbols.call_path_depth == 2
+    assert config.symbols.max_enum_items == 20
+    assert config.symbols.max_call_path_items == 10

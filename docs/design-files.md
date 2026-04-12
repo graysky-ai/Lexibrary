@@ -13,10 +13,78 @@ Each design file is a Markdown file with the following structure:
 - **Interface Contract** -- For code files, the public API surface: function signatures, class definitions, exported symbols, and their docstrings.
 - **Dependencies** -- Project-relative paths of files this source imports.
 - **Dependents** -- Files that import this source (populated by the link graph).
+- **Enums & constants** -- Structured notes about enums and module-level constants defined by the file, sourced from the symbol graph (see subsection below).
+- **Call paths** -- Narrative notes about the important call paths flowing into and out of the file's functions, sourced from the symbol graph (see subsection below).
+- **Data flows** -- Notes about how function parameters influence control flow through branching, gated on a deterministic AST signal (see subsection below).
 - **Wikilinks** -- `[[concept-name]]` references linking to relevant concept files.
 - **Tags** -- Classification tags for search and filtering.
 - **Stack refs** -- References to related Stack Q&A posts.
 - **Metadata Footer** -- An HTML comment block containing `source_hash`, `interface_hash`, `design_hash`, `generated` timestamp, and `generator` identifier. These fields drive change detection.
+
+### Enums & constants
+
+The `## Enums & constants` section captures every enum, `StrEnum`/`IntEnum`/`Flag` subclass, and module-level constant defined in the file. It is populated by the archivist pipeline from the [symbol graph](symbol-graph.md), not by the LLM reading the source directly, so it only appears when the symbol graph has already indexed the file's enums and constants.
+
+Each entry has two fields:
+
+- **`name`** -- The enum or constant name (e.g. `BuildStatus`, `SCHEMA_VERSION`).
+- **`role`** -- A one-clause description of what the enum or constant represents in the system. The archivist writes the role prose from the enum's members and surrounding context.
+- **`values`** -- The literal enum members (e.g. `PENDING, RUNNING, FAILED, SUCCESS`) or the single literal value for a constant. Emitted on the line below `role`.
+
+Example:
+
+```markdown
+## Enums & constants
+
+- **BuildStatus** — Tracks pipeline execution state across the update lifecycle.
+  Values: PENDING, RUNNING, FAILED, SUCCESS.
+- **SCHEMA_VERSION** — Monotonic version number for the library schema; bumped whenever a migration is required.
+  Values: 2.
+```
+
+The section is omitted entirely when the file defines no enums or constants, or when `symbols.include_enums` is `false`. Truncation applies when the file has more than `symbols.max_enum_items` entries -- the tail of the list is replaced with `- ... N more`. See [Configuration](configuration.md#symbols) for the full flag reference.
+
+### Call paths
+
+The `## Call paths` section captures narrative summaries of how functions and methods in the file connect to the rest of the codebase. Unlike a raw call trace, the archivist writes prose describing the *behaviour* flowing along each path -- what the entry point is for, which hops carry important side effects, and where the chain terminates.
+
+Each entry has three fields:
+
+- **`entry`** -- The starting symbol for the call path (e.g. `update_project()`).
+- **`narrative`** -- A one- to two-sentence description of what the entry point orchestrates.
+- **`key_hops`** -- A short list of the narratively important callees visited along the path, not the full mechanical call stack.
+
+Example:
+
+```markdown
+## Call paths
+
+- **update_project()** — Orchestrates a full project build: discovers source files, regenerates changed design files, refreshes aindexes, rebuilds the link graph, then the symbol graph.
+  Key hops: discover_source_files, update_file, build_index, build_symbol_graph.
+```
+
+Call paths are **opt-in**. Set `symbols.include_call_paths: true` in your config to enable them -- see [Configuration](configuration.md#symbols). The depth of each path is controlled by `symbols.call_path_depth` (default `2` hops in each direction). The section is truncated at `symbols.max_call_path_items` entries. Enabling call paths increases archivist prompt size by roughly `call_path_depth × 50` tokens per file, so the flag is off by default to avoid surprise prompt bloat.
+
+### Data flows
+
+The `## Data flows` section captures how function parameters influence control flow through branching. It is gated on a deterministic AST signal: the archivist only produces data flow notes for files whose symbol graph contains at least one function with branch parameters (parameters that appear in `if`, `match`, `switch`, or similar conditions). Files without branching parameters never produce this section, regardless of configuration.
+
+Each entry has three fields:
+
+- **`parameter`** -- The name of the parameter that drives branching (e.g. `changed_paths`, `config`).
+- **`location`** -- The function or method where the branching occurs (e.g. `build_index()`).
+- **`effect`** -- A one-sentence description of the behavioural impact when the parameter varies.
+
+Example:
+
+```markdown
+## Data flows
+
+- **changed_paths** in **build_index()** — `None` triggers a full build; a non-None list triggers incremental update.
+- **config** in **render()** — Controls output format and verbosity.
+```
+
+Data flows are **opt-in**. Set `symbols.include_data_flows: true` in your config to enable them -- see [Configuration](configuration.md#symbols). Even when enabled, the two-layer gate (file-level check for any branch parameters, then per-symbol extraction) ensures the LLM is only asked to generate data flow notes when there is concrete evidence of branching behaviour, keeping prompt costs predictable.
 
 ### Mirror Tree
 

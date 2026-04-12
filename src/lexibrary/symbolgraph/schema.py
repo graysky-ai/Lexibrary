@@ -56,7 +56,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 """Schema version. Mismatch on open triggers a full rebuild.
 
 Phase 2 value: 2 (bumped from Phase 1 value: 1). Sub-phase 2.0 added the
@@ -64,6 +64,10 @@ Phase 2 value: 2 (bumped from Phase 1 value: 1). Sub-phase 2.0 added the
 ``(file_id, name, symbol_type, parent_class)`` to fix same-named-method
 collisions across classes in the same file. Phase 1 databases force-rebuild
 on first Phase 2 open via :func:`ensure_schema`'s version-mismatch path.
+
+Phase 7 value: 3 (bumped from Phase 2 value: 2). Added
+``symbol_branch_parameters`` table tracking which function/method parameters
+appear inside branch conditions.
 """
 
 
@@ -175,6 +179,14 @@ CREATE TABLE IF NOT EXISTS class_edges_unresolved (
 );
 """
 
+_CREATE_BRANCH_PARAMETERS = """\
+CREATE TABLE IF NOT EXISTS symbol_branch_parameters (
+    symbol_id      INTEGER NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
+    parameter_name TEXT    NOT NULL,
+    PRIMARY KEY (symbol_id, parameter_name)
+);
+"""
+
 
 # ---------------------------------------------------------------------------
 # Indexes
@@ -202,6 +214,7 @@ _INDEXES: list[str] = [
         "CREATE INDEX IF NOT EXISTS idx_class_unresolved_name"
         " ON class_edges_unresolved(target_name);"
     ),
+    ("CREATE INDEX IF NOT EXISTS idx_branch_params_symbol ON symbol_branch_parameters(symbol_id);"),
 ]
 
 
@@ -218,6 +231,7 @@ _ALL_DDL: list[str] = [
     _CREATE_UNRESOLVED_CALLS,
     _CREATE_CLASS_EDGES,
     _CREATE_CLASS_EDGES_UNRESOLVED,
+    _CREATE_BRANCH_PARAMETERS,
     *_INDEXES,
 ]
 
@@ -230,6 +244,7 @@ _DROP_ORDER: list[str] = [
     "class_edges",
     "unresolved_calls",
     "calls",
+    "symbol_branch_parameters",
     "symbol_members",
     "symbols",
     "files",

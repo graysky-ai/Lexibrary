@@ -1,13 +1,4 @@
 comments:
-- body: 'curator-fix Phase 1: _report() now computes fixed/stubbed from SubAgentResult.outcome
-    rather than a message-string heuristic, and populates dispatched_details/deferred_details
-    for verbose rendering and JSON persistence. _write_report() adds schema_version=2
-    and the new detail lists while keeping all v1 keys (trigger/checked/fixed/deferred
-    count/errored) intact so existing readers don''t break. Dry-run dispatches now
-    set outcome=''dry_run'', and the stub fallback in _dispatch_to_stub sets outcome=''stubbed''.
-    Scope-isolation logic in _collect_staleness/_collect_comments/_collect_validation
-    now delegates to _should_skip_path from lexibrary.curator.collect_filters.'
-  date: '2026-04-10T20:51:19.503403Z'
 - body: 'Phase 1.5 dispatcher refactor (openspec curator-fix group 3): extracted every
     _dispatch_* method body to public module-level functions in sibling curator modules,
     introduced DispatchContext dataclass, and renamed _dispatch_to_stub to _route_to_handler
@@ -18,35 +9,6 @@ comments:
     The thin _dispatch_* wrappers remain as backward-compatible shims delegating to
     the public dispatchers.'
   date: '2026-04-10T21:18:03.510266Z'
-- body: "curator-fix Phase 2 (bead lexibrary-sq5.5): added CHECK_TO_ACTION_KEY module-level\
-    \ mapping and VALIDATION_ACTION_KEYS frozenset. _classify_validation now picks\
-    \ a narrow per-check action_key (e.g., fix_hash_freshness) when CHECK_TO_ACTION_KEY\
-    \ has an entry, falling back to the umbrella autofix_validation_issue otherwise.\
-    \ _route_to_handler has a new routing branch: any TriageItem whose action_key\
-    \ is in VALIDATION_ACTION_KEYS is delegated to lexibrary.curator.validation_fixers.fix_validation_issue,\
-    \ called directly with (item, self.project_root, self.config) \u2014 NOT wrapped\
-    \ in a DispatchContext because the bridge is a synchronous validator-fixer adapter,\
-    \ not a full dispatch handler."
-  date: '2026-04-10T21:35:59.715469Z'
-- body: "Phase 4 (lexibrary-sq5.9): added three routing branches in _route_to_handler\
-    \ for consume_superseded_iwh, write_reactive_iwh, and flag_unresolvable_agent_design.\
-    \ Each branch lazily imports the matching helper from lexibrary.curator.iwh_actions\
-    \ and dispatches with self._ctx(). The branches sit immediately above the stub\
-    \ fallback so any unrouted action keys still land on the honest stubbed counter.\
-    \ After this change, a default coordinator run against a clean fixture produces\
-    \ zero stubbed dispatches \u2014 verified by the new test_no_residual_stubs_in_default_run\
-    \ test."
-  date: '2026-04-11T01:04:02.852771Z'
-- body: 'curator-fix Phase 5 (group 10): added Phase 3c ''post-sweep verification''
-    step between migration dispatch and _report. Introduces Coordinator._verify_after_sweep
-    which, when curator_config.verify_after_sweep is True, calls validate_library()
-    a second time after dispatch and returns {before, after, delta}. The ''before''
-    count is captured inside _collect_validation via self._validation_before_count
-    so disabling the feature still only makes a single validator call. _report and
-    _write_report both forward a new verification kwarg; the persisted JSON report
-    only carries the ''verification'' key when populated, preserving shape compatibility
-    with default runs.'
-  date: '2026-04-11T01:17:07.062506Z'
 - body: "curator-fix-2 group 3 (CUR-05 + CUR-07 + CUR-09/PRE-01): (1) Migrated all\
     \ 7 _report secondary counters (deprecated, hard_deleted, budget_condensed, budget_proposed,\
     \ comments_flagged, descriptions_audited, summaries_audited) from the brittle\

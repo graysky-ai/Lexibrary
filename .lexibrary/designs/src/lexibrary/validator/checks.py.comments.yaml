@@ -7,31 +7,3 @@ comments:
     it needs per-match processing (strip/lowercase) and in some cases all matches
     including duplicates.
   date: '2026-04-07T22:14:19.709865Z'
-- body: check_duplicate_slugs now enforces uniqueness within a single artifact type
-    (concepts, conventions, or playbooks) rather than globally across all types. Slugs
-    only need to be unique within their type because filesystem uniqueness is provided
-    by ID prefixes, wikilinks resolve by title (not slug), and per-type indexes (ConceptIndex,
-    PlaybookIndex, etc.) form separate namespaces. The collision key changed from
-    slug to (artifact_type, slug). Error messages now identify the artifact type (e.g.
-    'concept files') for clarity.
-  date: '2026-04-11T08:17:13.322315Z'
-- body: "The check_token_budgets function's .aindex over-budget suggestion no longer\
-    \ recommends running 'lexictl update' to regenerate the .aindex. Regeneration\
-    \ is a no-op for this warning because the .aindex is a billboard summary of all\
-    \ child files \u2014 its content is already up-to-date; re-running the pipeline\
-    \ produces the same over-budget result. The suggestion now correctly directs users\
-    \ to raise token_budgets.aindex_tokens in config.yaml, or to trim the per-child\
-    \ billboard descriptions in source design files (via the description frontmatter\
-    \ field), which are the only two actionable remediation paths."
-  date: '2026-04-11T10:03:08.773446Z'
-- body: check_design_deps_existence now respects ignore patterns before reporting
-    a missing design file. After confirming that a dep's design file does not exist,
-    the check resolves the dep to an absolute source path and calls create_ignore_matcher(config,
-    project_root).is_ignored() on it. If the source path is gitignored or lexignored
-    (e.g. baml_client/ generated code), the check silently skips the entry rather
-    than emitting a false-positive warning. The ignore matcher is constructed once
-    per check invocation (not once per design file) by calling load_config(project_root)
-    followed by create_ignore_matcher(). This fix eliminates 9 spurious warnings on
-    this repo caused by baml_client/ imports that legitimately appear in design-file
-    Dependencies sections.
-  date: '2026-04-11T10:05:03.686856Z'
