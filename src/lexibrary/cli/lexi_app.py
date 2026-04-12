@@ -759,7 +759,7 @@ def impact(
 # ---------------------------------------------------------------------------
 
 
-@lexi_app.command("trace", help="Trace a symbol's callers and callees.")
+@lexi_app.command("trace")
 def trace(
     symbol: Annotated[
         str,
@@ -784,8 +784,35 @@ def trace(
             ),
         ),
     ] = None,
+    help_extended: Annotated[
+        bool,
+        typer.Option(
+            "--help-extended",
+            help="Show detailed guidance on interpreting trace output and exit.",
+        ),
+    ] = False,
 ) -> None:
-    """Trace a symbol across the symbol graph."""
+    """Trace a symbol's callers, callees, and class relationships.
+
+    Use this before renaming, moving, or deleting a symbol to understand
+    its usage, or when debugging a call chain — the output shows every
+    caller and callee with file:line locations.
+
+    The output has conditional sections depending on symbol type
+    (Callers, Callees, Unresolved callees, Class relationships,
+    Subclasses, Members). For the full reference on how to interpret
+    each section, run `lexi trace --help-extended`.
+
+    Disambiguation: a bare name matches every symbol with that name
+    across files. Pass `--file <path>` to narrow, or use a
+    fully-qualified name (e.g.
+    'lexibrary.archivist.pipeline.update_project') for an exact match.
+    """
+    if help_extended:
+        from lexibrary.templates import read_template  # noqa: PLC0415
+        info(read_template("help/trace.md"))
+        raise typer.Exit(0)
+
     from lexibrary.services.symbols import SymbolQueryService  # noqa: PLC0415
     from lexibrary.services.symbols_render import render_trace  # noqa: PLC0415
 
@@ -805,3 +832,4 @@ def trace(
         )
 
     render_trace(symbol, response.results)
+    hint("Run `lexi trace --help-extended` for output interpretation.")

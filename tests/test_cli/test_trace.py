@@ -424,3 +424,32 @@ def test_trace_renders_members_section(tmp_path: Path, monkeypatch: pytest.Monke
     assert "FAILED" in result.output
     # The existing Callers block for ``bar`` is still rendered alongside.
     assert "### Callers" in result.output
+
+
+# ---------------------------------------------------------------------------
+# (10) --help mentions --help-extended and --file
+# ---------------------------------------------------------------------------
+
+
+def test_trace_help_mentions_extended() -> None:
+    result = runner.invoke(lexi_app, ["trace", "--help"])
+    assert result.exit_code == 0
+    assert "--help-extended" in result.output
+    assert "--file" in result.output
+
+
+# ---------------------------------------------------------------------------
+# (11) --help-extended prints bundled doc and exits before trace logic
+# ---------------------------------------------------------------------------
+
+
+def test_trace_help_extended_prints_bundled_doc() -> None:
+    result = runner.invoke(lexi_app, ["trace", "--help-extended", "unused_symbol"])
+    assert result.exit_code == 0
+    # Section headings from templates/help/trace.md
+    assert "Callers" in result.output
+    assert "Callees" in result.output
+    assert "Unresolved callees" in result.output
+    assert "Members" in result.output
+    # Must exit before running trace logic — no "not found" warning
+    assert "not found" not in result.output.lower()

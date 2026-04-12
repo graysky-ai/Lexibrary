@@ -26,6 +26,7 @@ Do not create an IWH signal if all work is complete.
   paths", "Data flows", and "Enums & constants" sections — they are
   the distilled context you need before you start making changes. This
   does not apply to test files.
+- Run `lexi <cmd> --help` when a command's purpose or output is unfamiliar. Some commands expose `--help-extended` for detailed reference material.
 
 ## After Editing Files
 
@@ -52,25 +53,14 @@ Do not create an IWH signal if all work is complete.
   existing patterns, conventions, and prior art across all artifact types.
   - For design file hits: `lexi lookup <path>`
   - For concept, convention, or stack hits: `lexi view <artifact-id>`
-- Use `lexi trace <symbol>` to see a function's callers, callees, and
-  unresolved external calls before deciding to rename it, change its
-  signature, or remove it. The symbol graph is refreshed per-file by
-  `lexi design update <file>` (run after every source edit) and fully
-  rebuilt on maintainer-only `lexictl update`.
-- When renaming or removing a class, run `lexi trace <ClassName>` first.
-  The trace now shows every subclass, every instantiation site, and
-  unresolved external bases (e.g. Pydantic `BaseModel`). Treat unresolved
-  bases as out-of-scope — they are not refactoring risks from lexi's
-  point of view.
+- Run `lexi trace <symbol>` before renaming, moving, or removing a symbol. Run with `--help-extended` for output interpretation.
 
 ## Debugging and Problem Solving
 
 - Always run `lexi search --type stack <query>` before starting to debug an
   issue — a solution may already exist. Use `lexi view <post-id>` to read
   matching posts.
-- Run `lexi trace <symbol>` when a bug traces through a call chain. The
-  trace shows every caller and callee with file:line locations, so you
-  can walk the chain without grepping.
+- Run `lexi trace <symbol>` to walk a call chain when debugging.
 - When you see an unfamiliar string or integer literal appear in a bug
   (e.g. `"pending"`, `"failed"`, status codes), run
   `lexi search --type symbol <value>` — the symbol graph now indexes

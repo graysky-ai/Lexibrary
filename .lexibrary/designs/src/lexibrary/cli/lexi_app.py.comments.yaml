@@ -32,3 +32,7 @@ comments:
     / render_call_path_notes from lookup_render. Both are skipped silently when the
     underlying LookupResult fields are empty so files without enrichment are unaffected.'
   date: '2026-04-11T23:43:24.894839Z'
+- body: trace now exposes --help-extended that prints a bundled Markdown reference
+    (src/lexibrary/templates/help/trace.md); detailed output interpretation moved
+    out of CLAUDE.md via progressive-disclosure pattern
+  date: '2026-04-12T19:30:41.669018Z'
