@@ -2,6 +2,29 @@
 
 All notable changes to Lexibrary are documented in this file.
 
+## [0.6.0] - 2026-04-13
+
+### Added
+- **Symbol graph subsystem** — New `src/lexibrary/symbolgraph/` package with builder, query, schema, health, Python imports resolver, and language-specific resolvers (Python, JavaScript/TypeScript) for cross-file symbol relationship tracking
+- **`lexi trace` command** — New CLI command for walking call chains and symbol relationships before renaming, moving, or removing symbols; includes `--help-extended` reference for interpreting trace output
+- **`lexi search --type symbol`** — Symbol-scoped search now indexes enum member values and constants, surfacing canonical enums when searching for string/integer literals
+- **AST parser extensions** — Enum and constant extraction, branch parameter extraction, composition edge detection, class hierarchy edges (`inherits`, `instantiates`), and call site extraction across Python, JavaScript, and TypeScript parsers
+- **Design file enrichment sections** — New `Enums & constants`, `Call paths`, and `Data flows` sections in design files, with corresponding `EnumNote`, `CallPathNote`, and `DataFlowNote` BAML models
+- **Symbols service** — New `services/symbols.py` and `services/symbols_render.py` powering the symbol-graph-backed CLI commands
+- **Symbol graph context for archivist** — New `archivist/symbol_graph_context.py` providing symbol graph data to the design file generation pipeline
+- **Curator consistency fixes** — New `curator/consistency_fixes.py`, `curator/validation_fixers.py`, `curator/iwh_actions.py`, `curator/write_contract.py`, `curator/collect_filters.py`, and `curator/dispatch_context.py` for improved autonomous reconciliation
+- **Documentation** — New `docs/symbol-graph.md` (~480 lines), `docs/troubleshooting.md`, and expanded `docs/cli-reference.md`, `docs/configuration.md`, and `docs/design-files.md`
+- **Symbols config block** — New configuration for toggling enum, constant, call path, and data flow extraction
+- **Test coverage** — New test suites for symbol graph (builder, query, resolvers, health, schema, refresh), AST parser fixtures (enums, calls, classes, composition, branch parameters), trace CLI, symbols service, and curator consistency/validation
+
+### Changed
+- **Archivist pipeline** — Integrated symbol graph context and BAML data-flow/symbols enrichment gates; extended `ArchivistGenerateDesignFile` BAML function with enum, call path, and data flow parameters
+- **Design file parser/serializer** — Extended to round-trip the new enrichment sections
+- **Lookup service** — Major expansion to surface symbol graph data (key symbols, class hierarchy, call paths, data flows, enums & constants) in `lexi lookup` output
+- **Curator coordinator** — Refactored dispatcher methods for improved modularity
+- **Token budgets** — Increased limits in default config for design files, aindex, concept, and lookup outputs
+- **`.gitignore`** — Added symbol graph database state files (`symbols.db-shm`, `symbols.db-wal`)
+
 ## [0.5.0] - 2026-04-10
 
 ### Added
