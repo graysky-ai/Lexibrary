@@ -32,7 +32,7 @@ class TestCheckConfigValid:
 
         config_path = lexibrary_dir / "config.yaml"
         config_path.write_text(
-            "project_name: test-project\nscope_root: .\n",
+            "project_name: test-project\nscope_roots:\n  - path: .\n",
             encoding="utf-8",
         )
 

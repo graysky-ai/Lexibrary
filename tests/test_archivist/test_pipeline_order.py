@@ -241,7 +241,7 @@ from lexibrary.archivist.change_checker import ChangeLevel
 from lexibrary.archivist.pipeline import FileResult, update_project
 from lexibrary.archivist.service import ArchivistService, DesignFileResult
 from lexibrary.baml_client.types import DesignFileOutput
-from lexibrary.config.schema import LexibraryConfig, TokenBudgetConfig
+from lexibrary.config.schema import LexibraryConfig, ScopeRoot, TokenBudgetConfig
 from lexibrary.symbolgraph.builder import SymbolBuildResult
 
 # ---------------------------------------------------------------------------

@@ -173,11 +173,13 @@ def _write_aindex(
 
 
 def _write_config(project_root: Path, scope_root: str = ".") -> None:
-    """Write a minimal config.yaml."""
+    """Write a minimal config.yaml using the multi-root scope_roots format."""
     config_dir = project_root / ".lexibrary"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "config.yaml"
-    config_path.write_text(f"scope_root: {scope_root}\n", encoding="utf-8")
+    config_path.write_text(
+        f"scope_roots:\n  - path: {scope_root}\n", encoding="utf-8"
+    )
 
 
 # ---------------------------------------------------------------------------

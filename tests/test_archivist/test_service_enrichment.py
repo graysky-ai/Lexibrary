@@ -31,7 +31,7 @@ from lexibrary.archivist.pipeline import FileResult, update_project
 from lexibrary.archivist.service import ArchivistService, DesignFileResult
 from lexibrary.archivist.symbol_graph_context import render_symbol_graph_context
 from lexibrary.baml_client.types import DesignFileOutput
-from lexibrary.config.schema import LexibraryConfig, SymbolGraphConfig, TokenBudgetConfig
+from lexibrary.config.schema import LexibraryConfig, ScopeRoot, SymbolGraphConfig, TokenBudgetConfig
 from lexibrary.linkgraph.schema import ensure_schema as ensure_linkgraph_schema
 from lexibrary.services.symbols import SymbolQueryService
 from lexibrary.symbolgraph.builder import SymbolBuildResult

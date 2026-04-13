@@ -255,10 +255,21 @@ def _normalise_scope(scope: str) -> str:
 def _build_ancestry(file_path: str, scope_root: str) -> set[str]:
     """Build the set of ancestor directory paths from *file_path* up to *scope_root*.
 
-    Includes *scope_root* itself. Uses POSIX-style forward-slash paths.
-    The file's own parent directory is included; the file itself is not.
+    Includes *scope_root* itself and the normalised *file_path* itself.
+    Uses POSIX-style forward-slash paths.
+
+    Including *file_path* ensures that a convention scoped exactly to a
+    directory (e.g. ``scope: baml_src/clients``) matches when the lookup
+    target IS that directory — without it, ``_build_ancestry`` would only
+    walk up to the parent, so the directory itself was never in the set.
     """
     ancestors: set[str] = set()
+
+    # Include the path itself so a convention scoped to exactly this
+    # directory (or file's own parent) matches.
+    norm_self = file_path.strip("/")
+    if norm_self:
+        ancestors.add(norm_self)
 
     # The file's parent directory
     parts = file_path.split("/")

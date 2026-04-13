@@ -42,7 +42,6 @@ def _write_iwh(lexibrary_dir: Path, directory_path: str, *, content: str | None 
 
 def _make_config() -> LexibraryConfig:
     return LexibraryConfig(
-        scope_root=".",
         token_budgets=TokenBudgetConfig(design_file_tokens=400),
     )
 

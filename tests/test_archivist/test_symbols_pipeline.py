@@ -21,7 +21,7 @@ from lexibrary.archivist.change_checker import ChangeLevel
 from lexibrary.archivist.pipeline import FileResult, update_project
 from lexibrary.archivist.service import ArchivistService, DesignFileResult
 from lexibrary.baml_client.types import DesignFileOutput
-from lexibrary.config.schema import LexibraryConfig, TokenBudgetConfig
+from lexibrary.config.schema import LexibraryConfig, ScopeRoot, TokenBudgetConfig
 from lexibrary.symbolgraph.schema import SCHEMA_VERSION
 from lexibrary.utils.paths import symbols_db_path
 from lexibrary.validator import validate_library
@@ -306,7 +306,7 @@ class TestBuildSymbolGraphOnExistingLibrary:
 def _write_minimal_config(lexibrary_dir: Path) -> None:
     """Write the smallest config.yaml the validator will accept."""
     config_path = lexibrary_dir / "config.yaml"
-    config_path.write_text("scope_root: .\n", encoding="utf-8")
+    config_path.write_text("scope_roots:\n  - path: .\n", encoding="utf-8")
 
 
 class TestLexiValidateIgnoresSymbolsDB:
@@ -329,7 +329,7 @@ class TestLexiValidateIgnoresSymbolsDB:
         # Populate an empty symbols.db via the builder directly.
         from lexibrary.symbolgraph import build_symbol_graph  # noqa: PLC0415
 
-        config = LexibraryConfig(scope_root=".")
+        config = LexibraryConfig(scope_roots=[ScopeRoot(path=".")])
         build_symbol_graph(project_root, config)
         assert symbols_db_path(project_root).exists()
 

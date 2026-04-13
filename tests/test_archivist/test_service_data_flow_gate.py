@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from lexibrary.archivist.symbol_graph_context import render_symbol_graph_context
-from lexibrary.config.schema import LexibraryConfig, SymbolGraphConfig, TokenBudgetConfig
+from lexibrary.config.schema import LexibraryConfig, ScopeRoot, SymbolGraphConfig, TokenBudgetConfig
 from lexibrary.linkgraph.schema import ensure_schema as ensure_linkgraph_schema
 from lexibrary.services.symbols import SymbolQueryService
 from lexibrary.symbolgraph.query import open_symbol_graph

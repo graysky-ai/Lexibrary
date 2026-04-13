@@ -3241,16 +3241,19 @@ def check_convention_gap(
         config = None
 
     if config is None:
-        # Without a valid config we cannot resolve owning roots, so skip the
-        # check rather than risk silently misreporting.
-        return issues
+        # Config load failed: fall back to project root as the single scope
+        # root so the check still runs rather than silently skipping.
+        from lexibrary.config.schema import LexibraryConfig  # noqa: PLC0415
 
-    try:
-        roots = config.resolved_scope_roots(project_root).resolved
-    except Exception:
-        # Config-resolution failures (path traversal / nesting / duplicates)
-        # are surfaced by ``check_config_valid``; this check should not raise.
-        return issues
+        config = LexibraryConfig()
+        roots = [project_root]
+    else:
+        try:
+            roots = config.resolved_scope_roots(project_root).resolved
+        except Exception:
+            # Config-resolution failures (path traversal / nesting / duplicates)
+            # are surfaced by ``check_config_valid``; this check should not raise.
+            return issues
 
     file_threshold = 5
 

@@ -130,7 +130,7 @@ def _write_config(project_root: Path, **overrides: object) -> None:
     """Write a minimal config.yaml."""
     config_dir = project_root / ".lexibrary"
     config_dir.mkdir(parents=True, exist_ok=True)
-    lines = ["scope_root: ."]
+    lines = ["scope_roots:", "  - path: ."]
     if "token_budgets" in overrides:
         budgets = overrides["token_budgets"]
         lines.append("token_budgets:")

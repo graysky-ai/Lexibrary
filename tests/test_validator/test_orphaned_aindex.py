@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lexibrary.config.schema import LexibraryConfig, TokenBudgetConfig
+from lexibrary.config.schema import LexibraryConfig, ScopeRoot, TokenBudgetConfig
 from lexibrary.utils.paths import DESIGNS_DIR, LEXIBRARY_DIR
 from lexibrary.validator.checks import find_orphaned_aindex
 from lexibrary.validator.fixes import FIXERS, fix_orphaned_aindex
@@ -57,7 +57,7 @@ def _write_aindex(lexibrary_dir: Path, directory_path: str) -> Path:
 
 def _make_config() -> LexibraryConfig:
     return LexibraryConfig(
-        scope_root=".",
+        scope_roots=[ScopeRoot(path=".")],
         token_budgets=TokenBudgetConfig(design_file_tokens=400),
     )
 

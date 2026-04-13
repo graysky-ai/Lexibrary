@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from lexibrary.config.schema import DeprecationConfig, LexibraryConfig, TokenBudgetConfig
+from lexibrary.config.schema import DeprecationConfig, LexibraryConfig, ScopeRoot, TokenBudgetConfig
 from lexibrary.utils.paths import DESIGNS_DIR, LEXIBRARY_DIR
 from lexibrary.validator.checks import (
     check_comment_accumulation,
@@ -50,7 +50,7 @@ def _make_config(
     comment_warning_threshold: int = 10,
 ) -> LexibraryConfig:
     return LexibraryConfig(
-        scope_root=".",
+        scope_roots=[ScopeRoot(path=".")],
         token_budgets=TokenBudgetConfig(design_file_tokens=400),
         deprecation=DeprecationConfig(
             ttl_commits=ttl_commits,

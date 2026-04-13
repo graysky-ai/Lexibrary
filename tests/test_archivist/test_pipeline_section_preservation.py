@@ -25,7 +25,7 @@ from lexibrary.archivist.service import (
 )
 from lexibrary.artifacts.design_file_parser import parse_design_file
 from lexibrary.baml_client.types import DesignFileOutput
-from lexibrary.config.schema import LexibraryConfig, TokenBudgetConfig
+from lexibrary.config.schema import LexibraryConfig, ScopeRoot, TokenBudgetConfig
 
 # ---------------------------------------------------------------------------
 # Helpers

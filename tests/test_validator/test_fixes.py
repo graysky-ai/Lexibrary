@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from lexibrary.config.schema import LexibraryConfig, TokenBudgetConfig
+from lexibrary.config.schema import LexibraryConfig, ScopeRoot, TokenBudgetConfig
 from lexibrary.validator.fixes import (
     FIXERS,
     FixResult,
@@ -24,7 +24,7 @@ from lexibrary.validator.report import ValidationIssue
 
 def _make_config(scope_root: str = ".") -> LexibraryConfig:
     return LexibraryConfig(
-        scope_root=scope_root,
+        scope_roots=[ScopeRoot(path=scope_root)],
         token_budgets=TokenBudgetConfig(design_file_tokens=400),
     )
 
