@@ -53,12 +53,12 @@ def design_update(
 
     target = Path(source_file).resolve()
 
-    # Check scope: file must be under scope_root
-    scope_abs = (project_root / config.scope_root).resolve()
-    try:
-        target.relative_to(scope_abs)
-    except ValueError:
-        error(f"{source_file} is outside the configured scope_root ({config.scope_root}).")
+    # Check scope: file must be under one of the declared scope_roots.
+    if config.owning_root(target, project_root) is None:
+        error(
+            f"{source_file} is outside all configured scope_roots: "
+            f"{[r.path for r in config.scope_roots]}"
+        )
         raise typer.Exit(1) from None
 
     # Pre-flight decision

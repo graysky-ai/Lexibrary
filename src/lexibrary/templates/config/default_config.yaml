@@ -2,9 +2,11 @@
 # This file is created by `lexictl init` and lives at .lexibrary/config.yaml
 # Values here override the global config at ~/.config/lexibrary/config.yaml
 
-# Scope root: only files under this path (relative to project root) get design files
-# Set to "src/" to restrict design file generation to your source directory
-scope_root: "."
+# Scope roots: each declared root is an independent subtree under which files
+# get design files. List of mappings — always a list, even for a single root.
+# Add entries (e.g. - path: baml_src/) to index multiple sibling source trees.
+scope_roots:
+  - path: .
 
 # Project name (set during lexictl init)
 project_name: ""

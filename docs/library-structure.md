@@ -9,9 +9,9 @@ After running `lexictl init` and `lexictl update`, your `.lexibrary/` directory 
 ```
 .lexibrary/
 ├── config.yaml              # Project configuration
-├── START_HERE.md            # Agent entry point -- project topology and navigation
-├── src/                     # Mirror tree of design files (matches your source tree)
-│   └── mypackage/
+├── TOPOLOGY.md              # Agent entry point -- project topology and navigation
+├── designs/                 # Mirror tree of design files (matches your source tree)
+│   └── src/mypackage/
 │       ├── .aindex          # Directory routing table
 │       ├── main.py.md       # Design file for main.py
 │       ├── utils.py.md      # Design file for utils.py
@@ -21,10 +21,17 @@ After running `lexictl init` and `lexictl update`, your `.lexibrary/` directory 
 ├── concepts/                # Concepts wiki -- project vocabulary and patterns
 │   ├── pydantic-config.md
 │   └── change-detection.md
+├── conventions/             # Scoped coding conventions
+│   └── CV-001-future-annotations.md
+├── playbooks/               # Step-by-step operational guides
+│   └── PB-001-release-checklist.md
 ├── stack/                   # Stack Q&A knowledge base
 │   ├── ST-001-fix-import-cycle.md
 │   └── ST-002-api-timeout-handling.md
+├── curator/                 # Curator agent state
+│   └── reports/             # JSON reports from `lexictl curate` runs
 ├── index.db                 # Link graph SQLite index (gitignored)
+├── symbols.db               # Symbol graph SQLite index (gitignored)
 └── logs/                    # Sweep log files
 ```
 
@@ -38,7 +45,7 @@ See [Configuration](configuration.md) for the full reference.
 
 **Produced by:** `lexictl init` (created), manual editing (updated).
 
-### START_HERE.md
+### TOPOLOGY.md
 
 The entry point for AI agents. Regenerated automatically during every `lexictl update`. Contains:
 
@@ -184,6 +191,42 @@ When the link graph is not available (e.g., `index.db` was deleted), commands gr
 
 **Rebuilt by:** Delete `index.db` and run `lexictl update` to rebuild from scratch.
 
+### symbols.db (Symbol Graph)
+
+A second SQLite database that indexes symbol-level relationships *inside* source files: function and method definitions, call edges, class hierarchy edges (`inherits`, `instantiates`, `composes`), enum membership, and module-level constants. Where `index.db` answers "which files import this file?", `symbols.db` answers "which functions call this function?" and "which classes inherit from this class?".
+
+It is gitignored and safe to delete — the next `lexictl update` rebuilds it from source.
+
+The symbol graph is consumed by `lexi trace <symbol>`, `lexi search --type symbol <query>`, and `lexi lookup --full`. It also feeds the archivist's design-file enrichment sections (`Enums & constants`, `Call paths`, `Data flows`).
+
+**Produced by:** `lexictl update` (full build), `lexi design update <file>` (single-file refresh).
+
+**Rebuilt by:** Delete `symbols.db` and run `lexictl update`.
+
+See [Symbol Graph](symbol-graph.md) for the full reference.
+
+### conventions/ Directory
+
+Scoped coding conventions live in `.lexibrary/conventions/`. Each file defines a rule and the directory scope it applies to (e.g. `src/lexibrary/` or `**/*.py`). Conventions are surfaced by `lexi lookup` when editing files inside their scope.
+
+**Produced by:** `lexi convention new --scope --body`, `lexi convention approve <slug>`.
+
+**Consumed by:** `lexi lookup <file>`, `lexi search --type convention`.
+
+### playbooks/ Directory
+
+Step-by-step operational guides in `.lexibrary/playbooks/`. Each playbook has an `approve` / `verify` / `deprecate` lifecycle and an optional trigger-glob that surfaces it when an agent edits matching files.
+
+**Produced by:** `lexi playbook new <title>`, `lexi playbook approve <slug>`.
+
+**Consumed by:** `lexi search --type playbook`, `lexi lookup <file>` (trigger-glob match).
+
+### curator/ Directory
+
+Runtime state for the autonomous curator agent. The `reports/` subdirectory holds JSON reports from each `lexictl curate` run (audit findings, consistency fixes, deprecation proposals, budget trims). Reports are timestamped and gitignored by default.
+
+**Produced by:** `lexictl curate` (one report per run).
+
 ### logs/ Directory
 
 Log files produced by `lexictl sweep --watch` during periodic sweep operations. The log level is controlled by the `sweep.log_level` config setting (default: `info`).
@@ -194,7 +237,9 @@ Log files produced by `lexictl sweep --watch` during periodic sweep operations. 
 
 The following items inside `.lexibrary/` should typically be gitignored:
 
-- `index.db` -- Rebuilt from artifacts, can be large.
+- `index.db`, `index.db-shm`, `index.db-wal` -- Link graph; rebuilt from artifacts.
+- `symbols.db`, `symbols.db-shm`, `symbols.db-wal` -- Symbol graph; rebuilt from source.
+- `curator/reports/` -- Per-run curator reports.
 - `logs/` -- Operational log files.
 
-Everything else (config, design files, `.aindex` files, concepts, Stack posts, `START_HERE.md`) should be committed to version control. These artifacts represent accumulated project knowledge and should be shared with the team.
+Everything else (config, design files, `.aindex` files, concepts, conventions, playbooks, Stack posts, `TOPOLOGY.md`) should be committed to version control. These artifacts represent accumulated project knowledge and should be shared with the team.

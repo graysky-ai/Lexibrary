@@ -71,7 +71,7 @@ def _make_config(
 ) -> LexibraryConfig:
     """Create a config with a small design-file token budget and given symbols block."""
     return LexibraryConfig(
-        scope_root=scope_root,
+        scope_roots=[ScopeRoot(path=scope_root)],
         token_budgets=TokenBudgetConfig(design_file_tokens=400),
         symbols=symbols or SymbolGraphConfig(),
     )

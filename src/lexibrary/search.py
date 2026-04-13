@@ -350,6 +350,57 @@ def _symbol_search(
     return results
 
 
+def _augment_with_symbols(
+    results: SearchResults,
+    project_root: Path,
+    *,
+    query: str | None,
+    scope: str | None,
+    artifact_type: str | None,
+    resolved_tags: list[str],
+    status: str | None,
+    concept: str | None,
+    resolution_type: str | None,
+    include_stale: bool,
+    symbol_limit: int,
+) -> None:
+    """Populate ``results.symbol_results`` in-place when filter shape is
+    compatible with symbols. No-op when artifact_type is non-None, query is
+    empty, or any symbol-incompatible filter (tags, status, concept,
+    resolution_type, include_stale) is active. Applies ``scope`` as a
+    file-path prefix filter. Degrades silently when symbols.db is missing.
+    """
+    if artifact_type is not None:
+        return
+    if query is None or not query.strip():
+        return
+    if resolved_tags or status or concept or resolution_type or include_stale:
+        return
+
+    from lexibrary.services.symbols import SymbolQueryService  # noqa: PLC0415
+
+    try:
+        with SymbolQueryService(project_root) as service:
+            hits = service.search_symbols(query, limit=symbol_limit)
+    except Exception:
+        hits = []
+
+    for hit in hits:
+        if scope is not None and not hit.symbol.file_path.startswith(scope):
+            continue
+        results.symbol_results.append(
+            _SymbolResult(
+                id=hit.symbol.id,
+                name=hit.symbol.name,
+                qualified_name=hit.symbol.qualified_name,
+                symbol_type=hit.symbol.symbol_type,
+                file_path=hit.symbol.file_path,
+                line_start=hit.symbol.line_start,
+                design_file_path=hit.design_file_path,
+            )
+        )
+
+
 def _resolve_artifact_by_id(project_root: Path, artifact_id: str) -> SearchResults | None:
     """Attempt to resolve a single artifact by its ID (e.g. ``CN-001``, ``ST-042``).
 
@@ -551,6 +602,7 @@ def unified_search(
     resolution_type: str | None = None,
     include_stale: bool = False,
     limit: int = 20,
+    symbol_limit: int = 10,
     suggest: bool = False,
 ) -> SearchResults:
     """Search across concepts, conventions, design files, and Stack posts.
@@ -562,6 +614,12 @@ def unified_search(
     FTS5 full-text search for relevance-ranked results.  When *link_graph* is
     ``None``, the existing file-scanning code paths are used as a fallback
     for both tag and free-text queries.
+
+    In mixed-type mode (``artifact_type is None``), the function now also
+    augments artefact result buckets with symbol hits from the symbol graph
+    when the query and filter shape are compatible with symbol search. The
+    ``--type symbol`` explicit early-route is unchanged and still uses
+    ``limit`` (not ``symbol_limit``) for its result cap.
 
     Args:
         project_root: Absolute path to the project root.
@@ -590,6 +648,14 @@ def unified_search(
         limit: Maximum number of results returned from the FTS-accelerated
             search path (default 20).  Not applied to file-scanning
             fallback paths, which return all matches.
+        symbol_limit: Maximum number of symbol hits appended to
+            ``SearchResults.symbol_results`` in mixed mode (default 10).
+            Independent of ``limit``; ignored when ``artifact_type ==
+            "symbol"`` (in which case ``limit`` controls the full symbol
+            budget). Symbols are silently skipped in mixed mode when any
+            symbol-incompatible filter (``tag``/``tags``, ``status``,
+            ``concept``, ``resolution_type``, ``include_stale``) is active
+            or when ``query`` is empty.
         suggest: When ``True`` and the final results are empty and *query*
             is not ``None``, populate ``results.suggestions`` with up to 3
             close matches from concept names and tags (via
@@ -648,7 +714,7 @@ def unified_search(
 
     # --- Index-accelerated tag search ---
     if link_graph is not None and first_tag is not None:
-        return _tag_search_from_index(
+        results = _tag_search_from_index(
             link_graph,
             tag=first_tag,
             extra_tags=resolved_tags[1:],
@@ -658,6 +724,20 @@ def unified_search(
             include_deprecated=include_deprecated,
             include_stale=include_stale,
         )
+        _augment_with_symbols(
+            results,
+            project_root,
+            query=query,
+            scope=scope,
+            artifact_type=artifact_type,
+            resolved_tags=resolved_tags,
+            status=status,
+            concept=concept,
+            resolution_type=resolution_type,
+            include_stale=include_stale,
+            symbol_limit=symbol_limit,
+        )
+        return results
 
     # --- FTS-accelerated free-text search (index available, query without tag) ---
     if link_graph is not None and query is not None and first_tag is None:
@@ -686,6 +766,20 @@ def unified_search(
                 status=status,
                 include_deprecated=include_deprecated,
             )
+
+        _augment_with_symbols(
+            results,
+            project_root,
+            query=query,
+            scope=scope,
+            artifact_type=artifact_type,
+            resolved_tags=resolved_tags,
+            status=status,
+            concept=concept,
+            resolution_type=resolution_type,
+            include_stale=include_stale,
+            symbol_limit=symbol_limit,
+        )
 
         # "Did you mean?" suggestions when all paths returned nothing.
         if suggest and not results.has_results() and query is not None:
@@ -761,6 +855,20 @@ def unified_search(
             include_deprecated=include_deprecated,
             normalized_query=normalized,
         )
+
+    _augment_with_symbols(
+        results,
+        project_root,
+        query=query,
+        scope=scope,
+        artifact_type=artifact_type,
+        resolved_tags=resolved_tags,
+        status=status,
+        concept=concept,
+        resolution_type=resolution_type,
+        include_stale=include_stale,
+        symbol_limit=symbol_limit,
+    )
 
     # "Did you mean?" suggestions when all paths returned nothing.
     if suggest and not results.has_results() and query is not None:
@@ -842,6 +950,29 @@ def _gather_suggestions(project_root: Path, query: str) -> list[str]:
             lower_to_original[lower] = original
 
     hits = difflib.get_close_matches(query.lower(), lowered, n=3, cutoff=0.6)
+
+    # Lazily extend candidates with symbol names when artefact-only
+    # candidates did not produce 3 close matches. Extends the SAME
+    # ``lowered`` / ``lower_to_original`` structures so the single
+    # downstream ``difflib.get_close_matches`` call yields case-preserved,
+    # de-duplicated suggestions.
+    if len(hits) < 3:
+        from lexibrary.services.symbols import SymbolQueryService  # noqa: PLC0415
+
+        try:
+            with SymbolQueryService(project_root) as service:
+                symbol_names = service.list_symbol_names(limit=200)
+        except Exception:
+            symbol_names = []
+
+        for name in symbol_names:
+            lower = name.lower()
+            if lower not in lower_to_original:
+                lowered.append(lower)
+                lower_to_original[lower] = name
+
+        hits = difflib.get_close_matches(query.lower(), lowered, n=3, cutoff=0.6)
+
     return [lower_to_original[h] for h in hits]
 
 

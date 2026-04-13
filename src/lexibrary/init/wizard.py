@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
+from lexibrary.config.schema import ScopeRoot
 from lexibrary.init.detection import (
     check_existing_agent_rules,
     check_missing_agent_dirs,
@@ -41,7 +42,7 @@ class WizardAnswers:
     """
 
     project_name: str = ""
-    scope_root: str = "."
+    scope_roots: list[ScopeRoot] = field(default_factory=list)
     agent_environments: list[str] = field(default_factory=list)
     llm_provider: str = "anthropic"
     llm_model: str = "claude-sonnet-4-6"
@@ -107,27 +108,75 @@ def _step_scope_root(
     console: Console,
     *,
     use_defaults: bool,
-) -> str:
-    """Step 2: Detect and confirm scope root."""
+) -> list[ScopeRoot]:
+    """Step 2: Detect and confirm one or more scope roots.
+
+    Behaviour:
+
+    * Auto-detected directories from :func:`detect_scope_roots` seed a
+      :func:`questionary.checkbox` widget with every detected root pre-selected.
+      The user can deselect any subset before continuing. When only one root
+      is detected the UX is a single pre-checked box (functionally identical
+      to the old single-prompt flow).
+    * When *zero* roots are detected, the wizard falls back to a single text
+      prompt (``Prompt.ask``) and wraps the answer in ``[ScopeRoot(path=...)]``
+      so the downstream contract (``list[ScopeRoot]``) is always satisfied.
+    * In ``use_defaults=True`` mode, the detected roots are accepted without
+      prompting; when nothing is detected, ``[ScopeRoot(path=".")]`` is
+      returned so the bare-directory case still produces a valid config.
+    * The non-TTY guard (``questionary`` returns ``None``) falls back to the
+      detected roots, mirroring :func:`_step_agent_environment`.
+
+    Returns:
+        Non-empty list of :class:`ScopeRoot` objects representing the user's
+        selection. The wizard never returns an empty list — callers can rely
+        on at least one entry.
+    """
     detected_roots = detect_scope_roots(project_root)
-    default = detected_roots[0] if detected_roots else "."
 
     console.print(
-        f"\n[bold]Step 2/9: Scope Root[/bold]"
+        f"\n[bold]Step 2/9: Scope Roots[/bold]"
         f"\n  Detected directories: {detected_roots or ['(none)']}"
         f"\n  [dim]Modify later in .lexibrary/config.yaml[/dim]"
     )
 
+    # Defaults mode: accept all detected, or fall back to "." if none.
     if use_defaults:
-        console.print(f"  Using: {default}")
-        return default
+        if detected_roots:
+            console.print(f"  Using: {detected_roots}")
+            return [ScopeRoot(path=p) for p in detected_roots]
+        console.print("  Using: ['.']")
+        return [ScopeRoot(path=".")]
 
-    root = Prompt.ask(
-        "  Scope root path",
-        default=default,
-        console=console,
-    )
-    return root
+    # Zero-detected interactive fallback: free-text prompt → single ScopeRoot.
+    if not detected_roots:
+        answer = Prompt.ask(
+            "  Scope root path",
+            default=".",
+            console=console,
+        )
+        return [ScopeRoot(path=answer)]
+
+    # One-or-more detected: multi-select with all roots pre-checked.
+    choices = [questionary.Choice(title=p, checked=True) for p in detected_roots]
+    result = questionary.checkbox(
+        "Select scope roots:",
+        choices=choices,
+    ).ask()
+
+    # Non-TTY guard: questionary returns None when stdin is not a TTY.
+    selected = detected_roots if result is None else result
+
+    # If the user deselected everything, fall back to the detected list rather
+    # than returning an empty config (avoids a downstream Pydantic default of
+    # ``["."]`` masking an obvious user mistake).
+    if not selected:
+        console.print(
+            "  [yellow]No roots selected — falling back to detected directories.[/yellow]"
+        )
+        selected = detected_roots
+
+    return [ScopeRoot(path=p) for p in selected]
 
 
 def _step_agent_environment(
@@ -468,7 +517,10 @@ def _step_summary(
     table.add_column("Value")
 
     table.add_row("Project name", answers.project_name)
-    table.add_row("Scope root", answers.scope_root)
+    table.add_row(
+        "Scope roots",
+        ", ".join(sr.path for sr in answers.scope_roots) or "(none)",
+    )
     table.add_row("Agent environments", ", ".join(answers.agent_environments) or "(none)")
     table.add_row("LLM provider", answers.llm_provider)
     table.add_row("LLM model", answers.llm_model)
@@ -536,8 +588,8 @@ def run_wizard(
     # Step 1: Project name
     answers.project_name = _step_project_name(project_root, console, use_defaults=use_defaults)
 
-    # Step 2: Scope root
-    answers.scope_root = _step_scope_root(project_root, console, use_defaults=use_defaults)
+    # Step 2: Scope roots
+    answers.scope_roots = _step_scope_root(project_root, console, use_defaults=use_defaults)
 
     # Step 3: Agent environment
     answers.agent_environments = _step_agent_environment(

@@ -43,6 +43,7 @@ from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.artifacts.ids import next_design_id
 from lexibrary.ast_parser import compute_hashes, parse_interface, render_skeleton
 from lexibrary.config.schema import LexibraryConfig
+from lexibrary.config.scope import find_owning_root
 from lexibrary.conventions.index import ConventionIndex
 from lexibrary.errors import ErrorSummary
 from lexibrary.exceptions import ArchivistTruncationError
@@ -128,18 +129,20 @@ class FileResult:
     skip_reason: str | None = None
 
 
-def _is_within_scope(
+def _is_within_any_scope(
     source_path: Path,
     project_root: Path,
-    scope_root: str,
+    config: LexibraryConfig,
 ) -> bool:
-    """Check whether *source_path* is under the configured scope_root."""
-    scope_abs = (project_root / scope_root).resolve()
-    try:
-        source_path.resolve().relative_to(scope_abs)
-        return True
-    except ValueError:
-        return False
+    """Check whether *source_path* is under any configured scope root.
+
+    Delegates to :func:`find_owning_root` so the entire archivist pipeline
+    funnels its "is this file ours?" decision through the single owning-root
+    helper that the rest of the codebase uses (validator, conventions,
+    lookup, bootstrap, CLI gating). Returns ``True`` when ``source_path``
+    is owned by at least one declared root; ``False`` otherwise.
+    """
+    return find_owning_root(source_path, config.scope_roots, project_root) is not None
 
 
 def _is_binary(source_path: Path, binary_extensions: set[str]) -> bool:
@@ -319,44 +322,59 @@ def discover_source_files(
 ) -> list[Path]:
     """Discover source files eligible for design file generation.
 
-    Walks *scope_dir* (defaulting to ``config.scope_root``) recursively,
-    excluding files inside ``.lexibrary/``, binary files, ignored files,
-    and files exceeding ``max_file_size_kb``.
+    When *scope_dir* is ``None``, walks every declared scope root via
+    ``config.resolved_scope_roots(project_root).resolved`` and concatenates
+    the per-root results in declared order. When *scope_dir* is an explicit
+    path, behaviour is unchanged: only that path is walked.
+
+    In both modes, files inside ``.lexibrary/``, binary files, ignored
+    files, and files exceeding ``max_file_size_kb`` are excluded.
     """
     ignore_matcher = create_ignore_matcher(config, project_root)
     binary_exts = set(config.crawl.binary_extensions)
+    lexibrary_abs = (project_root / LEXIBRARY_DIR).resolve()
+    max_file_size_kb = config.crawl.max_file_size_kb
 
     if scope_dir is not None:
-        scope_abs = scope_dir.resolve()
+        roots: list[Path] = [scope_dir.resolve()]
     else:
-        scope_abs = (project_root / config.scope_root).resolve()
+        roots = list(config.resolved_scope_roots(project_root).resolved)
 
     source_files: list[Path] = []
-    for path in sorted(scope_abs.rglob("*")):
-        if not path.is_file():
-            continue
-
-        try:
-            path.relative_to(project_root / LEXIBRARY_DIR)
-            continue
-        except ValueError:
-            pass
-
-        if _is_binary(path, binary_exts):
-            continue
-
-        if ignore_matcher.is_ignored(path):
-            continue
-
-        try:
-            file_size_kb = path.stat().st_size / 1024
-            if file_size_kb > config.crawl.max_file_size_kb:
-                logger.debug("Skipping oversized file: %s (%.1f KB)", path, file_size_kb)
+    seen: set[Path] = set()
+    for scope_abs in roots:
+        for path in sorted(scope_abs.rglob("*")):
+            if not path.is_file():
                 continue
-        except OSError:
-            continue
 
-        source_files.append(path)
+            try:
+                path.relative_to(lexibrary_abs)
+                continue
+            except ValueError:
+                pass
+
+            if _is_binary(path, binary_exts):
+                continue
+
+            if ignore_matcher.is_ignored(path):
+                continue
+
+            try:
+                file_size_kb = path.stat().st_size / 1024
+                if file_size_kb > max_file_size_kb:
+                    logger.debug("Skipping oversized file: %s (%.1f KB)", path, file_size_kb)
+                    continue
+            except OSError:
+                continue
+
+            # Guard against duplicates if a file ever surfaces under more
+            # than one root (the nested-roots guard in resolved_scope_roots
+            # makes this nearly impossible, but the per-root walk still
+            # benefits from a defensive dedupe).
+            if path in seen:
+                continue
+            seen.add(path)
+            source_files.append(path)
 
     return source_files
 
@@ -368,16 +386,17 @@ async def dry_run_project(
 ) -> list[tuple[Path, ChangeLevel]]:
     """Preview which files would be processed, without LLM calls or writes.
 
-    Discovers source files within *scope_dir* (defaulting to
-    ``config.scope_root``), runs change detection on each, and returns a
-    list of files that would change with their change levels.  Files
-    classified as UNCHANGED are excluded from the result.
+    Discovers source files within *scope_dir* (or every declared scope root
+    when ``scope_dir`` is ``None``), runs change detection on each, and
+    returns a list of files that would change with their change levels.
+    Files classified as UNCHANGED are excluded from the result.
 
     Args:
         project_root: Absolute path to the project root.
         config: Project configuration.
         scope_dir: Optional directory to scope the discovery to.  When
-            ``None``, uses ``config.scope_root``.
+            ``None``, walks every declared scope root via
+            ``config.resolved_scope_roots(project_root).resolved``.
 
     Returns:
         List of (source_path, change_level) tuples for files that would change.
@@ -578,8 +597,8 @@ async def update_file(
 
     Returns a ``FileResult`` containing the change level and tracking flags.
     """
-    # 1. Scope check
-    if not _is_within_scope(source_path, project_root, config.scope_root):
+    # 1. Scope check — accept files owned by any declared scope root
+    if not _is_within_any_scope(source_path, project_root, config):
         return FileResult(change=ChangeLevel.UNCHANGED, skip_reason="out of scope")
 
     # 1a. Force: preserve existing design content, then delete so check_change
@@ -1138,10 +1157,12 @@ def reindex_directories(
 ) -> int:
     """Regenerate ``.aindex`` files for *directories* and their ancestors.
 
-    For each directory in *directories*, walks up to ``scope_root`` and
-    collects ancestor directories.  Then re-indexes each unique directory
-    (deepest first so child ``.aindex`` data is available when parents
-    are processed).
+    For each directory in *directories*, resolves the *owning* scope root via
+    :func:`find_owning_root` and walks up to that owning root, collecting
+    ancestor directories. Directories outside every declared root are
+    re-indexed as a single entry without ancestor walking. Then re-indexes
+    each unique directory (deepest first so child ``.aindex`` data is
+    available when parents are processed).
 
     Uses the existing ``index_directory()`` from the indexer orchestrator
     to ensure output is identical to ``lexictl index``.
@@ -1149,7 +1170,7 @@ def reindex_directories(
     Args:
         directories: Source directories containing changed files.
         project_root: The project root (contains ``.lexibrary/``).
-        config: Project configuration (provides ``scope_root``).
+        config: Project configuration (provides ``scope_roots``).
 
     Returns:
         Number of directories re-indexed.
@@ -1157,13 +1178,24 @@ def reindex_directories(
     if not directories:
         return 0
 
-    scope_abs = (project_root / config.scope_root).resolve()
+    project_root_abs = project_root.resolve()
 
-    # Collect all directories plus their ancestors up to scope_root
+    # Collect all directories plus their ancestors up to each owning root.
     all_dirs: set[Path] = set()
     for dir_path in directories:
         resolved = dir_path.resolve()
-        # Walk up from the directory to scope_root (inclusive)
+
+        owning = find_owning_root(resolved, config.scope_roots, project_root)
+        if owning is None:
+            # No declared root owns this directory; index it without
+            # walking ancestors so we don't accidentally climb out of the
+            # project tree.
+            all_dirs.add(resolved)
+            continue
+
+        scope_abs = (project_root_abs / owning.path).resolve()
+
+        # Walk up from the directory to the owning scope root (inclusive)
         current = resolved
         while True:
             all_dirs.add(current)
@@ -1171,9 +1203,9 @@ def reindex_directories(
                 break
             parent = current.parent
             if parent == current:
-                # Hit filesystem root without reaching scope_root
+                # Hit filesystem root without reaching the owning root.
                 break
-            # Don't walk above scope_root
+            # Don't walk above the owning scope root.
             try:
                 parent.relative_to(scope_abs)
             except ValueError:
@@ -1301,8 +1333,8 @@ async def update_files(
             progress_callback(source_path, file_result.change, file_result.skip_reason)
 
     # Re-index directories containing changed files (plus ancestors up to
-    # scope_root) so .aindex files stay fresh after hook-triggered updates.
-    # Skipped when no files were actually created, updated, or failed (4.3).
+    # the owning scope root) so .aindex files stay fresh after hook-triggered
+    # updates. Skipped when no files were actually created, updated, or failed (4.3).
     if _has_meaningful_changes(stats) and processed_paths:
         affected_dirs = sorted({p.parent for p in processed_paths})
         try:
@@ -1543,8 +1575,9 @@ async def update_project(
 ) -> UpdateStats:
     """Update all design files for the project.
 
-    Discovers source files within scope_root, filters ignored and binary
-    files, processes each sequentially, then returns accumulated stats.
+    Discovers source files across every declared scope root, filters ignored
+    and binary files, processes each sequentially, then returns accumulated
+    stats.
 
     When *force* is True, every file is treated as if it is new regardless
     of its current hash.  This causes a full rebuild of all design files and

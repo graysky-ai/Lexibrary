@@ -2,7 +2,7 @@
 name = "lexibrary"
 version = "0.6.0"
 description = "AI-friendly codebase indexer — creates .aindex files for LLM context navigation"
-authors = [{ name = "Shann Gray" }]
+authors = [{ name = "Shannon Gray" }]
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -40,6 +40,11 @@ dev = [
 ]
 # Phase 4: uncomment and pin when implementing LLM integration
 # ollama = ["ollama>=0.6.0"]
+
+[project.urls]
+Homepage = "https://github.com/graysky-ai/Lexibrary"
+Repository = "https://github.com/graysky-ai/Lexibrary"
+Issues = "https://github.com/graysky-ai/Lexibrary/issues"
 
 [project.scripts]
 lexi = "lexibrary.cli:lexi_app"

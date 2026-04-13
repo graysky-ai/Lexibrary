@@ -19,11 +19,24 @@ from lexibrary.validator import AVAILABLE_CHECKS, ValidationReport, validate_lib
 # ---------------------------------------------------------------------------
 
 
-def _write_config(project_root: Path, **overrides: object) -> None:
-    """Write a minimal config.yaml."""
+def _write_config(
+    project_root: Path,
+    *,
+    scope_roots: list[str] | None = None,
+    **overrides: object,
+) -> None:
+    """Write a minimal config.yaml.
+
+    ``scope_roots`` defaults to ``["."]`` (single project-root scope) — the
+    multi-root migration's default shape. Pass an explicit list to exercise
+    multi-root behaviour, e.g. ``scope_roots=["src/", "baml_src/"]``.
+    """
     config_dir = project_root / ".lexibrary"
     config_dir.mkdir(parents=True, exist_ok=True)
-    lines = ["scope_root: ."]
+    declared = scope_roots if scope_roots is not None else ["."]
+    lines = ["scope_roots:"]
+    for path in declared:
+        lines.append(f"  - path: {path}")
     if "token_budgets" in overrides:
         budgets = overrides["token_budgets"]
         lines.append("token_budgets:")
@@ -617,3 +630,103 @@ class TestAllChecksRegistered:
             assert severity == "info", (
                 f"Check '{name}' should have 'info' severity, got '{severity}'"
             )
+
+
+# ---------------------------------------------------------------------------
+# Multi-root aindex_coverage walk
+# ---------------------------------------------------------------------------
+
+
+class TestAindexCoverageMultiRoot:
+    """Pin ``check_aindex_coverage`` semantics across multiple declared roots.
+
+    The check should walk every declared scope root (one walk per root),
+    surface info-severity issues for any directory that lacks an ``.aindex``
+    under any root, and stay silent when every directory under every root is
+    indexed.
+    """
+
+    def test_unindexed_under_either_root_produces_info(self, tmp_path: Path) -> None:
+        """Missing ``.aindex`` under any declared root raises an info issue.
+
+        With ``scope_roots: [src/, baml_src/]`` and a source file under each
+        root (so each root resolves to a real directory), neither directory
+        has an ``.aindex``. The check should flag both ``src/`` and
+        ``baml_src/`` (not just one) — proving the loop runs per root.
+        """
+        project_root = tmp_path
+        lexibrary_dir = project_root / ".lexibrary"
+        lexibrary_dir.mkdir()
+        _write_config(project_root, scope_roots=["src/", "baml_src/"])
+
+        # Each root must exist on disk to survive the resolver's existence
+        # filter; populate each with a single source file.
+        _write_source_file(project_root, "src/app.py", "def main(): pass\n")
+        _write_source_file(project_root, "baml_src/main.baml", "// baml\n")
+
+        report = validate_library(
+            project_root,
+            lexibrary_dir,
+            check_filter="aindex_coverage",
+        )
+
+        coverage_artifacts = {
+            issue.artifact for issue in report.issues if issue.check == "aindex_coverage"
+        }
+        # Both root directories should be reported as unindexed.
+        assert "src" in coverage_artifacts, coverage_artifacts
+        assert "baml_src" in coverage_artifacts, coverage_artifacts
+        for issue in report.issues:
+            if issue.check == "aindex_coverage":
+                assert issue.severity == "info"
+
+    def test_unindexed_under_only_second_root_still_reported(self, tmp_path: Path) -> None:
+        """A fully-indexed first root does not mask gaps under a second root.
+
+        Pins the per-root walk: even when ``src/`` has every directory
+        covered, an unindexed ``baml_src/`` directory must still surface.
+        """
+        project_root = tmp_path
+        lexibrary_dir = project_root / ".lexibrary"
+        lexibrary_dir.mkdir()
+        _write_config(project_root, scope_roots=["src/", "baml_src/"])
+
+        _write_source_file(project_root, "src/app.py", "def main(): pass\n")
+        _write_source_file(project_root, "baml_src/main.baml", "// baml\n")
+
+        # Only ``src/`` has its .aindex; ``baml_src/`` is left bare.
+        _write_aindex(project_root, lexibrary_dir, "src")
+
+        report = validate_library(
+            project_root,
+            lexibrary_dir,
+            check_filter="aindex_coverage",
+        )
+
+        coverage_artifacts = {
+            issue.artifact for issue in report.issues if issue.check == "aindex_coverage"
+        }
+        assert "baml_src" in coverage_artifacts, coverage_artifacts
+        assert "src" not in coverage_artifacts, coverage_artifacts
+
+    def test_fully_indexed_both_roots_zero_issues(self, tmp_path: Path) -> None:
+        """When every directory under every declared root is indexed, no issues."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / ".lexibrary"
+        lexibrary_dir.mkdir()
+        _write_config(project_root, scope_roots=["src/", "baml_src/"])
+
+        _write_source_file(project_root, "src/app.py", "def main(): pass\n")
+        _write_source_file(project_root, "baml_src/main.baml", "// baml\n")
+
+        _write_aindex(project_root, lexibrary_dir, "src")
+        _write_aindex(project_root, lexibrary_dir, "baml_src")
+
+        report = validate_library(
+            project_root,
+            lexibrary_dir,
+            check_filter="aindex_coverage",
+        )
+
+        coverage_issues = [i for i in report.issues if i.check == "aindex_coverage"]
+        assert coverage_issues == []

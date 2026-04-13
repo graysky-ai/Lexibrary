@@ -168,12 +168,12 @@ def lookup(
 
     config = load_config(project_root)
 
-    # Check scope: target must be under scope_root
-    scope_abs = (project_root / config.scope_root).resolve()
-    try:
-        target.relative_to(scope_abs)
-    except ValueError:
-        error(f"{file} is outside the configured scope_root ({config.scope_root}).")
+    # Check scope: target must be under one of the declared scope_roots.
+    if config.owning_root(target, project_root) is None:
+        error(
+            f"{file} is outside all configured scope_roots: "
+            f"{[r.path for r in config.scope_roots]}"
+        )
         raise typer.Exit(1) from None
 
     # Directory lookup mode
@@ -596,8 +596,27 @@ def search(
             help="Maximum results returned from full-text search (default: 20).",
         ),
     ] = 20,
+    symbol_limit: Annotated[
+        int,
+        typer.Option(
+            "--symbol-limit",
+            help=(
+                "Max symbols to include in mixed-type results (default 10). "
+                "Ignored when --type symbol, which uses --limit instead."
+            ),
+        ),
+    ] = 10,
 ) -> None:
-    """Search across concepts, conventions, design files, playbooks, Stack posts, and symbols."""
+    """Search across concepts, conventions, design files, playbooks, Stack posts, and symbols.
+
+    In the default (mixed) mode, when a free-text query is provided, symbols now
+    appear by default alongside artefact hits. Use ``--symbol-limit`` to cap the
+    number of symbols shown in mixed-mode output (default 10).
+
+    When ``--type symbol`` is set, the search restricts output to symbols only
+    and is governed by ``--limit`` (not ``--symbol-limit``). ``--symbol-limit``
+    is ignored in that case.
+    """
     from lexibrary.linkgraph import open_index  # noqa: PLC0415
     from lexibrary.search import unified_search  # noqa: PLC0415
 
@@ -665,6 +684,7 @@ def search(
             resolution_type=resolution_type,
             include_stale=include_stale,
             limit=limit,
+            symbol_limit=symbol_limit,
             suggest=True,
         )
     finally:
@@ -726,12 +746,12 @@ def impact(
 
     config = load_config(project_root)
 
-    # Check scope: file must be under scope_root
-    scope_abs = (project_root / config.scope_root).resolve()
-    try:
-        target.relative_to(scope_abs)
-    except ValueError:
-        error(f"{file} is outside the configured scope_root ({config.scope_root}).")
+    # Check scope: file must be under one of the declared scope_roots.
+    if config.owning_root(target, project_root) is None:
+        error(
+            f"{file} is outside all configured scope_roots: "
+            f"{[r.path for r in config.scope_roots]}"
+        )
         raise typer.Exit(1) from None
 
     try:
@@ -810,6 +830,7 @@ def trace(
     """
     if help_extended:
         from lexibrary.templates import read_template  # noqa: PLC0415
+
         info(read_template("help/trace.md"))
         raise typer.Exit(0)
 

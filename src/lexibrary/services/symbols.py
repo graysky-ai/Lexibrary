@@ -354,6 +354,31 @@ class SymbolQueryService:
         stale = self._detect_stale_single(file_path)
         return SymbolsInFileResponse(symbols=symbols, stale=stale)
 
+    def list_symbol_names(self, *, limit: int = 500) -> list[str]:
+        """Return up to *limit* distinct symbol names in ascending order.
+
+        Lightweight companion to :meth:`search_symbols` used by the
+        free-text search pipeline to lazily seed fuzzy-match candidates
+        with symbol names when artefact suggestions alone would not fill
+        the "did-you-mean" slot. Runs a single
+        ``SELECT DISTINCT name FROM symbols ORDER BY name LIMIT ?`` read
+        over :meth:`~lexibrary.symbolgraph.query.SymbolGraph.query_raw`
+        and returns the first column of each row.
+
+        Returns an empty list when the symbol graph is unavailable
+        (``_symbol_graph is None``). The method is strictly read-only —
+        it never creates ``symbols.db`` — mirroring the graceful
+        degradation used by :meth:`search_symbols`.
+        """
+        if self._symbol_graph is None:
+            return []
+
+        rows = self._symbol_graph.query_raw(
+            "SELECT DISTINCT name FROM symbols ORDER BY name LIMIT ?",
+            (limit,),
+        )
+        return [row[0] for row in rows]
+
     def members_of(self, symbol_id: int) -> list[SymbolMemberRow]:
         """Return the members (enum variants, constants) for *symbol_id*.
 

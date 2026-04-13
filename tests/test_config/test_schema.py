@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import yaml
 from pydantic import ValidationError
@@ -17,6 +19,8 @@ from lexibrary.config.schema import (
     LexibraryConfig,
     LLMConfig,
     MappingConfig,
+    ResolvedRoots,
+    ScopeRoot,
     StackConfig,
     SweepConfig,
     SymbolGraphConfig,
@@ -204,14 +208,136 @@ def test_lexibrary_config_has_crawl() -> None:
     assert isinstance(config.crawl, CrawlConfig)
 
 
-def test_scope_root_default() -> None:
+# --- Multi-root scope_roots tests ---
+
+
+def test_scope_root_model_construction() -> None:
+    """ScopeRoot accepts path + optional name with default origin='local'."""
+    sr = ScopeRoot(path="src/")
+    assert sr.path == "src/"
+    assert sr.name is None
+    assert sr.origin == "local"
+
+
+def test_scope_root_model_with_name() -> None:
+    """ScopeRoot carries an optional human-readable name."""
+    sr = ScopeRoot(path="src/", name="product")
+    assert sr.name == "product"
+
+
+def test_scope_root_model_rejects_unknown_origin() -> None:
+    """ScopeRoot.origin is Literal['local']; any other value raises."""
+    with pytest.raises(ValidationError):
+        ScopeRoot.model_validate({"path": "src/", "origin": "remote"})
+
+
+def test_scope_roots_default() -> None:
+    """LexibraryConfig defaults to a single '.' root."""
     config = LexibraryConfig()
-    assert config.scope_root == "."
+    assert len(config.scope_roots) == 1
+    assert config.scope_roots[0].path == "."
+    assert config.scope_roots[0].origin == "local"
 
 
-def test_scope_root_custom() -> None:
-    config = LexibraryConfig.model_validate({"scope_root": "src/"})
-    assert config.scope_root == "src/"
+def test_scope_roots_list_of_mappings() -> None:
+    """YAML list-of-mappings shape loads into ScopeRoot instances."""
+    data = yaml.safe_load(
+        "scope_roots:\n  - path: src/\n  - path: baml_src/\n"
+    )
+    config = LexibraryConfig.model_validate(data)
+    assert [sr.path for sr in config.scope_roots] == ["src/", "baml_src/"]
+    assert all(isinstance(sr, ScopeRoot) for sr in config.scope_roots)
+
+
+def test_scope_roots_legacy_scope_root_key_rejected() -> None:
+    """Legacy 'scope_root:' key raises with Block D error text."""
+    with pytest.raises(ValidationError) as exc_info:
+        LexibraryConfig.model_validate({"scope_root": "src/"})
+    message = str(exc_info.value)
+    # Core substring from Block D — every line of the migration pointer surfaces.
+    assert "Unknown config key 'scope_root'" in message
+    assert "scope_roots" in message
+    assert "path:" in message
+
+
+def test_resolved_scope_roots_all_present(tmp_path: Path) -> None:
+    """All declared roots that exist on disk land in ``.resolved`` with no misses."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "baml_src").mkdir()
+    config = LexibraryConfig.model_validate(
+        {"scope_roots": [{"path": "src/"}, {"path": "baml_src/"}]}
+    )
+    result = config.resolved_scope_roots(tmp_path)
+    assert isinstance(result, ResolvedRoots)
+    assert [p.name for p in result.resolved] == ["src", "baml_src"]
+    assert result.missing == []
+
+
+def test_resolved_scope_roots_one_missing(tmp_path: Path) -> None:
+    """Missing-on-disk roots are filtered out of ``.resolved`` and preserved in ``.missing``."""
+    (tmp_path / "src").mkdir()
+    # baml_src/ not created
+    config = LexibraryConfig.model_validate(
+        {"scope_roots": [{"path": "src/"}, {"path": "baml_src/"}]}
+    )
+    result = config.resolved_scope_roots(tmp_path)
+    assert [p.name for p in result.resolved] == ["src"]
+    assert len(result.missing) == 1
+    assert result.missing[0].path == "baml_src/"
+
+
+def test_resolved_scope_roots_rejects_path_traversal(tmp_path: Path) -> None:
+    """A path that escapes ``project_root`` after resolution raises."""
+    config = LexibraryConfig.model_validate(
+        {"scope_roots": [{"path": "../escape"}]}
+    )
+    with pytest.raises(ValueError, match="../escape"):
+        config.resolved_scope_roots(tmp_path)
+
+
+def test_resolved_scope_roots_rejects_nested_roots(tmp_path: Path) -> None:
+    """Nested roots (e.g. '.' + 'src/') raise with both paths named."""
+    (tmp_path / "src").mkdir()
+    config = LexibraryConfig.model_validate(
+        {"scope_roots": [{"path": "."}, {"path": "src/"}]}
+    )
+    with pytest.raises(ValueError) as exc_info:
+        config.resolved_scope_roots(tmp_path)
+    message = str(exc_info.value)
+    assert "." in message
+    assert "src/" in message
+
+
+def test_resolved_scope_roots_rejects_duplicates(tmp_path: Path) -> None:
+    """Duplicate declared paths raise."""
+    (tmp_path / "src").mkdir()
+    config = LexibraryConfig.model_validate(
+        {"scope_roots": [{"path": "src/"}, {"path": "src/"}]}
+    )
+    with pytest.raises(ValueError, match="Duplicate"):
+        config.resolved_scope_roots(tmp_path)
+
+
+def test_owning_root_inside_root(tmp_path: Path) -> None:
+    """owning_root returns the declared ScopeRoot that contains the path."""
+    (tmp_path / "src" / "lexibrary").mkdir(parents=True)
+    config = LexibraryConfig.model_validate(
+        {"scope_roots": [{"path": "src/"}, {"path": "baml_src/"}]}
+    )
+    result = config.owning_root(tmp_path / "src" / "lexibrary" / "foo.py", tmp_path)
+    assert result is not None
+    assert result.path == "src/"
+
+
+def test_owning_root_outside_all_roots(tmp_path: Path) -> None:
+    """owning_root returns None when the path is under no declared root."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "docs").mkdir()
+    config = LexibraryConfig.model_validate(
+        {"scope_roots": [{"path": "src/"}]}
+    )
+    result = config.owning_root(tmp_path / "docs" / "README.md", tmp_path)
+    assert result is None
 
 
 def test_max_file_size_kb_default() -> None:

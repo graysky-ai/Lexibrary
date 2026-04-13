@@ -2144,12 +2144,11 @@ class Coordinator:
         if dep is None:
             return
 
-        # Write to the artifact's parent directory in the .lexibrary mirror
-        try:
-            rel = dep.artifact_path.relative_to(self.project_root)
-            mirror_dir = self.lexibrary_dir / rel.parent
-        except ValueError:
-            mirror_dir = dep.artifact_path.parent
+        # The artifact already lives inside .lexibrary/ (concepts, conventions,
+        # designs, playbooks, stack), so its parent is the correct target.
+        # Do not re-prefix with self.lexibrary_dir — that produced a nested
+        # .lexibrary/.lexibrary/ path.
+        target_dir = dep.artifact_path.parent
 
         body = (
             f"Proposed deprecation: {dep.artifact_kind} at {dep.artifact_path.name}\n"
@@ -2160,7 +2159,7 @@ class Coordinator:
         )
 
         try:
-            write_iwh(mirror_dir, author="curator", scope="warning", body=body)
+            write_iwh(target_dir, author="curator", scope="warning", body=body)
         except Exception as exc:
             logger.warning("Failed to write deprecation proposal IWH: %s", exc)
 

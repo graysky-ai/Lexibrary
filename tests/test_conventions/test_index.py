@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from lexibrary.config.schema import ScopeRoot
 from lexibrary.conventions.index import ConventionIndex
 
 
@@ -399,6 +400,280 @@ class TestConventionIndexFindByScopeLimited:
         result, total = index.find_by_scope_limited("src/foo.py", limit=2)
         assert total == 2
         assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# Multi-root convention fixtures (group 4)
+# ---------------------------------------------------------------------------
+
+BAML_SRC_FOO_CONVENTION = """\
+---
+title: BAML foo formatting
+id: CV-100
+scope: baml_src/foo
+tags:
+  - baml
+status: active
+source: user
+priority: 0
+---
+BAML files under baml_src/foo must use camelCase enum values.
+"""
+
+BAML_SRC_ROOT_CONVENTION = """\
+---
+title: BAML conventions
+id: CV-101
+scope: baml_src
+tags:
+  - baml
+status: active
+source: user
+priority: 0
+---
+All BAML modules must declare the version header.
+"""
+
+SRC_FOO_CONVENTION = """\
+---
+title: Src foo helpers
+id: CV-102
+scope: src/foo
+tags:
+  - python
+status: active
+source: user
+priority: 0
+---
+Helpers under src/foo must export via __all__.
+"""
+
+MULTI_BAML_PATH_SCOPE = """\
+---
+title: BAML cross-directory pattern
+id: CV-103
+scope: baml_src/foo, baml_src/bar
+tags:
+  - baml
+  - patterns
+status: active
+source: user
+priority: 0
+---
+BAML modules under baml_src/foo and baml_src/bar must share generator config.
+"""
+
+
+# ---------------------------------------------------------------------------
+# TestConventionIndexFindByAnyScope
+# ---------------------------------------------------------------------------
+
+
+class TestConventionIndexFindByAnyScope:
+    """Tests for the multi-root ``find_by_any_scope`` entry point."""
+
+    def test_file_under_second_declared_root_matches(self, tmp_path: Path) -> None:
+        """A convention scoped under the second declared root matches files there."""
+        _write_convention(tmp_path, "baml-foo.md", BAML_SRC_FOO_CONVENTION)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+        result = index.find_by_any_scope("baml_src/foo/example.baml", roots)
+        assert len(result) == 1
+        assert result[0].frontmatter.title == "BAML foo formatting"
+
+    def test_dot_scope_always_matches_under_any_root(self, tmp_path: Path) -> None:
+        """Convention with ``scope: "."`` matches a file owned by ``src/``."""
+        _write_convention(tmp_path, "root-scope.md", ROOT_SCOPE)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+        result = index.find_by_any_scope("src/foo.py", roots)
+        assert len(result) == 1
+        assert result[0].frontmatter.title == "Root scope convention"
+
+    def test_dot_scope_matches_file_under_second_root(self, tmp_path: Path) -> None:
+        """Convention with ``scope: "."`` also matches files under the second root."""
+        _write_convention(tmp_path, "root-scope.md", ROOT_SCOPE)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+        result = index.find_by_any_scope("baml_src/foo.baml", roots)
+        assert len(result) == 1
+        assert result[0].frontmatter.title == "Root scope convention"
+
+    def test_scope_path_in_other_root_does_not_match(self, tmp_path: Path) -> None:
+        """``scope: src/foo`` MUST NOT match a file owned by ``baml_src/``."""
+        _write_convention(tmp_path, "src-foo.md", SRC_FOO_CONVENTION)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+        result = index.find_by_any_scope("baml_src/foo/x.baml", roots)
+        assert result == []
+
+    def test_file_outside_all_roots_returns_empty(self, tmp_path: Path) -> None:
+        """A file under no declared root resolves to no owning root → no matches."""
+        _write_convention(tmp_path, "future-annotations.md", FUTURE_ANNOTATIONS)
+        _write_convention(tmp_path, "root-scope.md", ROOT_SCOPE)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+        result = index.find_by_any_scope("docs/README.md", roots)
+        assert result == []
+
+    def test_project_scope_matches_under_any_root(self, tmp_path: Path) -> None:
+        """``scope: "project"`` always matches, mirroring single-root semantics."""
+        _write_convention(tmp_path, "future-annotations.md", FUTURE_ANNOTATIONS)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+        for path in ("src/foo.py", "baml_src/foo.baml"):
+            result = index.find_by_any_scope(path, roots)
+            assert len(result) == 1
+            assert result[0].frontmatter.title == "Future annotations import"
+
+    def test_first_match_wins_for_owning_root(self, tmp_path: Path) -> None:
+        """Owning-root selection follows declared-order first-match-wins.
+
+        With ``scope_roots: [".", "src/"]``, every path is owned by ".".
+        A convention scoped under ``src/foo`` then matches files inside it,
+        because ancestry from ``src/foo/x.py`` up to the project root
+        passes through ``src/foo``.
+        """
+        _write_convention(tmp_path, "src-foo.md", SRC_FOO_CONVENTION)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="."), ScopeRoot(path="src/")]
+        result = index.find_by_any_scope("src/foo/helper.py", roots)
+        assert len(result) == 1
+        assert result[0].frontmatter.title == "Src foo helpers"
+
+    def test_root_to_leaf_ordering_with_dot_and_owning_root(self, tmp_path: Path) -> None:
+        """Ordering: ``project`` first, then ``.``, then owning root, then deeper."""
+        _write_convention(tmp_path, "project.md", FUTURE_ANNOTATIONS)  # project
+        _write_convention(tmp_path, "dot.md", ROOT_SCOPE)  # scope "."
+        _write_convention(tmp_path, "baml-root.md", BAML_SRC_ROOT_CONVENTION)  # baml_src
+        _write_convention(tmp_path, "baml-foo.md", BAML_SRC_FOO_CONVENTION)  # baml_src/foo
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+        result = index.find_by_any_scope("baml_src/foo/example.baml", roots)
+        titles = [c.frontmatter.title for c in result]
+        # project → "." → baml_src → baml_src/foo
+        assert titles == [
+            "Future annotations import",
+            "Root scope convention",
+            "BAML conventions",
+            "BAML foo formatting",
+        ]
+
+    def test_st006_comma_split_under_multi_root(self, tmp_path: Path) -> None:
+        """Regression: comma-split scopes still work under multi-root.
+
+        A convention with ``scope: baml_src/foo, baml_src/bar`` must match
+        files in EITHER directory when the project declares
+        ``scope_roots: [src, baml_src]``.
+        """
+        _write_convention(tmp_path, "multi-baml.md", MULTI_BAML_PATH_SCOPE)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+
+        result_foo = index.find_by_any_scope("baml_src/foo/example.baml", roots)
+        assert len(result_foo) == 1
+        assert result_foo[0].frontmatter.title == "BAML cross-directory pattern"
+
+        result_bar = index.find_by_any_scope("baml_src/bar/example.baml", roots)
+        assert len(result_bar) == 1
+        assert result_bar[0].frontmatter.title == "BAML cross-directory pattern"
+
+        # Sibling directory not in the comma list must NOT match.
+        result_baz = index.find_by_any_scope("baml_src/baz/example.baml", roots)
+        assert result_baz == []
+
+    def test_empty_index_returns_empty(self, tmp_path: Path) -> None:
+        """No conventions loaded → no matches even when the file is in scope."""
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+        result = index.find_by_any_scope("src/foo.py", roots)
+        assert result == []
+
+    def test_single_root_dot_behaves_like_single_root_helper(self, tmp_path: Path) -> None:
+        """``scope_roots: [{path: "."}]`` should match the legacy single-root behaviour."""
+        _write_convention(tmp_path, "future-annotations.md", FUTURE_ANNOTATIONS)
+        _write_convention(tmp_path, "root-scope.md", ROOT_SCOPE)
+        _write_convention(tmp_path, "auth-error-handling.md", AUTH_ERROR_HANDLING)
+        index = ConventionIndex(tmp_path)
+        index.load()
+
+        single = [ScopeRoot(path=".")]
+        multi = index.find_by_any_scope("src/auth/login.py", single)
+        legacy = index.find_by_scope("src/auth/login.py")
+        assert [c.frontmatter.title for c in multi] == [
+            c.frontmatter.title for c in legacy
+        ]
+
+
+# ---------------------------------------------------------------------------
+# TestConventionIndexFindByAnyScopeLimited
+# ---------------------------------------------------------------------------
+
+
+class TestConventionIndexFindByAnyScopeLimited:
+    """Tests for the multi-root ``find_by_any_scope_limited`` entry point."""
+
+    def test_under_limit_returns_all(self, tmp_path: Path) -> None:
+        _write_convention(tmp_path, "project.md", FUTURE_ANNOTATIONS)
+        _write_convention(tmp_path, "baml-foo.md", BAML_SRC_FOO_CONVENTION)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+        result, total = index.find_by_any_scope_limited(
+            "baml_src/foo/example.baml", roots, limit=5
+        )
+        assert total == 2
+        assert len(result) == 2
+
+    def test_over_limit_truncates_root_ward(self, tmp_path: Path) -> None:
+        """Over the limit, root-ward conventions are dropped first."""
+        _write_convention(tmp_path, "project.md", FUTURE_ANNOTATIONS)  # project
+        _write_convention(tmp_path, "dot.md", ROOT_SCOPE)  # scope "."
+        _write_convention(tmp_path, "baml-root.md", BAML_SRC_ROOT_CONVENTION)  # baml_src
+        _write_convention(tmp_path, "baml-foo.md", BAML_SRC_FOO_CONVENTION)  # baml_src/foo
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+        result, total = index.find_by_any_scope_limited(
+            "baml_src/foo/example.baml", roots, limit=2
+        )
+        assert total == 4
+        # Most leaf-ward kept: baml_src + baml_src/foo
+        titles = [c.frontmatter.title for c in result]
+        assert titles == ["BAML conventions", "BAML foo formatting"]
+
+    def test_limit_zero_returns_empty_with_total(self, tmp_path: Path) -> None:
+        _write_convention(tmp_path, "baml-foo.md", BAML_SRC_FOO_CONVENTION)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+        result, total = index.find_by_any_scope_limited(
+            "baml_src/foo/example.baml", roots, limit=0
+        )
+        assert result == []
+        assert total == 1
+
+    def test_no_owning_root_returns_empty_zero_total(self, tmp_path: Path) -> None:
+        """No matches for an out-of-scope file → ``([], 0)``."""
+        _write_convention(tmp_path, "baml-foo.md", BAML_SRC_FOO_CONVENTION)
+        index = ConventionIndex(tmp_path)
+        index.load()
+        roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+        result, total = index.find_by_any_scope_limited(
+            "docs/README.md", roots, limit=5
+        )
+        assert result == []
+        assert total == 0
 
 
 # ---------------------------------------------------------------------------

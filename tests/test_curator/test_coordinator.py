@@ -1744,6 +1744,50 @@ class TestDeprecationDispatch:
             # IWH should have been called for the deferred deprecation
             mock_iwh.assert_called_once()
 
+    def test_write_deprecation_proposal_iwh_writes_beside_artifact(self, tmp_path: Path) -> None:
+        """Gated deprecation .iwh lands next to the artifact, not in a nested mirror.
+
+        Regression: prior code prepended ``self.lexibrary_dir`` to a relative
+        path that already began with ``.lexibrary/``, producing
+        ``.lexibrary/.lexibrary/concepts/.iwh``.
+        """
+        from lexibrary.curator.models import DeprecationCollectItem
+
+        project = _setup_minimal_project(tmp_path)
+        (project / ".lexibrary" / "concepts").mkdir()
+        artifact = project / ".lexibrary" / "concepts" / "CN-999-orphan.md"
+        artifact.write_text("---\ntitle: orphan\n---\n", encoding="utf-8")
+
+        coord = Coordinator(project, LexibraryConfig())
+
+        dep_item = DeprecationCollectItem(
+            artifact_path=artifact,
+            artifact_kind="concept",
+            current_status="active",
+            reason="orphan_zero_refs",
+        )
+        triage_item = TriageItem(
+            source_item=CollectItem(
+                source="deprecation",
+                path=artifact,
+                severity="warning",
+                message="Deprecation candidate",
+                check="deprecation",
+            ),
+            issue_type="deprecation",
+            action_key="deprecate_concept",
+            priority=100.0,
+            deprecation_item=dep_item,
+            risk_level="high",
+        )
+
+        coord._write_deprecation_proposal_iwh(triage_item)
+
+        expected = project / ".lexibrary" / "concepts" / ".iwh"
+        nested = project / ".lexibrary" / ".lexibrary" / "concepts" / ".iwh"
+        assert expected.exists(), f"expected .iwh at {expected}"
+        assert not nested.exists(), f"should NOT have nested {nested}"
+
 
 class TestDeprecationReport:
     """Report phase includes deprecation and migration counts."""

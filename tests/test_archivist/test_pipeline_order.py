@@ -258,9 +258,9 @@ def _make_source_file(tmp_path: Path, rel: str, content: str = "def foo(): pass"
 
 
 def _make_config(scope_root: str = ".") -> LexibraryConfig:
-    """Create a LexibraryConfig with a given scope_root and small token budget."""
+    """Create a LexibraryConfig with a single scope root and small token budget."""
     return LexibraryConfig(
-        scope_root=scope_root,
+        scope_roots=[ScopeRoot(path=scope_root)],
         token_budgets=TokenBudgetConfig(design_file_tokens=400),
     )
 

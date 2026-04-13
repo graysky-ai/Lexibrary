@@ -17,13 +17,14 @@ from lexibrary.archivist.change_checker import ChangeLevel, check_change
 from lexibrary.archivist.pipeline import (
     FileResult,
     _is_binary,
-    _is_within_scope,
+    _is_within_any_scope,
     _refresh_parent_aindex,
     update_file,
 )
 from lexibrary.archivist.skeleton import generate_skeleton_design, heuristic_description
 from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.ast_parser import compute_hashes
+from lexibrary.cli._output import warn
 from lexibrary.config.schema import LexibraryConfig
 from lexibrary.ignore import create_ignore_matcher
 from lexibrary.utils.atomic import atomic_write
@@ -93,6 +94,48 @@ def _discover_source_files(
     return source_files
 
 
+def _resolve_bootstrap_scope_dirs(
+    project_root: Path,
+    config: LexibraryConfig,
+    scope_override: str | None,
+) -> list[Path]:
+    """Resolve the list of scope directories that bootstrap should walk.
+
+    When *scope_override* is ``None``, returns the list of resolved scope roots
+    from :meth:`LexibraryConfig.resolved_scope_roots` and emits one
+    :func:`warn` per missing-on-disk declared root before discovery starts
+    (per design block A's "skipping" wording).
+
+    When *scope_override* is a string, validates that it is owned by at least
+    one declared root via :func:`_is_within_any_scope` (more precisely the
+    resolved override path itself must sit inside some root). Returns a
+    single-element list containing the resolved override.
+
+    Raises:
+        ValueError: With Block A wording when *scope_override* points outside
+            every configured ``scope_root``.
+    """
+
+    if scope_override is not None:
+        override_dir = (project_root / scope_override).resolve()
+        if not _is_within_any_scope(override_dir, project_root, config):
+            declared = [r.path for r in config.scope_roots]
+            raise ValueError(
+                f"{scope_override} is outside all configured scope_roots: {declared}"
+            )
+        return [override_dir]
+
+    resolved = config.resolved_scope_roots(project_root)
+
+    # Surface non-fatal warnings for declared-but-absent roots so downstream
+    # steps stay deterministic and the operator sees a clear signal that a
+    # root was skipped. The Pydantic model stays decoupled from `_output.py`.
+    for missing in resolved.missing:
+        warn(f"scope_root {missing.path!r} does not exist on disk; skipping")
+
+    return resolved.resolved
+
+
 def _generate_quick_design(
     source_path: Path,
     project_root: Path,
@@ -152,9 +195,14 @@ def bootstrap_quick(
 ) -> BootstrapStats:
     """Run quick-mode bootstrap: generate skeleton design files for all source files.
 
-    Discovers source files within the scope root, generates design files
-    using tree-sitter extraction and heuristic descriptions (no LLM calls),
-    and reports progress.
+    When *scope_override* is ``None``, iterates every resolved scope root from
+    :meth:`LexibraryConfig.resolved_scope_roots` and walks each one in
+    declared order. Missing-on-disk roots surface as a non-fatal
+    :func:`warn` before discovery starts and are otherwise ignored.
+
+    When *scope_override* is provided, restricts the walk to that single
+    directory (which must be owned by at least one declared root, otherwise
+    a :class:`ValueError` with Block A wording is raised).
 
     Args:
         project_root: Absolute path to the project root.
@@ -167,12 +215,12 @@ def bootstrap_quick(
     """
     stats = BootstrapStats()
 
-    # Resolve scope root
-    scope_root_str = scope_override if scope_override is not None else config.scope_root
-    scope_dir = (project_root / scope_root_str).resolve()
+    scope_dirs = _resolve_bootstrap_scope_dirs(project_root, config, scope_override)
 
-    # Discover source files
-    source_files = _discover_source_files(scope_dir, project_root, config)
+    # Discover source files across every declared root in declared order.
+    source_files: list[Path] = []
+    for scope_dir in scope_dirs:
+        source_files.extend(_discover_source_files(scope_dir, project_root, config))
     logger.info("Bootstrap: discovered %d source files", len(source_files))
 
     for source_path in source_files:
@@ -214,9 +262,18 @@ async def bootstrap_full(
 ) -> BootstrapStats:
     """Run full-mode bootstrap: generate LLM-enriched design files for all source files.
 
-    Discovers source files within the scope root and processes each through
-    the standard archivist pipeline (which includes LLM enrichment via
-    ``ArchivistService``). Files are generated with ``updated_by: archivist``.
+    When *scope_override* is ``None``, iterates every resolved scope root from
+    :meth:`LexibraryConfig.resolved_scope_roots` and walks each one in
+    declared order. Missing-on-disk roots surface as a non-fatal
+    :func:`warn` before discovery starts and are otherwise ignored.
+
+    When *scope_override* is provided, restricts the walk to that single
+    directory (which must be owned by at least one declared root, otherwise
+    a :class:`ValueError` with Block A wording is raised).
+
+    Files are processed through the standard archivist pipeline (which
+    includes LLM enrichment via ``ArchivistService``) and generated with
+    ``updated_by: archivist``.
 
     Args:
         project_root: Absolute path to the project root.
@@ -234,9 +291,7 @@ async def bootstrap_full(
 
     stats = BootstrapStats()
 
-    # Resolve scope root
-    scope_root_str = scope_override if scope_override is not None else config.scope_root
-    scope_dir = (project_root / scope_root_str).resolve()
+    scope_dirs = _resolve_bootstrap_scope_dirs(project_root, config, scope_override)
 
     # Build registry if not provided
     if client_registry is None:
@@ -248,16 +303,19 @@ async def bootstrap_full(
     rate_limiter = RateLimiter()
     archivist = ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)
 
-    # Discover source files
-    source_files = _discover_source_files(scope_dir, project_root, config)
+    # Discover source files across every declared root in declared order.
+    source_files: list[Path] = []
+    for scope_dir in scope_dirs:
+        source_files.extend(_discover_source_files(scope_dir, project_root, config))
     logger.info("Bootstrap (full): discovered %d source files", len(source_files))
 
     for source_path in source_files:
         stats.files_scanned += 1
 
         # Scope check (update_file does this internally, but we skip
-        # files out of scope before the call for efficiency)
-        if not _is_within_scope(source_path, project_root, scope_root_str):
+        # files out of scope before the call for efficiency).  Delegates to
+        # the same owning-root resolver used everywhere else in the codebase.
+        if not _is_within_any_scope(source_path, project_root, config):
             stats.files_skipped += 1
             if progress_callback is not None:
                 progress_callback(source_path, "skipped")

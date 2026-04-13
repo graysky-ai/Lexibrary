@@ -117,8 +117,14 @@ def detect_project_name(project_root: Path) -> DetectedProject:
 
 
 def detect_scope_roots(project_root: Path) -> list[str]:
-    """Check for common source directories (src/, lib/, app/) and return those that exist."""
-    candidates = ["src/", "lib/", "app/"]
+    """Check for common source directories and return those that exist.
+
+    Candidates are checked in declared order; ``baml_src/`` is included
+    alongside the historical ``src/``, ``lib/``, ``app/`` set so multi-root
+    projects (e.g. Python source plus BAML schemas) light up by default in
+    the wizard's checkbox UI.
+    """
+    candidates = ["src/", "lib/", "app/", "baml_src/"]
     return [d for d in candidates if (project_root / d.rstrip("/")).is_dir()]
 
 

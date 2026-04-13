@@ -164,7 +164,7 @@ def _make_design_file_with_insights(
 
 def _make_config(scope_root: str = ".", design_file_tokens: int = 400) -> LexibraryConfig:
     return LexibraryConfig(
-        scope_root=scope_root,
+        scope_roots=[ScopeRoot(path=scope_root)],
         token_budgets=TokenBudgetConfig(design_file_tokens=design_file_tokens),
     )
 

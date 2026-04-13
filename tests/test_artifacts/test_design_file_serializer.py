@@ -621,8 +621,7 @@ class TestSerializeDesignFileDataFlows:
                     parameter="changed_paths",
                     location="build_index()",
                     effect=(
-                        "`None` triggers a full build;"
-                        " a non-None list triggers incremental update."
+                        "`None` triggers a full build; a non-None list triggers incremental update."
                     ),
                 ),
                 DataFlowNote(
@@ -682,8 +681,7 @@ class TestSerializeDesignFileDataFlows:
                     parameter="changed_paths",
                     location="build_index()",
                     effect=(
-                        "`None` triggers a full build;"
-                        " a non-None list triggers incremental update."
+                        "`None` triggers a full build; a non-None list triggers incremental update."
                     ),
                 ),
                 DataFlowNote(

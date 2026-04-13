@@ -13,6 +13,8 @@ from lexibrary.config.schema import (
     LexibraryConfig,
     LLMConfig,
     MappingConfig,
+    ResolvedRoots,
+    ScopeRoot,
     StackConfig,
     SweepConfig,
     SymbolGraphConfig,
@@ -20,9 +22,11 @@ from lexibrary.config.schema import (
     TokenizerConfig,
     TopologyConfig,
 )
+from lexibrary.config.scope import find_owning_root
 
 __all__ = [
     "find_config_file",
+    "find_owning_root",
     "load_config",
     "ConceptConfig",
     "ConventionConfig",
@@ -33,6 +37,8 @@ __all__ = [
     "LexibraryConfig",
     "LLMConfig",
     "MappingConfig",
+    "ResolvedRoots",
+    "ScopeRoot",
     "StackConfig",
     "SweepConfig",
     "SymbolGraphConfig",

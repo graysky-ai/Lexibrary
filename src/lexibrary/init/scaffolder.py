@@ -73,14 +73,37 @@ def _generate_config_yaml(answers: WizardAnswers) -> str:
     YAML.  A ``ValidationError`` is raised before any output if the data
     is invalid.
 
+    The ``scope_roots`` field is always emitted as a YAML list of mappings
+    (each entry has at least ``path:``), even for the single-root case. This
+    matches the multi-root schema's canonical shape (Block B in the
+    ``multi-root`` change) and avoids an inconsistent scalar shorthand for
+    one-root configs. A wizard answer with zero scope roots defaults to
+    ``[{"path": "."}]`` so the resulting config is always valid.
+
     Args:
         answers: Completed wizard answers dataclass.
 
     Returns:
         YAML string including a header comment, ready to write to disk.
     """
+    # Each ScopeRoot becomes a single-key mapping in the emitted list. We only
+    # emit ``name`` / ``origin`` when they diverge from defaults so the YAML
+    # for a vanilla single-root config stays minimal (matches Block B exactly).
+    if answers.scope_roots:
+        scope_roots_list: list[dict[str, Any]] = []
+        for sr in answers.scope_roots:
+            entry: dict[str, Any] = {"path": sr.path}
+            if sr.name is not None:
+                entry["name"] = sr.name
+            # ``origin`` is currently always "local" — only emit if it ever changes.
+            if sr.origin != "local":
+                entry["origin"] = sr.origin
+            scope_roots_list.append(entry)
+    else:
+        scope_roots_list = [{"path": "."}]
+
     config_dict: dict[str, Any] = {
-        "scope_root": answers.scope_root,
+        "scope_roots": scope_roots_list,
         "project_name": answers.project_name,
         "agent_environment": answers.agent_environments,
         "iwh": {"enabled": answers.iwh_enabled},

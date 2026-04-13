@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from lexibrary.curator.config import CuratorConfig
+
+# Error text emitted when a legacy ``scope_root:`` key is present in a loaded
+# config. Matches the multi-root change's Block D snippet exactly so callers can
+# substring-assert on it.
+_LEGACY_SCOPE_ROOT_ERROR = (
+    "Unknown config key 'scope_root'. Multi-root support replaced this with\n"
+    "'scope_roots' (list of mappings). Migrate your config to:\n"
+    "  scope_roots:\n"
+    "    - path: <your-old-scope-root>"
+)
 
 
 class CrawlConfig(BaseModel):
@@ -315,12 +327,43 @@ class StackConfig(BaseModel):
     lookup_display_limit: int = 3
 
 
+class ScopeRoot(BaseModel):
+    """A single declared scope root.
+
+    Wraps a path string so the on-disk schema can grow per-root options (``name``,
+    ``origin``, future overrides) without another migration. ``origin`` is
+    reserved for a later multi-repo / multi-drive phase; today it is always
+    ``"local"``.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    path: str
+    name: str | None = None
+    origin: Literal["local"] = "local"
+
+
+@dataclass(frozen=True)
+class ResolvedRoots:
+    """Return shape for :meth:`LexibraryConfig.resolved_scope_roots`.
+
+    ``resolved`` is the list of absolute :class:`Path` objects that exist on disk
+    and passed the nesting/duplicate/traversal guards. ``missing`` holds the
+    original :class:`ScopeRoot` entries whose declared path does not exist on
+    disk (they are excluded from ``resolved`` but preserved here so a CLI layer
+    can warn about them).
+    """
+
+    resolved: list[Path]
+    missing: list[ScopeRoot]
+
+
 class LexibraryConfig(BaseModel):
     """Top-level Lexibrary configuration."""
 
     model_config = ConfigDict(extra="ignore")
 
-    scope_root: str = "."
+    scope_roots: list[ScopeRoot] = Field(default_factory=lambda: [ScopeRoot(path=".")])
     project_name: str = ""
     agent_environment: list[str] = Field(default_factory=list)
     concepts: ConceptConfig = Field(default_factory=ConceptConfig)
@@ -340,3 +383,104 @@ class LexibraryConfig(BaseModel):
     crawl: CrawlConfig = Field(default_factory=CrawlConfig)
     ast: ASTConfig = Field(default_factory=ASTConfig)
     curator: CuratorConfig = Field(default_factory=CuratorConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_scope_root(cls, data: Any) -> Any:
+        """Raise an actionable error when a legacy ``scope_root:`` key is present.
+
+        The top-level model otherwise silently drops unknown keys via
+        ``extra="ignore"``; this key is a known-renamed field from the
+        single-root era and deserves a loud pointer to the new shape instead
+        of a silent no-op.
+        """
+
+        if isinstance(data, dict) and "scope_root" in data:
+            raise ValueError(_LEGACY_SCOPE_ROOT_ERROR)
+        return data
+
+    def resolved_scope_roots(self, project_root: Path) -> ResolvedRoots:
+        """Resolve, validate, and existence-filter the declared scope roots.
+
+        Steps, in order:
+
+        1. Resolve each declared path relative to ``project_root`` and call
+           ``.resolve()``.
+        2. **Path-traversal guard** — each resolved root must be relative to
+           ``project_root``. Violations raise a :class:`ValueError` naming the
+           offending entry.
+        3. **Nested-roots guard** — for each pair of declared roots, reject if
+           either resolves to an ancestor of the other (or they are equal).
+           Both original path strings appear in the error.
+        4. **Duplicate-entry guard** — reject duplicate declared path strings
+           (after whitespace normalisation).
+        5. **Existence filter** — non-existent roots are dropped from the
+           ``resolved`` list and preserved in ``missing``.
+
+        The Pydantic model stays decoupled from ``_output.py`` — callers emit
+        ``warn()`` for missing entries themselves.
+        """
+
+        project_root_abs = project_root.resolve()
+
+        # Duplicate-entry guard. Run on the declared path strings so the
+        # error message names what the user actually typed.
+        seen: set[str] = set()
+        for sr in self.scope_roots:
+            key = sr.path.strip()
+            if key in seen:
+                raise ValueError(
+                    f"Duplicate scope_roots entry: {sr.path!r}. "
+                    f"Each declared path must appear exactly once."
+                )
+            seen.add(key)
+
+        # Resolve + path-traversal guard.
+        resolved_pairs: list[tuple[ScopeRoot, Path]] = []
+        for sr in self.scope_roots:
+            candidate = (project_root_abs / sr.path).resolve()
+            if not candidate.is_relative_to(project_root_abs):
+                raise ValueError(
+                    f"scope_roots entry {sr.path!r} resolves to {candidate} "
+                    f"which is outside the project root {project_root_abs}. "
+                    f"Path traversal is not allowed."
+                )
+            resolved_pairs.append((sr, candidate))
+
+        # Nested-roots guard. Compare every pair of resolved roots and reject
+        # when one is relative to (or equal to) another.
+        for i, (sr_a, path_a) in enumerate(resolved_pairs):
+            for sr_b, path_b in resolved_pairs[i + 1 :]:
+                if path_a == path_b or path_a.is_relative_to(path_b) or path_b.is_relative_to(
+                    path_a
+                ):
+                    raise ValueError(
+                        f"scope_roots entries {sr_a.path!r} and {sr_b.path!r} "
+                        f"are nested or identical. Each declared root must be "
+                        f"an independent subtree."
+                    )
+
+        # Existence filter — non-existent roots move to ``missing``.
+        resolved: list[Path] = []
+        missing: list[ScopeRoot] = []
+        for sr, path in resolved_pairs:
+            if path.exists():
+                resolved.append(path)
+            else:
+                missing.append(sr)
+
+        return ResolvedRoots(resolved=resolved, missing=missing)
+
+    def owning_root(self, path: Path, project_root: Path) -> ScopeRoot | None:
+        """Return the declared :class:`ScopeRoot` that owns ``path``, or ``None``.
+
+        Thin wrapper around :func:`lexibrary.config.scope.find_owning_root` so
+        call sites that have a :class:`LexibraryConfig` in hand do not have to
+        import the helper themselves.
+        """
+
+        # Local import avoids a circular dependency at module import time —
+        # ``scope.py`` imports :class:`ScopeRoot` from this module.
+        from lexibrary.config.scope import find_owning_root
+
+        return find_owning_root(path, self.scope_roots, project_root)

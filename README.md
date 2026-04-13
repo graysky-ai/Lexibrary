@@ -21,10 +21,14 @@ Lexibrary indexes your codebase into a layered knowledge base of design summarie
 | **Conventions** | Project-wide and scope-local coding rules as first-class, enforceable artifacts |
 | **Concepts** | Domain vocabulary definitions with aliases, wikilink resolution, and lifecycle management |
 | **Stack** | Stack Overflow-style Q&A knowledge base for bugs, decisions, and workarounds — including failed attempts so agents don't repeat dead ends |
+| **Playbooks** | Step-by-step operational guides with approve / verify / deprecate lifecycle |
 | **IWH signals** | Ephemeral "I Was Here" breadcrumbs for inter-agent handoff of incomplete or blocked work |
 | **Validator** | 40+ library health checks across frontmatter, wikilinks, staleness, orphans, and cross-artifact consistency |
 | **Impact analysis** | Reverse dependency lookups to understand what breaks when a file changes |
 | **AST parsing** | Language-aware public API extraction (Python, JS, TS) |
+| **Symbol graph** | Sub-file SQLite index of function, method, class, enum, and constant relationships (callers, callees, inheritance, composition) |
+| **`lexi trace`** | Walks callers, callees, class hierarchy, and enum/constant definitions for a symbol before rename/move/remove |
+| **Curator agent** | Autonomous maintenance pass (`lexictl curate`) for staleness, consistency, deprecation, and budget trimming |
 | **Unified search** | Full-text search across all artifact types with format options (JSON, plain, markdown) |
 
 ## How It Works
@@ -42,20 +46,21 @@ lexictl update        Re-index changed files, regenerate stale designs
        │
        ▼
   ┌────┴────┐
-  │ SQLite  │         Link graph: dependencies, tags, aliases, FTS index
-  │  graph  │
+  │ SQLite  │         Link graph (index.db): artifact/file edges, tags, FTS
+  │ indexes │         Symbol graph (symbols.db): intra-file symbol edges
   └────┬────┘
        │
        ▼
   .lexibrary/         Artifacts on disk: designs/, concepts/, conventions/,
-                      stack/, .aindex files — all version-controlled
+                      playbooks/, stack/, .aindex files — all version-controlled
 ```
 
 Agents then query this library at runtime through `lexi`:
 
 ```
-lexi lookup      →  File role, dependencies, conventions before editing
-lexi search      →  Find concepts, conventions, designs, stack posts
+lexi lookup      →  File role, dependencies, conventions, key symbols before editing
+lexi search      →  Find concepts, conventions, designs, stack posts, symbols
+lexi trace       →  Callers, callees, class hierarchy, enum members for a symbol
 lexi impact      →  What depends on this file?
 lexi validate    →  Check library health after changes
 ```
@@ -138,12 +143,13 @@ Environment variables override values from `.lexibrary/config.yaml`. The `.env` 
 
 | Command | Purpose |
 |---|---|
-| `lookup <path>` | File context: role, dependencies, conventions |
-| `search <query>` | Full-text search across all artifact types |
+| `lookup <path>` | File context: role, dependencies, conventions, key symbols |
+| `search <query>` | Full-text search across all artifact types (including symbols) |
+| `trace <symbol>` | Callers, callees, class relationships, enum/constant definitions |
 | `impact <file>` | Reverse dependency lookup |
 | `validate` | Library consistency checks (read-only) |
 | `status` | Library health and staleness summary |
-| **Subcommand groups** | `stack`, `concept`, `convention`, `design`, `iwh` |
+| **Subcommand groups** | `stack`, `concept`, `convention`, `design`, `iwh`, `playbook` |
 
 Full reference: [docs/cli-reference.md](docs/cli-reference.md)
 
@@ -158,6 +164,7 @@ Full reference: [docs/cli-reference.md](docs/cli-reference.md)
 | `status` | Library health summary |
 | `setup` | Install/update agent rules and hooks |
 | `sweep` | One-shot or watch-mode library update |
+| `curate` | Run the autonomous curator agent (staleness, consistency, deprecation, budget) |
 
 Full reference: [docs/cli-reference.md](docs/cli-reference.md)
 

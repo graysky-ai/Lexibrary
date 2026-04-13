@@ -7,6 +7,9 @@
 3. Run `lexi search <keyword>` and/or `lexi search "key phrase"` for targeted
    searches related to your current task.
    - For design file hits: run `lexi lookup <path>` to get full design context.
+   - For symbol hits: symbols now appear in default mixed-type `lexi search`
+     output. Run `lexi trace <symbol>` to drill into a symbol hit and walk
+     its call chain.
    - For all other hits (concepts, conventions, stack posts, playbooks):
      run `lexi view <artifact-id>` to read the full artifact.
 

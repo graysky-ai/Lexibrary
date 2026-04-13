@@ -2260,11 +2260,13 @@ def check_aindex_coverage(
     project_root: Path,
     lexibrary_dir: Path,
 ) -> list[ValidationIssue]:
-    """Find directories within scope_root that lack .aindex files.
+    """Find directories within any declared scope root that lack .aindex files.
 
-    Walks the ``scope_root`` directory tree (defaulting to ``project_root``)
-    and checks that each directory has a corresponding ``.aindex`` file in
-    ``.lexibrary/``.
+    Walks each declared scope root's directory tree (iterating
+    ``config.resolved_scope_roots(project_root).resolved``) and checks that
+    each directory has a corresponding ``.aindex`` file in ``.lexibrary/``.
+    A directory under ``baml_src/`` lacking an ``.aindex`` is reported just as
+    one under ``src/`` would be.
 
     Args:
         project_root: Root directory of the project.
@@ -2275,37 +2277,53 @@ def check_aindex_coverage(
     """
     issues: list[ValidationIssue] = []
 
-    # Load config to get scope_root
+    # Load config to discover declared scope roots. If the config is broken,
+    # fall back to ``project_root`` as a single scope root so we still produce
+    # output rather than silently no-oping.
     try:
         config = load_config(project_root)
     except Exception:
-        # If config is broken, use project_root as scope_root
         config = None
 
-    if config is not None and config.scope_root != ".":
-        scope_root = project_root / config.scope_root
+    if config is None:
+        roots: list[Path] = [project_root]
     else:
-        scope_root = project_root
+        try:
+            roots = config.resolved_scope_roots(project_root).resolved
+        except Exception:
+            # Resolution failures (path traversal / nesting / duplicates) are
+            # surfaced by ``check_config_valid``; this check should not raise.
+            return issues
 
-    if not scope_root.is_dir():
-        return issues
+    seen: set[Path] = set()
+    for scope_root in roots:
+        if not scope_root.is_dir():
+            continue
+        # Walk directories, skipping hidden dirs and .lexibrary itself
+        for dirpath in _iter_directories(scope_root, project_root, lexibrary_dir):
+            # When two declared roots are siblings the same dirpath cannot
+            # appear twice, but the nested-roots guard would also prevent
+            # overlap. The de-duplication here is a belt-and-braces guard
+            # against a future change in the resolver.
+            if dirpath in seen:
+                continue
+            seen.add(dirpath)
 
-    # Walk directories, skipping hidden dirs and .lexibrary itself
-    for dirpath in _iter_directories(scope_root, project_root, lexibrary_dir):
-        expected_aindex = aindex_path(project_root, dirpath)
-        if not expected_aindex.exists():
-            dir_rel = str(dirpath.relative_to(project_root))
-            issues.append(
-                ValidationIssue(
-                    severity="info",
-                    check="aindex_coverage",
-                    message=f"Directory not indexed: {dir_rel}",
-                    artifact=dir_rel,
-                    suggestion=(
-                        f"Ask the user to run `lexictl update` to index the directory '{dir_rel}'."
-                    ),
+            expected_aindex = aindex_path(project_root, dirpath)
+            if not expected_aindex.exists():
+                dir_rel = str(dirpath.relative_to(project_root))
+                issues.append(
+                    ValidationIssue(
+                        severity="info",
+                        check="aindex_coverage",
+                        message=f"Directory not indexed: {dir_rel}",
+                        artifact=dir_rel,
+                        suggestion=(
+                            f"Ask the user to run `lexictl update` to index the "
+                            f"directory '{dir_rel}'."
+                        ),
+                    )
                 )
-            )
 
     return issues
 
@@ -3191,10 +3209,15 @@ def check_convention_gap(
 ) -> list[ValidationIssue]:
     """Detect directories with many source files but no applicable conventions.
 
-    Walks the project source tree and flags directories that contain 5 or
-    more source files but have zero conventions applicable to them (via scope
-    matching). This is a nudge to consider adding conventions for
-    high-traffic directories.
+    Walks each declared scope root's source tree and flags directories that
+    contain 5 or more source files but have zero conventions applicable to
+    them (via scope matching). This is a nudge to consider adding conventions
+    for high-traffic directories.
+
+    Convention applicability is resolved through
+    :meth:`ConventionIndex.find_by_any_scope`, which delegates owning-root
+    discovery to :func:`find_owning_root` and respects the always-match
+    semantics of ``scope: "."`` conventions.
 
     Args:
         project_root: Root directory of the project.
@@ -3211,62 +3234,74 @@ def check_convention_gap(
     conv_index = ConventionIndex(conventions_dir)
     conv_index.load()
 
-    # Load config for scope_root
+    # Load config to discover declared scope roots.
     try:
         config = load_config(project_root)
     except Exception:
         config = None
 
-    scope_root_str = "."
-    if config is not None:
-        scope_root_str = config.scope_root
+    if config is None:
+        # Without a valid config we cannot resolve owning roots, so skip the
+        # check rather than risk silently misreporting.
+        return issues
 
-    scope_root = project_root / scope_root_str
-    if not scope_root.is_dir():
+    try:
+        roots = config.resolved_scope_roots(project_root).resolved
+    except Exception:
+        # Config-resolution failures (path traversal / nesting / duplicates)
+        # are surfaced by ``check_config_valid``; this check should not raise.
         return issues
 
     file_threshold = 5
 
-    # Walk directories in scope
-    for directory in _iter_directories(scope_root, project_root, lexibrary_dir):
-        # Count source files (non-directory, non-hidden entries)
-        try:
-            source_files = [
-                child
-                for child in directory.iterdir()
-                if child.is_file() and not child.name.startswith(".")
-            ]
-        except PermissionError:
+    seen: set[Path] = set()
+    for scope_root in roots:
+        if not scope_root.is_dir():
             continue
+        for directory in _iter_directories(scope_root, project_root, lexibrary_dir):
+            if directory in seen:
+                continue
+            seen.add(directory)
 
-        if len(source_files) < file_threshold:
-            continue
+            # Count source files (non-directory, non-hidden entries)
+            try:
+                source_files = [
+                    child
+                    for child in directory.iterdir()
+                    if child.is_file() and not child.name.startswith(".")
+                ]
+            except PermissionError:
+                continue
 
-        # Check if any active (non-deprecated) conventions apply to this directory
-        rel_dir = str(directory.relative_to(project_root))
-        # Use a representative file path for scope matching
-        representative = f"{rel_dir}/example.py" if rel_dir != "." else "example.py"
-        applicable = conv_index.find_by_scope(representative, scope_root_str)
+            if len(source_files) < file_threshold:
+                continue
 
-        # Filter to only active conventions
-        active_applicable = [c for c in applicable if c.frontmatter.status == "active"]
+            # Check if any active (non-deprecated) conventions apply to this
+            # directory. Use a representative file path for scope matching;
+            # ``find_by_any_scope`` resolves the owning root internally.
+            rel_dir = str(directory.relative_to(project_root))
+            representative = f"{rel_dir}/example.py" if rel_dir != "." else "example.py"
+            applicable = conv_index.find_by_any_scope(representative, config.scope_roots)
 
-        if not active_applicable:
-            issues.append(
-                ValidationIssue(
-                    severity="info",
-                    check="convention_gap",
-                    message=(
-                        f"Directory '{rel_dir}' has {len(source_files)} source "
-                        f"files but no applicable conventions"
-                    ),
-                    artifact=rel_dir,
-                    suggestion=(
-                        f"Run: lexi convention new --scope {rel_dir} "
-                        f"--body 'Describe the coding standard for this directory.'"
-                    ),
+            # Filter to only active conventions
+            active_applicable = [c for c in applicable if c.frontmatter.status == "active"]
+
+            if not active_applicable:
+                issues.append(
+                    ValidationIssue(
+                        severity="info",
+                        check="convention_gap",
+                        message=(
+                            f"Directory '{rel_dir}' has {len(source_files)} source "
+                            f"files but no applicable conventions"
+                        ),
+                        artifact=rel_dir,
+                        suggestion=(
+                            f"Run: lexi convention new --scope {rel_dir} "
+                            f"--body 'Describe the coding standard for this directory.'"
+                        ),
+                    )
                 )
-            )
 
     return issues
 

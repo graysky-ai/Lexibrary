@@ -18,6 +18,7 @@ BLUEPRINT_INSTRUCTIONS.md
 .lexibrary/symbols.db
 .lexibrary/symbols.db-wal
 .lexibrary/symbols.db-shm
+.lexibrary/curator/reports/
 _experiment/
 
 # Agent workflow artifacts
@@ -95,6 +96,7 @@ real-project-testing.md
 lexibrary-overview.md
 TODO.md
 **/.iwh
+data-gym-cache/
 
 # Dolt database files (added by bd init)
 .dolt/

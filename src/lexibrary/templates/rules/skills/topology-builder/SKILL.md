@@ -77,19 +77,32 @@ test -f .lexibrary/tmp/raw-topology.md && echo "OK" || echo "MISSING"
 
 If missing, ask the user to run `lexictl update`.
 
-### 2. .aindex freshness
+### 2. Source-newness
+
+Check whether any source file is newer than the closest `.aindex` under
+`.lexibrary/designs/`. Iterate the declared roots from `.lexibrary/config.yaml`
+(`scope_roots[*].path`). For each declared root, run:
 
 ```bash
-find src/ -name "*.py" -newer .lexibrary/designs/src/.aindex | head -1
+find <root> -type f -newer .lexibrary/designs/<root>/.aindex | head -1
 ```
 
-If this produces any output, at least one source file is newer than the
-index. Ask the user to run `lexictl index`.
-
-### 3. raw-topology.md freshness
+If reading the config is not practical, a multi-root-safe fallback that
+avoids hard-coding a specific subpath is:
 
 ```bash
-find .lexibrary/designs/src/ -name ".aindex" -newer .lexibrary/tmp/raw-topology.md | head -1
+find . -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.go" -o -name "*.rs" -o -name "*.baml" \) \
+  -not -path "./.lexibrary/*" -not -path "./.git/*" -not -path "./node_modules/*" \
+  -newer .lexibrary/tmp/raw-topology.md | head -1
+```
+
+If any invocation produces output, at least one source file is newer than the
+index. Ask the user to run `lexictl index`.
+
+### 3. .aindex freshness
+
+```bash
+find .lexibrary/designs/ -name ".aindex" -newer .lexibrary/tmp/raw-topology.md | head -1
 ```
 
 If this produces any output, the index has been rebuilt since the last

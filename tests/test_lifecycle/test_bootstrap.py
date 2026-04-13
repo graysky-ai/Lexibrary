@@ -40,9 +40,17 @@ from lexibrary.utils.paths import mirror_path
 
 
 def _setup_project(tmp_path: Path, scope_root: str = ".") -> Path:
-    """Create a minimal project structure with .lexibrary and config."""
+    """Create a minimal project structure with .lexibrary and config.
+
+    Note: tests construct ``LexibraryConfig()`` in-memory rather than loading
+    from YAML, so the on-disk ``config.yaml`` is just here for presence
+    detection. The body uses the modern multi-root ``scope_roots`` shape so
+    a stray ``load_config`` call would still succeed.
+    """
     (tmp_path / ".lexibrary").mkdir()
-    (tmp_path / ".lexibrary" / "config.yaml").write_text(f"scope_root: {scope_root}\n")
+    (tmp_path / ".lexibrary" / "config.yaml").write_text(
+        f"scope_roots:\n  - path: {scope_root}\n"
+    )
     return tmp_path
 
 
@@ -604,3 +612,242 @@ class TestBootstrapStats:
         assert stats.files_skipped == 0
         assert stats.files_failed == 0
         assert stats.errors == []
+
+
+# ---------------------------------------------------------------------------
+# Multi-root bootstrap tests
+# ---------------------------------------------------------------------------
+
+
+def _make_two_root_config() -> LexibraryConfig:
+    """Build a ``LexibraryConfig`` with two declared scope roots."""
+    from lexibrary.config.schema import ScopeRoot  # noqa: PLC0415
+
+    return LexibraryConfig(
+        scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")],
+    )
+
+
+class TestBootstrapQuickMultiRoot:
+    """Multi-root behaviour for :func:`bootstrap_quick`."""
+
+    def test_walks_every_declared_root(self, tmp_path: Path) -> None:
+        """Bootstrap walks both declared roots in declared order."""
+        project = _setup_project(tmp_path)
+        _make_source_file(project, "src/a.py", "a = 1\n")
+        _make_source_file(project, "baml_src/b.py", "b = 2\n")
+
+        config = _make_two_root_config()
+        stats = bootstrap_quick(project, config)
+
+        # Both files discovered and processed.
+        assert stats.files_scanned == 2
+        assert stats.files_created == 2
+
+        # Design files created under per-root subtrees of .lexibrary/designs/.
+        for rel in ("src/a.py", "baml_src/b.py"):
+            assert mirror_path(project, project / rel).exists(), rel
+
+    def test_skips_files_outside_any_declared_root(self, tmp_path: Path) -> None:
+        """Files that sit under no declared root are not discovered."""
+        project = _setup_project(tmp_path)
+        _make_source_file(project, "src/a.py", "a = 1\n")
+        # docs/ is outside both declared roots.
+        _make_source_file(project, "docs/foo.py", "foo = 1\n")
+
+        config = _make_two_root_config()
+        stats = bootstrap_quick(project, config)
+
+        assert stats.files_scanned == 1
+        # Only the in-scope file received a design file.
+        assert mirror_path(project, project / "src" / "a.py").exists()
+        assert not mirror_path(project, project / "docs" / "foo.py").exists()
+
+    def test_missing_root_emits_warning_and_continues(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Missing-on-disk roots surface a `warn()` and do not abort discovery."""
+        from lexibrary.config.schema import ScopeRoot  # noqa: PLC0415
+
+        project = _setup_project(tmp_path)
+        _make_source_file(project, "src/a.py", "a = 1\n")
+        # ``baml_src`` does NOT exist on disk.
+
+        config = LexibraryConfig(
+            scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")],
+        )
+        stats = bootstrap_quick(project, config)
+
+        captured = capsys.readouterr()
+        # Warning must surface from the bootstrap layer (not from the
+        # config model — which intentionally stays decoupled from output).
+        assert "scope_root 'baml_src' does not exist on disk; skipping" in captured.err
+
+        # Discovery continued against the existing root.
+        assert stats.files_scanned == 1
+        assert stats.files_created == 1
+
+    def test_scope_override_outside_all_roots_raises_block_a(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """`scope_override` outside every declared root raises Block A error."""
+        project = _setup_project(tmp_path)
+        _make_source_file(project, "src/a.py", "a = 1\n")
+        _make_source_file(project, "docs/foo.py", "foo = 1\n")
+
+        config = _make_two_root_config()
+
+        with pytest.raises(ValueError) as exc_info:
+            bootstrap_quick(project, config, scope_override="docs")
+
+        msg = str(exc_info.value)
+        # Block A wording: "<source> is outside all configured scope_roots: [...]"
+        assert "is outside all configured scope_roots" in msg
+        assert "docs" in msg
+        # Declared roots appear in the error so the operator can re-aim.
+        assert "src" in msg
+        assert "baml_src" in msg
+
+
+class TestBootstrapFullMultiRoot:
+    """Multi-root behaviour for :func:`bootstrap_full`."""
+
+    @pytest.mark.asyncio
+    async def test_walks_every_declared_root(self, tmp_path: Path) -> None:
+        """Bootstrap (full) walks both declared roots in declared order."""
+        project = _setup_project(tmp_path)
+        _make_source_file(project, "src/a.py", "a = 1\n")
+        _make_source_file(project, "baml_src/b.py", "b = 2\n")
+
+        config = _make_two_root_config()
+
+        with patch(
+            "lexibrary.lifecycle.bootstrap.update_file",
+            new_callable=AsyncMock,
+        ) as mock_update:
+            from lexibrary.archivist.pipeline import FileResult  # noqa: PLC0415
+
+            mock_update.return_value = FileResult(change=ChangeLevel.NEW_FILE)
+
+            stats = await bootstrap_full(
+                project, config, client_registry=ClientRegistry()
+            )
+
+        # Both files passed the in-scope check and were forwarded to update_file.
+        assert stats.files_scanned == 2
+        assert mock_update.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_skips_files_outside_any_declared_root(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Files outside every declared root never reach `update_file`."""
+        project = _setup_project(tmp_path)
+        _make_source_file(project, "src/a.py", "a = 1\n")
+        # docs/ is outside both declared roots; even if discovery surfaces it,
+        # the in-scope check inside bootstrap_full filters it out.
+        _make_source_file(project, "docs/foo.py", "foo = 1\n")
+
+        config = _make_two_root_config()
+
+        with patch(
+            "lexibrary.lifecycle.bootstrap.update_file",
+            new_callable=AsyncMock,
+        ) as mock_update:
+            from lexibrary.archivist.pipeline import FileResult  # noqa: PLC0415
+
+            mock_update.return_value = FileResult(change=ChangeLevel.NEW_FILE)
+
+            stats = await bootstrap_full(
+                project, config, client_registry=ClientRegistry()
+            )
+
+        # Only src/a.py was reached.
+        assert stats.files_scanned == 1
+        mock_update.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_missing_root_emits_warning(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Missing-on-disk roots surface a `warn()` from `bootstrap_full`."""
+        from lexibrary.config.schema import ScopeRoot  # noqa: PLC0415
+
+        project = _setup_project(tmp_path)
+        _make_source_file(project, "src/a.py", "a = 1\n")
+        # ``baml_src`` is declared but does not exist on disk.
+
+        config = LexibraryConfig(
+            scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")],
+        )
+
+        with patch(
+            "lexibrary.lifecycle.bootstrap.update_file",
+            new_callable=AsyncMock,
+        ) as mock_update:
+            from lexibrary.archivist.pipeline import FileResult  # noqa: PLC0415
+
+            mock_update.return_value = FileResult(change=ChangeLevel.NEW_FILE)
+
+            await bootstrap_full(project, config, client_registry=ClientRegistry())
+
+        captured = capsys.readouterr()
+        assert "scope_root 'baml_src' does not exist on disk; skipping" in captured.err
+
+    @pytest.mark.asyncio
+    async def test_scope_override_outside_all_roots_raises_block_a(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """`scope_override` outside every declared root raises Block A error."""
+        project = _setup_project(tmp_path)
+        _make_source_file(project, "src/a.py", "a = 1\n")
+        _make_source_file(project, "docs/foo.py", "foo = 1\n")
+
+        config = _make_two_root_config()
+
+        with pytest.raises(ValueError) as exc_info:
+            await bootstrap_full(
+                project,
+                config,
+                scope_override="docs",
+                client_registry=ClientRegistry(),
+            )
+
+        msg = str(exc_info.value)
+        assert "is outside all configured scope_roots" in msg
+        assert "docs" in msg
+
+
+class TestConfigModelHasNoWarnOutput:
+    """`resolved_scope_roots` must stay decoupled from `_output.py`."""
+
+    def test_resolved_scope_roots_does_not_warn(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Calling `resolved_scope_roots` directly must not write to stderr.
+
+        The bootstrap layer owns the warn(); the model just returns the
+        ``missing`` list. Asserting silence here pins that contract.
+        """
+        from lexibrary.config.schema import ScopeRoot  # noqa: PLC0415
+
+        # ``ghost`` does not exist on disk under tmp_path.
+        config = LexibraryConfig(scope_roots=[ScopeRoot(path="ghost")])
+        result = config.resolved_scope_roots(tmp_path)
+
+        assert result.resolved == []
+        assert len(result.missing) == 1
+        assert result.missing[0].path == "ghost"
+
+        captured = capsys.readouterr()
+        assert captured.err == ""
+        assert captured.out == ""

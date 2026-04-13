@@ -29,6 +29,7 @@ Lexibrary provides two CLIs:
 | 14 | [Validation](validation.md) | How `lexictl validate` works -- checks, severity levels, JSON output, exit codes |
 | 15 | [Ignore Patterns](ignore-patterns.md) | The ignore system -- `.lexignore`, `.gitignore` integration, pattern precedence |
 | 16 | [Link Graph](link-graph.md) | The SQLite link graph -- what it indexes, what queries it accelerates, how to rebuild |
-| 17 | [CI Integration](ci-integration.md) | CI/CD recipes -- git hooks, periodic sweeps, validation as CI gate |
-| 18 | [Troubleshooting](troubleshooting.md) | Common issues organized by category -- symptoms, causes, and fixes |
-| 19 | [Upgrading](upgrading.md) | Version upgrade guide -- config evolution, when to re-run commands |
+| 17 | [Symbol Graph](symbol-graph.md) | The SQLite symbol graph -- function/class/enum/constant relationships powering `lexi trace` and design-file enrichment |
+| 18 | [CI Integration](ci-integration.md) | CI/CD recipes -- git hooks, periodic sweeps, validation as CI gate |
+| 19 | [Troubleshooting](troubleshooting.md) | Common issues organized by category -- symptoms, causes, and fixes |
+| 20 | [Upgrading](upgrading.md) | Version upgrade guide -- config evolution, when to re-run commands |

@@ -545,6 +545,121 @@ def test_search_symbols_respects_limit(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# symbol-search — list_symbol_names()
+# ---------------------------------------------------------------------------
+
+
+def _seed_symbol_names(project_root: Path, names_in_insertion_order: list[str]) -> None:
+    """Seed ``symbols.db`` with one row per entry in *names_in_insertion_order*.
+
+    Creates a single dummy ``files`` row and then inserts one minimal
+    ``symbols`` row per provided name (``symbol_type='function'``) in the
+    order given. Duplicate names are allowed — the UNIQUE constraint on
+    ``symbols`` keys ``(file_id, name, symbol_type, parent_class)``, so
+    distinct ``parent_class`` values are used to sidestep collisions while
+    still exposing the same bare ``name``. This mirrors the direct-SQL
+    seeding pattern used by ``_seed_phase2_fixture`` but stays minimal
+    because the method under test only reads ``symbols.name``.
+    """
+    _write_source_file(project_root, "src/stub.py", "# stub\n")
+    graph = open_symbol_graph(project_root)
+    conn = graph._conn
+    try:
+        cur = conn.execute(
+            "INSERT INTO files (path, language, last_hash) VALUES (?, ?, ?)",
+            ("src/stub.py", "python", "stub-hash"),
+        )
+        file_id = int(cur.lastrowid or 0)
+
+        for index, name in enumerate(names_in_insertion_order):
+            conn.execute(
+                "INSERT INTO symbols "
+                "(file_id, name, qualified_name, symbol_type, line_start, "
+                "line_end, visibility, parent_class) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    file_id,
+                    name,
+                    f"stub.{name}_{index}",
+                    "function",
+                    index * 10 + 1,
+                    index * 10 + 3,
+                    "public",
+                    # Keep (file_id, name, symbol_type, parent_class) unique
+                    # even when *name* repeats.
+                    f"Stub{index}",
+                ),
+            )
+        conn.commit()
+    finally:
+        graph.close()
+
+
+def test_list_symbol_names_empty_db(tmp_path: Path) -> None:
+    """``list_symbol_names`` degrades gracefully when ``symbols.db`` is missing.
+
+    With ``.lexibrary/index.db`` present but no ``.lexibrary/symbols.db``,
+    the service must open without raising, return ``[]`` from
+    :meth:`SymbolQueryService.list_symbol_names`, and — critically —
+    never create ``symbols.db`` as a side effect (the method is
+    strictly read-only).
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)  # index.db present
+    # symbols.db deliberately NOT created.
+
+    symbols_db = project / ".lexibrary" / "symbols.db"
+    assert not symbols_db.exists()
+
+    service = SymbolQueryService(project)
+    service.open()
+    try:
+        assert service._symbol_graph is None
+        # Must not raise, must return an empty list, must not create the DB.
+        result = service.list_symbol_names()
+        assert result == []
+    finally:
+        service.close()
+
+    assert not symbols_db.exists()
+
+
+def test_list_symbol_names_distinct_ordering(tmp_path: Path) -> None:
+    """Results are DISTINCT and sorted ascending by name.
+
+    Seeds two ``alpha`` rows, one ``beta`` row, and one ``gamma`` row in
+    a deliberately non-alphabetical insertion order (``gamma``, ``alpha``,
+    ``beta``, ``alpha``). The returned list must be de-duplicated and
+    returned in ascending order: ``["alpha", "beta", "gamma"]``.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    _seed_symbol_names(project, ["gamma", "alpha", "beta", "alpha"])
+
+    with SymbolQueryService(project) as svc:
+        names = svc.list_symbol_names(limit=100)
+        assert names == ["alpha", "beta", "gamma"]
+
+
+def test_list_symbol_names_limit_clamping(tmp_path: Path) -> None:
+    """``limit`` clamps the result count and preserves ascending order.
+
+    Seeds five distinct names (``a``, ``b``, ``c``, ``d``, ``e``) and
+    asks for ``limit=2``. The returned list must be ``["a", "b"]`` —
+    length 2, sorted ascending — demonstrating that the LIMIT clause is
+    applied *after* the ORDER BY.
+    """
+    project = _make_project(tmp_path)
+    _make_linkgraph(project)
+    _seed_symbol_names(project, ["a", "b", "c", "d", "e"])
+
+    with SymbolQueryService(project) as svc:
+        names = svc.list_symbol_names(limit=2)
+        assert len(names) == 2
+        assert names == ["a", "b"]
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 — symbols_in_file()
 # ---------------------------------------------------------------------------
 

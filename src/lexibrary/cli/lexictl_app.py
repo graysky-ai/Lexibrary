@@ -581,36 +581,64 @@ def bootstrap(
     project_root = require_project_root()
     config = load_config(project_root)
 
-    # Resolve scope root
-    scope_root_str = scope if scope is not None else config.scope_root
-    scope_dir = (project_root / scope_root_str).resolve()
+    # Resolve scope roots. When ``--scope`` is provided, treat it as a
+    # single-root override that must resolve to one of the declared
+    # ``scope_roots``. When omitted, iterate every declared root.
+    from lexibrary.config.scope import find_owning_root  # noqa: PLC0415
 
-    # Validate scope directory
-    if not scope_dir.exists():
-        error(f"Scope directory not found: {scope_root_str}")
-        raise typer.Exit(1)
-
-    if not scope_dir.is_dir():
-        error(f"Scope root is not a directory: {scope_root_str}")
-        raise typer.Exit(1)
+    scope_dirs: list[Path]
+    if scope is not None:
+        override = (project_root / scope).resolve()
+        if find_owning_root(override, config.scope_roots, project_root) is None:
+            error(
+                f"{scope} is outside all configured scope_roots: "
+                f"{[r.path for r in config.scope_roots]}"
+            )
+            raise typer.Exit(1)
+        if not override.exists():
+            error(f"Scope directory not found: {scope}")
+            raise typer.Exit(1)
+        if not override.is_dir():
+            error(f"Scope root is not a directory: {scope}")
+            raise typer.Exit(1)
+        scope_dirs = [override]
+    else:
+        scope_dirs = list(config.resolved_scope_roots(project_root).resolved)
+        if not scope_dirs:
+            error(
+                "No scope_roots resolved on disk. "
+                f"Declared: {[r.path for r in config.scope_roots]}"
+            )
+            raise typer.Exit(1)
 
     # Determine mode label
     mode_label = "full" if full else "quick"
 
-    # Run recursive indexing with progress
-    rel_scope = scope_dir.relative_to(project_root) if scope_dir != project_root else Path(".")
-    info(f"Bootstrapping {rel_scope} in {project_root.name} ({mode_label} mode)...")
-
-    # Phase 1: .aindex generation
+    # Phase 1: .aindex generation — one walk per declared root.
     info("")
     info("Phase 1: Generating .aindex files...")
 
     def _index_progress(current: int, total: int, name: str) -> None:
         info(f"  Indexing [{current}/{total}] {name}")
 
-    index_stats = index_recursive(
-        scope_dir, project_root, config, progress_callback=_index_progress
-    )
+    from lexibrary.indexer.orchestrator import IndexStats  # noqa: PLC0415
+
+    index_stats = IndexStats()
+    for scope_dir in scope_dirs:
+        rel_scope = (
+            scope_dir.relative_to(project_root) if scope_dir != project_root else Path(".")
+        )
+        info(f"Bootstrapping {rel_scope} in {project_root.name} ({mode_label} mode)...")
+        per_root_stats = index_recursive(
+            scope_dir, project_root, config, progress_callback=_index_progress
+        )
+        # Aggregate per-root counts into the running totals; concatenate the
+        # error records list so format_error_summary downstream can group by
+        # phase exactly as it does for a single-root run.
+        index_stats.directories_indexed += per_root_stats.directories_indexed
+        index_stats.files_found += per_root_stats.files_found
+        index_stats.errors += per_root_stats.errors
+        index_stats.error_summary.records.extend(per_root_stats.error_summary.records)
 
     from lexibrary.services.bootstrap_render import (  # noqa: PLC0415
         render_bootstrap_summary,

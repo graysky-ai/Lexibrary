@@ -913,3 +913,331 @@ class TestUnifiedSearchSymbolIntegration:
         )
         assert results.symbol_results == []
         assert not results.has_results()
+
+
+# ---------------------------------------------------------------------------
+# Group 6 — Mixed-mode search + suggestions integration (symbol-search)
+# ---------------------------------------------------------------------------
+
+
+def _seed_symbols_for_mixed_search(
+    project: Path,
+    symbols: list[tuple[str, str]],
+) -> None:
+    """Seed ``symbols.db`` with ``(name, file_path)`` entries.
+
+    Creates one ``files`` row per unique *file_path* and one ``symbols``
+    row per ``(name, file_path)`` entry. Uses a distinct ``parent_class``
+    value (``Stub0``, ``Stub1``, ...) to sidestep the UNIQUE constraint
+    on ``(file_id, name, symbol_type, parent_class)`` when the same name
+    appears multiple times in one file. Mirrors ``_seed_symbol_names``
+    from ``tests/test_services/test_symbols.py`` but adds per-symbol
+    ``file_path`` control so scope-filtering tests can exercise both
+    matching and non-matching paths.
+    """
+    from lexibrary.symbolgraph.query import open_symbol_graph  # noqa: PLC0415
+
+    # Create source files for every distinct file_path — build_symbol_graph
+    # reads these via hash_file, but here we only need the `files` row so
+    # the symbol rows have a valid foreign key. Contents are irrelevant
+    # for the search tests.
+    unique_paths = []
+    for _name, rel_path in symbols:
+        if rel_path not in unique_paths:
+            unique_paths.append(rel_path)
+    for rel_path in unique_paths:
+        abs_path = project / rel_path
+        abs_path.parent.mkdir(parents=True, exist_ok=True)
+        abs_path.write_text(f"# {rel_path}\n")
+
+    graph = open_symbol_graph(project)
+    conn = graph._conn
+    try:
+        file_ids: dict[str, int] = {}
+        for rel_path in unique_paths:
+            cur = conn.execute(
+                "INSERT INTO files (path, language, last_hash) VALUES (?, ?, ?)",
+                (rel_path, "python", "stub-hash"),
+            )
+            file_ids[rel_path] = int(cur.lastrowid or 0)
+
+        for index, (name, rel_path) in enumerate(symbols):
+            conn.execute(
+                "INSERT INTO symbols "
+                "(file_id, name, qualified_name, symbol_type, line_start, "
+                "line_end, visibility, parent_class) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    file_ids[rel_path],
+                    name,
+                    f"stub.{name}_{index}",
+                    "function",
+                    index * 10 + 1,
+                    index * 10 + 3,
+                    "public",
+                    f"Stub{index}",
+                ),
+            )
+        conn.commit()
+    finally:
+        graph.close()
+
+
+class TestMixedModeSearchAugmentation:
+    """Integration tests for ``_augment_with_symbols`` wiring.
+
+    These tests cover tasks 6.1-6.6 + 6.8-6.10 from Group 6 of the
+    ``symbol-search`` OpenSpec change: mixed-mode search seeds
+    ``results.symbol_results`` alongside artefact hits when no symbol-
+    incompatible filter is active and silently skips symbols otherwise.
+    Each test seeds a minimal concept and (where relevant) a symbols.db
+    via :func:`_seed_symbols_for_mixed_search`.
+    """
+
+    def test_mixed_search_includes_symbols(self, tmp_path: Path) -> None:
+        """6.1 — mixed-mode search populates concepts AND symbol_results.
+
+        Seeds a concept whose title matches ``render`` and a symbol whose
+        name matches ``render``. Running ``unified_search`` with no type
+        filter must return non-empty ``concepts`` (from the file-scanning
+        concept search) and non-empty ``symbol_results`` (from the
+        symbol-graph augmentation).
+        """
+        project = _setup_project(tmp_path)
+        _create_concept_file(
+            project,
+            "Render Pipeline",
+            concept_id="CN-001",
+            tags=["rendering"],
+        )
+        _seed_symbols_for_mixed_search(
+            project,
+            [("render_output", "src/lexibrary/render.py")],
+        )
+
+        results = unified_search(project, query="render")
+        assert results.concepts, "concept should match 'render'"
+        assert results.symbol_results, "symbol should be augmented into mixed results"
+        names = {sym.name for sym in results.symbol_results}
+        assert "render_output" in names
+
+    def test_mixed_search_respects_symbol_limit(self, tmp_path: Path) -> None:
+        """6.2 — symbol_limit caps symbol_results without affecting artefacts.
+
+        Seeds a concept that matches ``render`` plus five symbols whose
+        names all match ``render``. Calling ``unified_search`` with
+        ``symbol_limit=2`` must cap ``symbol_results`` at 2 while leaving
+        the artefact buckets untouched.
+        """
+        project = _setup_project(tmp_path)
+        _create_concept_file(project, "Render Pipeline", concept_id="CN-001")
+        _seed_symbols_for_mixed_search(
+            project,
+            [
+                ("render_a", "src/a.py"),
+                ("render_b", "src/b.py"),
+                ("render_c", "src/c.py"),
+                ("render_d", "src/d.py"),
+                ("render_e", "src/e.py"),
+            ],
+        )
+
+        results = unified_search(project, query="render", symbol_limit=2)
+        assert len(results.symbol_results) == 2
+        # Artefact bucket must NOT be capped by symbol_limit.
+        assert len(results.concepts) == 1
+
+    def test_mixed_search_skips_symbols_when_tag_set(self, tmp_path: Path) -> None:
+        """6.3 — ``tag`` filter causes the symbol augmentation to no-op.
+
+        Seeds a symbol matching ``render``; calling ``unified_search``
+        with ``tags=["foo"]`` (a symbol-incompatible filter) must leave
+        ``symbol_results`` empty — this is the regression the Group 6
+        expected-false-positive (task 6.11) guards against.
+        """
+        project = _setup_project(tmp_path)
+        _seed_symbols_for_mixed_search(
+            project,
+            [("render_output", "src/lexibrary/render.py")],
+        )
+
+        results = unified_search(project, query="render", tags=["foo"])
+        assert results.symbol_results == []
+
+    def test_mixed_search_skips_symbols_when_status_set(self, tmp_path: Path) -> None:
+        """6.4 — ``status`` filter causes the symbol augmentation to no-op.
+
+        Mirrors 6.3 but uses ``status="active"`` instead of a tag filter.
+        Symbols cannot carry artefact status, so passing ``status`` must
+        short-circuit the augmentation path.
+        """
+        project = _setup_project(tmp_path)
+        _seed_symbols_for_mixed_search(
+            project,
+            [("render_output", "src/lexibrary/render.py")],
+        )
+
+        results = unified_search(project, query="render", status="active")
+        assert results.symbol_results == []
+
+    def test_mixed_search_respects_scope_for_symbols(self, tmp_path: Path) -> None:
+        """6.5 — ``scope`` filters symbols by file-path prefix.
+
+        Seeds two symbols — one under ``src/lexibrary/curator/`` and one
+        under ``src/lexibrary/other/`` — then constrains the search to
+        the curator scope. Only the curator symbol must appear.
+        """
+        project = _setup_project(tmp_path)
+        _seed_symbols_for_mixed_search(
+            project,
+            [
+                ("render_curator", "src/lexibrary/curator/render.py"),
+                ("render_other", "src/lexibrary/other/render.py"),
+            ],
+        )
+
+        results = unified_search(
+            project,
+            query="render",
+            scope="src/lexibrary/curator/",
+        )
+        names = {sym.name for sym in results.symbol_results}
+        assert names == {"render_curator"}
+
+    def test_mixed_search_symbols_when_symbols_db_missing(self, tmp_path: Path) -> None:
+        """6.6 — missing ``symbols.db`` degrades silently.
+
+        With only the artefact side seeded (no ``symbols.db`` on disk),
+        ``unified_search`` must still populate artefact buckets and
+        return an empty ``symbol_results`` list without raising.
+        """
+        project = _setup_project(tmp_path)
+        _create_concept_file(project, "Render Pipeline", concept_id="CN-001")
+        assert not (project / ".lexibrary" / "symbols.db").exists()
+
+        results = unified_search(project, query="render")
+        assert results.concepts, "artefact buckets should still populate"
+        assert results.symbol_results == []
+
+    def test_suggestions_include_symbol_names(self, tmp_path: Path) -> None:
+        """6.7 — ``_gather_suggestions`` pulls symbol names when needed.
+
+        Seeds a single symbol named ``render_results`` and an artefact
+        candidate pool (one concept + tag) that does NOT fuzzy-match
+        ``renderr``. Running with ``suggest=True`` and a near-miss query
+        must produce a suggestion that includes the symbol name (the
+        lazy ``list_symbol_names`` branch fires because the artefact-
+        only pool yielded fewer than three hits). Populating the
+        artefact pool with one unrelated concept is necessary because
+        ``_gather_suggestions`` returns early when the concept+tag
+        pool is entirely empty — matching the "search-suggestions" spec
+        scenario which requires at least some artefact candidates to
+        exist before the symbol augmentation step runs.
+        """
+        project = _setup_project(tmp_path)
+        # Populate the candidate pool with a concept that will NOT fuzzy-
+        # match 'renderr' (ratio well below 0.6) so the artefact-only
+        # difflib pass yields < 3 hits and the symbol augmentation fires.
+        _create_concept_file(
+            project,
+            "AuthenticationConfig",
+            concept_id="CN-001",
+            tags=["security"],
+        )
+        _seed_symbols_for_mixed_search(
+            project,
+            [("render_results", "src/lexibrary/render.py")],
+        )
+
+        results = unified_search(project, query="renderr", suggest=True)
+        assert not results.has_results()
+        assert "render_results" in results.suggestions
+
+    def test_mixed_search_fts_path_includes_symbols(self, tmp_path: Path) -> None:
+        """6.8 — FTS code path also augments with symbols.
+
+        Constructs a valid ``LinkGraph`` with an FTS-indexed artefact
+        that matches ``render`` and seeds a symbol that matches
+        ``render``. Calling ``unified_search(..., link_graph=graph)``
+        must surface BOTH the FTS artefact hit AND the symbol hit — this
+        test exercises the wiring at search.py:770.
+        """
+        project = _setup_project(tmp_path)
+        db_path = _create_linkgraph_db(project)
+        _populate_index(
+            db_path,
+            artifacts=[
+                (1, ".lexibrary/concepts/Render.md", "concept", "Render Pipeline", "active"),
+            ],
+            fts=[
+                (1, "Render Pipeline", "documents the render pipeline internals"),
+            ],
+        )
+        _seed_symbols_for_mixed_search(
+            project,
+            [("render_output", "src/lexibrary/render.py")],
+        )
+
+        graph = LinkGraph.open(db_path)
+        assert graph is not None
+        try:
+            results = unified_search(project, query="render", link_graph=graph)
+            assert results.has_results()
+            # FTS artefact hit surfaced as a concept.
+            assert results.concepts, "FTS should return a concept hit"
+            # Symbol augmentation fired in the FTS branch.
+            assert results.symbol_results, "symbols should be augmented in FTS path"
+            names = {sym.name for sym in results.symbol_results}
+            assert "render_output" in names
+        finally:
+            graph.close()
+
+    def test_mixed_search_fallback_path_includes_symbols(self, tmp_path: Path) -> None:
+        """6.9 — file-scanning fallback path also augments with symbols.
+
+        No ``link_graph`` is passed, so ``unified_search`` falls through
+        to the file-scanning branch (search.py:859). The symbol
+        augmentation must still fire and populate ``symbol_results``.
+        """
+        project = _setup_project(tmp_path)
+        _create_concept_file(project, "Render Pipeline", concept_id="CN-001")
+        _seed_symbols_for_mixed_search(
+            project,
+            [("render_output", "src/lexibrary/render.py")],
+        )
+
+        results = unified_search(project, query="render", link_graph=None)
+        assert results.symbol_results, "symbols should be augmented in fallback path"
+        names = {sym.name for sym in results.symbol_results}
+        assert "render_output" in names
+
+    def test_mixed_search_json_shape(self, tmp_path: Path) -> None:
+        """6.10 — ``_render_json`` emits both artefact and symbol records.
+
+        Renders a mixed-mode result set as JSON via ``_render_json`` and
+        asserts that the output contains a concept record AND a
+        ``{"type": "symbol", ...}`` record. This locks in the JSON
+        contract that CLI consumers rely on.
+        """
+        import json
+        from io import StringIO
+
+        project = _setup_project(tmp_path)
+        _create_concept_file(project, "Render Pipeline", concept_id="CN-001")
+        _seed_symbols_for_mixed_search(
+            project,
+            [("render_output", "src/lexibrary/render.py")],
+        )
+
+        results = unified_search(project, query="render")
+        assert results.concepts and results.symbol_results
+
+        buf = StringIO()
+        with patch("lexibrary.cli._output.sys.stdout", buf):
+            results._render_json()
+        payload = json.loads(buf.getvalue())
+        # No suggestions → payload is a flat list of record dicts.
+        assert isinstance(payload, list)
+        types = {record.get("type") for record in payload}
+        assert "concept" in types
+        assert "symbol" in types

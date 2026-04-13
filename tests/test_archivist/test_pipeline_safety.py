@@ -24,7 +24,7 @@ from lexibrary.archivist.service import (
     DesignFileResult,
 )
 from lexibrary.baml_client.types import DesignFileOutput
-from lexibrary.config.schema import LexibraryConfig, TokenBudgetConfig
+from lexibrary.config.schema import LexibraryConfig, ScopeRoot, TokenBudgetConfig
 
 # ---------------------------------------------------------------------------
 # Helpers (shared with test_pipeline.py patterns)
@@ -106,9 +106,13 @@ def _make_design_file(
 
 
 def _make_config(scope_root: str = ".", design_file_tokens: int = 400) -> LexibraryConfig:
-    """Create a config with given scope_root and token budget."""
+    """Create a config with given scope_root and token budget.
+
+    Accepts a single ``scope_root`` path string for backwards-compatible test
+    ergonomics; internally wraps it in a one-element ``scope_roots`` list.
+    """
     return LexibraryConfig(
-        scope_root=scope_root,
+        scope_roots=[ScopeRoot(path=scope_root)],
         token_budgets=TokenBudgetConfig(design_file_tokens=design_file_tokens),
     )
 

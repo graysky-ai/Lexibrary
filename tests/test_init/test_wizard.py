@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 from rich.console import Console
 
+from lexibrary.config.schema import ScopeRoot
 from lexibrary.init.wizard import (
     _DEFAULT_TOKEN_BUDGETS,
     WizardAnswers,
@@ -62,7 +63,7 @@ class TestWizardAnswers:
     def test_default_values(self) -> None:
         answers = WizardAnswers()
         assert answers.project_name == ""
-        assert answers.scope_root == "."
+        assert answers.scope_roots == []
         assert answers.agent_environments == []
         assert answers.llm_provider == "anthropic"
         assert answers.llm_model == "claude-sonnet-4-6"
@@ -98,7 +99,7 @@ class TestWizardAnswers:
     def test_custom_values(self) -> None:
         answers = WizardAnswers(
             project_name="my-app",
-            scope_root="src/",
+            scope_roots=[ScopeRoot(path="src/")],
             agent_environments=["claude", "cursor"],
             llm_provider="openai",
             llm_model="gpt-4o",
@@ -112,6 +113,18 @@ class TestWizardAnswers:
         assert answers.project_name == "my-app"
         assert answers.llm_provider == "openai"
         assert answers.confirmed is True
+
+    def test_scope_roots_multi_root(self) -> None:
+        """``WizardAnswers.scope_roots`` accepts multiple :class:`ScopeRoot` entries."""
+        answers = WizardAnswers(
+            scope_roots=[ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")],
+        )
+        assert [sr.path for sr in answers.scope_roots] == ["src/", "baml_src/"]
+
+    def test_scope_roots_default_is_empty_list(self) -> None:
+        """The default for ``scope_roots`` is an empty list (not ``["."]``)."""
+        answers = WizardAnswers()
+        assert answers.scope_roots == []
 
     def test_mutable_defaults_are_independent(self) -> None:
         a = WizardAnswers()
@@ -140,11 +153,19 @@ class TestStepScopeRootDefaults:
     def test_detected_src(self, tmp_path: Path, console: Console) -> None:
         (tmp_path / "src").mkdir()
         result = _step_scope_root(tmp_path, console, use_defaults=True)
-        assert result == "src/"
+        assert result == [ScopeRoot(path="src/")]
 
     def test_default_dot(self, tmp_path: Path, console: Console) -> None:
         result = _step_scope_root(tmp_path, console, use_defaults=True)
-        assert result == "."
+        assert result == [ScopeRoot(path=".")]
+
+    def test_detected_multi_root(self, tmp_path: Path, console: Console) -> None:
+        """All detected directories are returned in detection order."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "baml_src").mkdir()
+        result = _step_scope_root(tmp_path, console, use_defaults=True)
+        # detect_scope_roots iterates ["src/", "lib/", "app/", "baml_src/"]; order matters.
+        assert result == [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
 
 
 class TestStepAgentEnvironmentDefaults:
@@ -291,10 +312,106 @@ class TestStepProjectNameInteractive:
 
 class TestStepScopeRootInteractive:
     def test_user_accepts_detected(self, tmp_path: Path, console: Console) -> None:
+        """Detected single root: questionary.checkbox returns the same single entry."""
         (tmp_path / "src").mkdir()
-        with patch("lexibrary.init.wizard.Prompt.ask", return_value="src/"):
+        with patch(
+            "lexibrary.init.wizard.questionary.checkbox",
+            return_value=_MockQuestionaryResult(["src/"]),
+        ):
             result = _step_scope_root(tmp_path, console, use_defaults=False)
-        assert result == "src/"
+        assert result == [ScopeRoot(path="src/")]
+
+    def test_user_selects_subset_of_detected(self, tmp_path: Path, console: Console) -> None:
+        """User keeps only one of two detected roots — only that one is returned."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "baml_src").mkdir()
+        with patch(
+            "lexibrary.init.wizard.questionary.checkbox",
+            return_value=_MockQuestionaryResult(["baml_src/"]),
+        ):
+            result = _step_scope_root(tmp_path, console, use_defaults=False)
+        assert result == [ScopeRoot(path="baml_src/")]
+
+    def test_user_keeps_all_detected(self, tmp_path: Path, console: Console) -> None:
+        """User accepts all detected roots — checkbox returns the full list."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "baml_src").mkdir()
+        with patch(
+            "lexibrary.init.wizard.questionary.checkbox",
+            return_value=_MockQuestionaryResult(["src/", "baml_src/"]),
+        ):
+            result = _step_scope_root(tmp_path, console, use_defaults=False)
+        assert result == [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+
+    def test_zero_detected_falls_back_to_text_prompt(
+        self, tmp_path: Path, console: Console
+    ) -> None:
+        """Zero detected roots: text prompt + wrap answer in a single ScopeRoot."""
+        # No common dirs created — detect_scope_roots returns [].
+        with patch("lexibrary.init.wizard.Prompt.ask", return_value="custom/"):
+            result = _step_scope_root(tmp_path, console, use_defaults=False)
+        assert result == [ScopeRoot(path="custom/")]
+
+    def test_zero_detected_default_is_dot(
+        self, tmp_path: Path, console: Console
+    ) -> None:
+        """Zero detected: text prompt's default value is ``.`` (matches Pydantic default)."""
+        captured: dict[str, object] = {}
+
+        def _capture_prompt(*_args: object, **kwargs: object) -> str:
+            captured.update(kwargs)
+            return "."
+
+        with patch("lexibrary.init.wizard.Prompt.ask", side_effect=_capture_prompt):
+            result = _step_scope_root(tmp_path, console, use_defaults=False)
+        assert result == [ScopeRoot(path=".")]
+        assert captured.get("default") == "."
+
+    def test_non_tty_falls_back_to_detected(self, tmp_path: Path, console: Console) -> None:
+        """questionary.checkbox returning None falls back to all detected roots."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "baml_src").mkdir()
+        with patch(
+            "lexibrary.init.wizard.questionary.checkbox",
+            return_value=_MockQuestionaryResult(None),
+        ):
+            result = _step_scope_root(tmp_path, console, use_defaults=False)
+        assert result == [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
+
+    def test_user_deselects_all_falls_back_to_detected(
+        self, tmp_path: Path, console: Console
+    ) -> None:
+        """Empty checkbox selection falls back to detected roots (avoids empty config)."""
+        (tmp_path / "src").mkdir()
+        with patch(
+            "lexibrary.init.wizard.questionary.checkbox",
+            return_value=_MockQuestionaryResult([]),
+        ):
+            result = _step_scope_root(tmp_path, console, use_defaults=False)
+        assert result == [ScopeRoot(path="src/")]
+
+    def test_single_detected_root_pre_checked(
+        self, tmp_path: Path, console: Console
+    ) -> None:
+        """When exactly one root is detected, the checkbox option is pre-checked."""
+        (tmp_path / "src").mkdir()
+        captured_kwargs: dict[str, object] = {}
+
+        def _capture_checkbox(*_args: object, **kwargs: object) -> _MockQuestionaryResult:
+            captured_kwargs.update(kwargs)
+            return _MockQuestionaryResult(["src/"])
+
+        with patch(
+            "lexibrary.init.wizard.questionary.checkbox",
+            side_effect=_capture_checkbox,
+        ):
+            _step_scope_root(tmp_path, console, use_defaults=False)
+
+        choices = captured_kwargs.get("choices")
+        assert choices is not None
+        # Each Choice has a ``checked`` attribute exposed by questionary.
+        for choice in choices:  # type: ignore[union-attr]
+            assert getattr(choice, "checked", False) is True
 
 
 class TestStepAgentEnvironmentInteractive:
@@ -773,7 +890,7 @@ class TestRunWizardDefaults:
         assert result is not None
         assert result.confirmed is True
         assert result.project_name == "my-app"
-        assert result.scope_root == "src/"
+        assert result.scope_roots == [ScopeRoot(path="src/")]
         assert result.agent_environments == ["claude"]
         assert result.llm_provider == "anthropic"
         assert result.llm_model == "claude-sonnet-4-6"
@@ -852,7 +969,7 @@ class TestRunWizardDefaults:
         assert result is not None
         assert result.confirmed is True
         assert result.project_name == tmp_path.name
-        assert result.scope_root == "."
+        assert result.scope_roots == [ScopeRoot(path=".")]
         assert result.agent_environments == []
         assert result.ignore_patterns == []
 
@@ -942,17 +1059,18 @@ class TestRunWizardInteractive:
 
         patterns = suggest_ignore_patterns(detect_project_type(tmp_path))
 
-        # Prompt.ask calls: step 1, step 2, step 5 (additional patterns)
+        # Prompt.ask calls: step 1, step 5 (additional patterns).
+        # Step 2 (scope roots) now uses questionary.checkbox because ``src/`` is detected.
         prompt_values = iter(
             [
                 "my-app",  # step 1: accept project name
-                "src/",  # step 2: accept scope root
                 "",  # step 5: no additional patterns
             ]
         )
-        # questionary.checkbox: step 3 (agent envs), step 5 (ignore patterns)
+        # questionary.checkbox: step 2 (scope roots), step 3 (agent envs), step 5 (ignore patterns)
         checkbox_values = iter(
             [
+                ["src/"],  # step 2: accept the single detected root
                 ["claude"],  # step 3: select claude
                 patterns,  # step 5: accept all suggested patterns
             ]
@@ -997,7 +1115,7 @@ class TestRunWizardInteractive:
         assert result is not None
         assert result.confirmed is True
         assert result.project_name == "my-app"
-        assert result.scope_root == "src/"
+        assert result.scope_roots == [ScopeRoot(path="src/")]
         assert result.agent_environments == ["claude"]
         assert result.llm_provider == "anthropic"
         assert result.llm_api_key_source == "env"
@@ -1019,18 +1137,19 @@ class TestRunWizardInteractive:
 
         patterns = suggest_ignore_patterns(detect_project_type(tmp_path))
 
-        # Prompt.ask calls: step 1, step 2, step 4c (env var name), step 5 (additional)
+        # Prompt.ask calls: step 1, step 4c (env var name), step 5 (additional).
+        # Step 2 (scope roots) now uses questionary.checkbox because ``src/`` is detected.
         prompt_values = iter(
             [
                 "my-app",  # step 1: accept project name
-                "src/",  # step 2: accept scope root
                 "ANTHROPIC_API_KEY",  # step 4c: env var name for dotenv
                 "",  # step 5: no additional patterns
             ]
         )
-        # questionary.checkbox: step 3 (agent envs), step 5 (ignore patterns)
+        # questionary.checkbox: step 2 (scope roots), step 3 (agent envs), step 5 (ignore patterns)
         checkbox_values = iter(
             [
+                ["src/"],  # step 2: accept the single detected root
                 ["claude"],  # step 3: select claude
                 patterns,  # step 5: accept all suggested patterns
             ]

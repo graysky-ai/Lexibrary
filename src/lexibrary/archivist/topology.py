@@ -61,10 +61,32 @@ SECTION_NAMES: tuple[str, ...] = (
     "stats",
 )
 
+# Per-root section names (subset of SECTION_NAMES that are scoped to a single
+# scope root). The ``config`` and ``stats`` sections are project-wide and are
+# emitted once at the document level, outside any per-root wrapper.
+PER_ROOT_SECTION_NAMES: tuple[str, ...] = (
+    "header",
+    "entry-point-candidates",
+    "tree",
+    "source-modules",
+    "test-layout",
+)
+
 
 def _section_wrap(name: str, content: str) -> str:
     """Wrap *content* in ``<!-- section: NAME -->`` / ``<!-- end: NAME -->`` markers."""
     return f"<!-- section: {name} -->\n{content}\n<!-- end: {name} -->"
+
+
+def _root_wrap(name: str, content: str) -> str:
+    """Wrap *content* in ``<!-- root: NAME -->`` / ``<!-- end-root: NAME -->`` markers.
+
+    Used to demarcate per-root sections in the multi-root raw topology output.
+    *name* is the declared root path (as it appears in the config), preserved
+    verbatim so the topology-builder skill can map sections back to their
+    declared scope roots.
+    """
+    return f"<!-- root: {name} -->\n{content}\n<!-- end-root: {name} -->"
 
 
 def _is_test_directory(rel_path: str) -> bool:
@@ -148,6 +170,56 @@ def _collect_aindex_data(project_root: Path) -> list[_DirInfo]:
         )
 
     return sorted(infos, key=lambda d: d.rel_path)
+
+
+def _filter_infos_for_root(
+    infos: list[_DirInfo], root_rel: str, project_name: str
+) -> list[_DirInfo]:
+    """Return the subset of *infos* whose ``rel_path`` belongs to ``root_rel``.
+
+    ``root_rel`` is the resolved scope-root path, expressed relative to the
+    project root in POSIX form (e.g. ``"src"``, ``"baml_src"``, or ``"."``).
+
+    ``project_name`` is the project root directory's basename. Test fixtures
+    historically write ``.aindex`` files with ``directory_path`` prefixed by the
+    project name (``f"{project_name}/src"``), while production-emitted indexes
+    use a project-relative path (``"src"``). This helper accepts both.
+
+    A ``.aindex`` belongs to a root when:
+
+    - ``root_rel == "."`` (the project-root scope) — every entry qualifies.
+      Mixing ``.`` with non-``.`` roots is rejected at config load by the
+      nested-roots guard, so this branch is only reached for default
+      single-root projects (``scope_roots: [{path: .}]``).
+    - Otherwise the entry's ``rel_path`` equals ``root_rel`` or starts with
+      ``root_rel + "/"`` (production layout), or — for tests — the same after
+      stripping the leading ``project_name + "/"`` prefix.
+
+    The returned list preserves the ``rel_path`` ordering of *infos*.
+    """
+    if root_rel == ".":
+        # The project-root scope captures everything; callers who want a single
+        # combined output use this. When mixed with other declared roots, this
+        # branch is unreachable because the nested-roots guard rejects
+        # ``[., src/]`` and similar overlaps at config load.
+        return list(infos)
+
+    prefix_eq = root_rel
+    prefix_with_sep = root_rel + "/"
+    project_prefix = project_name + "/"
+
+    def _belongs(rel_path: str) -> bool:
+        # Production layout: rel_path is project-relative ("src", "src/foo").
+        if rel_path == prefix_eq or rel_path.startswith(prefix_with_sep):
+            return True
+        # Test-fixture layout: rel_path is "<project>/<root>/...".
+        if rel_path.startswith(project_prefix):
+            stripped = rel_path[len(project_prefix) :]
+            if stripped == prefix_eq or stripped.startswith(prefix_with_sep):
+                return True
+        return False
+
+    return [info for info in infos if _belongs(info.rel_path)]
 
 
 def _compute_depth(rel_path: str, project_name: str) -> int:
@@ -980,15 +1052,94 @@ def _apply_token_sentinel(
     return content
 
 
+def _build_per_root_section(
+    project_root: Path,
+    project_name: str,
+    root_rel: str,
+    root_infos: list[_DirInfo],
+    detail_dirs: list[str],
+) -> str:
+    """Build the per-root section body for one declared scope root.
+
+    Renders the five per-root section blocks (``header``,
+    ``entry-point-candidates``, ``tree``, ``source-modules``, ``test-layout``)
+    using only the ``.aindex`` data that belongs to this root, then wraps the
+    block in ``<!-- root: NAME -->`` / ``<!-- end-root: NAME -->`` markers so
+    downstream consumers (the topology-builder skill) can mechanically
+    partition the document by root.
+
+    Args:
+        project_root: Absolute project root path.
+        project_name: Project root directory's basename (used for path display).
+        root_rel: Declared root path string (e.g. ``"src"``, ``"baml_src"``,
+            ``"."``). Preserved verbatim in the wrapper marker.
+        root_infos: ``_DirInfo`` entries that belong to this root, already
+            filtered by :func:`_filter_infos_for_root`.
+        detail_dirs: ``topology.detail_dirs`` glob patterns from config.
+    """
+    section_lines: list[str] = []
+
+    # -- header section --
+    header_body = _generate_header(root_infos, project_root)
+    section_lines.append(_section_wrap("header", header_body))
+    section_lines.append("")
+
+    # -- entry-point-candidates section --
+    entry_candidates = _generate_entry_point_candidates(root_infos, project_name)
+    section_lines.append(_section_wrap("entry-point-candidates", entry_candidates))
+    section_lines.append("")
+
+    # -- tree section --
+    tree_text = _build_procedural_topology(project_root, root_infos)
+    tree_body = f"```\n{tree_text}\n```"
+    section_lines.append(_section_wrap("tree", tree_body))
+    section_lines.append("")
+
+    # -- source-modules and test-layout sections --
+    source_modules, test_layout = _generate_directory_details(
+        root_infos, project_name, detail_dirs=detail_dirs
+    )
+    section_lines.append(_section_wrap("source-modules", source_modules))
+    section_lines.append("")
+    section_lines.append(_section_wrap("test-layout", test_layout))
+
+    return _root_wrap(root_rel, "\n".join(section_lines))
+
+
 def generate_raw_topology(project_root: Path) -> Path:
     """Generate ``.lexibrary/tmp/raw-topology.md`` from .aindex billboard summaries.
 
     Builds an adaptive-depth annotated directory tree and wraps it in a
     markdown document.  Uses ``atomic_write()`` for safe file replacement.
 
-    When ``.aindex`` data is available, a project header (name, language,
-    landmarks) is prepended before the code-fenced tree.  The header is
-    omitted when no ``.aindex`` data exists.
+    Multi-root layout
+    -----------------
+
+    The document is laid out as:
+
+    1. Document title (``# Project Topology``).
+    2. One ``<!-- root: NAME -->`` block per declared scope root in
+       ``config.scope_roots`` declared order. Each per-root block contains the
+       five scoped sections (``header``, ``entry-point-candidates``, ``tree``,
+       ``source-modules``, ``test-layout``) wrapped in their existing
+       ``<!-- section: NAME -->`` markers. Roots with zero ``.aindex`` entries
+       are skipped entirely.
+    3. Project-level ``config`` and ``stats`` sections, emitted once at the
+       document level (outside any per-root wrapper) because they describe the
+       whole project rather than any single root.
+
+    For the default single-root config (``scope_roots: [{path: .}]``) this
+    yields exactly one per-root block whose contents are the same five
+    sections that were emitted before multi-root support landed, plus the two
+    project-level sections — the byte-level diff is the new
+    ``<!-- root: . -->`` wrapper around the per-root block.
+
+    The implementation uses :func:`_filter_infos_for_root` to scope ``_DirInfo``
+    entries to each root, and :func:`_build_per_root_section` to render each
+    block. Output is byte-deterministic across runs because the resolved-roots
+    list preserves the user's declared order and the underlying
+    ``_DirInfo`` lists are sorted by ``rel_path`` inside
+    :func:`_collect_aindex_data`.
 
     Reads ``topology.detail_dirs`` from project configuration to control
     which directories receive full file tables versus one-line summaries.
@@ -1006,43 +1157,66 @@ def generate_raw_topology(project_root: Path) -> Path:
 
     # Collect .aindex data once and pass to all consumers
     infos = _collect_aindex_data(project_root)
-    tree = _build_procedural_topology(project_root, infos)
-    header = _generate_header(infos, project_root)
-
     project_name = project_root.name
 
     content_lines = ["# Project Topology", ""]
 
-    # -- header section --
-    header_body = header if header else ""
-    content_lines.append(_section_wrap("header", header_body))
-    content_lines.append("")
+    # -- per-root sections (one per declared scope root, declared order) --
+    # Resolve scope roots up front. ``resolved_scope_roots`` enforces the
+    # path-traversal, nested-roots, and duplicate-entry guards at load; we
+    # consume only the resolved (existing-on-disk) list. Missing-on-disk
+    # entries are surfaced by the lifecycle bootstrap layer, not here.
+    resolved = config.resolved_scope_roots(project_root).resolved
 
-    # -- entry-point-candidates section --
-    entry_candidates = _generate_entry_point_candidates(infos, project_name)
-    content_lines.append(_section_wrap("entry-point-candidates", entry_candidates))
-    content_lines.append("")
+    # Build a (declared root path string, resolved Path) zip so we can preserve
+    # the user's declared spelling in the ``<!-- root: NAME -->`` wrapper while
+    # still using the resolved Path to filter ``_DirInfo`` entries. We rebuild
+    # the declared list by aligning indices: ``resolved`` follows declared
+    # order (the model preserves the input list and only filters by existence,
+    # so resolved[i] corresponds to the i-th existing scope root in
+    # ``config.scope_roots``).
+    project_root_abs = project_root.resolve()
+    declared_existing: list[tuple[str, Path]] = []
+    for sr in config.scope_roots:
+        candidate = (project_root_abs / sr.path).resolve()
+        if candidate in resolved:
+            declared_existing.append((sr.path, candidate))
 
-    # -- tree section --
-    tree_body = f"```\n{tree}\n```"
-    content_lines.append(_section_wrap("tree", tree_body))
-    content_lines.append("")
+    for declared_path, abs_path in declared_existing:
+        # Compute the project-relative POSIX root path string used by the
+        # filter helper (e.g. ``"src"`` rather than ``"src/"`` or absolute).
+        try:
+            rel = abs_path.relative_to(project_root_abs)
+        except ValueError:
+            # Defensive: ``resolved_scope_roots`` already enforces this, but
+            # don't crash topology generation on an unexpected layout.
+            continue
+        root_rel = "." if str(rel) in (".", "") else rel.as_posix()
 
-    # -- source-modules and test-layout sections --
-    source_modules, test_layout = _generate_directory_details(
-        infos, project_name, detail_dirs=detail_dirs
-    )
-    content_lines.append(_section_wrap("source-modules", source_modules))
-    content_lines.append("")
-    content_lines.append(_section_wrap("test-layout", test_layout))
-    content_lines.append("")
+        root_infos = _filter_infos_for_root(infos, root_rel, project_name)
 
-    # -- config section --
+        # Skip roots with zero ``.aindex`` entries — keeps the document focused
+        # on roots the archivist has actually indexed.
+        if not root_infos:
+            continue
+
+        content_lines.append(
+            _build_per_root_section(
+                project_root,
+                project_name,
+                declared_path,
+                root_infos,
+                detail_dirs,
+            )
+        )
+        content_lines.append("")
+
+    # -- config section (project-level, emitted once) --
     project_config = _generate_project_config(project_root)
     content_lines.append(_section_wrap("config", project_config))
     content_lines.append("")
 
-    # -- stats section --
+    # -- stats section (project-level, emitted once) --
     library_stats = _generate_library_stats(project_root)
     content_lines.append(_section_wrap("stats", library_stats))
     content_lines.append("")
