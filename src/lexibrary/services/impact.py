@@ -93,7 +93,7 @@ def analyse_impact(
     Raises
     ------
     FileOutsideScopeError
-        When *target* is outside the configured ``scope_root``.
+        When *target* is outside all configured ``scope_roots``.
     LinkGraphMissingError
         When no link graph index database is found.
     """
@@ -161,7 +161,12 @@ def analyse_impact(
 
 
 class FileOutsideScopeError(Exception):
-    """Raised when the target file is outside the configured scope_root."""
+    """Raised when the target file is outside all configured scope_roots.
+
+    Callers constructing the exception message should follow Block A:
+    ``f"{source_path} is outside all configured scope_roots: "
+    f"{[r.path for r in config.scope_roots]}"``.
+    """
 
 
 class LinkGraphMissingError(Exception):

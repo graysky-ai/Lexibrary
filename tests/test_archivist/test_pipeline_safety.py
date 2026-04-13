@@ -105,14 +105,25 @@ def _make_design_file(
     return design_path
 
 
-def _make_config(scope_root: str = ".", design_file_tokens: int = 400) -> LexibraryConfig:
-    """Create a config with given scope_root and token budget.
+def _make_config(
+    scope_root: str | None = None,
+    scope_roots: list[str] | None = None,
+    design_file_tokens: int = 400,
+) -> LexibraryConfig:
+    """Create a config with the given scope declaration and token budget.
 
-    Accepts a single ``scope_root`` path string for backwards-compatible test
-    ergonomics; internally wraps it in a one-element ``scope_roots`` list.
+    Accepts *either* a single-root ``scope_root`` string (for existing tests
+    that predate the multi-root migration) *or* an explicit ``scope_roots``
+    list. When both are omitted, the default root is ``"."``.
     """
+    if scope_roots is not None:
+        roots = [ScopeRoot(path=p) for p in scope_roots]
+    elif scope_root is not None:
+        roots = [ScopeRoot(path=scope_root)]
+    else:
+        roots = [ScopeRoot(path=".")]
     return LexibraryConfig(
-        scope_roots=[ScopeRoot(path=scope_root)],
+        scope_roots=roots,
         token_budgets=TokenBudgetConfig(design_file_tokens=design_file_tokens),
     )
 
@@ -700,3 +711,51 @@ class TestUpdateFiles:
 
         assert len(callback_calls) == 1
         assert callback_calls[0][1] == ChangeLevel.UNCHANGED
+
+
+# ---------------------------------------------------------------------------
+# Two-root gating in update_file (safety-level)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateFileTwoRootGating:
+    """``update_file`` respects every declared ``scope_roots`` entry.
+
+    Pins the multi-root contract at the safety boundary: a file under any
+    declared root passes; a file under none is skipped with ``skip_reason =
+    'out of scope'`` and the LLM is never invoked.
+    """
+
+    @pytest.mark.asyncio()
+    async def test_in_scope_under_first_root(self, tmp_path: Path) -> None:
+        source = _make_source_file(tmp_path, "src/alpha.py", "def alpha(): pass")
+        config = _make_config(scope_roots=["src", "baml_src"])
+        archivist = _mock_archivist(summary="Alpha.")
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        assert result.change == ChangeLevel.NEW_FILE
+        archivist.generate_design_file.assert_awaited_once()
+
+    @pytest.mark.asyncio()
+    async def test_in_scope_under_second_root(self, tmp_path: Path) -> None:
+        source = _make_source_file(tmp_path, "baml_src/beta.py", "def beta(): pass")
+        config = _make_config(scope_roots=["src", "baml_src"])
+        archivist = _mock_archivist(summary="Beta.")
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        assert result.change == ChangeLevel.NEW_FILE
+        archivist.generate_design_file.assert_awaited_once()
+
+    @pytest.mark.asyncio()
+    async def test_rejected_when_outside_both_roots(self, tmp_path: Path) -> None:
+        source = _make_source_file(tmp_path, "docs/foo.md", "# docs")
+        config = _make_config(scope_roots=["src", "baml_src"])
+        archivist = _mock_archivist()
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        assert result.change == ChangeLevel.UNCHANGED
+        assert result.skip_reason == "out of scope"
+        archivist.generate_design_file.assert_not_awaited()

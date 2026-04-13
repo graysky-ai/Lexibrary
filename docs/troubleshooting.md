@@ -117,28 +117,35 @@ lexictl update
 
 **Symptoms:** `lexictl update` reports 0 files scanned, or all files are skipped. The update summary shows no work done.
 
-**Cause:** The `scope_root` setting does not match your project structure, or ignore patterns are too aggressive.
+**Cause:** None of the directories listed in `scope_roots` match your project structure, the listed roots are missing on disk, or ignore patterns are too aggressive.
 
 **Fix:**
 
-1. Check the scope root:
+1. Check the declared roots:
    ```bash
-   grep "scope_root" .lexibrary/config.yaml
+   grep -A 5 "scope_roots" .lexibrary/config.yaml
    ```
-   If `scope_root` is set to a directory that does not exist (e.g., `src/` when your code is at the project root), no files will be found.
+   If any listed `path` points at a directory that does not exist on disk
+   (for example `src/` when your code lives at the project root), that root is
+   logged as a warning (`scope_root '<path>' does not exist on disk; skipping`)
+   and is skipped during the crawl. Other declared roots still run.
 
-2. Verify the scope root contains source files:
+2. Verify each declared root contains source files, e.g.:
    ```bash
-   ls $(grep "scope_root" .lexibrary/config.yaml | awk '{print $2}' | tr -d '"')
+   for dir in src/ baml_src/; do ls "$dir" 2>/dev/null; done
    ```
 
-3. Check ignore patterns. Files may be excluded by `.gitignore`, `.lexignore`, or `ignore.additional_patterns` in config:
+3. If every declared root is wrong, the update reports zero files scanned.
+   Edit `scope_roots:` in `.lexibrary/config.yaml` so at least one entry
+   points at a real source directory.
+
+4. Check ignore patterns. Files may be excluded by `.gitignore`, `.lexignore`, or `ignore.additional_patterns` in config:
    ```bash
    cat .lexignore
    grep -A 20 "additional_patterns" .lexibrary/config.yaml
    ```
 
-4. Check the file size limit. Large files are skipped:
+5. Check the file size limit. Large files are skipped:
    ```yaml
    crawl:
      max_file_size_kb: 1024    # Increase from default 512 KB
@@ -150,14 +157,18 @@ See [Ignore Patterns](ignore-patterns.md) for the complete ignore system documen
 
 **Symptoms:** After adding new source files, running `lexictl update` does not create design files for them.
 
-**Cause:** New files may be excluded by ignore patterns, may have binary extensions, may exceed the file size limit, or may be outside the `scope_root`.
+**Cause:** New files may be excluded by ignore patterns, may have binary extensions, may exceed the file size limit, or may live outside every declared `scope_roots` entry.
 
 **Fix:**
 
-1. Confirm the file is under `scope_root`:
+1. Confirm the file is under at least one declared root in `scope_roots`:
    ```bash
-   grep "scope_root" .lexibrary/config.yaml
+   grep -A 5 "scope_roots" .lexibrary/config.yaml
    ```
+   Running `lexi design update <file>` on a file that lives outside every
+   declared root surfaces an explicit error — see
+   [File reported as outside all configured scope_roots](#file-reported-as-outside-all-configured-scope_roots)
+   below.
 
 2. Check if the file extension is in `crawl.binary_extensions`:
    ```bash
@@ -324,7 +335,7 @@ Concept description goes here.
    lexictl sweep
    ```
 
-2. If the one-shot sweep detects no changes, check that modified files are under `scope_root` and not excluded by ignore patterns.
+2. If the one-shot sweep detects no changes, check that modified files are under at least one declared `scope_roots` entry and not excluded by ignore patterns.
 
 3. To reduce the sweep interval for more responsive detection:
    ```yaml
@@ -337,6 +348,42 @@ Concept description goes here.
    sweep:
      sweep_skip_if_unchanged: false
    ```
+
+### File reported as outside all configured scope_roots
+
+**Symptoms:** A CLI command such as `lexi design update <file>`,
+`lexi lookup <file>`, `lexi impact <file>`, `lexictl update --scope <file>`,
+or `bootstrap` exits non-zero with a message in the form:
+
+```
+<path> is outside all configured scope_roots: ['src/', 'baml_src/']
+```
+
+The declared-root list in the brackets matches whatever is in your current
+`config.yaml`.
+
+**Cause:** The target path does not resolve inside any of the directories
+listed under `scope_roots:` in `.lexibrary/config.yaml`. Multi-root gating
+uses first-match ownership: a file must live inside at least one declared
+root or the command refuses to run.
+
+**Fix:**
+
+1. Confirm the path is spelled correctly and is relative to the project root.
+2. Re-check your `scope_roots`:
+   ```bash
+   grep -A 5 "scope_roots" .lexibrary/config.yaml
+   ```
+3. Either move the file into an existing root or add a new root entry. For
+   example, to extend coverage to a new `baml_src/` tree:
+   ```yaml
+   scope_roots:
+     - path: src/
+     - path: baml_src/
+   ```
+   Then re-run `lexictl update` so the new root is crawled. See
+   [Configuration — scope_roots](configuration.md#scope_roots) for the rules
+   on nesting, duplicates, and path traversal.
 
 ## Config Issues
 
@@ -397,7 +444,11 @@ Concept description goes here.
 **Fix:**
 
 1. Check the key name against the [Configuration](configuration.md) reference. Common typos:
-   - `scope-root` instead of `scope_root` (underscores, not hyphens)
+   - `scope-roots` instead of `scope_roots` (underscores, not hyphens)
+   - A bare `scope_root:` scalar left over from pre-multi-root configs — this
+     one does NOT fail silently; the loader raises `Unknown config key
+     'scope_root'` with migration instructions. Rename to `scope_roots:` and
+     restructure as a list of mappings.
    - `llm_provider` instead of `llm.provider` (nested under `llm:` section)
    - `binary-extensions` instead of `binary_extensions`
 
@@ -504,7 +555,7 @@ See [Link Graph -- Schema Version](link-graph.md#schema-version) for details.
 **Cause:** The symbol does not exist in `symbols.db`. Possible reasons:
 
 - The file defining the symbol has not been indexed yet (new file, never updated).
-- The symbol is in a file excluded by ignore patterns or outside `scope_root`.
+- The symbol is in a file excluded by ignore patterns or outside every declared `scope_roots` entry.
 - The name is misspelled or uses an unexpected casing.
 - `symbols.enabled` is `false` in the config, so the symbol graph is not being built.
 

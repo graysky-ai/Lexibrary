@@ -1060,7 +1060,7 @@ class TestSetupCommand:
         """``setup --update`` with no agent environments shows a message and exits 1."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_root: .\nagent_environment: []\n"
+            "scope_roots:\n  - path: .\nagent_environment: []\n"
         )
 
         result = self._invoke(tmp_path, ["setup", "--update"])
@@ -1073,7 +1073,7 @@ class TestSetupCommand:
         """``setup --update`` reads environments from config and generates rules."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_root: .\nagent_environment:\n  - claude\n  - cursor\n"
+            "scope_roots:\n  - path: .\nagent_environment:\n  - claude\n  - cursor\n"
         )
 
         result = self._invoke(tmp_path, ["setup", "--update"])
@@ -1091,7 +1091,7 @@ class TestSetupCommand:
         (tmp_path / ".lexibrary").mkdir()
         # Config has claude, but we explicitly request codex
         (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_root: .\nagent_environment:\n  - claude\n"
+            "scope_roots:\n  - path: .\nagent_environment:\n  - claude\n"
         )
 
         result = self._invoke(tmp_path, ["setup", "--update", "--env", "codex"])
@@ -1107,7 +1107,7 @@ class TestSetupCommand:
         """``--env`` works even when config has no environments."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_root: .\nagent_environment: []\n"
+            "scope_roots:\n  - path: .\nagent_environment: []\n"
         )
 
         result = self._invoke(tmp_path, ["setup", "--update", "--env", "claude"])
@@ -1120,7 +1120,7 @@ class TestSetupCommand:
     def test_setup_update_no_env_error(self, tmp_path: Path) -> None:
         """``setup --update`` with no config envs and no ``--env`` exits 1."""
         (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_root: .\n")
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: .\n")
 
         result = self._invoke(tmp_path, ["setup", "--update"])
         assert result.exit_code == 1  # type: ignore[union-attr]
@@ -1130,7 +1130,7 @@ class TestSetupCommand:
     def test_setup_update_unsupported_env_error(self, tmp_path: Path) -> None:
         """``setup --update --env fake`` exits 1 with unsupported environment error."""
         (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_root: .\n")
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: .\n")
 
         result = self._invoke(tmp_path, ["setup", "--update", "--env", "nonexistent"])
         assert result.exit_code == 1  # type: ignore[union-attr]
@@ -1144,7 +1144,7 @@ class TestSetupCommand:
         """Config with unsupported environment exits 1 with clear error."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_root: .\nagent_environment:\n  - vscode\n"
+            "scope_roots:\n  - path: .\nagent_environment:\n  - vscode\n"
         )
 
         result = self._invoke(tmp_path, ["setup", "--update"])
@@ -1157,7 +1157,7 @@ class TestSetupCommand:
         """``--update`` generates rules AND adds IWH pattern to gitignore."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_root: .\nagent_environment:\n  - claude\n"
+            "scope_roots:\n  - path: .\nagent_environment:\n  - claude\n"
         )
 
         result = self._invoke(tmp_path, ["setup", "--update"])
@@ -1177,7 +1177,7 @@ class TestSetupCommand:
         """Running ``setup --update`` twice does not duplicate .gitignore pattern."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_root: .\nagent_environment:\n  - claude\n"
+            "scope_roots:\n  - path: .\nagent_environment:\n  - claude\n"
         )
         # Pre-existing gitignore with pattern
         (tmp_path / ".gitignore").write_text("**/.iwh\n")
@@ -1194,7 +1194,7 @@ class TestSetupCommand:
     def test_setup_update_multiple_envs(self, tmp_path: Path) -> None:
         """``setup --update`` with multiple --env flags generates for all."""
         (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_root: .\n")
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: .\n")
 
         result = self._invoke(tmp_path, ["setup", "--update", "--env", "claude", "--env", "codex"])
         assert result.exit_code == 0  # type: ignore[union-attr]
@@ -1706,11 +1706,13 @@ class TestLexictlBootstrapCommand:
         assert "Files found:" in output
 
     def test_bootstrap_scope_from_config(self, tmp_path: Path) -> None:
-        """Bootstrap uses scope_root from config when --scope is not provided."""
+        """Bootstrap uses scope_roots from config when --scope is not provided."""
         project = _setup_project(tmp_path)
-        # Write config with scope_root set to "src"
-        (project / ".lexibrary" / "config.yaml").write_text("scope_root: src\n")
-        # Create another directory outside scope
+        # Write config with a single scope_roots entry pointing at src/.
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: src\n"
+        )
+        # Create another directory outside the declared roots.
         (project / "lib").mkdir()
         (project / "lib" / "x.py").write_text("x = 1\n")
 
@@ -1718,8 +1720,70 @@ class TestLexictlBootstrapCommand:
         assert result.exit_code == 0  # type: ignore[union-attr]
         # src should be indexed
         assert (project / ".lexibrary" / "designs" / "src" / ".aindex").exists()
-        # lib should NOT be indexed (outside scope_root from config)
+        # lib should NOT be indexed (outside every declared scope_roots entry)
         assert not (project / ".lexibrary" / "designs" / "lib" / ".aindex").exists()
+
+    def test_bootstrap_scope_override_outside_scope_roots(self, tmp_path: Path) -> None:
+        """``bootstrap --scope <path>`` rejects a path outside every root (Block A text).
+
+        Part of the multi-root change (group 8, task 8.4). The override must
+        resolve to one of the declared ``scope_roots``; otherwise the command
+        exits 1 and prints the Block A error.
+        """
+        project = _setup_project(tmp_path)
+        # Restrict declared scope_roots to src/.
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: src\n"
+        )
+        # Create a directory outside every declared root.
+        (project / "external").mkdir()
+        (project / "external" / "file.py").write_text("x = 1\n")
+
+        result = self._invoke(project, ["bootstrap", "--scope", "external"])
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        # Block A error text: "outside all configured scope_roots: [...]"
+        assert "outside all configured scope_roots" in result.output  # type: ignore[union-attr]
+
+    def test_bootstrap_iterates_each_declared_root(self, tmp_path: Path) -> None:
+        """Bootstrap loops the multi-root crawler once per declared root.
+
+        Part of task 8.5: when ``--scope`` is omitted the bootstrap caller
+        walks every ``resolved_scope_roots(...).resolved`` entry. We mock the
+        underlying indexer (``index_recursive``) so no real filesystem walk
+        runs, then assert it was invoked once per declared root with the
+        correct resolved root path as its first positional argument.
+
+        Note: task 8.5 references ``full_crawl`` as the crawler primitive.
+        In the current codepath the bootstrap command invokes
+        ``index_recursive`` directly (see ``lexictl_app.py`` bootstrap
+        Phase 1 loop). The test asserts the loop invariant — one call per
+        declared root, correct root argument — which is the behavioural
+        contract regardless of which indexer primitive sits underneath.
+        """
+        from lexibrary.indexer.orchestrator import IndexStats  # noqa: PLC0415
+
+        project = _setup_project(tmp_path)
+        # Create a second top-level root.
+        (project / "baml_src").mkdir()
+        (project / "baml_src" / "agent.baml").write_text("// baml stub\n")
+        # Declare both roots.
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: src\n  - path: baml_src\n"
+        )
+
+        mock_index = MagicMock(return_value=IndexStats())
+
+        with patch("lexibrary.indexer.orchestrator.index_recursive", mock_index):
+            result = self._invoke(project, ["bootstrap"])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+
+        # Two calls, one per declared root, in declared order.
+        assert mock_index.call_count == 2
+        first_root = mock_index.call_args_list[0].args[0]
+        second_root = mock_index.call_args_list[1].args[0]
+        assert first_root == (project / "src").resolve()
+        assert second_root == (project / "baml_src").resolve()
 
     def test_bootstrap_generates_raw_topology(self, tmp_path: Path) -> None:
         """Bootstrap generates raw topology as Phase 3."""

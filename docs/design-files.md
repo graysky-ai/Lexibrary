@@ -88,38 +88,45 @@ Data flows are **opt-in**. Set `symbols.include_data_flows: true` in your config
 
 ### Mirror Tree
 
-Design files are stored in a mirror tree under `.lexibrary/` that matches the project directory structure:
+Design files live under `.lexibrary/designs/` in a mirror tree that matches
+your project directory structure. Each declared `scope_roots` entry gets its
+own top-level subtree under `designs/`, so two roots never collide:
 
 ```
-src/auth/service.py       -->  .lexibrary/src/auth/service.py.md
-src/utils/helpers.py      -->  .lexibrary/src/utils/helpers.py.md
-tests/test_auth.py        -->  .lexibrary/tests/test_auth.py.md
+src/auth/service.py       -->  .lexibrary/designs/src/auth/service.py.md
+src/utils/helpers.py      -->  .lexibrary/designs/src/utils/helpers.py.md
+baml_src/prompts.baml     -->  .lexibrary/designs/baml_src/prompts.baml.md
 ```
 
-Parent directories are created automatically as needed.
+A project with `scope_roots: [{path: src/}, {path: baml_src/}]` therefore
+produces both `.lexibrary/designs/src/...` and `.lexibrary/designs/baml_src/...`
+trees side-by-side. Parent directories (including the per-root top-level
+folder) are created automatically as needed.
 
 ## How Generation Works
 
 When `lexictl update` runs, it:
 
-1. Discovers all source files under `scope_root`.
+1. Discovers all source files under every declared `scope_roots` entry.
 2. Filters out binary files, ignored files, and oversized files.
 3. Compares each file's SHA-256 hash against the hash stored in its existing design file.
 4. Classifies the type of change (see ChangeLevel below).
 5. Sends files that need updating to the configured LLM for design file generation.
-6. Writes design files into the `.lexibrary/` mirror tree.
+6. Writes design files into the `.lexibrary/designs/` mirror tree (one subtree per root).
 7. Refreshes parent `.aindex` routing tables.
 8. Regenerates `TOPOLOGY.md` with the updated project topology.
 9. Builds or rebuilds the link graph index.
 
 ### File Discovery
 
-`lexictl update` scans the configured `scope_root` directory recursively. Files are filtered at several levels:
+`lexictl update` scans each directory listed in `scope_roots` recursively and
+concatenates the per-root results before filtering. Files are then filtered at
+several levels:
 
 - **Ignore matching** -- Files matching any ignore pattern (from `.gitignore`, `.lexignore`, or `ignore.additional_patterns` in config) are skipped. See [Ignore Patterns](ignore-patterns.md).
 - **Binary detection** -- Files with extensions listed in `crawl.binary_extensions` are skipped.
 - **Size limit** -- Files larger than `crawl.max_file_size_kb` (default: 512 KB) are skipped.
-- **Scope boundary** -- Files outside `scope_root` are excluded.
+- **Scope boundary** -- A file must live inside at least one declared `scope_roots` entry. Files that do not are excluded; CLI commands that target such a path exit non-zero with `outside all configured scope_roots: [...]`.
 - **Library contents** -- Files inside `.lexibrary/` are never processed as source files.
 
 ### ChangeLevel Classification
@@ -178,7 +185,7 @@ The output provides up to seven sections of context:
 
 1. **Design file content** -- The full design file with summary, interface contract, and metadata.
 2. **Staleness warning** -- Indicates if the source file has changed since the design file was last generated. The design file may be outdated; rely on the source file itself for current state, but use the design file for architectural context.
-3. **Applicable conventions** -- Rules inherited from `.aindex` files walked upward from the file's directory to the scope root. These represent project-wide and directory-specific standards that must be followed when editing.
+3. **Applicable conventions** -- Rules inherited from `.aindex` files walked upward from the file's directory to its owning scope root (the first `scope_roots` entry that contains the file). Project-wide conventions declared with `scope: "."` always match regardless of owning root. These represent project-wide and directory-specific standards that must be followed when editing.
 4. **Known Issues** -- Stack posts referencing this file, with status, title, and vote counts.
 5. **IWH signals** -- Inter-session coordination signals for the file's directory.
 6. **Dependents** -- Files that import this file (from the link graph). These may need updates if a public interface changes.
@@ -189,7 +196,7 @@ The output provides up to seven sections of context:
 | Code | Meaning |
 |------|---------|
 | 0 | Design file found and displayed |
-| 1 | File is outside `scope_root`, or no design file exists |
+| 1 | File is outside every declared `scope_roots` entry, or no design file exists |
 
 If exit code 1 occurs because no design file exists, the file has not yet been indexed. The operator can generate one with `lexictl update`.
 
@@ -251,9 +258,9 @@ Lexibrary provides two pipeline entry points:
 
 Invoked by `lexictl update` with no arguments:
 
-1. Discovers all source files under `scope_root`.
+1. Discovers all source files under every declared `scope_roots` entry.
 2. Processes each file sequentially through the change detection and LLM pipeline.
-3. Regenerates `TOPOLOGY.md` after all files are processed.
+3. Regenerates `TOPOLOGY.md` (one `##`-level section per root) after all files are processed.
 4. Performs a full rebuild of the link graph index.
 
 ### update_files (targeted file update)
@@ -294,7 +301,7 @@ Update summary:
 ## See Also
 
 - [CLI Reference](cli-reference.md) -- Full command reference for `lexi design update`, `lexi design comment`, and `lexictl update`
-- [Configuration](configuration.md) -- `crawl`, `llm`, `token_budgets`, `ignore`, and `scope_root` settings
+- [Configuration](configuration.md) -- `crawl`, `llm`, `token_budgets`, `ignore`, and `scope_roots` settings
 - [Library Structure](library-structure.md) -- Anatomy of the `.lexibrary/` directory
 - [Validation](validation.md) -- Checks that detect stale design files and token budget overruns
 - [CI Integration](ci-integration.md) -- Using `--changed-only` in git hooks and CI pipelines

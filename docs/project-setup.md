@@ -31,20 +31,42 @@ Step 1/8: Project Name
 
 **What it affects:** The `project_name` key in `config.yaml`. Used in generated artifacts like `TOPOLOGY.md` to identify the project.
 
-### Step 2: Scope Root
+### Step 2: Scope Roots
 
 ```
-Step 2/8: Scope Root
-  Detected directories: ['src/']
+Step 2/8: Scope Roots
+  Detected directories: ['src/', 'baml_src/']
   Modify later in .lexibrary/config.yaml
-  Scope root path [src/]:
+  ? Select scope roots to index (all detected selected by default):
+    [x] src/
+    [x] baml_src/
 ```
 
-**What it does:** Determines which directory tree to index. Only files under the scope root will receive design files.
+**What it does:** Determines which directory trees to index. Each selected
+directory becomes a declared scope root. Every root is crawled independently,
+so a project can mix e.g. Python sources under `src/` with generated
+`baml_src/` files in the same Lexibrary instance.
 
-**Detection:** Checks for common source directories (`src/`, `lib/`, `app/`) and suggests the first one found. If none exist, defaults to `.` (the entire project).
+**Detection:** Checks for common source directories (`src/`, `lib/`, `app/`,
+`baml_src/`) and pre-selects every one that exists. If none are detected, the
+wizard falls back to a single text prompt for a path; whatever you enter
+becomes the sole declared root.
 
-**What it affects:** The `scope_root` key in `config.yaml`. Files outside this path are ignored during `lexictl update`.
+**Multi-select UX:** `questionary.checkbox()` is seeded with the detected
+directories and every detected entry starts selected. Deselect entries you do
+not want indexed, or accept all by pressing Enter. If only one directory is
+detected the prompt looks identical to the single-root experience from earlier
+releases (one pre-checked item, Enter to accept).
+
+**What it affects:** The `scope_roots` list in `config.yaml`. Files outside
+every declared root are ignored during `lexictl update`. The scaffolder always
+emits `scope_roots` as a YAML list of mappings, even for a single root:
+
+```yaml
+scope_roots:
+  - path: src/
+  - path: baml_src/
+```
 
 **Common values:**
 
@@ -54,6 +76,22 @@ Step 2/8: Scope Root
 | `src/` | Python src layout, typical for libraries |
 | `lib/` | Ruby, some Node.js projects |
 | `app/` | Rails, some framework projects |
+| `baml_src/` | BAML prompt sources alongside a language implementation |
+
+Roots must be non-overlapping (no declared root may be an ancestor of another),
+non-duplicating, and resolve inside the project. Violations surface as
+config-validation errors at load time.
+
+### Adding a root later
+
+Adding a scope root after the wizard has run is a manual edit for now: open
+`.lexibrary/config.yaml`, append another `- path: <dir>/` entry under
+`scope_roots:`, then re-run `lexictl update` so the new root gets crawled.
+
+A dedicated `lexictl init --add-root <dir>` shortcut is a planned follow-up.
+Until it ships, the hand-edit above is the documented path — do not rely on
+a wizard re-run to grow the list, because the wizard guards against
+overwriting an existing config.
 
 ### Step 3: Agent Environment
 
@@ -305,7 +343,7 @@ The `--env` flag overrides the `agent_environment` config value for that run.
 
 ### Full re-generation
 
-To regenerate all design files after significant config changes (such as changing `scope_root` or `llm.model`):
+To regenerate all design files after significant config changes (such as changing `scope_roots` or `llm.model`):
 
 ```bash
 lexictl update

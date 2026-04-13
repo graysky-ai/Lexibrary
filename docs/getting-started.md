@@ -101,7 +101,7 @@ lexictl update
 
 This command:
 
-1. Discovers all source files under `scope_root` (respecting ignore patterns).
+1. Discovers all source files under every directory listed in `scope_roots` (respecting ignore patterns).
 2. Compares each file's SHA-256 hash against the hash stored in its existing design file (if any).
 3. Classifies the type of change (unchanged, content-only, interface-changed, new file).
 4. Sends changed files to the configured LLM for design file generation.

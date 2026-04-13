@@ -25,14 +25,14 @@ from lexibrary.init.rules.base import (
 )
 from lexibrary.templates import read_template
 
-# Default scope root used when config is not available
-_DEFAULT_SCOPE_ROOT = "src"
+# Default scope roots used when config is not available
+_DEFAULT_SCOPE_ROOTS: list[str] = ["src"]
 
 
 def generate_cursor_rules(
     project_root: Path,
     *,
-    scope_root: str = _DEFAULT_SCOPE_ROOT,
+    scope_roots: list[str] | None = None,
 ) -> list[Path]:
     """Generate Cursor agent rule files at *project_root*.
 
@@ -42,18 +42,25 @@ def generate_cursor_rules(
        (``description``, ``globs``, ``alwaysApply: true``) followed by core
        agent rules.
     2. ``.cursor/rules/lexibrary-editing.mdc`` — MDC file scoped to source
-       files under *scope_root* with editing instructions.
+       files under *scope_roots* with editing instructions.
     3. ``.cursor/skills/lexi.md`` — combined skills (search, lookup,
        concepts, stack).
 
     Args:
         project_root: Absolute path to the project root directory.
-        scope_root: Source root directory for glob-scoped editing rules
-            (default: ``"src"``).
+        scope_roots: Source root directories for glob-scoped editing rules
+            (default: ``["src"]``). Callers typically derive this from
+            ``WizardAnswers.scope_roots`` via
+            ``[sr.path for sr in answers.scope_roots]``. A single-element
+            list emits a scalar ``globs:`` value; a multi-element list
+            emits a YAML flow-style list (Block E of the ``multi-root``
+            change).
 
     Returns:
         List of absolute paths to all created or updated files.
     """
+    roots = list(scope_roots) if scope_roots else list(_DEFAULT_SCOPE_ROOTS)
+
     created: list[Path] = []
 
     # --- .cursor/rules/lexibrary.mdc ---
@@ -67,7 +74,7 @@ def generate_cursor_rules(
 
     # --- .cursor/rules/lexibrary-editing.mdc ---
     editing_mdc_file = rules_dir / "lexibrary-editing.mdc"
-    editing_content = _build_editing_mdc_content(scope_root)
+    editing_content = _build_editing_mdc_content(roots)
     editing_mdc_file.write_text(editing_content, encoding="utf-8")
     created.append(editing_mdc_file)
 
@@ -99,23 +106,38 @@ def _build_mdc_content() -> str:
     return f"{frontmatter}\n{get_core_rules()}\n"
 
 
-def _build_editing_mdc_content(scope_root: str) -> str:
+def _build_editing_mdc_content(scope_roots: list[str]) -> str:
     """Build the editing-scoped ``.mdc`` file content.
 
-    The editing rule uses ``alwaysApply: false`` and a glob pattern
-    scoped to *scope_root* so it activates only when source files are
+    The editing rule uses ``alwaysApply: false`` and glob patterns
+    scoped to *scope_roots* so it activates only when source files are
     being edited.
 
+    Follows Block E of the ``multi-root`` change for the ``globs:`` line:
+
+    * Single root → YAML scalar, e.g. ``globs: "src/**"``.
+    * Multi-root → YAML flow-style list,
+      e.g. ``globs: ["src/**", "baml_src/**"]``.
+
+    Both forms are valid MDC/YAML; keeping a scalar in the single-root case
+    minimises the diff for existing single-root installs.
+
     Args:
-        scope_root: Source root directory for glob patterns.
+        scope_roots: Source root directories for glob patterns.
 
     Returns:
         Complete editing MDC file content as a string.
     """
+    if len(scope_roots) == 1:
+        globs_line = f'globs: "{scope_roots[0]}/**"'
+    else:
+        formatted = ", ".join(f'"{root}/**"' for root in scope_roots)
+        globs_line = f"globs: [{formatted}]"
+
     frontmatter = (
         "---\n"
         "description: Lexibrary editing rules — auto-lookup and design file reminders\n"
-        f'globs: "{scope_root}/**"\n'
+        f"{globs_line}\n"
         "alwaysApply: false\n"
         "---"
     )

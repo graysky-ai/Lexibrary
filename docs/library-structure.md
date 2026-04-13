@@ -10,14 +10,17 @@ After running `lexictl init` and `lexictl update`, your `.lexibrary/` directory 
 .lexibrary/
 ├── config.yaml              # Project configuration
 ├── TOPOLOGY.md              # Agent entry point -- project topology and navigation
-├── designs/                 # Mirror tree of design files (matches your source tree)
-│   └── src/mypackage/
-│       ├── .aindex          # Directory routing table
-│       ├── main.py.md       # Design file for main.py
-│       ├── utils.py.md      # Design file for utils.py
-│       └── models/
-│           ├── .aindex      # Directory routing table for models/
-│           └── user.py.md   # Design file for user.py
+├── designs/                 # Design-file mirror tree (one subtree per scope root)
+│   ├── src/                 # First declared root from scope_roots
+│   │   └── mypackage/
+│   │       ├── .aindex      # Directory routing table
+│   │       ├── main.py.md   # Design file for main.py
+│   │       ├── utils.py.md  # Design file for utils.py
+│   │       └── models/
+│   │           ├── .aindex  # Directory routing table for models/
+│   │           └── user.py.md
+│   └── baml_src/            # Second declared root (if configured)
+│       └── ...              # Mirrors baml_src/ the same way
 ├── concepts/                # Concepts wiki -- project vocabulary and patterns
 │   ├── pydantic-config.md
 │   └── change-detection.md
@@ -35,11 +38,23 @@ After running `lexictl init` and `lexictl update`, your `.lexibrary/` directory 
 └── logs/                    # Sweep log files
 ```
 
+Each path listed in `scope_roots` (in `config.yaml`) becomes its own top-level
+subtree under `.lexibrary/designs/`. A project with one root has one subtree;
+a project with two roots has two, and so on. Design files always mirror the
+declared root's relative path, so there are no collisions between roots.
+Example `config.yaml` snippet:
+
+```yaml
+scope_roots:
+  - path: src/
+  - path: baml_src/
+```
+
 ## Artifact Types
 
 ### config.yaml
 
-The project configuration file. Created by `lexictl init` and edited manually or via `lexictl setup --update`. Contains all settings that control Lexibrary's behavior: scope root, LLM provider, token budgets, ignore patterns, sweep settings, and more.
+The project configuration file. Created by `lexictl init` and edited manually or via `lexictl setup --update`. Contains all settings that control Lexibrary's behavior: scope roots, LLM provider, token budgets, ignore patterns, sweep settings, and more.
 
 See [Configuration](configuration.md) for the full reference.
 
@@ -59,11 +74,17 @@ Agents are instructed to read this file at the start of every session. It gives 
 
 ### Design Files (mirror tree)
 
-Design files are Markdown files that describe individual source files. They live in a mirror tree inside `.lexibrary/` that matches your source directory structure:
+Design files are Markdown files that describe individual source files. They live
+in a mirror tree inside `.lexibrary/designs/` with a dedicated top-level subtree
+per declared scope root. The subtree name matches the `path` value in the
+corresponding `scope_roots` entry:
 
 ```
 Source file:      src/mypackage/utils.py
-Design file:      .lexibrary/src/mypackage/utils.py.md
+Design file:      .lexibrary/designs/src/mypackage/utils.py.md
+
+Source file:      baml_src/prompts.baml
+Design file:      .lexibrary/designs/baml_src/prompts.baml.md
 ```
 
 Each design file contains:

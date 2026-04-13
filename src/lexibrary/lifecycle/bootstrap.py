@@ -26,6 +26,7 @@ from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.ast_parser import compute_hashes
 from lexibrary.cli._output import warn
 from lexibrary.config.schema import LexibraryConfig
+from lexibrary.config.scope import find_owning_root
 from lexibrary.ignore import create_ignore_matcher
 from lexibrary.utils.atomic import atomic_write
 from lexibrary.utils.paths import LEXIBRARY_DIR, mirror_path
@@ -46,6 +47,21 @@ class BootstrapStats:
     files_skipped: int = 0
     files_failed: int = 0
     errors: list[str] = field(default_factory=list)
+
+
+def _is_within_any_scope(
+    source_path: Path,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> bool:
+    """Return ``True`` when *source_path* sits under any declared scope root.
+
+    Inlined wrapper around :func:`find_owning_root` so this module remains
+    decoupled from the archivist pipeline (which owns its own copy of the
+    same predicate). This is the multi-root replacement for the legacy
+    single-root ``_is_within_scope`` import.
+    """
+    return find_owning_root(source_path, config.scope_roots, project_root) is not None
 
 
 def _discover_source_files(

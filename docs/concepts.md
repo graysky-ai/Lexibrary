@@ -165,8 +165,13 @@ When a concept is deprecated with `superseded_by`, the `deprecated_concept_usage
 ### Adding Comments
 
 ```bash
-lexi concept comment scope-root --body "Clarified: scope_root is always relative to project root."
+lexi concept comment scope-root --body "Clarified: scope_roots entries are always relative to project root; the historical concept slug scope-root is retained even though the config key is now scope_roots."
 ```
+
+The concept slug `scope-root` is deliberately preserved as an artefact ID so
+older commentary and wikilinks continue to resolve; the concept body itself
+documents the plural `scope_roots` config key introduced with multi-root
+support.
 
 ## Concept Index
 
@@ -192,7 +197,7 @@ The following validation checks relate to concepts:
 
 ## Example Workflow
 
-Suppose three different modules all validate file paths the same way -- resolving them, checking they exist, and verifying they are within `scope_root`. This pattern is worth documenting:
+Suppose three different modules all validate file paths the same way -- resolving them, checking they exist, and verifying they are within at least one declared `scope_roots` entry. This pattern is worth documenting:
 
 ```bash
 # Check if a concept already exists

@@ -44,7 +44,13 @@ Lexibrary produces several types of artifacts from your source code. Here is the
 
 ### 1. Source file discovery
 
-When you run `lexictl update`, Lexibrary walks the directory tree under `scope_root` (configured in `config.yaml`). It respects ignore patterns from `.gitignore`, `.lexignore`, and the `ignore.additional_patterns` config setting. Binary files (images, archives, executables) are skipped based on file extension.
+When you run `lexictl update`, Lexibrary walks each directory listed in
+`scope_roots` (configured in `config.yaml`). Every declared root is crawled
+independently, producing its own subtree of design files and `.aindex` routing
+tables — see [Library Structure](library-structure.md) for the on-disk shape.
+The walk respects ignore patterns from `.gitignore`, `.lexignore`, and the
+`ignore.additional_patterns` config setting. Binary files (images, archives,
+executables) are skipped based on file extension.
 
 ### 2. Change detection
 
@@ -76,10 +82,13 @@ For files that need new or updated design files, Lexibrary sends the source code
 
 ### 5. Design file output
 
-The generated design file is written to the `.lexibrary/` directory in a mirror tree that matches your source directory structure. For example:
+The generated design file is written to the `.lexibrary/designs/` directory in
+a mirror tree that matches your source directory structure, with a dedicated
+top-level subtree per declared scope root. For example:
 
 ```
-src/lexibrary/config/schema.py    -->    .lexibrary/src/lexibrary/config/schema.py.md
+src/lexibrary/config/schema.py    -->    .lexibrary/designs/src/lexibrary/config/schema.py.md
+baml_src/prompts.baml             -->    .lexibrary/designs/baml_src/prompts.baml.md
 ```
 
 Each design file includes YAML frontmatter with metadata:
@@ -114,7 +123,7 @@ Alongside the link graph, Lexibrary builds a second SQLite database (`.lexibrary
 
 **Build pipeline.** The symbol graph is built in the following order during `lexictl update`:
 
-1. **File discovery** -- the builder walks source files under `scope_root`, filtered by ignore patterns.
+1. **File discovery** -- the builder walks source files under each declared `scope_roots` entry, filtered by ignore patterns.
 2. **AST extraction** -- language-specific extractors (`python_parser.py`, `typescript_parser.py`) parse each file with tree-sitter to extract function, method, and class definitions; call sites; class edges (inheritance, instantiation); composition sites (type-annotated class attributes); and enum/constant definitions with their members.
 3. **Symbol insertion** -- all extracted definitions are written to the `symbols` table.
 4. **Call resolution** -- the Python resolver (`resolver_python.py`) resolves cross-file call sites using import analysis. The JS/TS resolver (`resolver_js.py`) resolves cross-file calls using `tsconfig.json` path aliases and extension probing.
@@ -175,7 +184,7 @@ Each artifact type follows a different lifecycle pattern for initialization, cre
 
 ### Design files
 
-- **Initialization:** Created automatically by `lexictl update` for every source file under `scope_root`. New projects get a full set; existing projects get design files for all discovered source files on first run.
+- **Initialization:** Created automatically by `lexictl update` for every source file under any declared `scope_roots` entry. New projects get a full set; existing projects get design files for all discovered source files on first run.
 - **Creation trigger:** Deterministic -- `lexictl update` generates design files for any source file that lacks one or has changed. Agents can also trigger regeneration via `lexi design update` after editing source code.
 - **Maintenance:** Design files are regenerated when the source file changes. Agent-edited design files (detected via `design_hash` mismatch) are preserved during updates. Agents add context through `lexi design comment` for non-trivial changes.
 - **Deprecation:** Design files are implicitly stale when their source file is deleted. The `file_existence` validation check flags orphaned design files. They can be cleaned up by running `lexictl update`, which removes design files for missing source files.
@@ -199,7 +208,7 @@ Each artifact type follows a different lifecycle pattern for initialization, cre
 
 ### .aindex routing tables
 
-- **Initialization:** Created during `lexictl update` for each directory under `scope_root`.
+- **Initialization:** Created during `lexictl update` for each directory under every declared `scope_roots` entry; each declared root produces its own `.aindex` tree.
 - **Creation trigger:** Deterministic -- generated automatically during project updates and on demand via `lexictl index <dir>`.
 - **Maintenance:** Agents can update directory descriptions via `lexi describe <dir> <description>`. Local conventions are maintained within `.aindex` files and inherited by child directories.
 - **Deprecation:** Removed automatically when the corresponding directory is deleted and `lexictl update` is re-run.

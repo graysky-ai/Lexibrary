@@ -183,15 +183,15 @@ class TestEditingMDCRulesFile:
         assert "description:" in content
 
     def test_editing_mdc_has_default_glob(self, tmp_path: Path) -> None:
-        """Editing MDC uses default scope_root glob pattern."""
+        """Editing MDC uses default scope_roots glob pattern."""
         generate_cursor_rules(tmp_path)
         editing_mdc = tmp_path / ".cursor" / "rules" / "lexibrary-editing.mdc"
         content = editing_mdc.read_text(encoding="utf-8")
         assert "src/**" in content
 
-    def test_editing_mdc_custom_scope_root(self, tmp_path: Path) -> None:
-        """Editing MDC uses custom scope_root for glob pattern."""
-        generate_cursor_rules(tmp_path, scope_root="lib")
+    def test_editing_mdc_custom_scope_roots(self, tmp_path: Path) -> None:
+        """Editing MDC uses custom scope_roots for glob pattern."""
+        generate_cursor_rules(tmp_path, scope_roots=["lib"])
         editing_mdc = tmp_path / ".cursor" / "rules" / "lexibrary-editing.mdc"
         content = editing_mdc.read_text(encoding="utf-8")
         assert "lib/**" in content
@@ -221,6 +221,78 @@ class TestEditingMDCRulesFile:
         content = editing_mdc.read_text(encoding="utf-8")
         assert "old editing rules" not in content
         assert "alwaysApply: false" in content
+
+
+# ---------------------------------------------------------------------------
+# Editing MDC globs emission — Block E (single scalar vs. flow-style list)
+# ---------------------------------------------------------------------------
+
+
+class TestEditingMDCGlobsEmission:
+    """Scalar-vs-list ``globs:`` emission depending on root count (Block E).
+
+    - Single root → ``globs: "<path>/**"`` (scalar).
+    - Multi-root → ``globs: ["<path1>/**", "<path2>/**", ...]`` (flow list).
+    """
+
+    def test_single_root_emits_scalar_globs(self, tmp_path: Path) -> None:
+        """One scope root → scalar YAML value on the ``globs:`` line."""
+        generate_cursor_rules(tmp_path, scope_roots=["src"])
+        editing_mdc = tmp_path / ".cursor" / "rules" / "lexibrary-editing.mdc"
+        content = editing_mdc.read_text(encoding="utf-8")
+        assert 'globs: "src/**"\n' in content
+        # Must NOT use flow-style list on single root (Block E rule).
+        assert "globs: [" not in content
+
+    def test_multi_root_emits_flow_style_list_globs(self, tmp_path: Path) -> None:
+        """Two scope roots → flow-style YAML list on the ``globs:`` line."""
+        generate_cursor_rules(tmp_path, scope_roots=["src", "baml_src"])
+        editing_mdc = tmp_path / ".cursor" / "rules" / "lexibrary-editing.mdc"
+        content = editing_mdc.read_text(encoding="utf-8")
+        assert 'globs: ["src/**", "baml_src/**"]\n' in content
+
+    def test_three_roots_emit_flow_style_list_globs(self, tmp_path: Path) -> None:
+        """Three scope roots → flow-style list preserves declared order."""
+        generate_cursor_rules(tmp_path, scope_roots=["src", "lib", "app"])
+        editing_mdc = tmp_path / ".cursor" / "rules" / "lexibrary-editing.mdc"
+        content = editing_mdc.read_text(encoding="utf-8")
+        assert 'globs: ["src/**", "lib/**", "app/**"]\n' in content
+
+    def test_single_root_exact_frontmatter(self, tmp_path: Path) -> None:
+        """Single-root frontmatter is byte-identical to the Block E contract."""
+        generate_cursor_rules(tmp_path, scope_roots=["src"])
+        editing_mdc = tmp_path / ".cursor" / "rules" / "lexibrary-editing.mdc"
+        content = editing_mdc.read_text(encoding="utf-8")
+        expected_frontmatter = (
+            "---\n"
+            "description: Lexibrary editing rules — auto-lookup and design file reminders\n"
+            'globs: "src/**"\n'
+            "alwaysApply: false\n"
+            "---"
+        )
+        assert content.startswith(expected_frontmatter)
+
+    def test_multi_root_exact_frontmatter(self, tmp_path: Path) -> None:
+        """Multi-root frontmatter is byte-identical to the Block E contract."""
+        generate_cursor_rules(tmp_path, scope_roots=["src", "baml_src"])
+        editing_mdc = tmp_path / ".cursor" / "rules" / "lexibrary-editing.mdc"
+        content = editing_mdc.read_text(encoding="utf-8")
+        expected_frontmatter = (
+            "---\n"
+            "description: Lexibrary editing rules — auto-lookup and design file reminders\n"
+            'globs: ["src/**", "baml_src/**"]\n'
+            "alwaysApply: false\n"
+            "---"
+        )
+        assert content.startswith(expected_frontmatter)
+
+    def test_default_scope_roots_emits_scalar(self, tmp_path: Path) -> None:
+        """Default (no scope_roots kwarg) behaves as single-root with ``src``."""
+        generate_cursor_rules(tmp_path)
+        editing_mdc = tmp_path / ".cursor" / "rules" / "lexibrary-editing.mdc"
+        content = editing_mdc.read_text(encoding="utf-8")
+        assert 'globs: "src/**"\n' in content
+        assert "globs: [" not in content
 
 
 # ---------------------------------------------------------------------------

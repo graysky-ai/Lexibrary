@@ -155,11 +155,47 @@ class TestDetectScopeRoots:
         result = detect_scope_roots(tmp_path)
         assert "app/" in result
 
-    def test_all_three_roots(self, tmp_path: Path) -> None:
-        for d in ["src", "lib", "app"]:
+    def test_detect_baml_src_directory(self, tmp_path: Path) -> None:
+        """``baml_src/`` is part of the candidate list (multi-root task 9.1)."""
+        (tmp_path / "baml_src").mkdir()
+        result = detect_scope_roots(tmp_path)
+        assert "baml_src/" in result
+
+    def test_detect_baml_src_alongside_src(self, tmp_path: Path) -> None:
+        """When both ``src/`` and ``baml_src/`` exist, both are returned.
+
+        This is the canonical multi-root repo shape (Python sources plus
+        BAML schemas) and must light up both roots by default for the
+        wizard's pre-selected checkbox UX.
+        """
+        (tmp_path / "src").mkdir()
+        (tmp_path / "baml_src").mkdir()
+        result = detect_scope_roots(tmp_path)
+        assert "src/" in result
+        assert "baml_src/" in result
+
+    def test_detect_baml_src_absent_when_missing(self, tmp_path: Path) -> None:
+        """``baml_src/`` is not returned when the directory does not exist."""
+        (tmp_path / "src").mkdir()
+        result = detect_scope_roots(tmp_path)
+        assert "baml_src/" not in result
+
+    def test_candidate_declaration_order(self, tmp_path: Path) -> None:
+        """Detection preserves the declared candidate order: src, lib, app, baml_src.
+
+        The wizard's multi-select UX relies on this order, so we lock it in.
+        """
+        for d in ["src", "lib", "app", "baml_src"]:
             (tmp_path / d).mkdir()
         result = detect_scope_roots(tmp_path)
-        assert len(result) == 3
+        assert result == ["src/", "lib/", "app/", "baml_src/"]
+
+    def test_all_four_roots(self, tmp_path: Path) -> None:
+        """All four canonical roots (including ``baml_src/``) are detected."""
+        for d in ["src", "lib", "app", "baml_src"]:
+            (tmp_path / d).mkdir()
+        result = detect_scope_roots(tmp_path)
+        assert len(result) == 4
 
 
 # -----------------------------------------------------------------------

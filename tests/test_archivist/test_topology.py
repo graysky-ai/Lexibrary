@@ -2743,3 +2743,200 @@ class TestTokenSentinelTodo:
 
         source = inspect.getsource(_apply_token_sentinel)
         assert "TODO: review sentinel strategy after detail_dirs" in source
+
+
+# ---------------------------------------------------------------------------
+# Multi-root topology tests (group 3.4)
+# ---------------------------------------------------------------------------
+
+
+def _write_multi_root_config(project_root: Path, roots: list[str]) -> None:
+    """Write a ``.lexibrary/config.yaml`` with the given scope roots.
+
+    Emits the list-of-mappings shape (``scope_roots: - path: ...``) that
+    :class:`lexibrary.config.schema.LexibraryConfig` expects.
+    """
+    lines = ["scope_roots:"]
+    for r in roots:
+        lines.append(f"  - path: {r}")
+    (project_root / LEXIBRARY_DIR).mkdir(exist_ok=True)
+    (project_root / LEXIBRARY_DIR / "config.yaml").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
+    )
+
+
+class TestMultiRootTopology:
+    """Verify generate_raw_topology emits one per-root section per declared root.
+
+    Group 3.4 of the multi-root change. Exercises the ``<!-- root: NAME -->``
+    wrapper scheme, declared-order iteration, determinism, and the empty-root
+    skip rule. The project-wide ``config`` and ``stats`` sections are emitted
+    once at the document level (outside any per-root wrapper).
+    """
+
+    def _seed_two_root_project(self, tmp_path: Path) -> str:
+        """Create a tmp_path project with ``src/`` and ``baml_src/`` scope roots.
+
+        Writes both a config.yaml declaring both roots and ``.aindex`` files
+        under each declared root so :func:`generate_raw_topology` has content
+        to emit per root. Also creates the on-disk directories referenced by
+        the config so ``resolved_scope_roots`` does not move them to ``missing``.
+        """
+        project_name = tmp_path.name
+
+        # On-disk directories for each declared root (required so
+        # ``resolved_scope_roots`` treats them as resolved, not missing).
+        (tmp_path / "src").mkdir()
+        (tmp_path / "baml_src").mkdir()
+
+        _write_multi_root_config(tmp_path, ["src/", "baml_src/"])
+
+        _write_aindex(tmp_path, project_name, "Project root")
+        _write_aindex(tmp_path, f"{project_name}/src", "Python source code")
+        _write_aindex(tmp_path, f"{project_name}/baml_src", "BAML schemas")
+
+        return project_name
+
+    def test_per_root_markers_in_declared_order(self, tmp_path: Path) -> None:
+        """Both declared roots produce ``<!-- root: NAME -->`` wrappers in order."""
+        self._seed_two_root_project(tmp_path)
+        result_path = generate_raw_topology(tmp_path)
+        content = result_path.read_text(encoding="utf-8")
+
+        # Both root wrappers are present with the declared path strings.
+        assert "<!-- root: src/ -->" in content
+        assert "<!-- end-root: src/ -->" in content
+        assert "<!-- root: baml_src/ -->" in content
+        assert "<!-- end-root: baml_src/ -->" in content
+
+        # Declared order: src/ section opens before baml_src/ section opens.
+        src_open = content.index("<!-- root: src/ -->")
+        baml_open = content.index("<!-- root: baml_src/ -->")
+        assert src_open < baml_open
+
+        # The src/ section closes before the baml_src/ section opens (no
+        # interleaving).
+        src_close = content.index("<!-- end-root: src/ -->")
+        assert src_close < baml_open
+
+    def test_per_root_content_filtered_by_root(self, tmp_path: Path) -> None:
+        """Each per-root block only contains its own ``.aindex`` billboards."""
+        self._seed_two_root_project(tmp_path)
+        result_path = generate_raw_topology(tmp_path)
+        content = result_path.read_text(encoding="utf-8")
+
+        # Split the document on the root-wrapper markers so we can verify
+        # that each billboard only appears in the block that owns it.
+        src_block = content.split("<!-- root: src/ -->")[1].split("<!-- end-root: src/ -->")[0]
+        baml_block = content.split("<!-- root: baml_src/ -->")[1].split(
+            "<!-- end-root: baml_src/ -->"
+        )[0]
+
+        assert "Python source code" in src_block
+        assert "BAML schemas" not in src_block
+        assert "BAML schemas" in baml_block
+        assert "Python source code" not in baml_block
+
+    def test_project_sections_emitted_once_outside_root_wrappers(
+        self, tmp_path: Path
+    ) -> None:
+        """``config`` and ``stats`` sections appear once, outside per-root wrappers."""
+        self._seed_two_root_project(tmp_path)
+        result_path = generate_raw_topology(tmp_path)
+        content = result_path.read_text(encoding="utf-8")
+
+        # Section markers appear exactly once each at the document level.
+        assert content.count("<!-- section: config -->") == 1
+        assert content.count("<!-- section: stats -->") == 1
+
+        # They come after the last per-root wrapper closes.
+        last_root_close = content.rfind("<!-- end-root: ")
+        config_marker = content.index("<!-- section: config -->")
+        stats_marker = content.index("<!-- section: stats -->")
+        assert last_root_close < config_marker
+        assert last_root_close < stats_marker
+
+    def test_deterministic_across_runs(self, tmp_path: Path) -> None:
+        """Two back-to-back runs against an unchanged tree produce identical bytes."""
+        self._seed_two_root_project(tmp_path)
+
+        first = generate_raw_topology(tmp_path).read_bytes()
+        second = generate_raw_topology(tmp_path).read_bytes()
+
+        assert first == second
+
+    def test_empty_root_skipped(self, tmp_path: Path) -> None:
+        """A declared root with zero ``.aindex`` entries is skipped entirely."""
+        project_name = tmp_path.name
+        (tmp_path / "src").mkdir()
+        (tmp_path / "baml_src").mkdir()  # declared but unindexed
+
+        _write_multi_root_config(tmp_path, ["src/", "baml_src/"])
+
+        _write_aindex(tmp_path, project_name, "Project root")
+        _write_aindex(tmp_path, f"{project_name}/src", "Python source code")
+        # NOTE: no .aindex under ``baml_src/`` — the per-root filter finds
+        # zero entries, so the section must be skipped.
+
+        result_path = generate_raw_topology(tmp_path)
+        content = result_path.read_text(encoding="utf-8")
+
+        assert "<!-- root: src/ -->" in content
+        # Empty root was skipped: no wrapper, no content leakage.
+        assert "<!-- root: baml_src/ -->" not in content
+        assert "BAML" not in content
+
+    def test_single_root_default_still_wraps(self, tmp_path: Path) -> None:
+        """Default single-root config emits one ``<!-- root: . -->`` wrapper."""
+        (tmp_path / LEXIBRARY_DIR).mkdir()
+        project_name = tmp_path.name
+        _write_aindex(tmp_path, project_name, "Root directory")
+        _write_aindex(tmp_path, f"{project_name}/src", "Source")
+
+        # Intentionally no config.yaml — ``load_config`` falls back to the
+        # default ``scope_roots: [{path: .}]`` shape.
+        result_path = generate_raw_topology(tmp_path)
+        content = result_path.read_text(encoding="utf-8")
+
+        assert "<!-- root: . -->" in content
+        assert "<!-- end-root: . -->" in content
+
+    def test_aindex_path_non_collision_across_roots(self, tmp_path: Path) -> None:
+        """Design-mirror paths under ``.lexibrary/designs/`` are per-root and do not collide.
+
+        With ``scope_roots: [src/, baml_src/]``, writing ``.aindex`` files
+        under both roots results in separate subtrees under
+        ``.lexibrary/designs/`` — ``src/...`` and ``baml_src/...`` — that
+        coexist without overwriting.
+        """
+        project_name = self._seed_two_root_project(tmp_path)
+
+        # Drill into a nested source file under each root to prove that
+        # deeper paths are stored in isolated per-root subtrees.
+        _write_aindex(
+            tmp_path,
+            f"{project_name}/src/foo",
+            "Module foo",
+            entries=[AIndexEntry(name="bar.py", entry_type="file", description="Bar")],
+        )
+        _write_aindex(
+            tmp_path,
+            f"{project_name}/baml_src/foo",
+            "BAML module foo",
+            entries=[AIndexEntry(name="bar.baml", entry_type="file", description="Bar")],
+        )
+
+        src_aindex = tmp_path / LEXIBRARY_DIR / project_name / "src" / "foo" / ".aindex"
+        baml_aindex = tmp_path / LEXIBRARY_DIR / project_name / "baml_src" / "foo" / ".aindex"
+        assert src_aindex.exists()
+        assert baml_aindex.exists()
+        # Same filename in different per-root subtrees: paths differ, files
+        # are independent, neither clobbers the other.
+        assert src_aindex != baml_aindex
+        assert src_aindex.read_text(encoding="utf-8") != baml_aindex.read_text(encoding="utf-8")
+
+        # Regenerate topology — both per-root billboards surface.
+        result_path = generate_raw_topology(tmp_path)
+        content = result_path.read_text(encoding="utf-8")
+        assert "Module foo" in content
+        assert "BAML module foo" in content

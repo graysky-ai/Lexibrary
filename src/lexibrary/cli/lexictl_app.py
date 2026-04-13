@@ -324,7 +324,15 @@ def update(
         info(f"Skeleton generated. Change level: {result.change.value}")
         return
 
-    # --topology: regenerate raw topology only
+    # --topology: regenerate raw topology only.
+    #
+    # Multi-root handling is internal to :func:`generate_raw_topology`
+    # (group 3.1): it iterates ``config.resolved_scope_roots(...).resolved``
+    # in declared order and emits one ``<!-- root: NAME -->`` block per root.
+    # The CLI therefore does not loop here — the single call covers every
+    # declared root and produces one ``raw-topology.md``, which the
+    # ``topology-builder`` skill later renders into the agent-navigable
+    # ``.lexibrary/TOPOLOGY.md``.
     if topology:
         from lexibrary.archivist.topology import generate_raw_topology  # noqa: PLC0415
 

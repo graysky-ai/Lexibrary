@@ -134,7 +134,13 @@ Flags Stack posts whose `refs.files` entries point to source files with stale de
 
 #### `aindex_coverage`
 
-Walks the `scope_root` directory tree and checks that each directory has a corresponding `.aindex` file in `.lexibrary/`. Directories without `.aindex` files are not indexed and will not appear in agent routing. Skips hidden directories, `.lexibrary/` itself, `node_modules/`, `__pycache__/`, `venv/`, and `.venv/`.
+Walks every declared `scope_roots` entry independently and checks that each
+directory under each root has a corresponding `.aindex` file in
+`.lexibrary/designs/<root>/`. One coverage walk is performed per declared
+root, so a multi-root project (e.g. `scope_roots: [src/, baml_src/]`) surfaces
+missing-index issues for either tree. Directories without `.aindex` files are
+not indexed and will not appear in agent routing. Skips hidden directories,
+`.lexibrary/` itself, `node_modules/`, `__pycache__/`, `venv/`, and `.venv/`.
 
 #### `bidirectional_deps`
 

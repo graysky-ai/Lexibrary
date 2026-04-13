@@ -1,0 +1,6 @@
+comments:
+- body: Mixed-type search now augments artefact buckets with symbol hits when no symbol-incompatible
+    filter is active. The `--type symbol` early-route still rejects incompatible filters
+    strictly; default mode silently skips symbols when `--tag`/`--status` are set.
+    Scope filtering applies to both.
+  date: '2026-04-12T22:45:08.008624Z'

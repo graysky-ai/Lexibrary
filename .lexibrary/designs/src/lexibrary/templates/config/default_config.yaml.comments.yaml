@@ -1,0 +1,7 @@
+comments:
+- body: 'Multi-root migration (group 12): scope_root: . (scalar) replaced with scope_roots:
+    [{path: .}] (list of mappings, Block B from openspec change multi-root). Default
+    ships as a list always, never scalar shorthand. New projects scaffolded by lexictl
+    init now get the list shape; ScopeRoot model accepts path (required), name (optional),
+    origin (reserved Literal[''local'']).'
+  date: '2026-04-13T03:44:24.456863Z'

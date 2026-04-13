@@ -356,9 +356,9 @@ def build_directory_lookup(
     display_limit = config.conventions.lookup_display_limit
 
     if len(convention_index) > 0:
-        conventions_list, total_count = convention_index.find_by_scope_limited(
+        conventions_list, total_count = convention_index.find_by_any_scope_limited(
             rel_target,
-            scope_root=config.scope_root,
+            config.scope_roots,
             limit=display_limit,
         )
 
@@ -511,9 +511,9 @@ def build_file_lookup(
         display_limit = min(config.conventions.lookup_display_limit, 5)
 
     if len(convention_index) > 0:
-        conventions_list, total_count = convention_index.find_by_scope_limited(
+        conventions_list, total_count = convention_index.find_by_any_scope_limited(
             rel_target,
-            scope_root=config.scope_root,
+            config.scope_roots,
             limit=display_limit,
         )
 

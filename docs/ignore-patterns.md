@@ -145,7 +145,7 @@ Binary extension checking happens separately and earlier in the pipeline, before
 
 ### During `lexictl update`
 
-The full project update discovers files by recursively scanning `scope_root`. For each file:
+The full project update discovers files by recursively scanning every directory listed under `scope_roots` and concatenating the per-root results. For each discovered file:
 
 1. Binary extension check -- skip if the extension is in `crawl.binary_extensions`.
 2. Ignore pattern check -- skip if matched by any ignore source.

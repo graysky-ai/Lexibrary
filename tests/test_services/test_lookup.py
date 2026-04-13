@@ -456,19 +456,25 @@ def _make_config(
     playbook_limit: int = 5,
     stack_limit: int = 5,
     concept_limit: int = 10,
-    scope_root: str = "project",
+    scope_roots: list[str] | None = None,
 ) -> object:
-    """Create a real LexibraryConfig for testing service functions."""
+    """Create a real LexibraryConfig for testing service functions.
+
+    ``scope_roots`` is a list of relative path strings; defaults to ``["."]``
+    (project root). Each string is wrapped in a :class:`ScopeRoot` mapping.
+    """
     from lexibrary.config.schema import (  # noqa: PLC0415
         ConceptConfig,
         ConventionConfig,
         LexibraryConfig,
         PlaybookConfig,
+        ScopeRoot,
         StackConfig,
     )
 
+    roots = scope_roots if scope_roots is not None else ["."]
     return LexibraryConfig(
-        scope_root=scope_root,
+        scope_roots=[ScopeRoot(path=p) for p in roots],
         conventions=ConventionConfig(lookup_display_limit=convention_limit),
         playbooks=PlaybookConfig(lookup_display_limit=playbook_limit),
         stack=StackConfig(lookup_display_limit=stack_limit),
@@ -1327,12 +1333,13 @@ class TestBuildFileLookupKeySymbols:
             ConventionConfig,
             LexibraryConfig,
             PlaybookConfig,
+            ScopeRoot,
             StackConfig,
             SymbolGraphConfig,
         )
 
         config = LexibraryConfig(
-            scope_root="project",
+            scope_roots=[ScopeRoot(path=".")],
             conventions=ConventionConfig(),
             playbooks=PlaybookConfig(),
             stack=StackConfig(),
@@ -2352,3 +2359,150 @@ class TestRenderDataFlowNotes:
 
         assert "### Data flows" in output
         assert "- **mode** in **process()** \u2014 Selects processing strategy." in output
+
+
+# ---------------------------------------------------------------------------
+# Multi-root convention delivery (task 5.3)
+# ---------------------------------------------------------------------------
+
+
+class TestConventionDeliveryMultiRoot:
+    """Conventions surface via ``find_by_any_scope_limited`` for files under any declared root.
+
+    Exercises the refactor in ``build_file_lookup``/``build_directory_lookup``
+    (task 5.1) which now delegates to ``ConventionIndex.find_by_any_scope_limited``
+    using ``config.scope_roots`` (list) instead of the old single ``scope_root``.
+    """
+
+    def _setup_two_root_project(self, tmp_path: Path) -> Path:
+        """Project with two declared roots (``src/`` and ``baml_src/``).
+
+        Creates a source file under each root plus ``.lexibrary`` scaffolding.
+        """
+        (tmp_path / "src" / "pkg").mkdir(parents=True)
+        (tmp_path / "src" / "pkg" / "mymodule.py").write_text("# module\n", encoding="utf-8")
+
+        (tmp_path / "baml_src" / "clients").mkdir(parents=True)
+        (tmp_path / "baml_src" / "clients" / "my_client.baml").write_text(
+            "client MyClient {}\n", encoding="utf-8"
+        )
+
+        lex_dir = tmp_path / ".lexibrary"
+        (lex_dir / "conventions").mkdir(parents=True)
+        (lex_dir / "concepts").mkdir(parents=True)
+        (lex_dir / "playbooks").mkdir(parents=True)
+        return tmp_path
+
+    def _write_convention(self, conventions_dir: Path, filename: str, body: str) -> None:
+        (conventions_dir / filename).write_text(body, encoding="utf-8")
+
+    def test_file_lookup_surfaces_convention_under_second_root(self, tmp_path: Path) -> None:
+        """build_file_lookup resolves conventions for files under ``baml_src/``.
+
+        A convention scoped to ``baml_src/clients`` must be delivered for
+        ``baml_src/clients/my_client.baml`` even though ``src/`` is the first
+        declared root.
+        """
+        project_root = self._setup_two_root_project(tmp_path)
+        config = _make_config(scope_roots=["src/", "baml_src/"])
+
+        # Convention scoped under the second root.
+        self._write_convention(
+            project_root / ".lexibrary" / "conventions",
+            "baml_client_layout.md",
+            """---
+title: BAML client layout
+id: CV-BAML-001
+scope: baml_src/clients
+tags:
+  - baml
+status: active
+source: user
+priority: 10
+---
+BAML clients live under `baml_src/clients/`.
+""",
+        )
+
+        target = project_root / "baml_src" / "clients" / "my_client.baml"
+
+        with (
+            patch("lexibrary.artifacts.aindex_parser.parse_aindex", return_value=None),
+            patch("lexibrary.linkgraph.query.open_index", return_value=None),
+            patch("lexibrary.services.lookup._build_iwh_peek", return_value=""),
+        ):
+            result = build_file_lookup(target, project_root, config, full=False)
+
+        assert result is not None
+        titles = [c.frontmatter.title for c in result.conventions]
+        assert "BAML client layout" in titles
+
+    def test_directory_lookup_surfaces_convention_under_second_root(self, tmp_path: Path) -> None:
+        """build_directory_lookup resolves conventions for dirs under ``baml_src/``."""
+        project_root = self._setup_two_root_project(tmp_path)
+        config = _make_config(scope_roots=["src/", "baml_src/"])
+
+        self._write_convention(
+            project_root / ".lexibrary" / "conventions",
+            "baml_client_layout.md",
+            """---
+title: BAML client layout
+id: CV-BAML-001
+scope: baml_src/clients
+tags:
+  - baml
+status: active
+source: user
+priority: 10
+---
+BAML clients live under `baml_src/clients/`.
+""",
+        )
+
+        target = project_root / "baml_src" / "clients"
+
+        with (
+            patch("lexibrary.artifacts.aindex_parser.parse_aindex", return_value=None),
+            patch("lexibrary.linkgraph.query.open_index", return_value=None),
+            patch("lexibrary.services.lookup._build_iwh_peek", return_value=""),
+        ):
+            result = build_directory_lookup(target, project_root, config)
+
+        assert result is not None
+        titles = [c.frontmatter.title for c in result.conventions]
+        assert "BAML client layout" in titles
+
+    def test_convention_with_project_dot_scope_matches_any_root(self, tmp_path: Path) -> None:
+        """A convention scoped to ``.`` applies to files under any declared root."""
+        project_root = self._setup_two_root_project(tmp_path)
+        config = _make_config(scope_roots=["src/", "baml_src/"])
+
+        self._write_convention(
+            project_root / ".lexibrary" / "conventions",
+            "global_style.md",
+            """---
+title: Global style
+id: CV-GLOBAL
+scope: .
+tags:
+  - style
+status: active
+source: config
+priority: 0
+---
+Project-wide style conventions apply to every root.
+""",
+        )
+
+        target = project_root / "baml_src" / "clients" / "my_client.baml"
+
+        with (
+            patch("lexibrary.artifacts.aindex_parser.parse_aindex", return_value=None),
+            patch("lexibrary.linkgraph.query.open_index", return_value=None),
+            patch("lexibrary.services.lookup._build_iwh_peek", return_value=""),
+        ):
+            result = build_file_lookup(target, project_root, config, full=False)
+
+        assert result is not None
+        titles = [c.frontmatter.title for c in result.conventions]
+        assert "Global style" in titles

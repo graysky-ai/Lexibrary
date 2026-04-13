@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 
+from lexibrary.config.schema import ScopeRoot
 from lexibrary.init.scaffolder import (
     _DEFAULT_LEXIGNORE_PATTERNS,
     LEXIGNORE_HEADER,
@@ -82,10 +83,15 @@ def test_idempotent(tmp_path: Path) -> None:
 
 
 def _make_answers(**overrides: object) -> WizardAnswers:
-    """Build a WizardAnswers with sensible defaults, merging *overrides*."""
-    defaults = {
+    """Build a WizardAnswers with sensible defaults, merging *overrides*.
+
+    ``scope_roots`` accepts either a ``list[ScopeRoot]`` or, as a test
+    ergonomics shortcut, a ``list[str]`` which is lifted to
+    ``[ScopeRoot(path=s) for s in strings]`` before construction.
+    """
+    defaults: dict[str, object] = {
         "project_name": "test-proj",
-        "scope_root": "src/",
+        "scope_roots": [ScopeRoot(path="src/")],
         "agent_environments": ["claude"],
         "llm_provider": "anthropic",
         "llm_model": "claude-sonnet-4-6",
@@ -97,6 +103,12 @@ def _make_answers(**overrides: object) -> WizardAnswers:
         "confirmed": True,
     }
     defaults.update(overrides)
+
+    # Allow callers to pass scope_roots as list[str] for brevity.
+    raw_roots = defaults.get("scope_roots")
+    if isinstance(raw_roots, list) and raw_roots and all(isinstance(r, str) for r in raw_roots):
+        defaults["scope_roots"] = [ScopeRoot(path=str(r)) for r in raw_roots]
+
     return WizardAnswers(**defaults)  # type: ignore[arg-type]
 
 
@@ -109,10 +121,10 @@ def test_generate_config_yaml_is_valid_yaml() -> None:
 
 
 def test_generate_config_yaml_includes_all_wizard_fields() -> None:
-    """Generated config includes project_name, scope_root, agent_environment, llm, iwh."""
+    """Generated config includes project_name, scope_roots, agent_environment, llm, iwh."""
     answers = _make_answers(
         project_name="my-app",
-        scope_root="lib/",
+        scope_roots=[ScopeRoot(path="lib/")],
         agent_environments=["claude", "cursor"],
         llm_provider="openai",
         llm_model="gpt-4o",
@@ -123,7 +135,7 @@ def test_generate_config_yaml_includes_all_wizard_fields() -> None:
     parsed = yaml.safe_load(output)
 
     assert parsed["project_name"] == "my-app"
-    assert parsed["scope_root"] == "lib/"
+    assert parsed["scope_roots"] == [{"path": "lib/"}]
     assert parsed["agent_environment"] == ["claude", "cursor"]
     assert parsed["llm"]["provider"] == "openai"
     assert parsed["llm"]["model"] == "gpt-4o"
@@ -177,6 +189,80 @@ def test_generate_config_yaml_has_header() -> None:
     answers = _make_answers()
     output = _generate_config_yaml(answers)
     assert output.startswith("# Lexibrary project configuration")
+
+
+# ---------------------------------------------------------------------------
+# scope_roots YAML emission (multi-root, Block B / list-of-mappings shape)
+# ---------------------------------------------------------------------------
+
+
+def _assert_no_legacy_scalar(yaml_text: str) -> None:
+    """Fail if ``yaml_text`` contains a ``scope_root:`` scalar anywhere.
+
+    Masks ``scope_roots:`` (plural) first so the presence of the new key
+    does not trip the check. This is the exact-string guard from task 9.5.
+    """
+    masked = yaml_text.replace("scope_roots:", "")
+    assert "scope_root:" not in masked, (
+        "found legacy `scope_root:` scalar shape in YAML output:\n" + yaml_text
+    )
+
+
+def test_generate_config_yaml_single_root_emits_list_of_mappings() -> None:
+    """Single-root config emits ``scope_roots:`` + ``- path:``, never scalar.
+
+    Matches Block B from the ``multi-root`` change. The canonical shape is a
+    YAML list of mappings even when only one root is declared — no scalar
+    shorthand like ``scope_root: src/``.
+    """
+    answers = _make_answers(scope_roots=[ScopeRoot(path="src/")])
+    output = _generate_config_yaml(answers)
+
+    # Exact-string assertions per task 9.5: the key followed by a list entry.
+    assert "scope_roots:" in output, "emitted YAML must contain scope_roots key"
+    assert "- path: src/" in output, "single root must appear as a `- path:` list entry"
+    _assert_no_legacy_scalar(output)
+
+    # Round-trip parse to confirm list-of-mappings structure.
+    parsed = yaml.safe_load(output)
+    assert isinstance(parsed["scope_roots"], list)
+    assert parsed["scope_roots"] == [{"path": "src/"}]
+
+
+def test_generate_config_yaml_multi_root_emits_list_of_mappings() -> None:
+    """Multi-root config emits one ``- path:`` line per declared root, in order."""
+    answers = _make_answers(
+        scope_roots=[ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")],
+    )
+    output = _generate_config_yaml(answers)
+
+    assert "scope_roots:" in output
+    assert "- path: src/" in output
+    assert "- path: baml_src/" in output
+    _assert_no_legacy_scalar(output)
+
+    # Declared order must be preserved in the emitted YAML.
+    src_idx = output.index("- path: src/")
+    baml_idx = output.index("- path: baml_src/")
+    assert src_idx < baml_idx, "scope_roots must preserve declared order"
+
+    parsed = yaml.safe_load(output)
+    assert parsed["scope_roots"] == [{"path": "src/"}, {"path": "baml_src/"}]
+
+
+def test_generate_config_yaml_no_scope_roots_defaults_to_dot() -> None:
+    """An empty ``scope_roots`` list in answers falls back to ``[{"path": "."}]``.
+
+    Guards the single-line ``[{"path": "."}]`` default inside
+    :func:`_generate_config_yaml` so a wizard-run that somehow produced an
+    empty list still yields a valid, Pydantic-accepted config.
+    """
+    answers = _make_answers(scope_roots=[])
+    output = _generate_config_yaml(answers)
+
+    assert "- path: ." in output
+    parsed = yaml.safe_load(output)
+    assert parsed["scope_roots"] == [{"path": "."}]
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +357,7 @@ def test_wizard_config_contains_wizard_values(tmp_path: Path) -> None:
     answers = _make_answers(
         project_name="my-app",
         llm_provider="anthropic",
-        scope_root="src/",
+        scope_roots=[ScopeRoot(path="src/")],
     )
     create_lexibrary_from_wizard(tmp_path, answers)
 
@@ -279,7 +365,7 @@ def test_wizard_config_contains_wizard_values(tmp_path: Path) -> None:
     parsed = yaml.safe_load(config_text)
     assert parsed["project_name"] == "my-app"
     assert parsed["llm"]["provider"] == "anthropic"
-    assert parsed["scope_root"] == "src/"
+    assert parsed["scope_roots"] == [{"path": "src/"}]
 
 
 def test_wizard_does_not_create_handoff(tmp_path: Path) -> None:

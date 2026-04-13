@@ -48,6 +48,7 @@ from lexibrary.conventions.index import ConventionIndex
 from lexibrary.errors import ErrorSummary
 from lexibrary.exceptions import ArchivistTruncationError
 from lexibrary.ignore import create_ignore_matcher
+from lexibrary.ignore.matcher import IgnoreMatcher
 from lexibrary.indexer.orchestrator import index_directory
 from lexibrary.lifecycle.deprecation import (
     deprecate_design,
@@ -315,6 +316,49 @@ def _refresh_parent_aindex(
     return updated
 
 
+def _walk_scope(
+    scope_abs: Path,
+    project_root: Path,
+    config: LexibraryConfig,
+    ignore_matcher: IgnoreMatcher,
+    binary_exts: set[str],
+) -> list[Path]:
+    """Walk a single resolved scope path, applying ignore/binary/size filters.
+
+    Shared by both the single-``scope_dir`` and multi-root branches of
+    :func:`discover_source_files`. Exists so we only maintain one copy of the
+    filter stack.
+    """
+    source_files: list[Path] = []
+    for path in sorted(scope_abs.rglob("*")):
+        if not path.is_file():
+            continue
+
+        try:
+            path.relative_to(project_root / LEXIBRARY_DIR)
+            continue
+        except ValueError:
+            pass
+
+        if _is_binary(path, binary_exts):
+            continue
+
+        if ignore_matcher.is_ignored(path):
+            continue
+
+        try:
+            file_size_kb = path.stat().st_size / 1024
+            if file_size_kb > config.crawl.max_file_size_kb:
+                logger.debug("Skipping oversized file: %s (%.1f KB)", path, file_size_kb)
+                continue
+        except OSError:
+            continue
+
+        source_files.append(path)
+
+    return source_files
+
+
 def discover_source_files(
     project_root: Path,
     config: LexibraryConfig,
@@ -322,60 +366,30 @@ def discover_source_files(
 ) -> list[Path]:
     """Discover source files eligible for design file generation.
 
-    When *scope_dir* is ``None``, walks every declared scope root via
+    When *scope_dir* is ``None``, walks every resolved entry in
     ``config.resolved_scope_roots(project_root).resolved`` and concatenates
     the per-root results in declared order. When *scope_dir* is an explicit
-    path, behaviour is unchanged: only that path is walked.
+    single path, behaviour is unchanged — the walk is restricted to that path.
 
-    In both modes, files inside ``.lexibrary/``, binary files, ignored
-    files, and files exceeding ``max_file_size_kb`` are excluded.
+    Excludes files inside ``.lexibrary/``, binary files, ignored files, and
+    files exceeding ``max_file_size_kb``.
     """
     ignore_matcher = create_ignore_matcher(config, project_root)
     binary_exts = set(config.crawl.binary_extensions)
-    lexibrary_abs = (project_root / LEXIBRARY_DIR).resolve()
-    max_file_size_kb = config.crawl.max_file_size_kb
 
     if scope_dir is not None:
-        roots: list[Path] = [scope_dir.resolve()]
-    else:
-        roots = list(config.resolved_scope_roots(project_root).resolved)
+        scope_abs = scope_dir.resolve()
+        return _walk_scope(scope_abs, project_root, config, ignore_matcher, binary_exts)
 
+    # Multi-root: iterate the resolved roots in declared order and concatenate
+    # per-root walks. Missing roots are filtered out by ``resolved_scope_roots``
+    # and surfaced by callers (see bootstrap) as non-fatal warnings.
+    resolved_roots = config.resolved_scope_roots(project_root).resolved
     source_files: list[Path] = []
-    seen: set[Path] = set()
-    for scope_abs in roots:
-        for path in sorted(scope_abs.rglob("*")):
-            if not path.is_file():
-                continue
-
-            try:
-                path.relative_to(lexibrary_abs)
-                continue
-            except ValueError:
-                pass
-
-            if _is_binary(path, binary_exts):
-                continue
-
-            if ignore_matcher.is_ignored(path):
-                continue
-
-            try:
-                file_size_kb = path.stat().st_size / 1024
-                if file_size_kb > max_file_size_kb:
-                    logger.debug("Skipping oversized file: %s (%.1f KB)", path, file_size_kb)
-                    continue
-            except OSError:
-                continue
-
-            # Guard against duplicates if a file ever surfaces under more
-            # than one root (the nested-roots guard in resolved_scope_roots
-            # makes this nearly impossible, but the per-root walk still
-            # benefits from a defensive dedupe).
-            if path in seen:
-                continue
-            seen.add(path)
-            source_files.append(path)
-
+    for root_abs in resolved_roots:
+        source_files.extend(
+            _walk_scope(root_abs, project_root, config, ignore_matcher, binary_exts)
+        )
     return source_files
 
 
@@ -1157,12 +1171,11 @@ def reindex_directories(
 ) -> int:
     """Regenerate ``.aindex`` files for *directories* and their ancestors.
 
-    For each directory in *directories*, resolves the *owning* scope root via
-    :func:`find_owning_root` and walks up to that owning root, collecting
-    ancestor directories. Directories outside every declared root are
-    re-indexed as a single entry without ancestor walking. Then re-indexes
-    each unique directory (deepest first so child ``.aindex`` data is
-    available when parents are processed).
+    For each directory in *directories*, resolves its owning scope root via
+    :func:`find_owning_root` and walks up to that root, collecting ancestor
+    directories.  Directories outside every declared root are skipped.  Then
+    re-indexes each unique directory (deepest first so child ``.aindex`` data
+    is available when parents are processed).
 
     Uses the existing ``index_directory()`` from the indexer orchestrator
     to ensure output is identical to ``lexictl index``.
@@ -1178,28 +1191,22 @@ def reindex_directories(
     if not directories:
         return 0
 
-    project_root_abs = project_root.resolve()
-
-    # Collect all directories plus their ancestors up to each owning root.
+    # Collect all directories plus their ancestors up to their owning root.
+    # Multi-root: each directory finds its own owning root; directories outside
+    # every declared root are dropped with a debug log.
     all_dirs: set[Path] = set()
     for dir_path in directories:
         resolved = dir_path.resolve()
-
         owning = find_owning_root(resolved, config.scope_roots, project_root)
         if owning is None:
-            # No declared root owns this directory; index it without
-            # walking ancestors so we don't accidentally climb out of the
-            # project tree.
-            all_dirs.add(resolved)
+            logger.debug("Skipping re-index for out-of-scope directory: %s", resolved)
             continue
-
-        scope_abs = (project_root_abs / owning.path).resolve()
-
-        # Walk up from the directory to the owning scope root (inclusive)
+        owning_abs = (project_root.resolve() / owning.path).resolve()
+        # Walk up from the directory to the owning root (inclusive)
         current = resolved
         while True:
             all_dirs.add(current)
-            if current == scope_abs:
+            if current == owning_abs:
                 break
             parent = current.parent
             if parent == current:
@@ -1207,7 +1214,7 @@ def reindex_directories(
                 break
             # Don't walk above the owning scope root.
             try:
-                parent.relative_to(scope_abs)
+                parent.relative_to(owning_abs)
             except ValueError:
                 break
             current = parent
@@ -1333,8 +1340,9 @@ async def update_files(
             progress_callback(source_path, file_result.change, file_result.skip_reason)
 
     # Re-index directories containing changed files (plus ancestors up to
-    # the owning scope root) so .aindex files stay fresh after hook-triggered
-    # updates. Skipped when no files were actually created, updated, or failed (4.3).
+    # each dir's owning scope root) so .aindex files stay fresh after
+    # hook-triggered updates.  Skipped when no files were actually created,
+    # updated, or failed (4.3).
     if _has_meaningful_changes(stats) and processed_paths:
         affected_dirs = sorted({p.parent for p in processed_paths})
         try:

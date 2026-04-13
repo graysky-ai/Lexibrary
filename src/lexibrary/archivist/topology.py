@@ -181,9 +181,9 @@ def _filter_infos_for_root(
     project root in POSIX form (e.g. ``"src"``, ``"baml_src"``, or ``"."``).
 
     ``project_name`` is the project root directory's basename. Test fixtures
-    historically write ``.aindex`` files with ``directory_path`` prefixed by the
-    project name (``f"{project_name}/src"``), while production-emitted indexes
-    use a project-relative path (``"src"``). This helper accepts both.
+    historically write ``.aindex`` files with ``directory_path`` prefixed by
+    the project name (``f"{project_name}/src"``), while production-emitted
+    indexes use a project-relative path (``"src"``). This helper accepts both.
 
     A ``.aindex`` belongs to a root when:
 
@@ -1125,21 +1125,24 @@ def generate_raw_topology(project_root: Path) -> Path:
        ``<!-- section: NAME -->`` markers. Roots with zero ``.aindex`` entries
        are skipped entirely.
     3. Project-level ``config`` and ``stats`` sections, emitted once at the
-       document level (outside any per-root wrapper) because they describe the
-       whole project rather than any single root.
+       document level (outside any per-root wrapper) because they describe
+       the whole project rather than any single root.
 
     For the default single-root config (``scope_roots: [{path: .}]``) this
     yields exactly one per-root block whose contents are the same five
-    sections that were emitted before multi-root support landed, plus the two
-    project-level sections — the byte-level diff is the new
+    sections that were emitted before multi-root support landed, plus the
+    two project-level sections — the byte-level diff is the new
     ``<!-- root: . -->`` wrapper around the per-root block.
 
-    The implementation uses :func:`_filter_infos_for_root` to scope ``_DirInfo``
-    entries to each root, and :func:`_build_per_root_section` to render each
-    block. Output is byte-deterministic across runs because the resolved-roots
-    list preserves the user's declared order and the underlying
-    ``_DirInfo`` lists are sorted by ``rel_path`` inside
-    :func:`_collect_aindex_data`.
+    Determinism: the ``resolved_scope_roots`` list preserves the user's
+    declared order, ``_collect_aindex_data`` sorts entries by ``rel_path``,
+    and per-root rendering reads only from those sorted lists. Two consecutive
+    runs against an unchanged tree produce byte-identical output.
+
+    Empty-document fallback: when no per-root section qualifies (no roots
+    have ``.aindex`` entries, or no scope roots resolved on disk), a single
+    placeholder per-root section is still emitted so the topology-builder
+    skill always sees a well-formed document.
 
     Reads ``topology.detail_dirs`` from project configuration to control
     which directories receive full file tables versus one-line summaries.
@@ -1168,13 +1171,13 @@ def generate_raw_topology(project_root: Path) -> Path:
     # entries are surfaced by the lifecycle bootstrap layer, not here.
     resolved = config.resolved_scope_roots(project_root).resolved
 
-    # Build a (declared root path string, resolved Path) zip so we can preserve
-    # the user's declared spelling in the ``<!-- root: NAME -->`` wrapper while
-    # still using the resolved Path to filter ``_DirInfo`` entries. We rebuild
-    # the declared list by aligning indices: ``resolved`` follows declared
-    # order (the model preserves the input list and only filters by existence,
-    # so resolved[i] corresponds to the i-th existing scope root in
-    # ``config.scope_roots``).
+    # Build a (declared root path string, resolved Path) zip so we can
+    # preserve the user's declared spelling in the ``<!-- root: NAME -->``
+    # wrapper while still using the resolved Path to filter ``_DirInfo``
+    # entries. ``resolved`` follows declared order (the model preserves the
+    # input list and filters only by existence), so we walk
+    # ``config.scope_roots`` and keep entries whose resolved path is in
+    # ``resolved``.
     project_root_abs = project_root.resolve()
     declared_existing: list[tuple[str, Path]] = []
     for sr in config.scope_roots:
@@ -1182,6 +1185,7 @@ def generate_raw_topology(project_root: Path) -> Path:
         if candidate in resolved:
             declared_existing.append((sr.path, candidate))
 
+    sections_emitted = 0
     for declared_path, abs_path in declared_existing:
         # Compute the project-relative POSIX root path string used by the
         # filter helper (e.g. ``"src"`` rather than ``"src/"`` or absolute).
@@ -1195,8 +1199,8 @@ def generate_raw_topology(project_root: Path) -> Path:
 
         root_infos = _filter_infos_for_root(infos, root_rel, project_name)
 
-        # Skip roots with zero ``.aindex`` entries — keeps the document focused
-        # on roots the archivist has actually indexed.
+        # Skip roots with zero ``.aindex`` entries — keeps the document
+        # focused on roots the archivist has actually indexed.
         if not root_infos:
             continue
 
@@ -1206,6 +1210,26 @@ def generate_raw_topology(project_root: Path) -> Path:
                 project_name,
                 declared_path,
                 root_infos,
+                detail_dirs,
+            )
+        )
+        content_lines.append("")
+        sections_emitted += 1
+
+    # When no per-root section was emitted (either ``.aindex`` data is
+    # missing entirely or the on-disk root layout doesn't match any declared
+    # root), emit a placeholder section so the topology-builder skill still
+    # has a well-formed document to consume. We attribute the placeholder to
+    # the first declared+existing root (or ``"."`` when no scope roots
+    # resolved).
+    if sections_emitted == 0:
+        placeholder_root = declared_existing[0][0] if declared_existing else "."
+        content_lines.append(
+            _build_per_root_section(
+                project_root,
+                project_name,
+                placeholder_root,
+                [],
                 detail_dirs,
             )
         )

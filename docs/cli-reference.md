@@ -61,7 +61,7 @@ lexi lookup <path> [--full]
 | Code | Meaning |
 |------|---------|
 | 0 | Design file found and displayed |
-| 1 | File is outside scope_root, or no design file exists |
+| 1 | File is outside every declared `scope_roots` entry, or no design file exists |
 
 **Examples:**
 
@@ -639,7 +639,7 @@ lexi concept comment <slug> --body TEXT
 | `-b`, `--body` | Yes | Comment text to append. |
 
 ```bash
-lexi concept comment scope-root --body "Clarified: scope_root is always relative to project root."
+lexi concept comment scope-root --body "Clarified: scope_roots entries are always relative to project root; the concept slug scope-root is retained for backward-compat, but the config key is now scope_roots."
 ```
 
 #### concept deprecate

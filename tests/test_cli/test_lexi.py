@@ -506,11 +506,13 @@ class TestLookupCommand:
         assert "changed" in result.output
 
     def test_lookup_outside_scope(self, tmp_path: Path) -> None:
-        """Lookup outside scope_root should print message and exit."""
+        """Lookup outside any declared scope_root should print Block A message and exit."""
         project = _setup_archivist_project(tmp_path)
-        # Set scope_root to src/ only
-        (project / ".lexibrary" / "config.yaml").write_text("scope_root: src\n")
-        # Create a file outside scope
+        # Restrict declared scope_roots to src/ only.
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: src\n"
+        )
+        # Create a file outside every declared root.
         (project / "scripts").mkdir()
         (project / "scripts" / "deploy.sh").write_text("#!/bin/bash\n")
 
@@ -522,7 +524,9 @@ class TestLookupCommand:
             os.chdir(old_cwd)
 
         assert result.exit_code == 1
-        assert "outside" in result.output
+        # Block A error text: "outside all configured scope_roots: [...]"
+        assert "outside all configured scope_roots" in result.output
+        assert "src" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -3934,17 +3938,20 @@ class TestDesignUpdateCommand:
         assert mock_update.call_args[1]["unlimited"] is True
 
     def test_file_outside_scope(self, tmp_path: Path) -> None:
-        """File outside scope_root should fail."""
-        # Set up project with scope_root restricted to src/
+        """File outside any declared scope_roots should fail with Block A wording."""
+        # Set up project with scope_roots restricted to src/
         (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_root: src\n")
+        (tmp_path / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: src\n"
+        )
         (tmp_path / "src").mkdir()
-        # Create a file in project root but outside scope_root
+        # Create a file in project root but outside every declared root.
         outside = tmp_path / "outside.py"
         outside.write_text("pass\n")
         result = self._invoke(tmp_path, ["design", "update", str(outside)])
         assert result.exit_code == 1  # type: ignore[union-attr]
-        assert "outside" in result.output.lower()  # type: ignore[union-attr]
+        # Block A error text: "outside all configured scope_roots: [...]"
+        assert "outside all configured scope_roots" in result.output  # type: ignore[union-attr]
 
     def test_no_project(self, tmp_path: Path) -> None:
         """Running without .lexibrary should fail."""
@@ -4675,15 +4682,17 @@ class TestImpact:
         assert "No dependents found" in result.output
 
     def test_outside_scope(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Impact rejects files outside the configured scope_root."""
+        """Impact rejects files outside every declared scope_root with Block A wording."""
         project = _setup_impact_project(tmp_path)
         monkeypatch.chdir(project)
         # Create a file outside scope
         (tmp_path / "external").mkdir()
         (tmp_path / "external" / "file.py").write_text("x = 1\n")
 
-        # Set scope_root to src/ so external/ is outside scope
-        (project / ".lexibrary" / "config.yaml").write_text("scope_root: src\n")
+        # Restrict scope_roots to src/ so external/ is outside every declared root.
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: src\n"
+        )
 
         result = runner.invoke(
             lexi_app,
@@ -4691,7 +4700,8 @@ class TestImpact:
             catch_exceptions=False,
         )
         assert result.exit_code == 1
-        assert "outside" in result.output
+        # Block A error text: "outside all configured scope_roots: [...]"
+        assert "outside all configured scope_roots" in result.output
 
     def test_quiet_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Quiet mode outputs paths only, one per line."""
@@ -5135,9 +5145,11 @@ class TestLookupDirectory:
         assert "Module refactor incomplete" in result.output
 
     def test_directory_lookup_outside_scope(self, tmp_path: Path) -> None:
-        """Directory lookup outside scope_root should exit with error."""
+        """Directory lookup outside every declared scope_root should exit with Block A error."""
         project = _setup_archivist_project(tmp_path)
-        (project / ".lexibrary" / "config.yaml").write_text("scope_root: src\n")
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: src\n"
+        )
         (project / "scripts").mkdir()
 
         old_cwd = os.getcwd()
@@ -5148,7 +5160,8 @@ class TestLookupDirectory:
             os.chdir(old_cwd)
 
         assert result.exit_code == 1
-        assert "outside" in result.output
+        # Block A error text: "outside all configured scope_roots: [...]"
+        assert "outside all configured scope_roots" in result.output
 
 
 class TestLookupTokenBudget:

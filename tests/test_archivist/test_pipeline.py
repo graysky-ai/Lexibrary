@@ -137,25 +137,25 @@ def _make_aindex(tmp_path: Path, dir_rel: str, entries: list[AIndexEntry]) -> Pa
     return aindex_file_path
 
 
-def _make_config(scope_root: str = ".", design_file_tokens: int = 400) -> LexibraryConfig:
-    """Create a config with a single scope root and token budget.
-
-    Accepts a single ``scope_root`` path string for backwards-compatible test
-    ergonomics; internally wraps it in a one-element ``scope_roots`` list.
-    """
-    return LexibraryConfig(
-        scope_roots=[ScopeRoot(path=scope_root)],
-        token_budgets=TokenBudgetConfig(design_file_tokens=design_file_tokens),
-    )
-
-
-def _make_multiroot_config(
-    paths: list[str],
+def _make_config(
+    scope_root: str | None = None,
+    scope_roots: list[str] | None = None,
     design_file_tokens: int = 400,
 ) -> LexibraryConfig:
-    """Create a config with multiple declared scope roots."""
+    """Create a config with the given scope declaration and token budget.
+
+    Accepts *either* a single-root ``scope_root`` string (for existing tests
+    that predate the multi-root migration) *or* an explicit ``scope_roots``
+    list. When both are omitted, the default root is ``"."``.
+    """
+    if scope_roots is not None:
+        roots = [ScopeRoot(path=p) for p in scope_roots]
+    elif scope_root is not None:
+        roots = [ScopeRoot(path=scope_root)]
+    else:
+        roots = [ScopeRoot(path=".")]
     return LexibraryConfig(
-        scope_roots=[ScopeRoot(path=p) for p in paths],
+        scope_roots=roots,
         token_budgets=TokenBudgetConfig(design_file_tokens=design_file_tokens),
     )
 
@@ -239,37 +239,39 @@ class TestUpdateStats:
 
 
 class TestIsWithinAnyScope:
+    """Multi-root scope gating: pass if path is under *any* declared root."""
+
     def test_inside_single_scope(self, tmp_path: Path) -> None:
         source = tmp_path / "src" / "foo.py"
-        config = _make_config(scope_root="src")
+        config = _make_config(scope_roots=["src"])
         assert _is_within_any_scope(source, tmp_path, config) is True
 
     def test_outside_single_scope(self, tmp_path: Path) -> None:
         source = tmp_path / "docs" / "readme.md"
-        config = _make_config(scope_root="src")
+        config = _make_config(scope_roots=["src"])
         assert _is_within_any_scope(source, tmp_path, config) is False
 
     def test_dot_scope_includes_everything(self, tmp_path: Path) -> None:
         source = tmp_path / "any" / "file.py"
-        config = _make_config(scope_root=".")
+        config = _make_config(scope_roots=["."])
         assert _is_within_any_scope(source, tmp_path, config) is True
 
-    def test_multi_root_first_root(self, tmp_path: Path) -> None:
-        """File under the first declared root passes the gate."""
+    def test_two_roots_pass_under_first(self, tmp_path: Path) -> None:
+        """In-scope pass under the first declared root."""
         source = tmp_path / "src" / "foo.py"
-        config = _make_multiroot_config(["src", "baml_src"])
+        config = _make_config(scope_roots=["src", "baml_src"])
         assert _is_within_any_scope(source, tmp_path, config) is True
 
-    def test_multi_root_second_root(self, tmp_path: Path) -> None:
-        """File under the second declared root passes the gate."""
+    def test_two_roots_pass_under_second(self, tmp_path: Path) -> None:
+        """In-scope pass under the second declared root."""
         source = tmp_path / "baml_src" / "foo.baml"
-        config = _make_multiroot_config(["src", "baml_src"])
+        config = _make_config(scope_roots=["src", "baml_src"])
         assert _is_within_any_scope(source, tmp_path, config) is True
 
-    def test_multi_root_outside_all(self, tmp_path: Path) -> None:
-        """File under neither declared root fails the gate."""
-        source = tmp_path / "docs" / "readme.md"
-        config = _make_multiroot_config(["src", "baml_src"])
+    def test_two_roots_reject_neither(self, tmp_path: Path) -> None:
+        """File under neither declared root is rejected."""
+        source = tmp_path / "docs" / "foo.md"
+        config = _make_config(scope_roots=["src", "baml_src"])
         assert _is_within_any_scope(source, tmp_path, config) is False
 
 
@@ -299,42 +301,64 @@ class TestDiscoverSourceFilesMultiRoot:
     ``lexi design update <file>`` calls remain unchanged.
     """
 
-    def test_union_across_declared_roots(self, tmp_path: Path) -> None:
-        """``scope_dir=None`` returns files from every declared root."""
-        src_file = _make_source_file(tmp_path, "src/python_file.py", "def foo(): ...")
-        baml_file = _make_source_file(tmp_path, "baml_src/some.baml", "function Foo() {}")
-        # File outside both roots — must be excluded.
-        _make_source_file(tmp_path, "docs/readme.md", "ignored")
+    def test_scope_dir_none_walks_all_declared_roots(self, tmp_path: Path) -> None:
+        """With ``scope_dir=None`` the walk returns the union across roots."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "baml_src").mkdir()
+        file_a = _make_source_file(tmp_path, "src/a.py", "def a(): ...")
+        file_b = _make_source_file(tmp_path, "baml_src/b.baml", "class B {}")
+        # Deliberate out-of-scope file — must not surface in the result.
+        _make_source_file(tmp_path, "docs/foo.md", "# docs")
 
-        config = _make_multiroot_config(["src", "baml_src"])
+        config = _make_config(scope_roots=["src", "baml_src"])
 
-        files = discover_source_files(tmp_path, config)
-        resolved = {p.resolve() for p in files}
+        discovered = discover_source_files(tmp_path, config, scope_dir=None)
 
-        assert src_file.resolve() in resolved
-        assert baml_file.resolve() in resolved
-        # docs/readme.md must NOT surface — outside every declared root.
-        assert (tmp_path / "docs" / "readme.md").resolve() not in resolved
+        discovered_resolved = {p.resolve() for p in discovered}
+        assert file_a.resolve() in discovered_resolved
+        assert file_b.resolve() in discovered_resolved
+        assert (tmp_path / "docs" / "foo.md").resolve() not in discovered_resolved
 
-    def test_explicit_scope_dir_restricts_to_one_path(self, tmp_path: Path) -> None:
-        """An explicit ``scope_dir`` narrows discovery to that single path."""
-        src_file = _make_source_file(tmp_path, "src/python_file.py", "def foo(): ...")
-        baml_file = _make_source_file(tmp_path, "baml_src/some.baml", "function Foo() {}")
+    def test_explicit_scope_dir_restricts_to_single_path(self, tmp_path: Path) -> None:
+        """An explicit ``scope_dir`` still restricts the walk to that one path."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "baml_src").mkdir()
+        file_a = _make_source_file(tmp_path, "src/a.py", "def a(): ...")
+        file_b = _make_source_file(tmp_path, "baml_src/b.baml", "class B {}")
 
-        config = _make_multiroot_config(["src", "baml_src"])
+        config = _make_config(scope_roots=["src", "baml_src"])
 
-        files = discover_source_files(tmp_path, config, scope_dir=tmp_path / "src")
-        resolved = {p.resolve() for p in files}
+        discovered = discover_source_files(tmp_path, config, scope_dir=tmp_path / "src")
 
-        assert src_file.resolve() in resolved
-        assert baml_file.resolve() not in resolved
+        discovered_resolved = {p.resolve() for p in discovered}
+        assert file_a.resolve() in discovered_resolved
+        # baml_src file is excluded by the explicit scope_dir override.
+        assert file_b.resolve() not in discovered_resolved
+
+    def test_missing_root_is_skipped_silently_by_discovery(self, tmp_path: Path) -> None:
+        """A declared-but-missing root does not crash discovery.
+
+        Missing roots are filtered out by
+        ``LexibraryConfig.resolved_scope_roots`` and surfaced upstream (e.g.
+        by bootstrap) as ``warn()`` messages. Discovery itself just walks the
+        resolved subset.
+        """
+        (tmp_path / "src").mkdir()
+        file_a = _make_source_file(tmp_path, "src/a.py", "def a(): ...")
+
+        config = _make_config(scope_roots=["src", "ghost"])
+
+        discovered = discover_source_files(tmp_path, config, scope_dir=None)
+
+        discovered_resolved = {p.resolve() for p in discovered}
+        assert file_a.resolve() in discovered_resolved
 
     def test_single_root_unchanged(self, tmp_path: Path) -> None:
         """Single-root behaviour matches pre-multi-root semantics."""
         src_file = _make_source_file(tmp_path, "src/foo.py", "x = 1")
         _make_source_file(tmp_path, "elsewhere/other.py", "y = 2")
 
-        config = _make_config(scope_root="src")
+        config = _make_config(scope_roots=["src"])
 
         files = discover_source_files(tmp_path, config)
         resolved = {p.resolve() for p in files}
@@ -355,7 +379,7 @@ class TestUpdateFileMultiRootGating:
     async def test_multi_root_first_root_proceeds(self, tmp_path: Path) -> None:
         """File under the first declared root passes the scope gate."""
         source = _make_source_file(tmp_path, "src/foo.py", "def bar(): pass")
-        config = _make_multiroot_config(["src", "baml_src"])
+        config = _make_config(scope_roots=["src", "baml_src"])
         archivist = _mock_archivist()
 
         result = await update_file(source, tmp_path, config, archivist)
@@ -368,7 +392,7 @@ class TestUpdateFileMultiRootGating:
     async def test_multi_root_second_root_proceeds(self, tmp_path: Path) -> None:
         """File under the second declared root passes the scope gate."""
         source = _make_source_file(tmp_path, "baml_src/foo.baml", "function Bar() {}")
-        config = _make_multiroot_config(["src", "baml_src"])
+        config = _make_config(scope_roots=["src", "baml_src"])
         archivist = _mock_archivist()
 
         result = await update_file(source, tmp_path, config, archivist)
@@ -379,7 +403,7 @@ class TestUpdateFileMultiRootGating:
     async def test_multi_root_outside_all_roots_skipped(self, tmp_path: Path) -> None:
         """File under neither declared root is skipped with ``out of scope``."""
         source = _make_source_file(tmp_path, "docs/readme.md", "# README")
-        config = _make_multiroot_config(["src", "baml_src"])
+        config = _make_config(scope_roots=["src", "baml_src"])
         archivist = _mock_archivist()
 
         result = await update_file(source, tmp_path, config, archivist)
@@ -635,7 +659,7 @@ class TestUpdateFileInterfaceChanged:
 
 
 class TestUpdateFileOutsideScope:
-    """File outside scope_root is skipped."""
+    """File outside every declared scope root is skipped."""
 
     @pytest.mark.asyncio()
     async def test_outside_scope_skipped(self, tmp_path: Path) -> None:
@@ -646,6 +670,43 @@ class TestUpdateFileOutsideScope:
         result = await update_file(source, tmp_path, config, archivist)
 
         assert result.change == ChangeLevel.UNCHANGED
+        archivist.generate_design_file.assert_not_awaited()
+
+    @pytest.mark.asyncio()
+    async def test_two_roots_in_scope_under_first(self, tmp_path: Path) -> None:
+        """File under the first declared root is processed."""
+        source = _make_source_file(tmp_path, "src/foo.py", "def bar(): pass")
+        config = _make_config(scope_roots=["src", "baml_src"])
+        archivist = _mock_archivist(summary="Foo.")
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        assert result.change == ChangeLevel.NEW_FILE
+        archivist.generate_design_file.assert_awaited_once()
+
+    @pytest.mark.asyncio()
+    async def test_two_roots_in_scope_under_second(self, tmp_path: Path) -> None:
+        """File under the second declared root is processed."""
+        source = _make_source_file(tmp_path, "baml_src/bar.py", "def baz(): pass")
+        config = _make_config(scope_roots=["src", "baml_src"])
+        archivist = _mock_archivist(summary="Bar.")
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        assert result.change == ChangeLevel.NEW_FILE
+        archivist.generate_design_file.assert_awaited_once()
+
+    @pytest.mark.asyncio()
+    async def test_two_roots_reject_under_neither(self, tmp_path: Path) -> None:
+        """File outside both declared roots is skipped, LLM not invoked."""
+        source = _make_source_file(tmp_path, "docs/foo.md", "# docs")
+        config = _make_config(scope_roots=["src", "baml_src"])
+        archivist = _mock_archivist()
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        assert result.change == ChangeLevel.UNCHANGED
+        assert result.skip_reason == "out of scope"
         archivist.generate_design_file.assert_not_awaited()
 
 

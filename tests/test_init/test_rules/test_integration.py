@@ -32,6 +32,9 @@ def _setup_project(
 ) -> Path:
     """Create a minimal initialised project at *tmp_path*.
 
+    Writes the multi-root config shape (``scope_roots: [{path: .}]``) since
+    the schema rejects the legacy singular ``scope_root:`` key.
+
     Args:
         tmp_path: Root directory to set up.
         environments: Agent environments to list in ``config.yaml``.
@@ -43,10 +46,11 @@ def _setup_project(
     (tmp_path / ".lexibrary").mkdir()
     envs = environments or []
     env_yaml = "\n".join(f"  - {e}" for e in envs)
+    scope_roots_yaml = "scope_roots:\n  - path: .\n"
     if envs:
-        config_content = f"scope_root: .\nagent_environment:\n{env_yaml}\n"
+        config_content = f"{scope_roots_yaml}agent_environment:\n{env_yaml}\n"
     else:
-        config_content = "scope_root: .\nagent_environment: []\n"
+        config_content = f"{scope_roots_yaml}agent_environment: []\n"
     (tmp_path / ".lexibrary" / "config.yaml").write_text(config_content)
     return tmp_path
 
