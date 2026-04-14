@@ -24,3 +24,55 @@ comments:
     \ instead of falling through the orphan stub path. Updated the _collect_consistency\
     \ docstring to reflect the new scope/full split."
   date: '2026-04-11T07:38:01.041421Z'
+- body: 'Added ''bidirectional_deps'' -> ''fix_bidirectional_deps'' entry to CHECK_TO_ACTION_KEY.
+    Part of curator-freshness group 4: routes the new bidirectional-deps validator
+    check through the narrow per-check action key rather than the umbrella autofix_validation_issue
+    path, enabling honest counters and correct risk classification when dispatching
+    the replacement fixer in validator.fixes.fix_bidirectional_deps.'
+  date: '2026-04-14T02:49:39.146934Z'
+- body: "Coordinator._collect_validation() now accepts checks: Iterable[str] | None\
+    \ = None and forwards it verbatim to validate_library(). Default None preserves\
+    \ legacy full-check behaviour \u2014 callers unchanged. The new parameter is the\
+    \ splice point for task 5.2's two-pass collect: _collect_hash_layer() and _collect_graph_layer()\
+    \ will each call _collect_validation(checks=<subset>) with disjoint AVAILABLE_CHECKS\
+    \ subsets so validator work is partitioned across the hash and graph passes instead\
+    \ of running every check twice."
+  date: '2026-04-14T05:05:54.603172Z'
+- body: "Task 5.2/5.6/5.8 (curator-freshness): split Coordinator._collect into _collect_hash_layer\
+    \ and _collect_graph_layer per the curator-two-pass-collect spec. Hash layer runs\
+    \ staleness, agent-edits, IWH scan, comments, comment audit, budget, and the hash-layer\
+    \ validator subset (_HASH_LAYER_CHECKS: frontmatter validators + hash_freshness\
+    \ + token_budgets + stale_agent_design). Graph layer runs the graph-layer validator\
+    \ subset (_GRAPH_LAYER_CHECKS: bidirectional_deps, orphan_artifacts, wikilink_resolution,\
+    \ aindex_coverage, ...), deprecation candidates, consistency (5.6 \u2014 graph-only),\
+    \ and the link-graph availability probe. A module-level assertion at import time\
+    \ verifies _HASH_LAYER_CHECKS \u222A _GRAPH_LAYER_CHECKS is total and disjoint\
+    \ against AVAILABLE_CHECKS. Scope-isolation caches (self._uncommitted, self._active_iwh)\
+    \ are now populated only in the hash layer; the graph layer asserts their presence\
+    \ (5.8). Each CollectItem is tagged with layer at the emission site when layer\
+    \ is 'hash'/'graph'; passing layer=None (legacy single-pass path) leaves items\
+    \ untagged. The existing _collect helper is preserved and delegates to both layer\
+    \ methods with layer=None so the legacy kill-switch (config.two_pass_collect=False,\
+    \ wired in 5.4) preserves pre-two-pass item semantics. _collect_validation now\
+    \ accumulates _validation_before_count across layer calls so the sum matches the\
+    \ pre-split single-call total; _run_pipeline resets the counter at the top of\
+    \ each run. Does not touch _run_pipeline, _dispatch, or the budget split \u2014\
+    \ those are owned by 5.4/5.5."
+  date: '2026-04-14T05:20:40.961960Z'
+- body: 'Tasks 5.4/5.5/5.7: Restructured _run_pipeline into a two-pass flow gated
+    by CuratorConfig.two_pass_collect (default True). When enabled, _run_pipeline_two_pass
+    calls _collect_hash_layer -> _triage -> _dispatch (capped at int(max_llm_calls_per_run
+    * 0.7)) -> mid-run linkgraph.builder.build_index for hash-pass-written paths ->
+    _collect_graph_layer -> _triage -> _dispatch (capped at the full max_llm_calls_per_run,
+    with the shared counter pre-charged to hash-pass total) -> post-graph build_index
+    -> _verify_after_sweep -> _report on a merged DispatchResult. _dispatch gained
+    a keyword-only budget_cap parameter that bounds the per-pass LLM-call ceiling
+    without introducing a second counter; the shared self.pre_charged_llm_calls is
+    bumped between passes to carry the hash-pass total forward. _verify_after_sweep
+    now executes AFTER the post-graph build_index so its before/after delta reads
+    a fresh link graph (5.7''s ''honest delta'' requirement). Two-pass mid-run rebuilds
+    are guarded by ''index.db must already exist'' so the curator never bootstraps
+    a sparse index inside a run. The legacy single-pass flow is preserved verbatim
+    under _run_pipeline_legacy for the kill-switch. Helpers _dispatch_written_paths
+    and _merge_collect_results live at module scope.'
+  date: '2026-04-14T06:21:46.687252Z'

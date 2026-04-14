@@ -777,3 +777,63 @@ def open_index(project_root: Path) -> LinkGraph | None:
 
     db_path = project_root / LEXIBRARY_DIR / _INDEX_DB_NAME
     return LinkGraph.open(db_path)
+
+
+# ---------------------------------------------------------------------------
+# Dependents extraction (Phase 1a — bidirectional-deps migration)
+# ---------------------------------------------------------------------------
+
+
+class LinkGraphUnavailable(Exception):  # noqa: N818
+    """Raised when the link graph index cannot be opened.
+
+    Existing :meth:`LinkGraph.open` returns ``None`` for the missing-DB
+    and schema-mismatch cases (graceful degradation).  Callers such as
+    ``archivist.pipeline.update_file``, ``reconcile_deps_only``, and
+    ``validator.fixes.fix_bidirectional_deps`` need to distinguish
+    "DB absent" from "DB present, zero dependents" without null-checks.
+    This typed exception provides that signal.
+    """
+
+
+def extract_dependents(source_path: Path, project_root: Path) -> list[str]:
+    """Return sorted project-relative paths of files that import *source_path*.
+
+    Thin wrapper over :class:`LinkGraph` that opens
+    ``<project_root>/.lexibrary/index.db`` via :meth:`LinkGraph.open`
+    (which handles pragmas, schema version check, read-only mode, and
+    corruption detection) and queries the reverse ``ast_import`` edges.
+
+    Parameters
+    ----------
+    source_path:
+        Project-relative path of the source file whose importers we want.
+    project_root:
+        Absolute path to the repository root.
+
+    Returns
+    -------
+    list[str]
+        Sorted project-relative paths of files that hold an
+        ``ast_import`` edge targeting *source_path*.  Returns ``[]``
+        when the target exists in the index with no importers.
+
+    Raises
+    ------
+    LinkGraphUnavailable
+        When ``.lexibrary/index.db`` is absent OR the schema version
+        does not match :data:`SCHEMA_VERSION`.  Empty result sets do
+        **not** raise — they return ``[]``.
+    """
+    db_path = project_root / ".lexibrary" / _INDEX_DB_NAME
+    lg = LinkGraph.open(db_path)
+    if lg is None:
+        raise LinkGraphUnavailable(
+            f"Link graph index unavailable at {db_path} "
+            "(missing, corrupt, or schema-version mismatch)"
+        )
+    try:
+        links = lg.reverse_deps(str(source_path), link_type="ast_import")
+    finally:
+        lg.close()
+    return sorted(r.source_path for r in links)

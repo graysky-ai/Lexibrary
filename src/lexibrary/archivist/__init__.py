@@ -8,6 +8,7 @@ from lexibrary.archivist.service import (
     ArchivistService,
     DesignFileRequest,
     DesignFileResult,
+    build_archivist_service,
 )
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     "DesignFileRequest",
     "DesignFileResult",
     "UpdateStats",
+    "build_archivist_service",
     "check_change",
     "update_file",
     "update_project",

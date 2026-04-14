@@ -27,7 +27,8 @@ Three scenarios live here:
 * :class:`TestVerificationDeltaDisabledByDefault` pins the contract
   that verification is strictly opt-in — default config runs must not
   emit a ``verification`` key and must call ``validate_library()``
-  exactly once (inside ``_collect_validation``).
+  exactly twice (one hash-layer call and one graph-layer call inside
+  ``_collect_validation``; see task 5.2 for the split).
 
 Fixture strategy: each test builds its own ``tmp_path``-rooted library
 so cross-test interference is impossible.  This mirrors the per-test
@@ -222,8 +223,11 @@ def _build_mixed_library(tmp_path: Path, *, name: str = "mixed") -> Path:
 
     Consistency actions
     -------------------
-    * ``strip_unresolved_wikilink`` — ``helpers.py.md`` carries
-      ``[[NonexistentConcept]]`` which has no concept file.
+    * ``strip_unresolved_wikilink`` — ``formatter.py.md`` carries
+      ``[[NonexistentConcept]]`` which has no concept file.  Planted on
+      a design with a correct ``source_hash`` so the hash_freshness
+      regeneration does not pre-empt the consistency dispatch under
+      the two-pass flow introduced in group 5.
     * ``flag_stale_convention`` — ``CV-001-stale.md`` references
       ``src/old_auth/`` which does not exist.
 
@@ -254,7 +258,25 @@ def _build_mixed_library(tmp_path: Path, *, name: str = "mixed") -> Path:
         project,
         "src/utils/helpers.py",
         source_hash="deadbeef" * 8,  # deliberately wrong
-        wikilinks=["NonexistentConcept"],  # also plants strip_unresolved_wikilink
+    )
+    # strip_unresolved_wikilink: planted on a SEPARATE design with a
+    # correct hash so the hash_freshness regeneration (which would
+    # otherwise strip the wikilink as a body-rewrite side effect under
+    # the two-pass flow introduced in group 5) does not pre-empt the
+    # consistency-fix dispatch for wikilink stripping.
+    from lexibrary.ast_parser import compute_hashes  # noqa: PLC0415
+
+    formatter_source = _write_source_file(
+        project,
+        "src/utils/formatter.py",
+        '"""Formatter."""\n\n\ndef format_text(text: str) -> str:\n    return text\n',
+    )
+    formatter_source_hash, _formatter_interface_hash = compute_hashes(formatter_source)
+    _write_design_file(
+        project,
+        "src/utils/formatter.py",
+        source_hash=formatter_source_hash,
+        wikilinks=["NonexistentConcept"],  # plants strip_unresolved_wikilink
     )
     # aindex_coverage: src/auth/ has a source file but no .aindex.
     _write_source_file(project, "src/auth/login.py", '"""Login."""\n')
@@ -638,12 +660,16 @@ class TestVerificationDeltaDisabledByDefault:
         coord = Coordinator(project, config)
         report = asyncio.run(coord.run())
 
-        # 1) ``validate_library`` was called exactly once (the collect-
-        #    phase call in ``_collect_validation``).  No post-sweep
+        # 1) ``validate_library`` was called exactly twice — once per
+        #    layer (hash-layer subset + graph-layer subset) inside
+        #    ``_collect_validation`` after the task 5.2 split.  The
+        #    two calls together cover the full check registry exactly
+        #    once (the ``_HASH_LAYER_CHECKS`` / ``_GRAPH_LAYER_CHECKS``
+        #    partition is total and disjoint).  No post-sweep
         #    verification pass should have run.
-        assert call_counter["count"] == 1, (
-            f"validate_library should be called exactly once with default "
-            f"config, got {call_counter['count']} calls"
+        assert call_counter["count"] == 2, (
+            f"validate_library should be called exactly twice with default "
+            f"config (once per layer), got {call_counter['count']} calls"
         )
 
         # 2) In-memory report has no verification block.

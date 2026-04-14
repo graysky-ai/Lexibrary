@@ -21,6 +21,8 @@ from lexibrary.validator.checks import (
     check_stack_staleness,
 )
 
+from tests._index_fixtures import _create_index_with_links
+
 # ---------------------------------------------------------------------------
 # Helpers for writing test fixtures
 # ---------------------------------------------------------------------------
@@ -949,53 +951,90 @@ class TestCheckOrphanArtifacts:
 
 
 # ---------------------------------------------------------------------------
-# Helpers for check_bidirectional_deps tests
-# ---------------------------------------------------------------------------
-
-
-def _create_index_with_links(
-    lexibrary_dir: Path,
-    artifacts: list[tuple[int, str, str]],
-    links: list[tuple[int, int, str]],
-) -> None:
-    """Create an index.db with given artifacts and links.
-
-    Args:
-        lexibrary_dir: Path to .lexibrary directory.
-        artifacts: List of (id, path, kind) tuples to insert.
-        links: List of (source_id, target_id, link_type) tuples to insert.
-    """
-    db_path = lexibrary_dir / "index.db"
-    conn = sqlite3.connect(str(db_path))
-    ensure_schema(conn)
-    for art_id, art_path, kind in artifacts:
-        conn.execute(
-            "INSERT INTO artifacts (id, path, kind, title, status) VALUES (?, ?, ?, ?, ?)",
-            (art_id, art_path, kind, f"Artifact {art_id}", None),
-        )
-    for src_id, tgt_id, link_type in links:
-        conn.execute(
-            "INSERT INTO links (source_id, target_id, link_type) VALUES (?, ?, ?)",
-            (src_id, tgt_id, link_type),
-        )
-    conn.commit()
-    conn.close()
-
-
-# ---------------------------------------------------------------------------
 # check_bidirectional_deps
 # ---------------------------------------------------------------------------
+
+
+def _write_design_file_bidirectional(
+    lexibrary_dir: Path,
+    source_path: str,
+    *,
+    source_hash: str = "abc123",
+    dependencies: list[str] | None = None,
+    dependents: list[str] | None = None,
+    dependents_complete: bool = True,
+    description: str = "Test design file",
+) -> Path:
+    """Write a design file with explicit Dependents + ``dependents_complete``.
+
+    The shared :func:`_write_design_file` helper predates the Phase 1a
+    bidirectional-deps migration and hard-codes ``Dependents: (none)``
+    with no ``dependents_complete`` footer field.  The bidirectional
+    check now skips the reverse diff when ``dependents_complete`` is
+    ``False``, so these tests need a helper that can emit both the list
+    body *and* the footer flag.
+    """
+    design_path = lexibrary_dir / "designs" / f"{source_path}.md"
+    design_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _render_list(items: list[str] | None) -> str:
+        if not items:
+            return "(none)"
+        return "\n".join(f"- {entry}" for entry in items)
+
+    body = (
+        "---\n"
+        f"description: {description}\n"
+        "id: DS-001\n"
+        "updated_by: archivist\n"
+        "---\n"
+        "\n"
+        f"# {source_path}\n"
+        "\n"
+        "## Interface Contract\n"
+        "\n"
+        "```python\n"
+        "def example() -> None: ...\n"
+        "```\n"
+        "\n"
+        "## Dependencies\n"
+        "\n"
+        f"{_render_list(dependencies)}\n"
+        "\n"
+        "## Dependents\n"
+        "\n"
+        f"{_render_list(dependents)}\n"
+        "\n"
+        "<!-- lexibrary:meta\n"
+        f"source: {source_path}\n"
+        f"source_hash: {source_hash}\n"
+        "design_hash: deadbeef\n"
+        "generated: 2026-01-01T12:00:00\n"
+        "generator: lexibrary-v2\n"
+        f"dependents_complete: {str(dependents_complete).lower()}\n"
+        "-->\n"
+    )
+    design_path.write_text(body, encoding="utf-8")
+    return design_path
 
 
 class TestCheckBidirectionalDeps:
     """Tests for check_bidirectional_deps.
 
-    Scenarios per task 2.2:
+    Phase 1a (OpenSpec ``curator-freshness``) expanded the check so that
+    it now diffs the design file against the ``ast_import`` graph in
+    BOTH directions and emits at ``warning`` severity.  The message
+    prefixes are load-bearing: validator fixers key off
+    ``"dependencies drift:"`` vs ``"dependents drift:"``.
+
+    Scenarios:
+
     1. All consistent (no issues)
-    2. Design file lists dep not in graph
-    3. Graph has link not in design file
-    4. Index missing (returns empty)
-    5. Index corrupt (returns empty)
+    2. Dependencies drift (both sub-directions, single test each)
+    3. Dependents drift (both sub-directions)
+    4. Both-direction drift in one file
+    5. ``dependents_complete=False`` skips the reverse diff
+    6. Index missing / corrupt — graceful degradation
     """
 
     def test_all_consistent_no_issues(self, tmp_path: Path) -> None:
@@ -1015,12 +1054,11 @@ class TestCheckBidirectionalDeps:
 
         source_hash = hash_file(src_dir / "auth.py")
 
-        # Create design file listing src/utils/crypto.py as a dependency
-        _write_design_file(
+        _write_design_file_bidirectional(
             lexibrary_dir,
             "src/api/auth.py",
             source_hash=source_hash,
-            dependencies="- src/utils/crypto.py",
+            dependencies=["src/utils/crypto.py"],
         )
 
         # Create index with matching ast_import link
@@ -1038,28 +1076,26 @@ class TestCheckBidirectionalDeps:
         issues = check_bidirectional_deps(project_root, lexibrary_dir)
         assert len(issues) == 0
 
-    def test_design_dep_not_in_graph(self, tmp_path: Path) -> None:
-        """When design file lists a dep not in the graph, an info issue is returned."""
+    def test_dependencies_drift_missing_from_graph(self, tmp_path: Path) -> None:
+        """Design lists a dep that isn't in the graph -> dependencies drift warning."""
         project_root = tmp_path
         lexibrary_dir = project_root / LEXIBRARY_DIR
         lexibrary_dir.mkdir()
 
-        # Create source file
         src_dir = project_root / "src" / "api"
         src_dir.mkdir(parents=True)
         (src_dir / "auth.py").write_text("import crypto", encoding="utf-8")
 
         source_hash = hash_file(src_dir / "auth.py")
 
-        # Design file lists src/utils/crypto.py as dep
-        _write_design_file(
+        _write_design_file_bidirectional(
             lexibrary_dir,
             "src/api/auth.py",
             source_hash=source_hash,
-            dependencies="- src/utils/crypto.py",
+            dependencies=["src/utils/crypto.py"],
         )
 
-        # Index has the source artifact but NO ast_import link
+        # Index has both artifacts but NO ast_import link
         _create_index_with_links(
             lexibrary_dir,
             artifacts=[
@@ -1072,35 +1108,32 @@ class TestCheckBidirectionalDeps:
         issues = check_bidirectional_deps(project_root, lexibrary_dir)
         assert len(issues) == 1
         issue = issues[0]
-        assert issue.severity == "info"
+        assert issue.severity == "warning"
         assert issue.check == "bidirectional_deps"
+        assert issue.message.startswith("dependencies drift: ")
         assert "src/utils/crypto.py" in issue.message
         assert "listed in the design file" in issue.message
         assert "not found" in issue.message
-        assert "stale" in issue.suggestion
 
-    def test_graph_link_not_in_design(self, tmp_path: Path) -> None:
-        """When graph has ast_import not listed in design file, an info issue is returned."""
+    def test_dependencies_drift_missing_from_design(self, tmp_path: Path) -> None:
+        """Graph has an ast_import not listed in design -> dependencies drift warning."""
         project_root = tmp_path
         lexibrary_dir = project_root / LEXIBRARY_DIR
         lexibrary_dir.mkdir()
 
-        # Create source file
         src_dir = project_root / "src" / "api"
         src_dir.mkdir(parents=True)
         (src_dir / "auth.py").write_text("from models import user", encoding="utf-8")
 
         source_hash = hash_file(src_dir / "auth.py")
 
-        # Design file has NO dependencies listed
-        _write_design_file(
+        _write_design_file_bidirectional(
             lexibrary_dir,
             "src/api/auth.py",
             source_hash=source_hash,
-            dependencies="(none)",
+            dependencies=None,
         )
 
-        # Graph has an ast_import link from auth.py to models/user.py
         _create_index_with_links(
             lexibrary_dir,
             artifacts=[
@@ -1115,11 +1148,170 @@ class TestCheckBidirectionalDeps:
         issues = check_bidirectional_deps(project_root, lexibrary_dir)
         assert len(issues) == 1
         issue = issues[0]
-        assert issue.severity == "info"
+        assert issue.severity == "warning"
         assert issue.check == "bidirectional_deps"
+        assert issue.message.startswith("dependencies drift: ")
         assert "src/models/user.py" in issue.message
         assert "exists in the link graph" in issue.message
         assert "not listed in the design file" in issue.message
+
+    def test_dependents_drift_missing_from_graph(self, tmp_path: Path) -> None:
+        """Design lists a dependent that doesn't appear in reverse graph -> dependents drift."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        _write_design_file_bidirectional(
+            lexibrary_dir,
+            "src/utils/crypto.py",
+            dependents=["src/api/auth.py"],
+            dependents_complete=True,
+        )
+
+        # Index has both artifacts but no reverse edge
+        _create_index_with_links(
+            lexibrary_dir,
+            artifacts=[
+                (1, "src/api/auth.py", "source"),
+                (2, "src/utils/crypto.py", "source"),
+            ],
+            links=[],
+        )
+
+        issues = check_bidirectional_deps(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        issue = issues[0]
+        assert issue.severity == "warning"
+        assert issue.check == "bidirectional_deps"
+        assert issue.message.startswith("dependents drift: ")
+        assert "src/api/auth.py" in issue.message
+        assert "listed as a dependent" in issue.message
+
+    def test_dependents_drift_missing_from_design(self, tmp_path: Path) -> None:
+        """Reverse graph has an importer not listed in design -> dependents drift."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        _write_design_file_bidirectional(
+            lexibrary_dir,
+            "src/utils/crypto.py",
+            dependents=None,
+            dependents_complete=True,
+        )
+
+        _create_index_with_links(
+            lexibrary_dir,
+            artifacts=[
+                (1, "src/api/auth.py", "source"),
+                (2, "src/utils/crypto.py", "source"),
+            ],
+            links=[
+                (1, 2, "ast_import"),
+            ],
+        )
+
+        issues = check_bidirectional_deps(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        issue = issues[0]
+        assert issue.severity == "warning"
+        assert issue.check == "bidirectional_deps"
+        assert issue.message.startswith("dependents drift: ")
+        assert "src/api/auth.py" in issue.message
+        assert "imports this source in the link graph" in issue.message
+        assert "not listed in the design file dependents" in issue.message
+
+    def test_both_direction_drift(self, tmp_path: Path) -> None:
+        """One design can emit both a dependencies drift AND a dependents drift."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        # Design for src/middle.py: claims to depend on src/missing_dep.py and
+        # claims src/missing_dependent.py as its importer.  The link graph has
+        # NEITHER edge but DOES have a real pair (src/real_importer.py ->
+        # src/middle.py) that is missing from the design's Dependents, plus a
+        # real forward edge (src/middle.py -> src/real_dep.py) missing from
+        # the design's Dependencies.  That produces four warnings total; we
+        # only need to assert at least one of each prefix to prove the
+        # direction tagging works.
+        _write_design_file_bidirectional(
+            lexibrary_dir,
+            "src/middle.py",
+            dependencies=["src/missing_dep.py"],
+            dependents=["src/missing_dependent.py"],
+            dependents_complete=True,
+        )
+
+        _create_index_with_links(
+            lexibrary_dir,
+            artifacts=[
+                (1, "src/middle.py", "source"),
+                (2, "src/real_dep.py", "source"),
+                (3, "src/real_importer.py", "source"),
+                (4, "src/missing_dep.py", "source"),
+                (5, "src/missing_dependent.py", "source"),
+            ],
+            links=[
+                (1, 2, "ast_import"),
+                (3, 1, "ast_import"),
+            ],
+        )
+
+        issues = check_bidirectional_deps(project_root, lexibrary_dir)
+        prefixes = [i.message.split(":", 1)[0] for i in issues]
+        assert "dependencies drift" in prefixes
+        assert "dependents drift" in prefixes
+        # All issues are warnings
+        assert {i.severity for i in issues} == {"warning"}
+        # All issues are tagged with the same check name
+        assert {i.check for i in issues} == {"bidirectional_deps"}
+
+    def test_dependents_complete_false_skips_reverse_diff(self, tmp_path: Path) -> None:
+        """``dependents_complete=False`` -> reverse diff is skipped entirely.
+
+        Guards against false positives during migration: before
+        ``lexictl backfill-dependents`` runs, every design file carries an
+        empty Dependents list flagged as incomplete.  The validator must
+        NOT flag that as drift, otherwise the validate output is noise.
+        Dependencies-drift still fires because the forward direction is
+        always authoritative.
+        """
+        project_root = tmp_path
+        lexibrary_dir = project_root / LEXIBRARY_DIR
+        lexibrary_dir.mkdir()
+
+        _write_design_file_bidirectional(
+            lexibrary_dir,
+            "src/utils/crypto.py",
+            dependencies=None,
+            dependents=None,
+            dependents_complete=False,
+        )
+
+        # Graph has a reverse importer AND a forward edge that the design
+        # doesn't know about.  With dependents_complete=False we should
+        # only see the forward (dependencies) drift.
+        _create_index_with_links(
+            lexibrary_dir,
+            artifacts=[
+                (1, "src/api/auth.py", "source"),
+                (2, "src/utils/crypto.py", "source"),
+                (3, "src/utils/helpers.py", "source"),
+            ],
+            links=[
+                (1, 2, "ast_import"),  # reverse: auth imports crypto
+                (2, 3, "ast_import"),  # forward: crypto imports helpers
+            ],
+        )
+
+        issues = check_bidirectional_deps(project_root, lexibrary_dir)
+        assert all(i.message.startswith("dependencies drift:") for i in issues), [
+            i.message for i in issues
+        ]
+        assert len(issues) == 1
+        assert issues[0].severity == "warning"
+        assert "src/utils/helpers.py" in issues[0].message
 
     def test_index_missing_returns_empty(self, tmp_path: Path) -> None:
         """When index.db does not exist, returns empty list without error."""

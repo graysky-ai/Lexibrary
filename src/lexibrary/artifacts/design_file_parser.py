@@ -133,6 +133,8 @@ def _parse_footer(footer_body: str) -> StalenessMetadata | None:
             design_hash=attrs["design_hash"],
             generated=datetime.fromisoformat(attrs["generated"]),
             generator=attrs["generator"],
+            dependents_complete=attrs.get("dependents_complete", "false").strip().lower()
+            == "true",
         )
     except (KeyError, ValueError):
         return None

@@ -10,10 +10,11 @@ Checks are grouped by severity:
     playbook_frontmatter, playbook_wikilinks
 - Warning-severity: hash_freshness, token_budgets, orphan_concepts,
     deprecated_concept_usage, orphaned_designs, convention_orphaned_scope,
-    stack_refs_validity, design_deps_existence, aindex_entries
+    stack_refs_validity, design_deps_existence, aindex_entries,
+    bidirectional_deps
 - Info-severity: forward_dependencies, stack_staleness,
     resolved_post_staleness, aindex_coverage,
-    bidirectional_deps, dangling_links, orphan_artifacts, orphaned_iwh,
+    dangling_links, orphan_artifacts, orphaned_iwh,
     comment_accumulation, deprecated_ttl, stale_concept,
     supersession_candidate, convention_stale, convention_gap,
     convention_consistent_violation, lookup_token_budget_exceeded,
@@ -2332,12 +2333,22 @@ def check_bidirectional_deps(
     project_root: Path,
     lexibrary_dir: Path,
 ) -> list[ValidationIssue]:
-    """Compare design file dependency lists against ``ast_import`` links in the graph.
+    """Compare design file dependency and dependent lists against the ``ast_import`` graph.
 
-    For each design file, parses the ``## Dependencies`` section to get
-    listed dependencies, then queries the link graph for actual
-    ``ast_import`` outbound links from the corresponding source file.
-    Mismatches in either direction produce info-severity issues.
+    For each design file, parses the ``## Dependencies`` and ``## Dependents``
+    sections and diffs them in both directions against the link graph:
+
+    * **Dependencies drift** -- forward ``ast_import`` edges outbound from the
+      source file that do not match ``design.dependencies``.
+    * **Dependents drift** -- reverse ``ast_import`` edges (modules that
+      import this source) that do not match ``design.dependents``. Skipped
+      when the design's ``StalenessMetadata.dependents_complete`` is
+      ``False`` -- the list was produced without a link graph, so it is
+      authoritatively empty and any mismatch is a false positive.
+
+    Mismatches in either direction produce warning-severity issues and the
+    ``message`` field distinguishes the drift direction (``dependencies
+    drift: ...`` vs ``dependents drift: ...``).
 
     Returns an empty list when the index is absent, corrupt, or has a
     schema version mismatch -- graceful degradation per D2.
@@ -2347,7 +2358,8 @@ def check_bidirectional_deps(
         lexibrary_dir: Path to the .lexibrary directory.
 
     Returns:
-        List of info-severity ValidationIssues for dependency mismatches.
+        List of warning-severity ValidationIssues for dependency / dependent
+        mismatches.
     """
     issues: list[ValidationIssue] = []
 
@@ -2371,8 +2383,11 @@ def check_bidirectional_deps(
             )
             return issues
 
-        # Build a lookup: source artifact path -> set of ast_import target paths
+        # Build two lookups in a single pass:
+        #   graph_imports: source artifact path -> set of ast_import target paths (forward)
+        #   graph_importers: target artifact path -> set of ast_import source paths (reverse)
         graph_imports: dict[str, set[str]] = {}
+        graph_importers: dict[str, set[str]] = {}
         rows = conn.execute(
             "SELECT a_src.path, a_tgt.path "
             "FROM links AS l "
@@ -2382,6 +2397,7 @@ def check_bidirectional_deps(
         ).fetchall()
         for src_path, tgt_path in rows:
             graph_imports.setdefault(src_path, set()).add(tgt_path)
+            graph_importers.setdefault(tgt_path, set()).add(src_path)
 
     except (sqlite3.Error, OSError) as exc:
         logger.warning("Cannot read index for bidirectional check from %s: %s", db_path, exc)
@@ -2399,26 +2415,28 @@ def check_bidirectional_deps(
             continue
 
         source_path = design.source_path
-        rel_design = _rel(design_path, project_root)
+        # ``rel_design`` is lexibrary-relative (e.g. "designs/src/foo.py.md")
+        # to match the contract consumed by ``validator.fixes.fix_bidirectional_deps``
+        # and mirror the path convention used by ``check_orphaned_designs``.
+        rel_design = str(design_path.relative_to(lexibrary_dir))
 
-        # Gather design-listed deps (project-relative paths), skip placeholders
+        # --- Dependencies (forward) ------------------------------------------------
         design_deps: set[str] = set()
         for dep in design.dependencies:
             dep_stripped = dep.strip()
             if dep_stripped and dep_stripped != "(none)":
                 design_deps.add(dep_stripped)
 
-        # Gather graph-listed ast_import targets for this source file
         graph_deps = graph_imports.get(source_path, set())
 
-        # Direction 1: dep listed in design file but not found in graph
+        # Direction 1a: dep listed in design file but not found in graph
         for dep in sorted(design_deps - graph_deps):
             issues.append(
                 ValidationIssue(
-                    severity="info",
+                    severity="warning",
                     check="bidirectional_deps",
                     message=(
-                        f"Dependency {dep} is listed in the design file "
+                        f"dependencies drift: {dep} is listed in the design file "
                         f"but not found as an ast_import link in the graph"
                     ),
                     artifact=rel_design,
@@ -2429,14 +2447,14 @@ def check_bidirectional_deps(
                 )
             )
 
-        # Direction 2: graph link exists but not listed in design file
+        # Direction 1b: graph link exists but not listed in design file
         for dep in sorted(graph_deps - design_deps):
             issues.append(
                 ValidationIssue(
-                    severity="info",
+                    severity="warning",
                     check="bidirectional_deps",
                     message=(
-                        f"Import {dep} exists in the link graph "
+                        f"dependencies drift: {dep} exists in the link graph "
                         f"but is not listed in the design file dependencies"
                     ),
                     artifact=rel_design,
@@ -2444,6 +2462,57 @@ def check_bidirectional_deps(
                         f"Run: lexi design update {source_path} to regenerate "
                         f"the design file with current import data, or ask the user to run "
                         f"`lexictl update` to rebuild the index."
+                    ),
+                )
+            )
+
+        # --- Dependents (reverse) --------------------------------------------------
+        # Skip when the design's dependents list was produced without a link graph --
+        # the list is authoritatively empty and any reverse-diff would be noise.
+        if not design.metadata.dependents_complete:
+            continue
+
+        design_dependents: set[str] = set()
+        for dep in design.dependents:
+            dep_stripped = dep.strip()
+            if dep_stripped and dep_stripped != "(none)":
+                design_dependents.add(dep_stripped)
+
+        graph_dependents = graph_importers.get(source_path, set())
+
+        # Direction 2a: dependent listed in design file but not found in graph
+        for dep in sorted(design_dependents - graph_dependents):
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    check="bidirectional_deps",
+                    message=(
+                        f"dependents drift: {dep} is listed as a dependent in the "
+                        f"design file but no ast_import edge from that source is in the graph"
+                    ),
+                    artifact=rel_design,
+                    suggestion=(
+                        "The link graph index may be stale; ask the user "
+                        "to run `lexictl update` to rebuild it."
+                    ),
+                )
+            )
+
+        # Direction 2b: graph reverse edge exists but not listed in design file
+        for dep in sorted(graph_dependents - design_dependents):
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    check="bidirectional_deps",
+                    message=(
+                        f"dependents drift: {dep} imports this source in the link graph "
+                        f"but is not listed in the design file dependents"
+                    ),
+                    artifact=rel_design,
+                    suggestion=(
+                        f"Run: lexi design update {source_path} to regenerate the "
+                        f"design file with current reverse-import data, or ask the user "
+                        f"to run `lexictl backfill-dependents` / `lexictl update`."
                     ),
                 )
             )

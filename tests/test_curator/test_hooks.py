@@ -7,11 +7,16 @@ scope filtering.
 
 from __future__ import annotations
 
+import json
+import os
+import time
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from lexibrary.archivist.change_checker import ChangeLevel
+from lexibrary.archivist.pipeline import FileResult
 from lexibrary.config.schema import LexibraryConfig
 from lexibrary.curator.coordinator import CuratorLockError
 from lexibrary.curator.hooks import (
@@ -202,6 +207,311 @@ class TestPostEditHook:
         with patch("lexibrary.curator.coordinator.Coordinator") as mock_coordinator:
             await post_edit_hook(fp, project, config=config)
             mock_coordinator.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# post_edit_hook reactive bootstrap (curator-freshness task 2.5)
+# ---------------------------------------------------------------------------
+
+
+def _make_bootstrap_config(
+    *,
+    prepare_indexes: bool = True,
+    reactive_bootstrap_regenerate: bool = False,
+    max_llm_calls_per_run: int = 50,
+) -> LexibraryConfig:
+    """Build a config with the curator-freshness bootstrap flags set."""
+    return LexibraryConfig.model_validate(
+        {
+            "curator": {
+                "reactive": {
+                    "enabled": True,
+                    "post_edit": True,
+                    "post_bead_close": True,
+                    "validation_failure": True,
+                    "severity_threshold": "error",
+                },
+                "prepare_indexes": prepare_indexes,
+                "reactive_bootstrap_regenerate": reactive_bootstrap_regenerate,
+                "max_llm_calls_per_run": max_llm_calls_per_run,
+            },
+        }
+    )
+
+
+class TestPostEditHookBootstrap:
+    """Tests for the always-on index-refresh bootstrap in post_edit_hook.
+
+    Covers curator-freshness task 2.5 scenarios:
+      * Bootstrap runs regardless of source_hash equality.
+      * reactive_bootstrap_regenerate=False (default) -> update_file skipped.
+      * reactive_bootstrap_regenerate=True -> update_file called; LLM call
+        counts against max_llm_calls_per_run via pre_charged_llm_calls.
+      * prepare_indexes=False -> neither refresh nor update_file invoked.
+      * symbols.db absent -> refresh_file log-skipped, build_index still runs.
+      * PID lock held -> bootstrap log-skips without raising.
+    """
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_runs_regardless_of_hash_equality(
+        self, tmp_path: Path
+    ) -> None:
+        """Bootstrap refresh_file + build_index run even when source_hash
+        matches the cached frontmatter hash — the hook does not short-circuit
+        on hash equality."""
+        project = _setup_project(tmp_path)
+        fp = _make_source_file(project, "src/lexibrary/foo.py")
+        # Materialise a stub symbols.db so refresh_file isn't skipped for the
+        # "missing DB" reason — we want to assert the hook drives refresh_file
+        # unconditionally in the hash-matches-cache case.
+        (project / ".lexibrary" / "symbols.db").write_bytes(b"")
+        config = _make_bootstrap_config()
+
+        with (
+            patch(
+                "lexibrary.symbolgraph.builder.refresh_file"
+            ) as mock_refresh,
+            patch(
+                "lexibrary.linkgraph.builder.build_index"
+            ) as mock_build_index,
+            patch("lexibrary.curator.coordinator.Coordinator") as mock_coord,
+        ):
+            mock_coord.return_value.pre_charged_llm_calls = 0
+            mock_coord.return_value.run = AsyncMock(return_value=_default_report())
+
+            await post_edit_hook(fp, project, config=config)
+
+            mock_refresh.assert_called_once_with(project, config, fp)
+            mock_build_index.assert_called_once_with(project, changed_paths=[fp])
+
+    @pytest.mark.asyncio
+    async def test_regenerate_false_does_not_call_update_file(
+        self, tmp_path: Path
+    ) -> None:
+        """reactive_bootstrap_regenerate=False (default) -> update_file NOT
+        invoked by the bootstrap."""
+        project = _setup_project(tmp_path)
+        fp = _make_source_file(project, "src/lexibrary/foo.py")
+        config = _make_bootstrap_config(reactive_bootstrap_regenerate=False)
+
+        with (
+            patch("lexibrary.symbolgraph.builder.refresh_file"),
+            patch("lexibrary.linkgraph.builder.build_index"),
+            patch(
+                "lexibrary.archivist.pipeline.update_file",
+                new_callable=AsyncMock,
+            ) as mock_update,
+            patch(
+                "lexibrary.archivist.service.build_archivist_service"
+            ) as mock_build_arch,
+            patch("lexibrary.curator.coordinator.Coordinator") as mock_coord,
+        ):
+            mock_coord.return_value.pre_charged_llm_calls = 0
+            mock_coord.return_value.run = AsyncMock(return_value=_default_report())
+
+            await post_edit_hook(fp, project, config=config)
+
+            mock_update.assert_not_awaited()
+            mock_build_arch.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_regenerate_true_charges_llm_budget(
+        self, tmp_path: Path
+    ) -> None:
+        """reactive_bootstrap_regenerate=True -> update_file called; a
+        successful regeneration increments pre_charged_llm_calls so the call
+        counts against max_llm_calls_per_run via the coordinator's counter."""
+        project = _setup_project(tmp_path)
+        fp = _make_source_file(project, "src/lexibrary/foo.py")
+        config = _make_bootstrap_config(
+            reactive_bootstrap_regenerate=True, max_llm_calls_per_run=10
+        )
+
+        # update_file returns a ChangeLevel that corresponds to an actual
+        # LLM call — anything other than UNCHANGED / AGENT_UPDATED /
+        # skip_reason-set / the specific failure reasons listed in
+        # _bootstrap_archivist_regenerate counts.  CONTENT_CHANGED is a
+        # non-interface content edit that drives a full LLM regeneration.
+        successful_result = FileResult(change=ChangeLevel.CONTENT_CHANGED)
+
+        # Build a real coordinator-like object so += 1 works and is
+        # observable after the hook returns.
+        coord_instance = MagicMock()
+        coord_instance.pre_charged_llm_calls = 0
+        coord_instance.run = AsyncMock(return_value=_default_report())
+
+        with (
+            patch("lexibrary.symbolgraph.builder.refresh_file"),
+            patch("lexibrary.linkgraph.builder.build_index"),
+            patch(
+                "lexibrary.archivist.pipeline.update_file",
+                new_callable=AsyncMock,
+                return_value=successful_result,
+            ) as mock_update,
+            patch(
+                "lexibrary.archivist.service.build_archivist_service"
+            ) as mock_build_arch,
+            patch(
+                "lexibrary.curator.coordinator.Coordinator",
+                return_value=coord_instance,
+            ),
+        ):
+            await post_edit_hook(fp, project, config=config)
+
+            mock_build_arch.assert_called_once_with(config)
+            mock_update.assert_awaited_once()
+            # The LLM call was charged to the coordinator's budget counter.
+            assert coord_instance.pre_charged_llm_calls == 1
+            # And the counter is strictly below the cap, so the dispatch
+            # phase still has budget remaining.
+            assert (
+                coord_instance.pre_charged_llm_calls
+                < config.curator.max_llm_calls_per_run
+            )
+
+    @pytest.mark.asyncio
+    async def test_prepare_indexes_false_skips_refresh_and_update(
+        self, tmp_path: Path
+    ) -> None:
+        """prepare_indexes=False -> neither the refresh pair nor update_file
+        is invoked; the hook hands straight off to the coordinator."""
+        project = _setup_project(tmp_path)
+        fp = _make_source_file(project, "src/lexibrary/foo.py")
+        config = _make_bootstrap_config(
+            prepare_indexes=False, reactive_bootstrap_regenerate=True
+        )
+
+        with (
+            patch(
+                "lexibrary.symbolgraph.builder.refresh_file"
+            ) as mock_refresh,
+            patch(
+                "lexibrary.linkgraph.builder.build_index"
+            ) as mock_build_index,
+            patch(
+                "lexibrary.archivist.pipeline.update_file",
+                new_callable=AsyncMock,
+            ) as mock_update,
+            patch("lexibrary.curator.coordinator.Coordinator") as mock_coord,
+        ):
+            mock_coord.return_value.pre_charged_llm_calls = 0
+            mock_coord.return_value.run = AsyncMock(return_value=_default_report())
+
+            await post_edit_hook(fp, project, config=config)
+
+            mock_refresh.assert_not_called()
+            mock_build_index.assert_not_called()
+            mock_update.assert_not_awaited()
+            # The coordinator still runs (the short-circuit path awaits
+            # _run_coordinator directly).
+            mock_coord.return_value.run.assert_awaited_once_with(
+                scope=fp, trigger="reactive_post_edit"
+            )
+
+    @pytest.mark.asyncio
+    async def test_symbols_db_absent_skips_refresh_but_keeps_build_index(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """When symbols.db is missing, refresh_file log-skips silently (its
+        own internal guard) but build_index still runs."""
+        project = _setup_project(tmp_path)
+        fp = _make_source_file(project, "src/lexibrary/foo.py")
+        # Do NOT materialise .lexibrary/symbols.db — the real refresh_file
+        # guard logs a debug message and returns, leaving build_index to
+        # drive the incremental link-graph rebuild.
+        assert not (project / ".lexibrary" / "symbols.db").exists()
+
+        config = _make_bootstrap_config()
+
+        # We run the REAL refresh_file here (not mocked) so the DB-missing
+        # guard gets exercised; the symbolgraph helper is a plain sync
+        # function with no side effects when symbols.db is absent.
+        with (
+            patch(
+                "lexibrary.linkgraph.builder.build_index"
+            ) as mock_build_index,
+            patch("lexibrary.curator.coordinator.Coordinator") as mock_coord,
+        ):
+            mock_coord.return_value.pre_charged_llm_calls = 0
+            mock_coord.return_value.run = AsyncMock(return_value=_default_report())
+
+            import logging
+
+            with caplog.at_level(logging.DEBUG, logger="lexibrary.symbolgraph.builder"):
+                await post_edit_hook(fp, project, config=config)
+
+            # Bootstrap did not raise — build_index still ran even though
+            # symbols.db was absent.
+            mock_build_index.assert_called_once_with(project, changed_paths=[fp])
+            # refresh_file's internal guard emitted a log note about the
+            # missing DB.
+            assert any(
+                "symbols.db does not exist" in rec.getMessage()
+                for rec in caplog.records
+            )
+
+    @pytest.mark.asyncio
+    async def test_pid_lock_held_skips_bootstrap_without_racing(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A held PID lock -> bootstrap log-skips without raising or racing.
+
+        Simulates a concurrent curator run by writing a lock file with the
+        current PID and a fresh timestamp. ``_acquire_lock`` sees the live
+        PID and raises ``CuratorLockError`` which the bootstrap catches and
+        turns into a log-skip.
+        """
+        project = _setup_project(tmp_path)
+        fp = _make_source_file(project, "src/lexibrary/foo.py")
+        config = _make_bootstrap_config()
+
+        # Simulate a held lock by planting a fresh PID/timestamp entry
+        # owned by THIS process — _pid_alive(os.getpid()) returns True and
+        # the age is ~0 so _acquire_lock treats the lock as live.
+        lock_path = project / ".lexibrary" / "curator" / ".curator.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(
+            json.dumps({"pid": os.getpid(), "timestamp": time.time()}),
+            encoding="utf-8",
+        )
+
+        with (
+            patch(
+                "lexibrary.symbolgraph.builder.refresh_file"
+            ) as mock_refresh,
+            patch(
+                "lexibrary.linkgraph.builder.build_index"
+            ) as mock_build_index,
+            patch("lexibrary.curator.coordinator.Coordinator") as mock_coord,
+        ):
+            mock_coord.return_value.pre_charged_llm_calls = 0
+            # The coordinator's own .run() call will also observe the held
+            # lock via CuratorLockError — the existing _run_coordinator
+            # wrapper already handles that; return a value to keep the
+            # assertion crisp.
+            mock_coord.return_value.run = AsyncMock(
+                side_effect=CuratorLockError("lock held")
+            )
+
+            import logging
+
+            with caplog.at_level(logging.INFO, logger="lexibrary.curator.hooks"):
+                # Must NOT raise — the lock-held path is a log-skip.
+                await post_edit_hook(fp, project, config=config)
+
+            # Bootstrap did not touch the indexes.
+            mock_refresh.assert_not_called()
+            mock_build_index.assert_not_called()
+            # And the bootstrap emitted a log note about the held lock.
+            assert any(
+                "lock held" in rec.getMessage().lower()
+                or "skipping reactive post_edit bootstrap" in rec.getMessage()
+                for rec in caplog.records
+            )
 
 
 # ---------------------------------------------------------------------------

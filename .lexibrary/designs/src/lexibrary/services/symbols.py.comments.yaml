@@ -14,32 +14,3 @@ comments:
     \ go through SymbolGraph.query_raw \u2014 never through _conn directly \u2014\
     \ so the service respects the read-only facade."
   date: '2026-04-11T03:58:45.672040Z'
-- body: 'symbol-graph-3 group 5: TraceResult now has unresolved_parents: list[UnresolvedClassEdgeRow];
-    SymbolQueryService.trace() populates parents, children, and unresolved_parents
-    via class_edges_from/to/unresolved_from. Enables rendering base classes, subclasses,
-    instantiation sites, and external (unresolved) bases in lexi trace output.'
-  date: '2026-04-11T11:15:19.666227Z'
-- body: 'symbol-graph-4 group 6 wires enum/constant members through trace() and search_symbols().
-    trace() now populates TraceResult.members via members_of() so the renderer can
-    emit the ### Members block. search_symbols() runs two LIKE passes: the original
-    name/qualified_name pass (score 0.0) and a new member-value pass via symbols_with_member_value_like
-    (score 0.5). Hits from the value pass are appended only when the parent symbol
-    is not already in the name-pass results, and the combined output respects limit.
-    0.5 is the sentinel callers use to distinguish ''matched on name'' from ''matched
-    via a member value''.'
-  date: '2026-04-11T20:13:58.068241Z'
-- body: "Phase-5 group 4 added three new public surfaces: the CallContextResult dataclass,\
-    \ SymbolQueryService.members_of(), and SymbolQueryService.call_context(). members_of()\
-    \ is a thin facade over SymbolGraph.members_of() \u2014 returns empty list when\
-    \ the symbol graph is None. call_context() queries by symbol ID (not name) so\
-    \ the archivist enrichment helper can walk call graphs without colliding when\
-    \ multiple files define symbols with the same short name. It uses _SELECT_SYMBOL\
-    \ + query_raw to materialise the SymbolRow from an id, then walks callers_of/callees_of\
-    \ via private _walk_callers/_walk_callees BFS helpers up to the requested hop\
-    \ depth. Return type is CallContextResult | None (not CallContextResult) because\
-    \ a SymbolRow cannot be constructed when the graph is missing or the id does not\
-    \ resolve \u2014 callers treat None as 'skip enrichment'. The spec (specs/symbol-query-service/spec.md)\
-    \ literally says to return CallContextResult, but since SymbolRow is required,\
-    \ None is the only sound degradation path. Phase-5 enrichment helper (group 5)\
-    \ will skip symbols where call_context() returns None."
-  date: '2026-04-11T23:07:50.831038Z'

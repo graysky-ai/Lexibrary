@@ -202,6 +202,7 @@ def serialize_design_file(data: DesignFile) -> str:
     footer_lines.append(f"design_hash: {design_hash}")
     footer_lines.append(f"generated: {meta.generated.isoformat()}")
     footer_lines.append(f"generator: {meta.generator}")
+    footer_lines.append(f"dependents_complete: {str(meta.dependents_complete).lower()}")
     footer_lines.append("-->")
 
     parts.append("\n".join(footer_lines))

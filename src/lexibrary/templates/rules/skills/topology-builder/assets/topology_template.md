@@ -21,20 +21,31 @@ Directory descriptions in the tree below are synthesised keyword fragments drawn
 
 ## Project Config
 
-*Fill in the actual values for this project. Add rows for additional tooling.*
+*Fill in the actual values for this project. Add rows for additional tooling. If different scope roots use different primary languages, list each in the Language / runtime row.*
 
 | Property | Value |
 |----------|-------|
-| Language / runtime | `{{Python X.Y}}` |
-| Build system | `{{hatchling / setuptools / ...}}` |
-| Package manager | `{{uv / pip / poetry / ...}}` |
-| Type checker | `{{mypy / pyright / none}}` |
+| Language / runtime | `{{Python X.Y / TypeScript / ...}}` |
+| Build system | `{{hatchling / setuptools / webpack / cargo / ...}}` |
+| Package manager | `{{uv / pip / poetry / npm / pnpm / ...}}` |
+| Type checker | `{{mypy / pyright / tsc / none}}` |
 | Linter / formatter | `{{ruff / flake8 / eslint / ...}}` |
-| Test runner | `{{pytest / jest / ...}}` |
+| Test runner | `{{pytest / jest / go test / ...}}` |
+
+## Scope Roots
+
+*List every `scope_roots[*].path` declared in `.lexibrary/config.yaml`. These directories are what Lexibrary indexes: files under them get design files generated and are searchable via `lexi`. Files outside every scope root still appear in the Directory Tree below but lack design-file annotations.*
+
+| Path | Role |
+|------|------|
+| `{{path/to/root_1/}}` | `{{What lives here and why it's indexed.}}` |
+| `{{path/to/root_2/}}` | `{{What lives here and why it's indexed.}}` |
+
+*A single-root project still fills in one row. Roots with different primary languages (e.g. a Python `src/` alongside a BAML `prompts/` root) are expected -- note any such mix.*
 
 ## Directory Tree
 
-*Paste the directory tree here. Directory annotations come from the billboard summaries in each `.aindex` file — see the legend above.*
+*Paste the unified repository tree here. Directory annotations come from the billboard summaries in each `.aindex` file — see the legend above. Subtrees that fall outside every scope root belong in the tree but will have sparser annotations (or none).*
 
 ```
 {{PROJECT_NAME}}/ -- {{root billboard fragment}}

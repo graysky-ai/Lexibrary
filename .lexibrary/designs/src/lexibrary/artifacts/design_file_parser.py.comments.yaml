@@ -1,8 +1,0 @@
-comments:
-- body: "Parser now recognises two new sections: ## Enums & constants and ## Call\
-    \ paths. Introduced _parse_enrichment_entries helper that handles the 'bullet\
-    \ header + optional indented continuation line' pattern used by both sections.\
-    \ The sections are parsed into first-class EnumNote / CallPathNote lists on DesignFile\
-    \ \u2014 NOT added to preserved_sections. Backward compatible: missing sections\
-    \ yield empty lists."
-  date: '2026-04-11T23:21:03.019188Z'

@@ -44,21 +44,22 @@ bd sync               # Sync with git
 ## Session Start
 
 1. Read `.lexibrary/TOPOLOGY.md` for project layout.
-2. Run `lexi iwh list` to check for pending signals.
-3. Run `lexi search <keyword>` and/or `lexi search "key phrase"` for targeted
+2. Run `lexi search <keyword>` and/or `lexi search "key phrase"` for targeted
    searches related to your current task.
    - For design file hits: run `lexi lookup <path>` to get full design context.
+   - For symbol hits: symbols now appear in default mixed-type `lexi search`
+     output. Run `lexi trace <symbol>` to drill into a symbol hit and walk
+     its call chain.
    - For all other hits (concepts, conventions, stack posts, playbooks):
      run `lexi view <artifact-id>` to read the full artifact.
+3. Run `lexi iwh list` to check for pending signals `.iwh` files left as 
+   temporary breadcrumbs by previous agents.
+4. If signals exist in a folder you are working in, run `lexi iwh read <dir>` 
+   to consume the signal and understand where the previous agent left off..
 
-Do not begin coding without this context.
-
-If signals exist in a directory you are working in, run `lexi iwh read <dir>` to
-consume the signal and understand what the previous session left behind.
-
-Do not consume IWH signals for directories you are not actively working in —
-consuming deletes the signal permanently. Sub-agents must not consume IWH signals.
-Do not create an IWH signal if all work is complete.
+**IMPORTANT:** Do not consume IWH signals for directories you are not actively 
+working in — consuming deletes the signal permanently. Do not create an IWH 
+signal if all work is complete.
 
 ## Before Reading or Editing Files
 
@@ -67,7 +68,8 @@ Do not create an IWH signal if all work is complete.
   paths", "Data flows", and "Enums & constants" sections — they are
   the distilled context you need before you start making changes. This
   does not apply to test files.
-- Run `lexi <cmd> --help` when a command's purpose or output is unfamiliar. Some commands expose `--help-extended` for detailed reference material.
+- Run `lexi <cmd> --help` when a command's purpose or output is unfamiliar. 
+  Some commands expose `--help-extended` for detailed reference material.
 
 ## After Editing Files
 
@@ -94,7 +96,8 @@ Do not create an IWH signal if all work is complete.
   existing patterns, conventions, and prior art across all artifact types.
   - For design file hits: `lexi lookup <path>`
   - For concept, convention, or stack hits: `lexi view <artifact-id>`
-- Run `lexi trace <symbol>` before renaming, moving, or removing a symbol. Run with `--help-extended` for output interpretation.
+- Run `lexi trace <symbol>` before renaming, moving, or removing a symbol. 
+  Run with `--help-extended` for output interpretation.
 
 ## Debugging and Problem Solving
 

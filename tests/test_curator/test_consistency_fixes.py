@@ -25,7 +25,6 @@ from lexibrary.artifacts.design_file_parser import parse_design_file
 from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.curator.consistency_fixes import (
     apply_alias_dedup,
-    apply_bidirectional_dep,
     apply_flag_stale_convention,
     apply_orphan_concept_delete,
     apply_orphaned_aindex_delete,
@@ -318,40 +317,11 @@ class TestApplyAliasDedup:
 
 
 # ---------------------------------------------------------------------------
-# apply_bidirectional_dep
+# apply_bidirectional_dep — retired in Phase 1a of the curator-freshness
+# OpenSpec change.  Bidirectional-deps reconciliation now lives on the
+# validator side; see tests/test_archivist/test_reconcile_deps_only.py
+# and tests/test_validator/test_info_checks.py::TestCheckBidirectionalDeps.
 # ---------------------------------------------------------------------------
-
-
-class TestApplyBidirectionalDep:
-    def test_apply_bidirectional_dep_adds_entry(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        # Target design file (src/b.py) — needs src/a.py added as dependent.
-        design_path = _make_design(project, "src/b.py", dependents=[])
-        item = _make_item(
-            action_key="add_missing_bidirectional_dep",
-            action_hint="add_missing_bidirectional_dep",
-            target_path=design_path,
-            detail="src/a.py depends on src/b.py but src/b.py does not list src/a.py as dependent",
-        )
-        result = apply_bidirectional_dep(item, _make_ctx(project, lex_dir))
-        assert result.success is True
-
-        parsed = parse_design_file(design_path)
-        assert parsed is not None
-        assert any("src/a.py" in d for d in parsed.dependents)
-
-    def test_apply_bidirectional_dep_idempotent(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        design_path = _make_design(project, "src/b.py", dependents=["src/a.py"])
-        item = _make_item(
-            action_key="add_missing_bidirectional_dep",
-            action_hint="add_missing_bidirectional_dep",
-            target_path=design_path,
-            detail="src/a.py depends on src/b.py but src/b.py does not list src/a.py as dependent",
-        )
-        result = apply_bidirectional_dep(item, _make_ctx(project, lex_dir))
-        assert result.success is True
-        assert "already present" in result.message
 
 
 # ---------------------------------------------------------------------------
@@ -610,10 +580,10 @@ def test_consistency_action_keys_map_is_authoritative() -> None:
         "fix_broken_wikilink_fuzzy",
         "resolve_slug_collision",
         "resolve_alias_collision",
-        "add_missing_bidirectional_dep",
         "remove_orphaned_aindex",
         "delete_orphaned_comments",
         "remove_orphan_zero_deps",
+        "add_missing_reverse_dep",
         "flag_stale_convention",
         "flag_stale_playbook",
         "suggest_new_concept",

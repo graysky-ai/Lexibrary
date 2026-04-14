@@ -1,0 +1,14 @@
+comments:
+- body: "Added fix_bidirectional_deps as the curator-freshness Phase 1b fixer: resolves\
+    \ the design path from issue.artifact (which is lexibrary-relative), parses the\
+    \ design defensively, then delegates to archivist.pipeline.reconcile_deps_only\
+    \ to rewrite Dependencies / Dependents from the AST + link graph without invoking\
+    \ the LLM archivist. Deliberately avoids update_file \u2014 its source-hash short-circuit\
+    \ would no-op when the source is unchanged, but that is exactly the scenario this\
+    \ fixer exists to fix (source stable, graph moved). LinkGraphUnavailable is caught\
+    \ and surfaced as 'link graph not built \u2014 run lexictl update first', giving\
+    \ the curator / CLI a graceful-degradation branch. Registered under the bidirectional_deps\
+    \ key in FIXERS; signature remains (issue, project_root, config) to match the\
+    \ registry type and the two CLI dispatchers in cli/_shared.py and curator/validation_fixers.py\
+    \ (tasks.md spec text omits config but all real call sites pass three args)."
+  date: '2026-04-14T02:47:34.211450Z'

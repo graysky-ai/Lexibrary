@@ -46,6 +46,13 @@ class CollectItem:
     # reporting and IWH signals.
     action_hint: str = ""
     fix_instruction_detail: str = ""
+    # Two-pass collect tagging (schema v3).
+    # ``"hash"`` → emitted by ``_collect_hash_layer`` (staleness, IWH, agent
+    # edits, comments, comment audit, budget, hash-layer validators).
+    # ``"graph"`` → emitted by ``_collect_graph_layer`` (graph-layer
+    # validators, deprecation, consistency, link-graph availability).
+    # ``None`` preserves legacy single-pass flow behaviour.
+    layer: Literal["hash", "graph"] | None = None
 
 
 @dataclass
@@ -142,6 +149,10 @@ class TriageItem:
     budget_item: BudgetCollectItem | None = None
     comment_audit_item: CommentAuditCollectItem | None = None
     risk_level: Literal["low", "medium", "high"] | None = None
+    # Two-pass collect tagging (schema v3). Inherited from the underlying
+    # ``CollectItem``'s ``layer`` at triage time. ``None`` preserves legacy
+    # single-pass flow behaviour.
+    layer: Literal["hash", "graph"] | None = None
 
 
 @dataclass
@@ -174,6 +185,10 @@ class SubAgentResult:
         "dry_run",
         "errored",
     ] = "fixed"
+    # Two-pass collect tagging (schema v3). Inherited from the originating
+    # ``TriageItem``'s ``layer`` at dispatch time. ``None`` preserves legacy
+    # single-pass flow behaviour.
+    layer: Literal["hash", "graph"] | None = None
 
 
 @dataclass
@@ -213,8 +228,13 @@ class CuratorReport:
     comments_flagged: int = 0
     descriptions_audited: int = 0
     summaries_audited: int = 0
-    # Phase 1 (curator-fix): honest counters & detail lists
-    schema_version: int = 2
+    # Phase 1 (curator-fix): honest counters & detail lists.
+    #
+    # Schema version history:
+    #   v2: honest counters + dispatched/deferred detail lists.
+    #   v3: per-item ``layer`` field on CollectItem/TriageItem/SubAgentResult
+    #       tagging hash vs graph layer.
+    schema_version: int = 3
     stubbed: int = 0
     dispatched_details: list[dict[str, object]] = field(default_factory=list)
     deferred_details: list[dict[str, object]] = field(default_factory=list)

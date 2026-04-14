@@ -221,7 +221,7 @@ def lookup(
     design_path = mirror_path(project_root, target)
     if not design_path.exists():
         warn(f"No design file found for {file}")
-        info(f"Run `lexictl update {file}` to generate one.")
+        info(f"Run `lexi design update {file}` to generate one.")
         raise typer.Exit(1)
 
     # Gather data via service
@@ -233,7 +233,7 @@ def lookup(
     if file_result.is_stale:
         warn(
             "Source file has changed since the design file was last generated. "
-            "Advise user to run `lexictl update " + str(file) + "` to refresh.\n"
+            "Run `lexi design update " + str(file) + "` to refresh.\n"
         )
 
     # --- Brief mode (default): description + conventions + issue count ---

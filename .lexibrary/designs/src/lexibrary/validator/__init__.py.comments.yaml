@@ -1,0 +1,9 @@
+comments:
+- body: "validate_library() now accepts a keyword-only checks: Iterable[str] | None\
+    \ = None that narrows the run to a caller-supplied subset of AVAILABLE_CHECKS.\
+    \ It composes with the legacy check_filter (which picks a single check) \u2014\
+    \ check_filter is applied first, then the checks set further narrows. Legacy callers\
+    \ that pass neither preserve the original all-checks behaviour. The parameter\
+    \ exists so the curator two-pass collect (task 5.2) can partition validator work\
+    \ between the hash and graph layers without re-running every check twice."
+  date: '2026-04-14T05:05:51.750143Z'

@@ -245,22 +245,13 @@ class TestOrphanConceptRoundtrip:
 # ---------------------------------------------------------------------------
 # Bidirectional dep round-trip
 # ---------------------------------------------------------------------------
-
-
-class TestBidirectionalDepRoundtrip:
-    def test_bidirectional_dep_roundtrip(self, tmp_path: Path) -> None:
-        """A missing reverse-dep entry is added to the target design file."""
-        project = _setup_integration_project(tmp_path)
-        # A depends on B, but B does not list A as a dependent.
-        _write_design(project, "src/a.py", dependencies=["src/b.py"], dependents=[])
-        design_b = _write_design(project, "src/b.py", dependencies=[], dependents=[])
-
-        _run(project)
-
-        parsed_b = parse_design_file(design_b)
-        assert parsed_b is not None
-        # B should now list src/a.py as a dependent.
-        assert any("src/a.py" in d for d in parsed_b.dependents)
+#
+# The former ``TestBidirectionalDepRoundtrip`` class that lived here was
+# retired alongside the curator-side bidirectional handler in group 3.8
+# of the ``curator-freshness`` OpenSpec change.  Its replacement --
+# exercising the validator-fixer bridge through
+# :func:`validator.fixes.fix_bidirectional_deps` -- lives in
+# ``tests/test_curator/test_bidirectional_integration.py``.
 
 
 # ---------------------------------------------------------------------------

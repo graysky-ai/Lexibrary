@@ -394,13 +394,23 @@ class TestDeprecatedTtlRoundtrip:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        from lexibrary.ast_parser import compute_hashes  # noqa: PLC0415
+
         project = _build_minimal_library(tmp_path, name="deprecated-ttl")
-        _write_source_file(project, "src/stale/mod.py", '"""Mod."""\n')
+        source_path = _write_source_file(project, "src/stale/mod.py", '"""Mod."""\n')
+        # Use the CURRENT source hash so the staleness collector does not
+        # also fire on this file.  Under the two-pass flow introduced in
+        # group 5, hash-pass staleness regeneration runs BEFORE graph-pass
+        # validation; if both signals fire, regeneration would overwrite
+        # ``status: deprecated`` to ``status: active`` and the
+        # ``deprecated_ttl`` validator check would no longer detect the
+        # file by the time graph-pass runs.
+        source_hash, _interface_hash = compute_hashes(source_path)
 
         design_path = _write_design_file(
             project,
             "src/stale/mod.py",
-            source_hash="cafebabe" * 8,
+            source_hash=source_hash,
             status="deprecated",
             deprecated_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(days=365),
             deprecated_reason="source_deleted",

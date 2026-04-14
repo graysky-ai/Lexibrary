@@ -992,8 +992,17 @@ class TestPhase1aIntegration:
                 updated_by="archivist",
             )
 
-        # Limit to 1 LLM call
-        config = LexibraryConfig.model_validate({"curator": {"max_llm_calls_per_run": 1}})
+        # Limit to 2 LLM calls.  Under the two-pass flow (task 5.4/5.5),
+        # the hash-layer pass is capped at ``int(max_llm_calls_per_run * 0.7)``
+        # so ``max=2`` yields a hash cap of ``1`` — exactly one staleness
+        # fix before the cap blocks the remaining two.  Disable
+        # consistency collection because its slug-collision fixes are
+        # Low-risk and would otherwise consume zero-LLM budget slots,
+        # inflating ``report.fixed`` beyond the staleness-only count this
+        # test is asserting on.
+        config = LexibraryConfig.model_validate(
+            {"curator": {"max_llm_calls_per_run": 2, "consistency_collect": "off"}}
+        )
         coord = Coordinator(project, config)
 
         with patch("lexibrary.validator.validate_library") as mock_validate:
@@ -1002,7 +1011,7 @@ class TestPhase1aIntegration:
             mock_validate.return_value = ValidationReport(issues=[])
             report = asyncio.run(coord.run())
 
-        # Only 1 should be fixed, the rest deferred due to LLM cap
+        # Only 1 staleness should be fixed, the rest deferred due to LLM cap
         assert report.fixed == 1
         assert report.deferred >= 2
         assert report.sub_agent_calls.get("regenerate_stale_design", 0) == 1

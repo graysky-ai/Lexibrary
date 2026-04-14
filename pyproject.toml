@@ -60,6 +60,9 @@ packages = ["src/lexibrary"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "benchmark: performance benchmark tests; opt in with `-m benchmark`, skip with `-m 'not benchmark'`",
+]
 
 [tool.mypy]
 python_version = "3.11"

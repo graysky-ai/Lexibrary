@@ -1,8 +1,0 @@
-comments:
-- body: "Serializer now emits ## Enums & constants and ## Call paths sections between\
-    \ ## Complexity Warning and ## Wikilinks when the corresponding DesignFile fields\
-    \ are non-empty. Each entry renders as '- **{name}** \u2014 {role}' with an optional\
-    \ indented 'Values:' or 'Key hops:' continuation line. Sections are omitted entirely\
-    \ when the lists are empty, matching the existing pattern for optional sections\
-    \ like Tags/Stack."
-  date: '2026-04-11T23:21:06.697459Z'

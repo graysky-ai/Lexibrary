@@ -5,29 +5,3 @@ comments:
     group 8 to parse each source file exactly once per build_symbol_graph run and
     feed the same tree to both interface and symbol extractors. Behaviour unchanged.'
   date: '2026-04-10T15:18:29.813431Z'
-- body: 'Group 3 of symbol-graph-2: added extract_symbols_from_tree walking function_declaration,
-    class_declaration, method_definition, and lexical_declaration+arrow_function to
-    emit SymbolDefinitions, plus call_expression walker that treats this as the analog
-    of self and skips type_arguments. Parse-tree sharing via parse_ts_tree remains
-    single-parse per file.'
-  date: '2026-04-10T19:44:40.089380Z'
-- body: 'Phase 3 symbol-graph-3 group 3: emits ClassEdgeSite rows for TS/TSX class_heritage
-    and new_expression. Both ''extends'' and ''implements'' clauses collapse to edge_type=''inherits''
-    (the symbol graph does not distinguish interfaces from base classes). Only bare-identifier
-    ''new_expression'' constructors produce instantiates edges; qualified constructors
-    (''new mod.Foo()'') are skipped because Phase 3 resolution only handles bare names.'
-  date: '2026-04-11T10:44:47.883003Z'
-- body: 'symbol-graph-4 Group 3: added enum_declaration + const enum handling and
-    module-level constant extraction to the symbol pipeline. The InterfaceSkeleton
-    pipeline is unchanged. Only primitive literals (string/number/true/false/null/regex)
-    are indexed as constants; object literals, array literals, template strings with
-    substitutions, and arrow functions are excluded. Enum members handle both enum_assignment
-    (Name = value) and bare property_identifier (Name,) forms, assigning monotonic
-    zero-based ordinals in declaration order. export enum Foo is handled via existing
-    export_statement recursion in _collect_ts_top_level_definitions.'
-  date: '2026-04-11T19:46:03.576595Z'
-- body: Added composition extraction from public_field_definition nodes with type_annotation
-    children. TypeScript-specific builtins set and generic wrapper stripping handle
-    Array<X>, Map<K,V>, X | null patterns. Only bare identifier types produce compositions
-    -- dotted references are skipped.
-  date: '2026-04-12T03:19:12.274835Z'

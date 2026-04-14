@@ -1,0 +1,8 @@
+comments:
+- body: Added a Scope Roots table section between Project Config and Directory Tree
+    so multi-root projects can enumerate each indexed scope root and its role. Clarified
+    in the Directory Tree intro that the tree is a unified whole-repo view and that
+    subtrees outside every scope root still belong in it with sparser annotations.
+    Generalised Project Config placeholder values to cover non-Python stacks (TypeScript/Rust/Go
+    tooling).
+  date: '2026-04-13T20:03:35.978074Z'

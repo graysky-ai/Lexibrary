@@ -24,8 +24,10 @@ from lexibrary.linkgraph.query import (
     BuildSummaryEntry,
     ConventionResult,
     LinkGraph,
+    LinkGraphUnavailable,
     LinkResult,
     TraversalNode,
+    extract_dependents,
     open_index,
 )
 from lexibrary.linkgraph.schema import (
@@ -49,12 +51,14 @@ __all__ = [
     "IndexBuilder",
     "IndexHealth",
     "LinkGraph",
+    "LinkGraphUnavailable",
     "LinkResult",
     "SCHEMA_VERSION",
     "TraversalNode",
     "build_index",
     "check_schema_version",
     "ensure_schema",
+    "extract_dependents",
     "open_index",
     "read_index_health",
 ]

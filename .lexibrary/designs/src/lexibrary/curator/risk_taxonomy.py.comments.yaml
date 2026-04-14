@@ -33,3 +33,10 @@ comments:
     an unknown action key (previously raised KeyError), making the function robust
     against stale user overrides that may linger across refactors.'
   date: '2026-04-11T07:33:32.947260Z'
+- body: 'Registered action key ''fix_bidirectional_deps'' as a low-risk action (rationale:
+    ''Mechanical regeneration via archivist pipeline'') with function_ref validator.fixes.fix_bidirectional_deps.
+    Part of curator-freshness group 4: the new entry replaces the retired ''add_missing_bidirectional_dep''
+    / ''remove_orphaned_reverse_dep'' consistency-side handlers (retired in group
+    3) with a single validator-side fixer that reconciles both dependencies and dependents
+    from the link graph. Counts now: 35 Low / 12 Medium / 3 High / 50 Total.'
+  date: '2026-04-14T02:49:43.973716Z'

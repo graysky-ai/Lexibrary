@@ -40,6 +40,7 @@ from lexibrary.curator.models import (
     TriageItem,
     TriageResult,
 )
+from lexibrary.validator.report import ValidationIssue, ValidationReport
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1918,3 +1919,386 @@ class TestDeprecationReport:
         assert data["hard_deleted"] == 0
         assert data["migrations_applied"] == 3
         assert data["migrations_proposed"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Two-pass collect flow (Phase 5 — task 5.9)
+# ---------------------------------------------------------------------------
+
+
+class TestTwoPassFlow:
+    """Two-pass collect flow honours hash-then-graph ordering and layer tags.
+
+    Covers task 5.9 of the ``curator-freshness`` OpenSpec change:
+
+    * Hash-pass regeneration is visible to the graph-pass collect so
+      freshly-regenerated Dependencies do not trigger spurious
+      ``bidirectional_deps`` issues in pass 2.
+    * Every ``SubAgentResult`` emitted by ``_dispatch`` (and surfaced in
+      ``CuratorReport.dispatched_details``) carries a ``layer`` key whose
+      value is drawn from ``{"hash", "graph"}`` in the two-pass flow.
+    * The legacy single-pass kill-switch (``two_pass_collect=False``)
+      still emits ``schema_version=3``; the schema bump stands even when
+      per-item ``layer`` may be absent / ``None`` on that path.
+    * The 70/30 budget split caps hash-layer LLM spend at
+      ``int(max_llm_calls_per_run * 0.7)`` while the shared counter
+      leaves the remaining headroom for the graph layer.
+    """
+
+    @patch("lexibrary.curator.coordinator._uncommitted_files", return_value=set())
+    @patch("lexibrary.curator.coordinator._active_iwh_dirs", return_value=set())
+    @patch("lexibrary.linkgraph.query.LinkGraph.open", return_value=None)
+    def test_two_pass_end_to_end_hash_regen_visible_to_graph(
+        self,
+        _mock_graph: MagicMock,
+        _mock_iwh: MagicMock,
+        _mock_uncommitted: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Pass-1 regenerates a stale design; pass-2 sees fresh deps.
+
+        Seeds one design file with a stale source hash so hash-pass
+        staleness collect fires ``regenerate_stale_design`` (via the
+        real stub resolver).  ``validate_library`` is mocked so we can:
+
+        * Observe the ``checks`` argument and confirm pass-1 receives
+          ``_HASH_LAYER_CHECKS`` while pass-2 receives
+          ``_GRAPH_LAYER_CHECKS``.
+        * Record the design-file state at each call — the pass-2 call
+          must see the regenerated file on disk (``updated_by=curator``
+          and the fresh ``source_hash``), proving the hash-pass write
+          is visible before graph-pass collect runs.
+        * Return ZERO ``bidirectional_deps`` issues from pass-2, which
+          is what the spec promises when the hash-pass fix cleared the
+          underlying drift.
+        """
+        from lexibrary.curator.coordinator import (
+            _GRAPH_LAYER_CHECKS,
+            _HASH_LAYER_CHECKS,
+        )
+
+        project = _setup_minimal_project(tmp_path)
+        _make_source_file(project, "src/foo.py", "# fresh\ndef bar(): pass\n")
+        design_path = _make_design_file(
+            project,
+            "src/foo.py",
+            source_hash="old_stale_hash",
+            updated_by="archivist",
+        )
+
+        recorded_checks: list[frozenset[str]] = []
+        design_snapshots: list[str] = []
+
+        def validate_side_effect(
+            project_root: Path,  # noqa: ARG001
+            lexibrary_dir: Path,  # noqa: ARG001
+            *,
+            severity_filter: str | None = None,  # noqa: ARG001
+            check_filter: str | None = None,  # noqa: ARG001
+            checks: object | None = None,
+        ) -> ValidationReport:
+            checks_frozen = frozenset(checks) if checks is not None else frozenset()
+            recorded_checks.append(checks_frozen)
+            design_snapshots.append(design_path.read_text(encoding="utf-8"))
+            # Pass-1 (hash layer): emit a hash_freshness issue so the
+            # validation bridge fires a staleness-adjacent fix.  We also
+            # rely on the real _collect_staleness path to add the
+            # ``source="staleness"`` CollectItem that dispatches
+            # ``regenerate_stale_design``; the validator side is
+            # intentionally inert.
+            #
+            # Pass-2 (graph layer): return ZERO issues — in particular
+            # no ``bidirectional_deps`` — because the stub resolver has
+            # already rewritten the design with the current Dependencies.
+            return ValidationReport(issues=[])
+
+        with patch(
+            "lexibrary.validator.validate_library",
+            side_effect=validate_side_effect,
+        ):
+            config = LexibraryConfig.model_validate({"curator": {"autonomy": "full"}})
+            coord = Coordinator(project, config)
+            report = asyncio.run(coord.run())
+
+        # Ordering: pass-1 sees hash-layer subset; pass-2 sees graph-layer.
+        assert len(recorded_checks) == 2
+        assert recorded_checks[0] == _HASH_LAYER_CHECKS
+        assert recorded_checks[1] == _GRAPH_LAYER_CHECKS
+
+        # Pass-2 must observe the regenerated design on disk (i.e. the
+        # hash-pass dispatch completed before pass-2 collect ran).  The
+        # stub resolver stamps ``updated_by: curator`` and rewrites the
+        # file header, so the two snapshots must differ.
+        assert design_snapshots[0] != design_snapshots[1]
+        assert "updated_by: curator" in design_snapshots[1]
+
+        # Pass-2 emitted no bidirectional_deps finding.  This is an
+        # end-to-end assertion that graph-layer collect does not re-fire
+        # stale-dep drift once hash-layer regeneration has landed.
+        dispatched = list(report.dispatched_details)
+        bidirectional_entries = [
+            d for d in dispatched if d.get("action_key") == "fix_bidirectional_deps"
+        ]
+        assert not bidirectional_entries, (
+            "Graph-pass emitted bidirectional_deps despite hash-pass "
+            f"regeneration. Entries: {bidirectional_entries}"
+        )
+
+        # Pass-1 dispatched a staleness regen that succeeded.
+        regen_entries = [
+            d
+            for d in dispatched
+            if d.get("action_key") == "regenerate_stale_design" and d.get("outcome") == "fixed"
+        ]
+        assert regen_entries, (
+            "Expected at least one regenerate_stale_design with outcome=fixed "
+            f"in dispatched_details; got {dispatched}"
+        )
+        # Layer tagging lines up with the hash-pass origin.
+        assert regen_entries[0].get("layer") == "hash"
+
+    @patch("lexibrary.curator.coordinator._uncommitted_files", return_value=set())
+    @patch("lexibrary.curator.coordinator._active_iwh_dirs", return_value=set())
+    @patch("lexibrary.linkgraph.query.LinkGraph.open", return_value=None)
+    def test_dispatched_details_carry_layer_tag(
+        self,
+        _mock_graph: MagicMock,
+        _mock_iwh: MagicMock,
+        _mock_uncommitted: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """``dispatched_details[*]['layer']`` is drawn from ``{"hash","graph"}``.
+
+        Regression guard for task 5.1 / 5.9: the per-item layer field
+        added to :class:`SubAgentResult` must survive triage and report
+        serialisation.  Runs the full two-pass pipeline in ``dry_run``
+        mode (so no real fixers are invoked) against fixtures that
+        plant at least one hash-layer signal (stale design) and one
+        graph-layer signal (mocked ``bidirectional_deps`` finding).
+        Asserts every dispatched entry has a non-None ``layer`` and
+        that both ``"hash"`` and ``"graph"`` are represented.
+        """
+        project = _setup_minimal_project(tmp_path)
+        # Hash-layer signal: a stale design file drives the staleness
+        # collector under _collect_hash_layer.
+        _make_source_file(project, "src/foo.py", "def foo(): pass\n")
+        _make_design_file(
+            project,
+            "src/foo.py",
+            source_hash="stale_hash_value",
+            updated_by="archivist",
+        )
+
+        graph_layer_issue = ValidationIssue(
+            severity="warning",
+            check="bidirectional_deps",
+            message="dependencies drift: missing src/bar.py",
+            artifact="designs/src/foo.py.md",
+        )
+
+        def validate_side_effect(
+            project_root: Path,  # noqa: ARG001
+            lexibrary_dir: Path,  # noqa: ARG001
+            *,
+            severity_filter: str | None = None,  # noqa: ARG001
+            check_filter: str | None = None,  # noqa: ARG001
+            checks: object | None = None,
+        ) -> ValidationReport:
+            checks_frozen = frozenset(checks) if checks is not None else frozenset()
+            # Only emit the graph-layer issue when called with the
+            # graph-layer check set — the hash-layer pass should not
+            # see bidirectional_deps.
+            if "bidirectional_deps" in checks_frozen:
+                return ValidationReport(issues=[graph_layer_issue])
+            return ValidationReport(issues=[])
+
+        with patch(
+            "lexibrary.validator.validate_library",
+            side_effect=validate_side_effect,
+        ):
+            config = LexibraryConfig.model_validate({"curator": {"autonomy": "full"}})
+            coord = Coordinator(project, config)
+            report = asyncio.run(coord.run(dry_run=True))
+
+        dispatched = list(report.dispatched_details)
+        assert dispatched, "Expected dry-run to produce dispatched entries"
+
+        layers = {entry.get("layer") for entry in dispatched}
+        # Every dispatched entry in a two-pass run must be tagged.
+        assert None not in layers, (
+            f"Two-pass dispatched_details contained a None layer: {dispatched}"
+        )
+        # The set of layer values must be a subset of the spec-legal
+        # two-pass literals.
+        assert layers.issubset({"hash", "graph"}), (
+            f"Unexpected layer values: {layers}; dispatched_details={dispatched}"
+        )
+        # Both layers must be represented for this fixture (we planted
+        # a hash-layer and a graph-layer signal).
+        assert "hash" in layers
+        assert "graph" in layers
+
+    @patch("lexibrary.curator.coordinator._uncommitted_files", return_value=set())
+    @patch("lexibrary.curator.coordinator._active_iwh_dirs", return_value=set())
+    @patch("lexibrary.linkgraph.query.LinkGraph.open", return_value=None)
+    def test_legacy_flow_emits_schema_version_three(
+        self,
+        _mock_graph: MagicMock,
+        _mock_iwh: MagicMock,
+        _mock_uncommitted: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Kill-switch (``two_pass_collect=False``) still emits schema v3.
+
+        The schema bump from v2 to v3 stands even when the coordinator
+        runs the legacy single-pass flow; only the per-item ``layer``
+        field is permitted to be ``None`` on that path.  Confirms both
+        the in-memory ``CuratorReport`` and the persisted JSON report
+        carry ``schema_version == 3``.
+        """
+        project = _setup_minimal_project(tmp_path)
+        _make_source_file(project, "src/foo.py", "def foo(): pass\n")
+        # Pin the source_hash so the legacy flow exits cleanly with
+        # zero collect items — all we care about is the report shape.
+        from lexibrary.ast_parser import compute_hashes  # noqa: PLC0415
+
+        current_hash, _ = compute_hashes(project / "src/foo.py")
+        _make_design_file(
+            project,
+            "src/foo.py",
+            source_hash=current_hash,
+            updated_by="archivist",
+        )
+
+        with patch("lexibrary.validator.validate_library") as mock_validate:
+            mock_validate.return_value = ValidationReport(issues=[])
+
+            config = LexibraryConfig.model_validate({"curator": {"two_pass_collect": False}})
+            coord = Coordinator(project, config)
+            report = asyncio.run(coord.run())
+
+        assert report.schema_version == 3
+        assert report.report_path is not None
+        data = json.loads(report.report_path.read_text(encoding="utf-8"))
+        assert data["schema_version"] == 3
+
+    @patch("lexibrary.curator.coordinator._uncommitted_files", return_value=set())
+    @patch("lexibrary.curator.coordinator._active_iwh_dirs", return_value=set())
+    @patch("lexibrary.linkgraph.query.LinkGraph.open", return_value=None)
+    def test_budget_split_hash_capped_at_seven_graph_gets_three(
+        self,
+        _mock_graph: MagicMock,
+        _mock_iwh: MagicMock,
+        _mock_uncommitted: MagicMock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """70/30 split: hash-layer ≤ 7 LLM calls, graph-layer ≥ 3.
+
+        Seeds >10 hash-layer signals (stale designs) and >10 graph-layer
+        signals (mocked ``bidirectional_deps`` issues) then sets
+        ``max_llm_calls_per_run=10``.  The shared-counter arithmetic
+        implemented in task 5.5 guarantees:
+
+        * ``hash_budget_cap = int(10 * 0.7) = 7``
+        * ``graph_budget_cap = 10`` (clamped by shared counter)
+        * ``pre_charged_llm_calls`` is bumped to the hash-pass total
+          between passes, leaving ``10 - 7 = 3`` for the graph layer.
+
+        ``_route_to_handler`` is monkeypatched to a cheap stand-in that
+        records ``llm_calls=1`` per dispatch so the cap enforcement is
+        deterministic.
+        """
+        project = _setup_minimal_project(tmp_path)
+
+        # Plant 12 stale designs → hash-layer staleness collector emits
+        # 12 CollectItems with layer="hash".
+        for i in range(12):
+            _make_source_file(project, f"src/mod{i}.py", f"def f{i}(): pass\n")
+            _make_design_file(
+                project,
+                f"src/mod{i}.py",
+                source_hash=f"stale_hash_{i}",
+                updated_by="archivist",
+            )
+
+        # Plant >10 graph-layer validation issues.  Each maps to
+        # ``fix_bidirectional_deps`` via ``CHECK_TO_ACTION_KEY``.
+        graph_issues = [
+            ValidationIssue(
+                severity="warning",
+                check="bidirectional_deps",
+                message=f"dependencies drift: missing target_{i}",
+                artifact=f"designs/src/mod{i}.py.md",
+            )
+            for i in range(12)
+        ]
+
+        def validate_side_effect(
+            project_root: Path,  # noqa: ARG001
+            lexibrary_dir: Path,  # noqa: ARG001
+            *,
+            severity_filter: str | None = None,  # noqa: ARG001
+            check_filter: str | None = None,  # noqa: ARG001
+            checks: object | None = None,
+        ) -> ValidationReport:
+            checks_frozen = frozenset(checks) if checks is not None else frozenset()
+            if "bidirectional_deps" in checks_frozen:
+                return ValidationReport(issues=list(graph_issues))
+            return ValidationReport(issues=[])
+
+        # Stand-in route handler: every dispatched item costs exactly
+        # one LLM call so the 70/30 split translates directly to item
+        # counts (7 hash, 3 graph).
+        async def fake_route(
+            self: Coordinator,  # noqa: ARG001
+            item: TriageItem,
+        ) -> SubAgentResult:
+            return SubAgentResult(
+                success=True,
+                action_key=item.action_key,
+                path=item.source_item.path,
+                message="fake dispatch (budget-split test)",
+                llm_calls=1,
+                outcome="fixed",
+            )
+
+        monkeypatch.setattr(Coordinator, "_route_to_handler", fake_route)
+
+        with patch(
+            "lexibrary.validator.validate_library",
+            side_effect=validate_side_effect,
+        ):
+            config = LexibraryConfig.model_validate(
+                {
+                    "curator": {
+                        "autonomy": "full",
+                        "max_llm_calls_per_run": 10,
+                        # Disable consistency_collect so Low-risk
+                        # collisions do not inflate graph-layer dispatch
+                        # counts and obscure the budget accounting.
+                        "consistency_collect": "off",
+                    }
+                }
+            )
+            coord = Coordinator(project, config)
+            report = asyncio.run(coord.run())
+
+        dispatched = list(report.dispatched_details)
+        hash_dispatches = [d for d in dispatched if d.get("layer") == "hash"]
+        graph_dispatches = [d for d in dispatched if d.get("layer") == "graph"]
+
+        # Hash-layer cap: ``int(10 * 0.7) = 7`` LLM calls; each fake
+        # dispatch is 1 LLM call, so at most 7 dispatched items.
+        assert len(hash_dispatches) <= 7, (
+            f"Hash-layer dispatched {len(hash_dispatches)} items, expected ≤ 7. "
+            f"dispatched_details={dispatched}"
+        )
+        # Graph-layer must see at least 3 dispatches — the remaining
+        # headroom after the hash pass consumed 7/10.
+        assert len(graph_dispatches) >= 3, (
+            f"Graph-layer dispatched only {len(graph_dispatches)} items, "
+            f"expected ≥ 3. dispatched_details={dispatched}"
+        )
+        # Aggregate LLM consumption must not exceed the shared cap.
+        assert len(hash_dispatches) + len(graph_dispatches) <= 10

@@ -70,16 +70,6 @@ RISK_TAXONOMY: dict[str, ActionRisk] = {
         rationale="Non-destructive alias expansion",
         function_ref="curator.consistency_fixes.apply_alias_dedup",
     ),
-    "add_missing_bidirectional_dep": ActionRisk(
-        level="low",
-        rationale="Mechanical repair",
-        function_ref="curator.consistency_fixes.apply_bidirectional_dep",
-    ),
-    "remove_orphaned_reverse_dep": ActionRisk(
-        level="low",
-        rationale="Dependent no longer exists",
-        function_ref="curator.consistency_fixes.apply_bidirectional_dep",
-    ),
     "resolve_slug_collision": ActionRisk(
         level="low",
         rationale="Deterministic suffix algorithm",
@@ -153,10 +143,20 @@ RISK_TAXONOMY: dict[str, ActionRisk] = {
         rationale="Hard-deletes deprecated design files past TTL",
         function_ref="curator.validation_fixers.fix_validation_issue",
     ),
+    "fix_bidirectional_deps": ActionRisk(
+        level="low",
+        rationale="Mechanical regeneration via archivist pipeline",
+        function_ref="validator.fixes.fix_bidirectional_deps",
+    ),
     "remove_orphan_zero_deps": ActionRisk(
         level="low",
         rationale="Nothing references it",
         function_ref="curator.consistency_fixes.apply_orphan_concept_delete",
+    ),
+    "add_missing_reverse_dep": ActionRisk(
+        level="low",
+        rationale="Mechanical cross-reference repair; adds existing dep as reverse entry",
+        function_ref="curator.consistency_fixes.apply_add_reverse_dep",
     ),
     "remove_orphaned_aindex": ActionRisk(
         level="low",

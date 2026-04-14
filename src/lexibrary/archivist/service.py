@@ -13,10 +13,12 @@ from baml_py.baml_py import BamlClientError
 from lexibrary.baml_client.async_client import BamlAsyncClient, b
 from lexibrary.baml_client.types import DesignFileOutput
 from lexibrary.exceptions import ArchivistTruncationError
+from lexibrary.llm.client_registry import build_client_registry
 from lexibrary.llm.rate_limiter import RateLimiter
 
 if TYPE_CHECKING:
     from lexibrary.archivist.symbol_graph_context import SymbolGraphPromptContext
+    from lexibrary.config.schema import LexibraryConfig
 
 logger = logging.getLogger(__name__)
 
@@ -141,3 +143,34 @@ class ArchivistService:
                 error=True,
                 error_message=error_msg,
             )
+
+
+def build_archivist_service(
+    config: LexibraryConfig,
+    *,
+    unlimited: bool = False,
+) -> ArchivistService:
+    """Construct a fresh :class:`ArchivistService` from *config*.
+
+    Single source of truth for archivist wiring (rate limiter + BAML client
+    registry). Callers should prefer this factory over instantiating
+    :class:`ArchivistService` directly so CLI, hook, and service paths
+    share identical construction semantics.
+
+    Stateless: each call returns a new :class:`RateLimiter`, a new
+    :class:`ClientRegistry`, and a new service. No caching — callers that
+    need a shared instance must hold the returned reference themselves.
+
+    Parameters
+    ----------
+    config:
+        Full Lexibrary configuration (used to build the BAML client
+        registry).
+    unlimited:
+        Forwarded to :func:`build_client_registry`. When ``True``, the
+        archivist client uses a provider-specific safe ceiling instead of
+        the configured ``archivist_max_tokens``.
+    """
+    rate_limiter = RateLimiter()
+    client_registry = build_client_registry(config, unlimited=unlimited)
+    return ArchivistService(rate_limiter=rate_limiter, client_registry=client_registry)

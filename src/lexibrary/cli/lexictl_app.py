@@ -1040,6 +1040,75 @@ def sweep(
 
 
 # ---------------------------------------------------------------------------
+# backfill-dependents
+# ---------------------------------------------------------------------------
+
+
+@lexictl_app.command("backfill-dependents")
+def backfill_dependents() -> None:
+    """Sweep every design file and reconcile Dependencies/Dependents from the link graph.
+
+    Walks ``.lexibrary/designs/**.md`` and awaits
+    :func:`lexibrary.archivist.pipeline.reconcile_deps_only` on each design.
+    The reconciler is LLM-free and idempotent — files already in sync with
+    the link graph are a no-op. Emits a summary of how many designs were
+    rewritten. Exits non-zero on unhandled exception.
+    """
+    import asyncio  # noqa: PLC0415
+
+    from lexibrary.archivist.pipeline import reconcile_deps_only  # noqa: PLC0415
+    from lexibrary.utils.paths import DESIGNS_DIR, LEXIBRARY_DIR  # noqa: PLC0415
+
+    project_root = require_project_root()
+    designs_root = project_root / LEXIBRARY_DIR / DESIGNS_DIR
+
+    if not designs_root.exists():
+        info(f"No designs directory at {designs_root} -- nothing to backfill.")
+        return
+
+    design_files = sorted(designs_root.rglob("*.md"))
+    if not design_files:
+        info("No design files found -- nothing to backfill.")
+        return
+
+    async def _run() -> tuple[int, int, int]:
+        rewrites = 0
+        failures = 0
+        for design_md in design_files:
+            try:
+                before_ns = design_md.stat().st_mtime_ns
+            except OSError:
+                before_ns = -1
+            try:
+                await reconcile_deps_only(design_md, project_root)
+            except Exception as exc:  # noqa: BLE001
+                failures += 1
+                warn(f"reconcile_deps_only failed for {design_md}: {exc}")
+                continue
+            try:
+                after_ns = design_md.stat().st_mtime_ns
+            except OSError:
+                after_ns = before_ns
+            if after_ns != before_ns:
+                rewrites += 1
+        return rewrites, failures, len(design_files)
+
+    try:
+        rewrites, failures, total = asyncio.run(_run())
+    except Exception as exc:  # noqa: BLE001
+        error(f"backfill-dependents aborted: {exc}")
+        raise typer.Exit(code=1) from exc
+
+    info(
+        f"backfill-dependents: {rewrites} rewritten, "
+        f"{total - rewrites - failures} unchanged, "
+        f"{failures} failed (of {total} designs)."
+    )
+    if failures:
+        raise typer.Exit(code=1)
+
+
+# ---------------------------------------------------------------------------
 # help
 # ---------------------------------------------------------------------------
 

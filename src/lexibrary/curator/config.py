@@ -30,13 +30,36 @@ DEPRECATION_ACTION_KEYS: frozenset[str] = frozenset(
     }
 )
 
+# Narrow family action keys introduced by the ``curator-freshness`` change.
+# Each key is the validator-side fixer that replaces one or more retired
+# curator-side consistency action keys (see SHARED_BLOCK_A in
+# ``openspec/changes/curator-freshness/tasks.md``).
+#
+# Pre-seeded here so that configs referencing these keys do not trigger the
+# unknown-key warning before the matching ``ActionRisk`` entries land in
+# ``RISK_TAXONOMY`` (they arrive incrementally across groups 4, 6, 7, 8, 9).
+# As curator-side action keys retire (e.g. group 3.8 retired
+# ``add_missing_bidirectional_dep`` and ``remove_orphaned_reverse_dep`` when
+# their taxonomy entries were deleted), they drop out of the known set
+# automatically because the known set is derived from ``RISK_TAXONOMY``.
+NEW_FAMILY_ACTION_KEYS: frozenset[str] = frozenset(
+    {
+        "fix_bidirectional_deps",
+        "fix_orphaned_aindex",
+        "fix_duplicate_slugs",
+        "fix_duplicate_aliases",
+        "fix_orphan_concepts",
+        "fix_wikilink_resolution",
+    }
+)
+
 # All action keys recognised by the risk taxonomy (Phase 1 + Phase 2).
 # Populated lazily by _known_action_keys() to avoid circular imports.
 _KNOWN_KEYS_CACHE: frozenset[str] | None = None
 
 
 def _known_action_keys() -> frozenset[str]:
-    """Return the union of taxonomy keys and deprecation action keys.
+    """Return the union of taxonomy keys, deprecation keys, and new family keys.
 
     Imports ``RISK_TAXONOMY`` lazily to avoid circular-import issues
     (risk_taxonomy imports nothing from config, but they sit in the same
@@ -47,10 +70,15 @@ def _known_action_keys() -> frozenset[str]:
         try:
             from lexibrary.curator.risk_taxonomy import RISK_TAXONOMY
 
-            _KNOWN_KEYS_CACHE = frozenset(RISK_TAXONOMY) | DEPRECATION_ACTION_KEYS
+            _KNOWN_KEYS_CACHE = (
+                frozenset(RISK_TAXONOMY)
+                | DEPRECATION_ACTION_KEYS
+                | NEW_FAMILY_ACTION_KEYS
+            )
         except ImportError:
-            # Taxonomy module not yet available — fall back to deprecation keys only.
-            _KNOWN_KEYS_CACHE = DEPRECATION_ACTION_KEYS
+            # Taxonomy module not yet available — fall back to deprecation +
+            # new family keys only.
+            _KNOWN_KEYS_CACHE = DEPRECATION_ACTION_KEYS | NEW_FAMILY_ACTION_KEYS
     return _KNOWN_KEYS_CACHE
 
 
@@ -128,6 +156,64 @@ class CuratorConfig(BaseModel):
     # it does NOT affect which fixes run, only whether a second validation
     # pass is performed to measure the sweep's effect.
     verify_after_sweep: bool = False
+    # Phase 0 prepare-step refresh (``curator-freshness`` change, group 1).
+    # When ``True``, the coordinator's ``_prepare_indexes()`` step runs
+    # before ``_collect`` to refresh the symbol graph and link graph for
+    # any drifted sources (the "prepare" invariant that lets collect steps
+    # assume index freshness).  When ``False``, the prepare step is skipped
+    # AND — per SHARED_BLOCK_B in ``openspec/changes/curator-freshness`` —
+    # the reactive-hook bootstrap also short-circuits, keeping the
+    # "opt-out of prepare = opt-out of bootstrap" invariant uniform.
+    # Opt-out for large libraries where the warm-cache cost is unacceptable;
+    # callers are then responsible for running ``lexictl update`` on their
+    # own cadence.
+    prepare_indexes: bool = Field(
+        default=True,
+        description=(
+            "When True, run _prepare_indexes() before _collect to refresh "
+            "symbol/link graphs for drifted sources. Setting False is an "
+            "opt-out for large libraries; it also disables the reactive-hook "
+            "bootstrap so the 'opt-out of prepare = opt-out of bootstrap' "
+            "invariant stays uniform."
+        ),
+    )
+    # Phase 0b reactive-hook LLM regeneration gate
+    # (``curator-freshness`` change, group 2).  Gates ONLY the LLM step of
+    # the reactive-hook bootstrap — i.e. whether ``archivist.pipeline.update_file``
+    # runs after the always-on index refresh.  When ``False`` (default), the
+    # hook still refreshes symbol + link graphs but does NOT call the
+    # archivist LLM, even if the source hash has drifted.  When ``True``,
+    # ``update_file`` runs and the call counts against
+    # ``max_llm_calls_per_run``.  Gated independently of ``prepare_indexes``
+    # because the cost/latency profile of LLM regeneration is very different
+    # from cheap graph refreshes; many users want fresh indexes on every
+    # edit but only occasional LLM rewrites.
+    reactive_bootstrap_regenerate: bool = Field(
+        default=False,
+        description=(
+            "When True, the reactive-hook bootstrap invokes archivist.pipeline."
+            "update_file after the index refresh, consuming from "
+            "max_llm_calls_per_run. Defaults off because LLM regeneration on "
+            "every edit is expensive; opt in only when you want aggressive "
+            "design-file refresh on save."
+        ),
+    )
+    # Phase 2 two-pass collect restructure (``curator-freshness`` change,
+    # group 5).  When ``True`` (default), the coordinator runs the two-pass
+    # ``_collect_hash_layer`` / ``_collect_graph_layer`` flow with a 70/30
+    # budget split between passes.  When ``False``, the coordinator runs
+    # the legacy single-pass ``_collect``.  Provided as a kill-switch for
+    # the rollout; to be removed one release after two-pass collect is
+    # confirmed stable.
+    two_pass_collect: bool = Field(
+        default=True,
+        description=(
+            "When True, run the two-pass hash/graph collect flow with 70/30 "
+            "budget split. When False, fall back to the legacy single-pass "
+            "_collect. Kill-switch for rollout; will be removed after one "
+            "release."
+        ),
+    )
     deprecation: CuratorDeprecationConfig = Field(default_factory=CuratorDeprecationConfig)
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
     auditing: AuditingConfig = Field(default_factory=AuditingConfig)

@@ -30,6 +30,7 @@ class StalenessMetadata(BaseModel):
     design_hash: str | None = None
     generated: datetime
     generator: str
+    dependents_complete: bool = False
 
 
 class EnumNote(BaseModel):

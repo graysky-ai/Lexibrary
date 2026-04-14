@@ -1,9 +1,12 @@
 """Tests for the curator consistency checker.
 
-Covers: wikilink hygiene, identifier normalisation, bidirectional
-dependency repair, orphaned .aindex cleanup, orphaned .comments.yaml
-detection, orphan concept detection, convention/playbook staleness
-detection, and blocked IWH promotion.
+Covers: wikilink hygiene, identifier normalisation, orphaned .aindex
+cleanup, orphaned .comments.yaml detection, orphan concept detection,
+convention/playbook staleness detection, and blocked IWH promotion.
+
+Bidirectional-deps detection migrated to the validator in Phase 1a of
+the ``curator-freshness`` change — see
+:class:`tests.test_validator.test_info_checks.TestCheckBidirectionalDeps`.
 """
 
 from __future__ import annotations
@@ -341,76 +344,6 @@ class TestAliasCollisions:
 # ---------------------------------------------------------------------------
 # Bidirectional Dependency Repair
 # ---------------------------------------------------------------------------
-
-
-class TestBidirectionalDeps:
-    """Test bidirectional dependency detection."""
-
-    def test_missing_reverse_dep_detected(self, tmp_path: Path) -> None:
-        """If A depends on B, B should list A as a dependent."""
-        project, lex_dir = _setup_project(tmp_path)
-        # A depends on B
-        a_path = _make_design_file(
-            project,
-            "src/a.py",
-            dependencies=["src/b.py"],
-            dependents=[],
-        )
-        # B does NOT list A as dependent
-        b_path = _make_design_file(
-            project,
-            "src/b.py",
-            dependencies=[],
-            dependents=[],
-        )
-
-        checker = ConsistencyChecker(project, lex_dir)
-        instructions = checker.check_bidirectional_deps([a_path, b_path])
-        assert len(instructions) >= 1
-        add_instr = [i for i in instructions if i.action == "add_missing_bidirectional_dep"]
-        assert len(add_instr) == 1
-        assert "src/a.py" in add_instr[0].detail
-        assert "src/b.py" in add_instr[0].detail
-
-    def test_correct_bidirectional_no_instruction(self, tmp_path: Path) -> None:
-        """When deps are bidirectional, no instruction should be produced."""
-        project, lex_dir = _setup_project(tmp_path)
-        a_path = _make_design_file(
-            project,
-            "src/a.py",
-            dependencies=["src/b.py"],
-            dependents=[],
-        )
-        b_path = _make_design_file(
-            project,
-            "src/b.py",
-            dependencies=[],
-            dependents=["src/a.py"],
-        )
-
-        checker = ConsistencyChecker(project, lex_dir)
-        instructions = checker.check_bidirectional_deps([a_path, b_path])
-        assert len(instructions) == 0
-
-    def test_resulting_fix_produces_valid_file(self, tmp_path: Path) -> None:
-        """The fix instruction should reference a valid design file."""
-        project, lex_dir = _setup_project(tmp_path)
-        a_path = _make_design_file(
-            project,
-            "src/a.py",
-            dependencies=["src/b.py"],
-        )
-        b_path = _make_design_file(
-            project,
-            "src/b.py",
-            dependencies=[],
-            dependents=[],
-        )
-
-        checker = ConsistencyChecker(project, lex_dir)
-        instructions = checker.check_bidirectional_deps([a_path, b_path])
-        # The instruction target should be the file that needs editing (B)
-        assert instructions[0].target_path == b_path
 
 
 # ---------------------------------------------------------------------------

@@ -5,20 +5,3 @@ comments:
     group 8 to parse each source file exactly once per build_symbol_graph run and
     feed the same tree to both interface and symbol extractors. Behaviour unchanged.'
   date: '2026-04-10T15:18:35.026340Z'
-- body: "Group 3 of symbol-graph-2: added extract_symbols_from_tree mirroring the\
-    \ TS extractor \u2014 function_declaration, class_declaration, method_definition,\
-    \ and arrow-function lexical declarations become SymbolDefinitions; call_expression\
-    \ descendants become CallSites; this is the analog of Python's self."
-  date: '2026-04-10T19:44:42.524978Z'
-- body: 'Phase 3 symbol-graph-3 group 3: emits ClassEdgeSite rows for JS class_heritage
-    and new_expression. JavaScript has only ''extends'' (no ''implements''), so the
-    inherits path is simpler than TypeScript. Only bare-identifier new_expression
-    constructors produce instantiates edges.'
-  date: '2026-04-11T10:44:52.632287Z'
-- body: 'Phase 4 of symbol-graph-4: extract module-level const declarations with primitive-literal
-    RHS (string, number, true, false, null, regex) as symbol_type=''constant'' with
-    a ConstantValue entry in SymbolExtract.constants. Object literals, array literals,
-    template strings, call expressions like Object.freeze(...), and arrow/function
-    expressions are intentionally skipped (see design.md D5). JavaScript has no enum
-    keyword, so extract.enums is always empty for JS files.'
-  date: '2026-04-11T19:45:16.454342Z'

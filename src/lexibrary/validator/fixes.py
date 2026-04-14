@@ -3,22 +3,59 @@
 Provides a registry of fixers keyed by check name. Only auto-fixable
 checks have entries: ``hash_freshness``, ``orphan_artifacts``,
 ``aindex_coverage``, ``orphaned_aindex``, ``orphaned_iwh``,
-``orphaned_designs``, and ``deprecated_ttl``.
+``orphaned_designs``, ``deprecated_ttl``, and ``bidirectional_deps``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, TypeVar
 
 from lexibrary.config.schema import LexibraryConfig
 from lexibrary.utils.paths import DESIGNS_DIR
 from lexibrary.validator.report import ValidationIssue
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def _run_sync(coro: Coroutine[Any, Any, T]) -> T:
+    """Drive *coro* to completion whether or not a loop is already running.
+
+    Sync fixers are invoked synchronously from within the curator's async
+    dispatch loop (``Coordinator._dispatch``).  When that outer loop is
+    already running, ``asyncio.run`` raises "cannot be called from a
+    running event loop".  The fallback path spawns a short-lived worker
+    thread that owns its own loop so the coroutine completes without
+    interfering with the caller's loop.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No loop in this thread — safe to drive directly.
+        return asyncio.run(coro)
+
+    result: list[T] = []
+    error: list[BaseException] = []
+
+    def _worker() -> None:
+        try:
+            result.append(asyncio.run(coro))
+        except BaseException as exc:  # noqa: BLE001 - re-raised on join
+            error.append(exc)
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    thread.join()
+    if error:
+        raise error[0]
+    return result[0]
 
 
 @dataclass
@@ -470,6 +507,111 @@ def fix_deprecated_ttl(
     )
 
 
+def fix_bidirectional_deps(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Reconcile a design file's Dependencies / Dependents against the link graph.
+
+    Phase 1b fixer for ``bidirectional_deps`` issues. The validator emits this
+    check when the design file's ``Dependencies`` and/or ``Dependents`` sections
+    drift from the AST-derived forward edges and link-graph-derived reverse
+    edges. The fix is a non-LLM rewrite via
+    :func:`lexibrary.archivist.pipeline.reconcile_deps_only` — it avoids
+    :func:`lexibrary.archivist.pipeline.update_file` on purpose because the
+    source-hash short-circuit in ``update_file`` would silently skip the fix
+    when the source hasn't changed (which is the exact case this fixer
+    targets: source stable, graph moved).
+
+    Args:
+        issue: The validation issue describing the drifting design file. Its
+            ``artifact`` field is the lexibrary-relative design path (e.g.
+            ``designs/src/foo.py.md``).
+        project_root: Root directory of the project.
+        config: Project configuration (unused but required by the fixer
+            signature exposed through :data:`FIXERS`).
+
+    Returns:
+        A :class:`FixResult` whose ``fixed`` flag reflects reconciler outcome.
+        When the link graph is missing, returns ``fixed=False`` with the
+        documented "link graph not built" message so the CLI / curator can
+        surface a graceful-degradation hint.
+    """
+    from lexibrary.archivist.pipeline import reconcile_deps_only  # noqa: PLC0415
+    from lexibrary.artifacts.design_file_parser import parse_design_file  # noqa: PLC0415
+    from lexibrary.linkgraph import LinkGraphUnavailable  # noqa: PLC0415
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    lexibrary_dir = project_root / LEXIBRARY_DIR
+
+    # issue.artifact is relative to lexibrary_dir, e.g. "designs/src/foo.py.md"
+    design_path = lexibrary_dir / issue.artifact
+    if not design_path.exists():
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            message=f"design file not found: {issue.artifact}",
+        )
+
+    # Parse the design file so we can surface parse failures with a clear
+    # message (reconcile_deps_only also parses internally, but it silently
+    # no-ops on parse failure which would show up as a misleading "fixed" state).
+    try:
+        parsed = parse_design_file(design_path)
+    except Exception as exc:
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            message=f"could not parse design file: {exc}",
+        )
+    if parsed is None:
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            message=f"could not parse design file: {issue.artifact}",
+        )
+
+    # DesignFile.source_path is a top-level field (relative to project_root);
+    # reconcile_deps_only re-reads it internally but we touch it here to make
+    # the contract explicit and to fail fast if it's empty for some reason.
+    if not parsed.source_path:
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            message=f"design file has empty source_path: {issue.artifact}",
+        )
+
+    try:
+        _run_sync(reconcile_deps_only(design_path, project_root))
+    except LinkGraphUnavailable:
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            message="link graph not built — run `lexictl update` first",
+        )
+    except Exception as exc:
+        logger.exception("Failed to reconcile bidirectional_deps for %s", issue.artifact)
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            message=f"error: {exc}",
+        )
+
+    return FixResult(
+        check="bidirectional_deps",
+        path=design_path,
+        fixed=True,
+        message="reconciled dependencies + dependents from link graph",
+    )
+
+
 # Checks whose fixers delete files from disk and therefore require user confirmation
 # before running in interactive mode.  This set is consumed by the CLI fix flow in
 # ``lexibrary.cli._shared._run_validate`` to gate a single y/n prompt before any
@@ -493,4 +635,5 @@ FIXERS: dict[str, Callable[[ValidationIssue, Path, LexibraryConfig], FixResult]]
     "orphaned_iwh": fix_orphaned_iwh,
     "orphaned_designs": fix_orphaned_designs,
     "deprecated_ttl": fix_deprecated_ttl,
+    "bidirectional_deps": fix_bidirectional_deps,
 }

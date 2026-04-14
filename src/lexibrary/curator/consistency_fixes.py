@@ -48,8 +48,6 @@ CONSISTENCY_ACTION_KEYS: dict[str, str] = {
     # Identifier normalisation
     "resolve_slug_collision": "resolve_slug_collision",
     "resolve_alias_collision": "resolve_alias_collision",
-    # Bidirectional dependency repair
-    "add_missing_bidirectional_dep": "add_missing_bidirectional_dep",
     # Cleanup
     "remove_orphaned_aindex": "remove_orphaned_aindex",
     "delete_orphaned_comments": "delete_orphaned_comments",
@@ -57,6 +55,8 @@ CONSISTENCY_ACTION_KEYS: dict[str, str] = {
     # Convention / playbook staleness
     "flag_stale_convention": "flag_stale_convention",
     "flag_stale_playbook": "flag_stale_playbook",
+    # Bidirectional dep cross-reference
+    "add_missing_reverse_dep": "add_missing_reverse_dep",
     # Medium-risk (deferred under auto_low)
     "suggest_new_concept": "suggest_new_concept",
     "promote_blocked_iwh": "promote_blocked_iwh",
@@ -471,22 +471,18 @@ def apply_alias_dedup(item: TriageItem, ctx: DispatchContext) -> SubAgentResult:
 
 
 # ---------------------------------------------------------------------------
-# Bidirectional dependency helper
+# Bidirectional dep cross-reference helpers
 # ---------------------------------------------------------------------------
 
 
-def apply_bidirectional_dep(item: TriageItem, ctx: DispatchContext) -> SubAgentResult:
-    """Add a missing reverse-dependency entry to the target design file.
+def apply_add_reverse_dep(item: TriageItem, ctx: DispatchContext) -> SubAgentResult:
+    """Add a missing reverse-dep entry to a design file's dependents list.
 
-    ``FixInstruction.target_path`` points at the design file that needs
-    the ``## Dependents`` line added.  ``detail`` carries the source path
-    that should be listed as a dependent::
+    The detail string carries the source path that should appear in the
+    target design file's dependents.  Format produced by
+    ``detect_design_dep_mismatch``::
 
-        "<source> depends on <target> but <target> does not list <source>
-        as dependent"
-
-    Idempotent: if the dependent is already present, returns success
-    without rewriting the file.
+        src/a.py lists src/b.py as a dependency but src/b.py does not list src/a.py as a dependent
     """
     action_key = item.action_key
     design_path = item.source_item.path
@@ -494,27 +490,18 @@ def apply_bidirectional_dep(item: TriageItem, ctx: DispatchContext) -> SubAgentR
         return _result(
             action_key=action_key,
             path=None,
-            message="No design path for add_missing_bidirectional_dep",
+            message="No design path for add_missing_reverse_dep",
             success=False,
             outcome="fixer_failed",
         )
 
     detail = item.source_item.fix_instruction_detail
-    # Extract the source path -- the text before " depends on "
-    if " depends on " not in detail:
+    missing_dep = _extract_missing_dep_from_detail(detail)
+    if missing_dep is None:
         return _result(
             action_key=action_key,
             path=design_path,
-            message="Could not parse source path from detail",
-            success=False,
-            outcome="fixer_failed",
-        )
-    source_rel = detail.split(" depends on ", 1)[0].strip()
-    if not source_rel:
-        return _result(
-            action_key=action_key,
-            path=design_path,
-            message="Parsed source path is empty",
+            message="Could not extract missing dependent from detail",
             success=False,
             outcome="fixer_failed",
         )
@@ -529,17 +516,16 @@ def apply_bidirectional_dep(item: TriageItem, ctx: DispatchContext) -> SubAgentR
             outcome="fixer_failed",
         )
 
-    # Idempotency: check the ``dependents`` bullet list for the source path.
-    existing = [d.strip() for d in design.dependents]
-    if any(e == source_rel or e.startswith(f"{source_rel} ") for e in existing):
+    existing = {d.strip() for d in design.dependents}
+    if missing_dep in existing:
         return _result(
             action_key=action_key,
             path=design_path,
-            message=f"Dependent {source_rel} already present",
+            message=f"{missing_dep} already in dependents; nothing to add",
             outcome="fixed",
         )
 
-    design.dependents = [*design.dependents, source_rel]
+    design.dependents.append(missing_dep)
 
     try:
         write_design_file_as_curator(design, design_path, ctx.project_root)
@@ -556,9 +542,24 @@ def apply_bidirectional_dep(item: TriageItem, ctx: DispatchContext) -> SubAgentR
     return _result(
         action_key=action_key,
         path=design_path,
-        message=f"Added bidirectional dep entry for {source_rel}",
+        message=f"Added {missing_dep} to dependents",
         outcome="fixed",
     )
+
+
+def _extract_missing_dep_from_detail(detail: str) -> str | None:
+    """Extract the source path that should be added as a dependent.
+
+    Detail format::
+
+        src/a.py lists src/b.py as a dependency but src/b.py does not list src/a.py as a dependent
+
+    Returns ``src/a.py`` (the path that should be added to the target's dependents).
+    """
+    match = re.match(r"^(\S+) lists \S+ as a dependency", detail)
+    if match is None:
+        return None
+    return match.group(1)
 
 
 # ---------------------------------------------------------------------------

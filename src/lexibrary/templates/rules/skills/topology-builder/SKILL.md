@@ -33,7 +33,9 @@ that a coding agent with zero prior context can navigate immediately.
 
 ## Section Markers
 
-The raw topology file uses HTML comment markers to delimit each section:
+The raw topology file uses two layers of HTML comment markers.
+
+**Inner section markers** delimit each content block:
 
 ```
 <!-- section: NAME -->
@@ -41,13 +43,33 @@ The raw topology file uses HTML comment markers to delimit each section:
 <!-- end: NAME -->
 ```
 
+**Outer root markers** wrap the subset of sections that repeat per scope root:
+
+```
+<!-- root: PATH -->
+...per-root sections...
+<!-- end-root: PATH -->
+```
+
 The seven section names are: `header`, `entry-point-candidates`, `tree`,
 `source-modules`, `test-layout`, `config`, `stats`.
 
-Use these markers to locate specific sections efficiently. Do not parse by
-heading text -- headings may change, but section markers are stable. To
-extract a section, find the opening `<!-- section: NAME -->` marker and read
-until the corresponding `<!-- end: NAME -->` marker.
+| Section | Scope | Notes |
+|---------|-------|-------|
+| `header` | per-root | One block per scope root. Each may report a different primary language. |
+| `entry-point-candidates` | per-root | Aggregate across all roots before verifying. |
+| `tree` | per-root | One tree per root; merge into one repo-rooted tree for output. |
+| `source-modules` | per-root | Use for core-modules grouping across all roots. |
+| `test-layout` | per-root | Usually populated for only one root. |
+| `config` | project-wide | Emitted once, outside any root wrapper. |
+| `stats` | project-wide | Emitted once, outside any root wrapper. |
+
+Roots with zero indexed files may be omitted entirely from the raw file.
+Single-root projects still use the wrapper for consistency.
+
+Use these markers to locate sections efficiently. Do not parse by heading
+text -- headings may change, but markers are stable. To extract a section,
+find the opening marker and read until the corresponding closing marker.
 
 ## Section Mapping
 
@@ -56,13 +78,14 @@ Use this table to determine which raw sections to read and what to produce.
 
 | Raw Section | TOPOLOGY.md Section(s) | Action |
 |-------------|----------------------|--------|
-| `header` | Project Description | Extract project name, language, source dir; synthesise a one-sentence description of the project's purpose |
-| `entry-point-candidates` | Entry Points | Cross-reference candidates against `pyproject.toml` to produce verified entry-point table |
-| `tree` | Directory Tree Legend, Directory Tree | Copy tree verbatim; ensure legend is present above it |
-| `source-modules` | Core Modules | Group files by functional category; write purpose summaries |
-| `test-layout` | Test Structure | Map test directories to source directories; document conventions |
-| `config` | Project Config | Extract language, build system, tooling into config table |
-| `stats` | (no output section) | Use for cross-checking completeness; do not emit a stats section |
+| `header` (per root) | Project Description | Synthesise one sentence covering the whole project; do not emit per-root descriptions. |
+| (config file: `.lexibrary/config.yaml`) | Scope Roots | List every `scope_roots[*].path` with the role of what lives there. |
+| `entry-point-candidates` (per root) | Entry Points | Aggregate candidates across all roots, then verify against the project's build config (see workflow step 3). |
+| `tree` (per root) | Directory Tree Legend, Directory Tree | Merge per-root trees into one repo-rooted tree; ensure legend is present above it. |
+| `source-modules` (per root) | Core Modules | Pool modules from all roots; group by functional category; write purpose summaries. |
+| `test-layout` (per root) | Test Structure | Map test directories to source directories; document conventions. |
+| `config` (project-wide) | Project Config | Extract language, build system, tooling into config table. |
+| `stats` (project-wide) | (no output section) | Use for cross-checking completeness; do not emit a stats section. |
 
 ## Pre-flight Checks
 
@@ -118,11 +141,18 @@ If this produces any output, the index has been rebuilt since the last
    exist, use the section structure defined in the **Fallback Structure**
    section below.
 
-3. **Verify entry points.** Read `pyproject.toml` to confirm
-   `[project.scripts]` or `[tool.poetry.scripts]`. Cross-reference against
-   the entry-point candidates table from the raw topology. Discard any
-   candidate not confirmed by the build config. If the CLI source directory
-   exists, read it to determine each command's role.
+3. **Verify entry points.** Aggregate entry-point candidates from every
+   `<!-- root: ... -->` block. Then read the project's build config to
+   confirm each candidate. Check whichever of these exist:
+   - `pyproject.toml` → `[project.scripts]` or `[tool.poetry.scripts]`
+   - `package.json` → `"bin"` or `"scripts"`
+   - `Cargo.toml` → `[[bin]]`
+   - `go.mod` + `main.go` files (look for `package main`)
+   - `Makefile` → target recipes that launch services
+   - `Dockerfile` → `CMD` / `ENTRYPOINT`
+
+   Discard any candidate not confirmed by a build-config registration. If a
+   candidate's source file exists, read it to determine each command's role.
 
 4. **Review existing TOPOLOGY.md.** If `.lexibrary/TOPOLOGY.md` already
    exists, read it. For the Key Architectural Insights section, review each
@@ -153,6 +183,41 @@ build config. The verification disclaimer in the raw section is a reminder
 for you, not content to copy into the output.
 
 ## Section-Specific Guidance
+
+### Scope Roots and the Whole-Project View
+
+A project may declare one or many scope roots in
+`.lexibrary/config.yaml` (`scope_roots[*].path`). **The topology always
+describes the whole project**, not just the indexed subtrees. Scope roots
+control something different: which files get design files generated and
+are searchable via `lexi`. A directory outside every scope root still
+appears in the repo and still belongs in the topology -- it simply has no
+design-file annotations backing its billboard text.
+
+Rules for multi-root synthesis:
+
+- **Emit one unified directory tree** at the repository root, not one tree
+  per scope root. Merge the per-root `tree` blocks from the raw file; place
+  each root's subtree under its correct parent path. Directories that fall
+  outside every scope root should still appear (from your own walk of the
+  filesystem or the raw tree's root-level entries) but will have sparser
+  annotations.
+- **Emit one Scope Roots table** listing each configured root, its role,
+  and what kinds of files live under it. This is where the multi-root
+  configuration is made legible to an agent.
+- **Entry points are project-wide.** Aggregate candidates across every
+  `<!-- root: ... -->` block, then verify against the build config once.
+- **Core Modules are project-wide.** Pool `source-modules` entries from
+  every root; group by function, not by root. A prompt-definition file in
+  `prompts/` and a resolver in `src/` may sit in the same functional
+  category.
+- **Different roots may report different primary languages.** The
+  per-root `header` blocks reflect this (e.g. Python for `src/`, BAML or
+  SQL for a prompts/ root). Note this in the Project Config table if it
+  is non-obvious.
+- **Omit empty roots silently.** If a configured root has no indexed
+  files, it will be missing from the raw file. That is expected; do not
+  flag it unless the absence itself is surprising.
 
 ### Core Modules
 
@@ -228,8 +293,18 @@ include unreliable information.
 ### Entry points require verification
 
 The entry point section is the most frequently wrong part of a heuristically
-generated topology. Always read `pyproject.toml` to confirm `[project.scripts]`
-or `[tool.poetry.scripts]` before writing the Entry Points section.
+generated topology. Always confirm each candidate against the project's
+build-config file (see workflow step 3 for the list of files to check)
+before writing the Entry Points section.
+
+### Scope roots filter indexing, not the topology
+
+`.lexibrary/config.yaml` scope roots determine which files get design files
+and are searchable via `lexi`. They do **not** narrow the topology -- the
+TOPOLOGY.md must still describe the whole repository. Files and directories
+outside every scope root belong in the directory tree (though with sparser
+annotations), and the Scope Roots section is where the filtering behaviour
+is made explicit to readers.
 
 ### Agent-navigable means navigation-first
 

@@ -3903,7 +3903,7 @@ class TestDesignUpdateCommand:
         assert mock_update.call_args[1]["force"] is True
 
     def test_unlimited_flag_passed_through(self, tmp_path: Path) -> None:
-        """The --unlimited flag is passed to build_client_registry and update_file."""
+        """The --unlimited flag is passed to build_archivist_service and update_file."""
         from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
 
         from lexibrary.archivist.change_checker import ChangeLevel  # noqa: PLC0415
@@ -3915,7 +3915,14 @@ class TestDesignUpdateCommand:
         gen_decision = DesignUpdateDecision(action="generate", reason="New file")
         file_result = FileResult(change=ChangeLevel.NEW_FILE)
 
-        mock_registry = MagicMock(return_value=MagicMock())
+        # The CLI now delegates construction to
+        # ``lexibrary.archivist.service.build_archivist_service`` (task 1.2 of
+        # the ``curator-freshness`` OpenSpec change). Patch that seam so we can
+        # assert the ``unlimited=`` kwarg forwarded by the CLI; patching the
+        # deeper ``build_client_registry`` no longer captures the call because
+        # ``service.py`` holds a direct ``from ... import`` binding at module
+        # load time that the legacy patch path cannot rebind.
+        mock_build_service = MagicMock(return_value=MagicMock())
         mock_update = AsyncMock(return_value=file_result)
 
         with (
@@ -3923,17 +3930,13 @@ class TestDesignUpdateCommand:
                 "lexibrary.services.design.check_design_update",
                 return_value=gen_decision,
             ),
-            patch("lexibrary.llm.client_registry.build_client_registry", mock_registry),
+            patch("lexibrary.archivist.service.build_archivist_service", mock_build_service),
             patch("lexibrary.archivist.pipeline.update_file", mock_update),
-            patch(
-                "lexibrary.archivist.service.ArchivistService",
-                return_value=MagicMock(),
-            ),
         ):
             result = self._invoke(tmp_path, ["design", "update", str(source), "--unlimited"])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        # Verify unlimited=True was passed to build_client_registry
-        assert mock_registry.call_args[1]["unlimited"] is True
+        # Verify unlimited=True was passed to build_archivist_service
+        assert mock_build_service.call_args[1]["unlimited"] is True
         # Verify unlimited=True was passed to update_file
         assert mock_update.call_args[1]["unlimited"] is True
 

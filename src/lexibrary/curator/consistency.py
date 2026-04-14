@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from lexibrary.artifacts.design_file import DesignFile
 from lexibrary.artifacts.design_file_parser import (
     parse_design_file,
     parse_design_file_frontmatter,
@@ -292,88 +291,6 @@ class ConsistencyChecker:
                     alias_map[key] = []
                 alias_map[key].append((f"{kind}:{artifact_id}", path))
 
-    # -- Bidirectional dependency repair ------------------------------------
-
-    def check_bidirectional_deps(
-        self,
-        design_files: list[Path],
-    ) -> list[FixInstruction]:
-        """Detect missing bidirectional dependency entries across design files.
-
-        For each design file:
-        - If A lists B in Dependencies, check that B lists A in Dependents.
-        - If B lists A in Dependents, check that A actually imports B.
-
-        Returns add/remove instructions for the coordinator.
-        """
-        # Build lookup: source_path -> (design_path, DesignFile)
-        designs_by_source: dict[str, tuple[Path, DesignFile]] = {}
-        for path in design_files:
-            design = parse_design_file(path)
-            if design is None:
-                continue
-            designs_by_source[design.source_path] = (path, design)
-
-        instructions: list[FixInstruction] = []
-
-        for source_path, (_design_path, design) in designs_by_source.items():
-            # Check forward deps: if A lists B as dependency, B should
-            # list A as dependent
-            for dep in design.dependencies:
-                dep_clean = self._extract_dep_path(dep)
-                if not dep_clean:
-                    continue
-
-                dep_entry = designs_by_source.get(dep_clean)
-                if dep_entry is None:
-                    continue
-
-                dep_design_path, dep_design = dep_entry
-                # Check if source_path appears in dep_design.dependents
-                dep_dependent_paths = [self._extract_dep_path(d) for d in dep_design.dependents]
-                if source_path not in dep_dependent_paths:
-                    instructions.append(
-                        FixInstruction(
-                            action="add_missing_bidirectional_dep",
-                            target_path=dep_design_path,
-                            detail=(
-                                f"{source_path} depends on {dep_clean} "
-                                f"but {dep_clean} does not list {source_path} as dependent"
-                            ),
-                            risk="low",
-                        )
-                    )
-
-        return instructions
-
-    def _extract_dep_path(self, dep_text: str) -> str | None:
-        """Extract a file path from a dependency/dependent bullet text.
-
-        Handles formats like:
-        - ``src/foo.py`` (plain path)
-        - ``src/foo.py -- description`` (path with description)
-        - ``src/foo.py (some note)`` (path with parenthetical)
-        """
-        text = dep_text.strip()
-        if not text or text == "(none)":
-            return None
-
-        # Strip leading bullet characters if present
-        if text.startswith("- "):
-            text = text[2:]
-
-        # Take everything before " -- ", " (", or end of line
-        for sep in (" -- ", " (", "  "):
-            idx = text.find(sep)
-            if idx > 0:
-                text = text[:idx]
-
-        text = text.strip()
-        # Validate it looks like a path
-        if "/" in text or text.endswith(".py"):
-            return text
-        return None
-
     # -- Orphaned .aindex cleanup ------------------------------------------
 
     def detect_orphaned_aindex(self) -> list[FixInstruction]:
@@ -562,6 +479,60 @@ class ConsistencyChecker:
                 stale.append(ref)
 
         return stale
+
+    # -- Design-file bidirectional dep cross-reference -----------------------
+
+    def detect_design_dep_mismatch(
+        self,
+        design_files: list[Path],
+    ) -> list[FixInstruction]:
+        """Detect missing reverse-dep entries by cross-referencing design files.
+
+        When design file A lists B in its dependencies, design file B should
+        list A in its dependents.  This is a pure design-file consistency
+        check — it does NOT require the link graph.  (The link-graph-based
+        validator check ``check_bidirectional_deps`` detects drift between
+        design files and actual imports; this check detects drift between
+        design files themselves.)
+        """
+        source_to_design: dict[str, Path] = {}
+        source_to_deps: dict[str, list[str]] = {}
+        source_to_dependents: dict[str, set[str]] = {}
+
+        for design_path in design_files:
+            design = parse_design_file(design_path)
+            if design is None:
+                continue
+            src = design.source_path
+            source_to_design[src] = design_path
+            source_to_deps[src] = [
+                d.strip() for d in design.dependencies
+                if d.strip() and d.strip() != "(none)"
+            ]
+            source_to_dependents[src] = {
+                d.strip() for d in design.dependents
+                if d.strip() and d.strip() != "(none)"
+            }
+
+        instructions: list[FixInstruction] = []
+        for src, deps in source_to_deps.items():
+            for dep in deps:
+                if dep not in source_to_design:
+                    continue
+                if src not in source_to_dependents.get(dep, set()):
+                    instructions.append(
+                        FixInstruction(
+                            action="add_missing_reverse_dep",
+                            target_path=source_to_design[dep],
+                            detail=(
+                                f"{src} lists {dep} as a dependency but "
+                                f"{dep} does not list {src} as a dependent"
+                            ),
+                            risk="low",
+                        )
+                    )
+
+        return instructions
 
     # -- Blocked IWH promotion ---------------------------------------------
 

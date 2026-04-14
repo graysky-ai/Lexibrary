@@ -1,7 +1,0 @@
-comments:
-- body: 'Phase 6: New JS/TS symbol resolver. Implements SymbolResolver protocol with
-    tsconfig.json path alias support and a shared resolve_js_module helper extracted
-    from dependency_extractor.py. Includes _strip_json_comments state machine for
-    JSON-with-comments parsing. The JsTsResolver replaces the FallbackResolver for
-    JS/TS files, providing cross-file call-site and class-name resolution.'
-  date: '2026-04-12T03:14:55.860538Z'

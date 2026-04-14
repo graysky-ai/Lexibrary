@@ -60,6 +60,7 @@ from lexibrary.lifecycle.deprecation import (
 )
 from lexibrary.lifecycle.queue import clear_queue, read_queue
 from lexibrary.linkgraph.builder import build_index
+from lexibrary.linkgraph.query import LinkGraphUnavailable, extract_dependents
 from lexibrary.playbooks.index import PlaybookIndex
 from lexibrary.utils.atomic import atomic_write
 from lexibrary.utils.conflict import has_conflict_markers
@@ -849,6 +850,26 @@ async def update_file(
                 list(preserved_sections.keys()),
             )
 
+    # Populate reverse-dependencies (`## Dependents`) from the AST link
+    # graph.  Phase 1a of the bidirectional-deps migration makes the link
+    # graph the single ground truth; this is the ONLY place ``dependents``
+    # gets populated on the ``update_file`` path.  When ``index.db`` is
+    # missing / corrupt / schema-mismatched, ``extract_dependents`` raises
+    # ``LinkGraphUnavailable`` — we write the design anyway with an empty
+    # dependents list and flag ``dependents_complete=False`` so the
+    # validator's bidirectional-deps check skips the Dependents diff.
+    try:
+        dependents = extract_dependents(Path(rel_path), project_root)
+        dependents_complete = True
+    except LinkGraphUnavailable:
+        logger.info(
+            "Link graph unavailable while computing dependents for %s; "
+            "writing design with empty dependents list",
+            rel_path,
+        )
+        dependents = []
+        dependents_complete = False
+
     design_file = DesignFile(
         source_path=rel_path,
         frontmatter=DesignFileFrontmatter(
@@ -859,7 +880,7 @@ async def update_file(
         summary=description,
         interface_contract=output.interface_contract or "",
         dependencies=deps,
-        dependents=[],
+        dependents=dependents,
         tests=output.tests,
         complexity_warning=output.complexity_warning,
         wikilinks=list(output.wikilinks) if output.wikilinks else [],
@@ -872,6 +893,7 @@ async def update_file(
             interface_hash=interface_hash,
             generated=datetime.now(UTC).replace(tzinfo=None),
             generator=_GENERATOR_ID,
+            dependents_complete=dependents_complete,
         ),
     )
 
@@ -919,6 +941,70 @@ async def update_file(
         change=change,
         aindex_refreshed=aindex_refreshed,
         token_budget_exceeded=token_budget_exceeded,
+    )
+
+
+async def reconcile_deps_only(design_path: Path, project_root: Path) -> None:
+    """Rewrite a design file's Dependencies / Dependents sections from graph state.
+
+    Phase 1a of the bidirectional-deps migration introduces a non-LLM
+    reconciler so curator fix-ups and post-build_index sweeps can converge
+    the design body without paying for a full archivist regeneration.  The
+    function:
+
+    1. Parses the design file at *design_path*.
+    2. Recomputes forward dependencies from the AST of the source file
+       (via :func:`extract_dependencies`).
+    3. Recomputes reverse dependencies from the link graph
+       (via :func:`extract_dependents`).
+    4. Returns early without writing when both lists already match the
+       on-disk design — idempotent by construction.
+    5. Otherwise updates the ``dependencies`` / ``dependents`` lists on
+       the :class:`DesignFile` model, flips ``updated_by`` to
+       ``"archivist"``, marks ``dependents_complete=True`` (the reverse
+       graph succeeded), re-serialises and atomically writes.
+
+    ``LinkGraphUnavailable`` is NOT swallowed — the caller (validator
+    fixer or post-``build_index`` phase) is expected to surface a
+    graceful-degradation branch of its own.  ``update_file`` handles the
+    same exception by writing with ``dependents=[]``; this function
+    deliberately propagates so the caller can distinguish "graph missing"
+    from "nothing to reconcile".
+
+    The function MUST NOT invoke the archivist LLM client; it only
+    touches AST and SQLite state.
+    """
+    design = parse_design_file(design_path)
+    if design is None:
+        logger.info(
+            "reconcile_deps_only: cannot parse %s; skipping", design_path
+        )
+        return
+
+    rel_source = design.source_path
+    abs_source = project_root / rel_source
+
+    new_dependencies = extract_dependencies(abs_source, project_root)
+    new_dependents = extract_dependents(Path(rel_source), project_root)
+
+    if (
+        list(design.dependencies) == list(new_dependencies)
+        and list(design.dependents) == list(new_dependents)
+    ):
+        return
+
+    design.dependencies = new_dependencies
+    design.dependents = new_dependents
+    design.frontmatter.updated_by = "archivist"
+    design.metadata.dependents_complete = True
+
+    serialized = serialize_design_file(design)
+    atomic_write(design_path, serialized)
+    logger.info(
+        "reconcile_deps_only: rewrote %s (deps=%d, dependents=%d)",
+        design_path,
+        len(new_dependencies),
+        len(new_dependents),
     )
 
 
@@ -1758,5 +1844,36 @@ async def update_project(
         logger.exception("Failed to build link graph index")
         stats.linkgraph_error = "Link graph full build failed"
         stats.error_summary.add("linkgraph", exc)
+
+    # Step 10: Dependents reconciliation. After the link-graph rebuild the
+    # reverse ``ast_import`` edge set is authoritative, but the ``update_file``
+    # loop above wrote each design before sibling files had been regenerated,
+    # so Dependents sections may lag by one revision. Walk every design and
+    # let ``reconcile_deps_only`` diff against the fresh graph — it no-ops
+    # when the list is already in sync, so the cost of a full sweep is
+    # bounded by actual drift (plus one parse per file). This path is
+    # LLM-free and does not consume the archivist budget.
+    if stats.linkgraph_built:
+        designs_root = project_root / LEXIBRARY_DIR / DESIGNS_DIR
+        if designs_root.exists():
+            for design_md in sorted(designs_root.rglob("*.md")):
+                try:
+                    await reconcile_deps_only(design_md, project_root)
+                except LinkGraphUnavailable:
+                    # Graph rebuild succeeded above but the DB was concurrently
+                    # removed / corrupted; abandon the sweep quietly — the next
+                    # run will retry.
+                    logger.info(
+                        "Link graph unavailable mid-reconcile sweep; stopping"
+                    )
+                    break
+                except Exception as exc:
+                    logger.exception(
+                        "reconcile_deps_only failed for %s — continuing sweep",
+                        design_md,
+                    )
+                    stats.error_summary.add(
+                        "archivist", exc, path=str(design_md)
+                    )
 
     return stats

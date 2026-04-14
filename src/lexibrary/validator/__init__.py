@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Literal
 
@@ -154,6 +154,7 @@ def validate_library(
     *,
     severity_filter: str | None = None,
     check_filter: str | None = None,
+    checks: Iterable[str] | None = None,
 ) -> ValidationReport:
     """Run all validation checks and return an aggregated report.
 
@@ -168,13 +169,20 @@ def validate_library(
             warnings), ``"info"`` (all -- the default when ``None``).
         check_filter: Run only the named check. Must be a key in
             ``AVAILABLE_CHECKS``. When ``None``, all checks are run.
+        checks: Restrict the run to the named checks. Each element must be a
+            key in ``AVAILABLE_CHECKS``. When ``None`` (the default), the
+            legacy behaviour is preserved (run every check, or the single
+            check named by ``check_filter`` if provided). When both ``checks``
+            and ``check_filter`` are supplied, ``check_filter`` is applied
+            first and ``checks`` further narrows the resulting set.
 
     Returns:
         A ValidationReport with all discovered issues.
 
     Raises:
-        ValueError: If ``check_filter`` names an unknown check or
-            ``severity_filter`` is not a valid severity level.
+        ValueError: If ``check_filter`` or any entry in ``checks`` names an
+            unknown check, or ``severity_filter`` is not a valid severity
+            level.
     """
     # Validate severity_filter
     if severity_filter is not None and severity_filter not in _SEVERITY_ORDER:
@@ -188,12 +196,27 @@ def validate_library(
         msg = f"Unknown check: {check_filter!r}. Available checks: {valid_checks}"
         raise ValueError(msg)
 
+    # Validate ``checks`` -- materialise to a set so we only iterate once.
+    checks_set: set[str] | None = None
+    if checks is not None:
+        checks_set = set(checks)
+        unknown = checks_set - AVAILABLE_CHECKS.keys()
+        if unknown:
+            valid_checks = ", ".join(sorted(AVAILABLE_CHECKS))
+            unknown_list = ", ".join(sorted(unknown))
+            msg = f"Unknown check(s) in checks: {unknown_list}. Available checks: {valid_checks}"
+            raise ValueError(msg)
+
     # Determine which checks to run
     checks_to_run: dict[str, tuple[CheckFn, Severity]]
     if check_filter is not None:
         checks_to_run = {check_filter: AVAILABLE_CHECKS[check_filter]}
     else:
         checks_to_run = dict(AVAILABLE_CHECKS)
+
+    # Narrow to the caller-supplied ``checks`` subset, if any.
+    if checks_set is not None:
+        checks_to_run = {name: entry for name, entry in checks_to_run.items() if name in checks_set}
 
     # Apply severity filter: only run checks whose default severity is at or
     # above (more severe than) the threshold.

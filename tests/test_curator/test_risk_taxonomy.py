@@ -25,14 +25,13 @@ EXPECTED_LOW_KEYS = {
     "fix_broken_wikilink_fuzzy",
     "strip_unresolved_wikilink",
     "add_alias_fuzzy_match",
-    "add_missing_bidirectional_dep",
-    "remove_orphaned_reverse_dep",
     "resolve_slug_collision",
     "resolve_alias_collision",
     "flag_stale_convention",
     "flag_stale_playbook",
     "autofix_validation_issue",
     "remove_orphan_zero_deps",
+    "add_missing_reverse_dep",
     "remove_orphaned_aindex",
     "consume_superseded_iwh",
     "write_reactive_iwh",
@@ -55,6 +54,11 @@ EXPECTED_LOW_KEYS = {
     "fix_orphaned_aindex",
     "fix_orphaned_iwh",
     "fix_deprecated_ttl",
+    # Bidirectional-deps fixer registered by curator-freshness group 4
+    # (replaces the retired ``add_missing_bidirectional_dep`` /
+    # ``remove_orphaned_reverse_dep`` consistency-side handlers with a
+    # single archivist-pipeline-backed validator fix).
+    "fix_bidirectional_deps",
 }
 
 EXPECTED_MEDIUM_KEYS = {
@@ -127,7 +131,11 @@ class TestRiskTaxonomy:
         # 39 previously (37 base + 2 Phase 3 group 8) minus 4 orphan/dead
         # stubs removed by curator-fix-2 group 1 (``mark_design_unlinked``,
         # ``prune_ephemeral_comments``, ``promote_comment``,
-        # ``fix_broken_wikilink_exact``).
+        # ``fix_broken_wikilink_exact``) minus 2 bidirectional-deps
+        # handlers retired in Phase 1a of ``curator-freshness``
+        # (``add_missing_bidirectional_dep``, ``remove_orphaned_reverse_dep``)
+        # plus 1 replacement fixer added in group 4 of ``curator-freshness``
+        # (``fix_bidirectional_deps``).
         assert len(low_keys) == 35
 
     def test_medium_risk_count(self) -> None:
@@ -169,8 +177,6 @@ class TestRiskTaxonomy:
 
     def test_total_action_count(self) -> None:
         # 35 Low + 12 Medium + 3 High = 50.
-        # curator-fix-2 group 1 removed 6 orphan/dead stub entries
-        # (4 Low, 2 Medium) that had no source emission.
         assert len(RISK_TAXONOMY) == 50
 
 

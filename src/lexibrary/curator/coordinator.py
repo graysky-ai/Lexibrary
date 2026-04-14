@@ -13,6 +13,7 @@ import logging
 import os
 import subprocess
 import time
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -64,6 +65,7 @@ CHECK_TO_ACTION_KEY: dict[str, str] = {
     "orphaned_iwh": "fix_orphaned_iwh",
     "orphaned_designs": "fix_orphaned_designs",
     "deprecated_ttl": "fix_deprecated_ttl",
+    "bidirectional_deps": "fix_bidirectional_deps",
 }
 
 # Set of action keys recognised by the validation bridge router.  Includes the
@@ -72,6 +74,114 @@ CHECK_TO_ACTION_KEY: dict[str, str] = {
 VALIDATION_ACTION_KEYS: frozenset[str] = frozenset(
     set(CHECK_TO_ACTION_KEY.values()) | {"autofix_validation_issue"}
 )
+
+
+# ---------------------------------------------------------------------------
+# Two-pass collect: hash-layer vs graph-layer validator partition
+# ---------------------------------------------------------------------------
+
+# Hash-layer checks: structural/frontmatter/token-budget checks that do NOT
+# read the link graph (``index.db``) or symbol graph (``symbols.db``).  These
+# are safe to run in the first collect pass — before any mid-run
+# ``build_index`` rebuild — because their inputs are purely on-disk file
+# contents and their frontmatter.  Per ``specs/curator-two-pass-collect``:
+# frontmatter validators, ``hash_freshness``, ``token_budgets``,
+# ``stale_agent_design`` form the spec-named hash-layer subset.
+_HASH_LAYER_CHECKS: frozenset[str] = frozenset(
+    {
+        # Spec-named hash-layer subset
+        "hash_freshness",
+        "stale_agent_design",
+        "token_budgets",
+        # Frontmatter validators (the spec says "frontmatter validators" as a
+        # family; enumerate them explicitly so the partition is total.)
+        "concept_frontmatter",
+        "convention_frontmatter",
+        "design_frontmatter",
+        "stack_frontmatter",
+        "iwh_frontmatter",
+        "playbook_frontmatter",
+    }
+)
+
+# Graph-layer checks: everything else from ``AVAILABLE_CHECKS`` — the
+# spec-named graph-layer subset plus all remaining checks not explicitly
+# assigned to hash.  Per the spec's partitioning guidance, checks omitted
+# from the spec default to graph-layer (graph-layer is the "safer" pass
+# because it runs after the mid-run ``build_index`` rebuild).
+_GRAPH_LAYER_CHECKS: frozenset[str] = frozenset(
+    {
+        # Spec-named graph-layer subset
+        "bidirectional_deps",
+        "orphan_artifacts",
+        "orphan_concepts",
+        "dangling_links",
+        "wikilink_resolution",
+        "aindex_coverage",
+        "forward_dependencies",
+        "convention_stale",
+        "playbook_staleness",
+        "stack_staleness",
+        "design_deps_existence",
+        "stack_refs_validity",
+        "deprecated_concept_usage",
+        "convention_orphaned_scope",
+        # Remaining checks default to graph-layer per the spec's
+        # "when in doubt, route to graph-layer" rule.
+        "file_existence",
+        "orphaned_designs",
+        "resolved_post_staleness",
+        "orphaned_aindex",
+        "orphaned_iwh",
+        "comment_accumulation",
+        "deprecated_ttl",
+        "stale_concept",
+        "supersession_candidate",
+        "convention_gap",
+        "convention_consistent_violation",
+        "lookup_token_budget_exceeded",
+        "orphaned_iwh_signals",
+        "config_valid",
+        "lexignore_syntax",
+        "linkgraph_version",
+        "duplicate_aliases",
+        "duplicate_slugs",
+        "artifact_id_uniqueness",
+        "aindex_entries",
+        "design_structure",
+        "stack_body_sections",
+        "concept_body",
+        "playbook_wikilinks",
+        "playbook_deprecated_ttl",
+    }
+)
+
+
+def _assert_check_partition_total_and_disjoint() -> None:
+    """Assert the hash/graph partition covers every registered check once.
+
+    Guards against drift: adding a new check to
+    :data:`lexibrary.validator.AVAILABLE_CHECKS` without also adding it to
+    one (and only one) of the two frozensets would silently cause the new
+    check to never run in either pass of the two-pass collect.
+    """
+    from lexibrary.validator import AVAILABLE_CHECKS  # noqa: PLC0415
+
+    registered = frozenset(AVAILABLE_CHECKS)
+    partition = _HASH_LAYER_CHECKS | _GRAPH_LAYER_CHECKS
+    overlap = _HASH_LAYER_CHECKS & _GRAPH_LAYER_CHECKS
+    missing = registered - partition
+    extra = partition - registered
+    if overlap or missing or extra:
+        msg = (
+            "Two-pass collect check partition is not total/disjoint: "
+            f"overlap={sorted(overlap)}, missing={sorted(missing)}, "
+            f"extra={sorted(extra)}"
+        )
+        raise AssertionError(msg)
+
+
+_assert_check_partition_total_and_disjoint()
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +330,75 @@ def _active_iwh_dirs(
 
 
 # ---------------------------------------------------------------------------
+# Two-pass merge helpers
+# ---------------------------------------------------------------------------
+
+
+def _dispatch_written_paths(result: DispatchResult) -> list[Path]:
+    """Return the set of paths that this dispatch pass actually wrote.
+
+    Used by :meth:`Coordinator._run_pipeline_two_pass` to hand
+    ``changed_paths`` to ``linkgraph.builder.build_index`` between and
+    after the two dispatch passes.  Only ``outcome="fixed"`` successful
+    dispatches are counted — ``dry_run`` results, stubs, deferred items,
+    and fixer failures never wrote to disk, so including them in the
+    incremental rebuild would be wasted work.
+
+    The list is deduplicated and returned in a stable deterministic
+    order so that downstream ``build_index`` calls are idempotent.
+    """
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+    for dispatched in result.dispatched:
+        if (
+            dispatched.path is not None
+            and dispatched.success
+            and dispatched.outcome == "fixed"
+            and dispatched.path not in seen
+        ):
+            seen.add(dispatched.path)
+            ordered.append(dispatched.path)
+    return ordered
+
+
+def _merge_collect_results(
+    hash_collect: CollectResult,
+    graph_collect: CollectResult,
+) -> CollectResult:
+    """Merge two ``CollectResult`` objects produced by the hash/graph passes.
+
+    Concatenates each per-item-kind list in pass order (hash first,
+    graph second) and ORs the two ``link_graph_available`` flags so a
+    graph-pass-detected failure is not silently overwritten by the
+    hash pass's default ``False``.  ``validation_error`` is carried
+    forward from whichever pass first reported one.
+    """
+    merged = CollectResult()
+    merged.items = [*hash_collect.items, *graph_collect.items]
+    merged.comment_items = [
+        *hash_collect.comment_items,
+        *graph_collect.comment_items,
+    ]
+    merged.deprecation_items = [
+        *hash_collect.deprecation_items,
+        *graph_collect.deprecation_items,
+    ]
+    merged.budget_items = [
+        *hash_collect.budget_items,
+        *graph_collect.budget_items,
+    ]
+    merged.comment_audit_items = [
+        *hash_collect.comment_audit_items,
+        *graph_collect.comment_audit_items,
+    ]
+    merged.link_graph_available = (
+        hash_collect.link_graph_available or graph_collect.link_graph_available
+    )
+    merged.validation_error = hash_collect.validation_error or graph_collect.validation_error
+    return merged
+
+
+# ---------------------------------------------------------------------------
 # Coordinator
 # ---------------------------------------------------------------------------
 
@@ -249,6 +428,31 @@ class Coordinator:
         # True, where it supplies the ``before`` leg of the verification
         # delta.  ``None`` means validation did not run (or raised).
         self._validation_before_count: int | None = None
+        # Populated by ``_prepare_indexes`` with ``(source_hash,
+        # interface_hash)`` pairs keyed by absolute source path.  Consumed
+        # by ``_collect_staleness`` via task 1.5 so staleness detection
+        # reuses the hashes computed during prepare rather than re-running
+        # ``compute_hashes``.  Reset at the top of each ``_prepare_indexes``
+        # invocation.
+        self._drift_hashes: dict[Path, tuple[str, str | None]] = {}
+        # File-mtime cache shared across ``_prepare_indexes`` invocations
+        # on the same Coordinator instance.  Keyed by absolute source path;
+        # value is ``(mtime_ns, source_hash)``.  When a source file's
+        # on-disk ``mtime_ns`` is unchanged AND the cached ``source_hash``
+        # still matches the design file's frontmatter, ``_prepare_indexes``
+        # skips ``compute_hashes`` entirely — this is the warm-cache path
+        # targeted by the P95 <=200ms benchmark in task 1.6.
+        self._mtime_cache: dict[Path, tuple[int, str]] = {}
+        # Pre-charged LLM calls counted against ``max_llm_calls_per_run``
+        # before the dispatch phase runs.  Callers outside the coordinator
+        # (today: the reactive-hook bootstrap in ``hooks.post_edit_hook``
+        # when ``reactive_bootstrap_regenerate`` is ``True``) may invoke
+        # ``archivist.pipeline.update_file`` prior to handing control to
+        # :meth:`run`; each such invocation increments this counter so the
+        # coordinator's dispatch cap in ``_dispatch`` accounts for the
+        # budget already consumed.  ``DispatchResult.llm_calls_used`` is
+        # seeded from this value at the top of ``_dispatch``.
+        self.pre_charged_llm_calls: int = 0
 
     def _ctx(self) -> DispatchContext:
         """Build a :class:`DispatchContext` snapshot from coordinator state.
@@ -297,14 +501,65 @@ class Coordinator:
         dry_run: bool = False,
         trigger: str = "on_demand",
     ) -> CuratorReport:
-        """Internal pipeline execution after lock acquisition."""
+        """Internal pipeline execution after lock acquisition.
+
+        Two flow modes, gated by ``CuratorConfig.two_pass_collect``:
+
+        * **Two-pass (default, task 5.4):** hash-layer collect → triage →
+          dispatch (capped at 70% of ``max_llm_calls_per_run``) →
+          mid-run ``build_index`` with paths written by the hash pass →
+          graph-layer collect → triage → dispatch (using the full shared
+          budget minus what hash consumed) → final ``build_index`` →
+          ``_verify_after_sweep`` (task 5.7, on post-graph-dispatch
+          link graph) → merged ``_report``.
+        * **Legacy single-pass:** the pre-restructure ``_collect →
+          _triage → _dispatch → _verify_after_sweep → _report`` flow,
+          preserved verbatim for the ``two_pass_collect=False``
+          kill-switch.  Items emitted from ``_collect`` carry
+          ``layer=None`` so honest-reporting tests can distinguish.
+        """
+        # Reset per-run state so multiple pipeline invocations on the
+        # same Coordinator instance do not accumulate counts.  The
+        # two-pass flow (and the legacy flow that calls both layer
+        # methods) accumulates ``_validation_before_count`` across
+        # successive ``_collect_validation`` calls; without a reset
+        # here a second pipeline run would double-count.
+        self._validation_before_count = None
+        # Phase 0: Prepare indexes (refresh symbol/link graphs for drifted sources)
+        if self.curator_config.prepare_indexes:
+            self._prepare_indexes(scope=scope)
+
+        if self.curator_config.two_pass_collect:
+            return await self._run_pipeline_two_pass(
+                scope=scope, check=check, dry_run=dry_run, trigger=trigger
+            )
+        return await self._run_pipeline_legacy(
+            scope=scope, check=check, dry_run=dry_run, trigger=trigger
+        )
+
+    async def _run_pipeline_legacy(
+        self,
+        *,
+        scope: Path | None,
+        check: str | None,
+        dry_run: bool,
+        trigger: str,
+    ) -> CuratorReport:
+        """Legacy single-pass flow (kill-switch ``two_pass_collect=False``).
+
+        Preserves the pre-Phase-2 call ordering verbatim: collect →
+        triage → dispatch → verify_after_sweep → report.  Items emitted
+        by ``_collect`` carry ``layer=None``.  No mid-run ``build_index``
+        occurs.
+        """
         # Phase 1: Collect
         collect_result = self._collect(scope=scope, check=check)
 
         # Phase 2: Triage
         triage_result = self._triage(collect_result)
 
-        # Phase 3: Dispatch
+        # Phase 3: Dispatch (legacy: no per-pass cap; only the shared
+        # ``max_llm_calls_per_run`` ceiling applies).
         dispatch_result = await self._dispatch(triage_result, dry_run=dry_run)
 
         # Phase 3b: Migration dispatch cycle (after deprecations committed)
@@ -328,7 +583,527 @@ class Coordinator:
         )
         return report
 
+    async def _run_pipeline_two_pass(
+        self,
+        *,
+        scope: Path | None,
+        check: str | None,
+        dry_run: bool,
+        trigger: str,
+    ) -> CuratorReport:
+        """Two-pass hash-layer → graph-layer flow (task 5.4).
+
+        Step-by-step:
+
+        1. ``_collect_hash_layer`` — staleness, agent-edit, IWH, comment,
+           comment-audit, budget, hash-layer validator subset.  Items
+           are tagged ``layer="hash"`` at the emission site.
+        2. ``_triage`` + ``_dispatch`` with
+           ``budget_cap=int(max_llm_calls_per_run * 0.7)`` — the
+           hash-layer pass cannot consume more than 70% of the shared
+           LLM budget.
+        3. ``linkgraph.builder.build_index(changed_paths=...)`` for the
+           paths that hash-layer dispatch actually fixed.  This rebuild
+           is what makes graph-layer triage see a fresh link graph.
+        4. ``_collect_graph_layer`` — validator graph-subset,
+           deprecation, consistency, link-graph availability probe.
+           Items tagged ``layer="graph"``.
+        5. ``_triage`` + ``_dispatch`` with
+           ``budget_cap=max_llm_calls_per_run`` (the shared counter —
+           pre-seeded via ``self.pre_charged_llm_calls`` — handles the
+           "30% remaining" accounting).
+        6. ``linkgraph.builder.build_index`` again for graph-pass fixes.
+        7. ``_verify_after_sweep`` on the post-graph-dispatch link
+           graph (task 5.7).
+        8. ``_report`` with the hash-pass and graph-pass dispatches
+           merged into a single ``DispatchResult``.
+        """
+        from lexibrary.linkgraph.builder import build_index  # noqa: PLC0415
+
+        # --- Pass 1: hash layer -------------------------------------------
+        hash_collect = CollectResult()
+        self._collect_hash_layer(hash_collect, scope=scope, check=check, layer="hash")
+
+        hash_triage = self._triage(hash_collect)
+
+        hash_budget_cap = int(self.curator_config.max_llm_calls_per_run * 0.7)
+        hash_dispatch = await self._dispatch(
+            hash_triage, dry_run=dry_run, budget_cap=hash_budget_cap
+        )
+
+        # Mid-run link graph rebuild — only the paths the hash layer
+        # actually wrote need re-indexing.  ``build_index`` degrades
+        # gracefully per the curator-link-graph convention; wrap in
+        # try/except so an index failure never aborts the run.
+        #
+        # Guard: only rebuild if ``index.db`` already exists.  When
+        # ``_prepare_indexes`` chose to log-and-skip because the DB was
+        # absent (scenario (ii)), creating an artificially sparse index
+        # here via ``incremental_update`` would mislead graph-layer
+        # checks — e.g. ``_collect_orphan_artifacts`` would flag every
+        # unreferenced artifact simply because the freshly-created DB
+        # knows only about ``hash_written``.  Bootstrapping the full
+        # index is outside the curator's remit; the user must run
+        # ``lexictl update``.
+        index_db_path = self.lexibrary_dir / "index.db"
+        hash_written = _dispatch_written_paths(hash_dispatch)
+        if hash_written and index_db_path.exists():
+            try:
+                build_index(self.project_root, changed_paths=hash_written)
+            except Exception as exc:
+                logger.warning(
+                    "_run_pipeline_two_pass: mid-run build_index raised — "
+                    "continuing with a potentially stale link graph",
+                    exc_info=True,
+                )
+                self.summary.add("two_pass_build_index", exc, path="mid_run")
+
+        # Carry the hash-pass LLM consumption forward so the graph-pass
+        # dispatch's effective shared budget starts where hash left off.
+        # (``_dispatch`` seeds ``DispatchResult.llm_calls_used`` from
+        # ``self.pre_charged_llm_calls``; this bump is how the single
+        # shared counter is enforced across passes without a second
+        # counter.)  Do NOT reset the counter — the hook-seeded starting
+        # value is part of the accumulated total.
+        self.pre_charged_llm_calls = hash_dispatch.llm_calls_used
+
+        # --- Pass 2: graph layer ------------------------------------------
+        graph_collect = CollectResult()
+        self._collect_graph_layer(graph_collect, scope=scope, check=check, layer="graph")
+
+        graph_triage = self._triage(graph_collect)
+
+        graph_dispatch = await self._dispatch(
+            graph_triage,
+            dry_run=dry_run,
+            budget_cap=self.curator_config.max_llm_calls_per_run,
+        )
+
+        # Final link graph rebuild — graph-pass writes may still invalidate
+        # downstream readers (e.g. ``_verify_after_sweep``).  Mirrors the
+        # "index must pre-exist" guard from the mid-run rebuild.
+        graph_written = _dispatch_written_paths(graph_dispatch)
+        if graph_written and index_db_path.exists():
+            try:
+                build_index(self.project_root, changed_paths=graph_written)
+            except Exception as exc:
+                logger.warning(
+                    "_run_pipeline_two_pass: post-graph build_index raised — "
+                    "continuing with a potentially stale link graph",
+                    exc_info=True,
+                )
+                self.summary.add("two_pass_build_index", exc, path="post_graph")
+
+        # Merge the two passes into a single ``DispatchResult`` for
+        # downstream consumers.  The ``dispatched`` / ``deferred`` lists
+        # are concatenated in pass order (hash first, graph second) so
+        # honest-reporting tests that iterate see a stable ordering.
+        # ``llm_calls_used`` takes the graph-pass cumulative total
+        # because ``pre_charged_llm_calls`` was bumped to the hash-pass
+        # total before the graph pass ran.
+        merged_dispatch = DispatchResult(
+            dispatched=[*hash_dispatch.dispatched, *graph_dispatch.dispatched],
+            deferred=[*hash_dispatch.deferred, *graph_dispatch.deferred],
+            llm_calls_used=graph_dispatch.llm_calls_used,
+            llm_cap_reached=hash_dispatch.llm_cap_reached or graph_dispatch.llm_cap_reached,
+        )
+
+        # Similarly merge the collect / triage results so ``_report``'s
+        # ``checked`` / issue-breakdown accounting reflects both passes.
+        merged_collect = _merge_collect_results(hash_collect, graph_collect)
+        merged_triage = TriageResult(items=[*hash_triage.items, *graph_triage.items])
+
+        # Phase 3b: Migration dispatch cycle (after deprecations committed).
+        # Runs against the merged dispatch so migrations for deprecations
+        # from either pass are picked up.
+        migrations_applied, migrations_proposed = self._dispatch_migrations(
+            merged_dispatch, dry_run=dry_run
+        )
+
+        # Phase 3c: Post-sweep verification (task 5.7).  Runs AFTER the
+        # graph-layer build_index so the before/after delta reads a
+        # link graph reflecting graph-pass output — the spec's "honest
+        # delta" requirement.
+        verification = self._verify_after_sweep(check=check)
+
+        # Phase 4: Report
+        report = self._report(
+            merged_collect,
+            merged_triage,
+            merged_dispatch,
+            migrations_applied=migrations_applied,
+            migrations_proposed=migrations_proposed,
+            trigger=trigger,
+            verification=verification,
+        )
+        return report
+
+    # -- Phase 0: Prepare indexes -----------------------------------------
+
+    def _prepare_indexes(self, scope: Path | None = None) -> None:
+        """Rebuild derived indexes for drifted sources before collect runs.
+
+        Walks ``.lexibrary/designs/**.md`` (or, when ``scope`` is provided,
+        only the design that mirrors the single source file at ``scope``),
+        compares frontmatter hashes against the current on-disk source,
+        and refreshes ``symbols.db`` + ``index.db`` for every drifted
+        source before the collect phase runs.  Populates
+        ``self._drift_hashes`` so ``_collect_staleness`` (task 1.5) can
+        reuse the hashes without recomputing them.
+
+        The method makes no LLM calls and performs no write outside the
+        PID lock already acquired by ``_run_pipeline``.  See the
+        ``curator-index-preparation`` spec for the five scenarios this
+        method satisfies (clean, both-DBs-absent, drifted, symbols-db
+        absent, scoped).
+
+        Parameters
+        ----------
+        scope:
+            Optional absolute source path (or directory).  When provided,
+            only the design files whose ``source`` field lives under
+            ``scope`` are walked.  When ``None``, the full design tree is
+            walked.
+
+        Returns
+        -------
+        None
+            The method mutates ``self._drift_hashes`` and the on-disk
+            indexes as a side effect.
+        """
+        from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
+            parse_design_file_metadata,
+        )
+        from lexibrary.ast_parser import compute_hashes  # noqa: PLC0415
+        from lexibrary.utils.paths import symbols_db_path  # noqa: PLC0415
+
+        # Reset the per-run drift-hash cache.  The mtime cache persists
+        # across runs so the warm-cache benchmark budget holds.
+        self._drift_hashes = {}
+
+        designs_dir = self.lexibrary_dir / "designs"
+        if not designs_dir.is_dir():
+            # No design tree at all — nothing to prepare.  The collect
+            # phase will still run; staleness detection will simply have
+            # no cache to reuse.
+            return
+
+        # Scenario (ii): both databases absent — log-and-skip without
+        # raising.  The collect phase continues normally; validator checks
+        # degrade gracefully per the curator-link-graph convention.
+        index_db_path = self.lexibrary_dir / "index.db"
+        symbols_db_present = symbols_db_path(self.project_root).exists()
+        index_db_present = index_db_path.exists()
+        if not symbols_db_present and not index_db_present:
+            logger.info(
+                "_prepare_indexes: symbols.db and index.db both absent — "
+                "skipping derived-index refresh. Run `lexictl update` to "
+                "bootstrap the indexes."
+            )
+            return
+
+        # Walk the design tree and compare hashes.  ``drifted_sources``
+        # accumulates absolute source paths whose on-disk hash disagrees
+        # with the design-file frontmatter.
+        drifted_sources: list[Path] = []
+
+        for design_path in sorted(designs_dir.rglob("*.md")):
+            # Skip dotfiles / sidecar files.
+            if design_path.name.startswith("."):
+                continue
+
+            try:
+                metadata = parse_design_file_metadata(design_path)
+            except Exception as exc:  # pragma: no cover - defensive
+                self.summary.add("prepare_indexes", exc, path=str(design_path))
+                continue
+
+            if metadata is None:
+                continue
+
+            source_path = self.project_root / metadata.source
+            if not source_path.exists():
+                continue
+
+            # Scope filtering — when ``scope`` is an absolute path (file
+            # or directory), restrict the walk to designs whose source
+            # lives under it.  ``Path.is_relative_to`` treats a path as
+            # relative to itself, so the single-file case works without
+            # special handling.
+            if scope is not None and not source_path.is_relative_to(scope):
+                continue
+
+            # Check the file-mtime cache before calling ``compute_hashes``.
+            # ``st_mtime_ns`` gives us nanosecond-precision comparisons
+            # against the cached timestamp, which is enough to detect any
+            # write to the file between runs.
+            try:
+                current_mtime_ns = source_path.stat().st_mtime_ns
+            except OSError as exc:  # pragma: no cover - defensive
+                self.summary.add("prepare_indexes", exc, path=str(source_path))
+                continue
+
+            cached = self._mtime_cache.get(source_path)
+            if (
+                cached is not None
+                and cached[0] == current_mtime_ns
+                and cached[1] == metadata.source_hash
+            ):
+                # Warm-cache hit: mtime hasn't moved AND the cached hash
+                # still matches the frontmatter, so we know the source
+                # hasn't changed since we last recorded it.  Populate
+                # ``_drift_hashes`` with the cached hash so
+                # ``_collect_staleness`` can still reuse it — interface
+                # hash is ``None`` here because we skip ``compute_hashes``
+                # in this branch; ``_collect_staleness`` compares only the
+                # source hash when the interface hash is absent.
+                self._drift_hashes[source_path] = (cached[1], None)
+                continue
+
+            # Cold path — must recompute the hashes.
+            try:
+                current_source_hash, current_interface_hash = compute_hashes(source_path)
+            except Exception as exc:
+                self.summary.add("prepare_indexes", exc, path=str(source_path))
+                continue
+
+            # Record every computed pair so ``_collect_staleness`` can
+            # reuse them without re-invoking ``compute_hashes`` (satisfies
+            # the "Drift-hash cache shared with staleness collect"
+            # requirement).
+            self._drift_hashes[source_path] = (current_source_hash, current_interface_hash)
+
+            # Update the mtime cache with the freshly-computed source
+            # hash so the next run hits the warm-cache branch above.
+            self._mtime_cache[source_path] = (current_mtime_ns, current_source_hash)
+
+            if metadata.source_hash != current_source_hash:
+                drifted_sources.append(source_path)
+
+        # Scenario (i): no drift — return early without touching either
+        # index.  Satisfies the "both DBs present and clean -> no write"
+        # scenario.
+        if not drifted_sources:
+            return
+
+        # Scenario (iii) / (iv): drift detected — refresh the symbol
+        # graph per-file and rebuild the affected slice of the link
+        # graph.  ``refresh_file`` is wrapped in try/except because a
+        # parse error or missing DB must never abort the prepare phase;
+        # the spec explicitly forbids falling through to a full
+        # ``build_symbol_graph`` under any condition.
+        if symbols_db_present:
+            from lexibrary.symbolgraph.builder import (  # noqa: PLC0415
+                refresh_file as _refresh_symbols,
+            )
+
+            for source in drifted_sources:
+                try:
+                    _refresh_symbols(self.project_root, self.config, source)
+                except Exception as exc:
+                    # Per spec scenario "Parse error during refresh_file":
+                    # log-and-skip this source and continue refreshing the
+                    # remaining drifted sources.  The exception is also
+                    # recorded in the run summary for later inspection.
+                    logger.warning(
+                        "_prepare_indexes: symbolgraph.refresh_file raised for %s — "
+                        "skipping symbol-graph refresh for this source",
+                        source,
+                        exc_info=True,
+                    )
+                    self.summary.add("prepare_indexes", exc, path=str(source))
+        else:
+            # Scenario (iv): symbols.db is absent but the link graph
+            # exists.  Skip ``refresh_file`` with a log note; do NOT fall
+            # through to ``build_symbol_graph``.
+            logger.info(
+                "_prepare_indexes: symbols.db absent — skipping per-file "
+                "symbol-graph refresh for %d drifted source(s). Link graph "
+                "rebuild will still run.",
+                len(drifted_sources),
+            )
+
+        # Rebuild the link graph for the drifted slice only.  Passing a
+        # non-None ``changed_paths`` selects the incremental update path;
+        # an empty list would still be accepted by ``build_index`` but we
+        # already returned above when ``drifted_sources`` was empty.
+        from lexibrary.linkgraph.builder import build_index  # noqa: PLC0415
+
+        try:
+            build_index(self.project_root, changed_paths=drifted_sources)
+        except Exception as exc:
+            # Mirror the curator-link-graph convention: log and record a
+            # summary entry rather than raising — the collect phase can
+            # still run with a stale index, and validator checks degrade
+            # gracefully on schema/availability failures.
+            logger.warning(
+                "_prepare_indexes: linkgraph.build_index raised — "
+                "continuing with a potentially stale link graph",
+                exc_info=True,
+            )
+            self.summary.add("prepare_indexes", exc, path=str(index_db_path))
+
     # -- Phase 1: Collect ---------------------------------------------------
+
+    def _collect_hash_layer(
+        self,
+        result: CollectResult,
+        *,
+        scope: Path | None = None,
+        check: str | None = None,
+        layer: Literal["hash", "graph"] | None = "hash",
+    ) -> None:
+        """First collect pass — hash-layer signals.
+
+        Invokes sub-agents that do NOT depend on the link graph
+        (``index.db``) or symbol graph (``symbols.db``): staleness
+        detection, agent-edit scan, IWH signal scan, comment detection,
+        comment audit, token budgets, and the hash-layer validator
+        subset from :data:`_HASH_LAYER_CHECKS`.
+
+        Populates the scope-isolation caches (``self._uncommitted`` and
+        ``self._active_iwh``) at the top of the method so the graph
+        layer (which runs after the mid-run ``build_index`` rebuild in
+        the two-pass flow) can reuse them without re-querying git.
+
+        Each emitted :class:`CollectItem` is tagged with ``layer`` at
+        the emission site.  Passing ``layer=None`` (used by the legacy
+        single-pass :meth:`_collect` helper) disables tagging while
+        preserving the rest of the collection work — legacy consumers
+        see the same items they always have.
+        """
+        # Determine scope isolation exclusions.  Populated during
+        # hash-layer collect so the graph-layer pass (and the legacy
+        # single-pass helper) can reuse them without re-querying git.
+        uncommitted = _uncommitted_files(self.project_root)
+        active_iwh = _active_iwh_dirs(self.project_root, self.config.iwh.ttl_hours)
+        # Stash on self so _ctx() (dispatch phase) and _collect_graph_layer
+        # can expose them.  Task 5.8: scope-isolation caches are populated
+        # in the hash layer only; the graph layer asserts their presence.
+        self._uncommitted = uncommitted
+        self._active_iwh = active_iwh
+
+        # 1. Hash-layer validation subset (frontmatter validators,
+        #    hash_freshness, token_budgets, stale_agent_design, ...).
+        self._collect_validation(
+            result,
+            check=check,
+            checks=_HASH_LAYER_CHECKS,
+            uncommitted=uncommitted,
+            active_iwh=active_iwh,
+            layer=layer,
+        )
+
+        # 2. Hash-based staleness detection (reuses self._drift_hashes
+        #    from _prepare_indexes; fallback path stays).
+        self._collect_staleness(
+            result,
+            scope=scope,
+            uncommitted=uncommitted,
+            active_iwh=active_iwh,
+            layer=layer,
+        )
+
+        # 3. Agent-edit detection via change_checker.
+        self._collect_agent_edits(
+            result,
+            scope=scope,
+            uncommitted=uncommitted,
+            active_iwh=active_iwh,
+            layer=layer,
+        )
+
+        # 4. IWH signal scan.
+        self._collect_iwh(result, scope=scope, layer=layer)
+
+        # 5. Comment detection (emits CommentCollectItem — no layer
+        #    field on that dataclass; tagging happens downstream in
+        #    triage if at all).
+        self._collect_comments(
+            result,
+            scope=scope,
+            uncommitted=uncommitted,
+            active_iwh=active_iwh,
+        )
+
+        # 6. TODO/FIXME/HACK scanning (emits CommentAuditCollectItem —
+        #    no layer field on that dataclass).
+        self._collect_comment_audit_issues(result, scope=scope)
+
+        # 7. Token budget checks (emits BudgetCollectItem — no layer
+        #    field on that dataclass).
+        self._collect_budget_issues(result, scope=scope)
+
+    def _collect_graph_layer(
+        self,
+        result: CollectResult,
+        *,
+        scope: Path | None = None,
+        check: str | None = None,
+        layer: Literal["hash", "graph"] | None = "graph",
+    ) -> None:
+        """Second collect pass — graph-layer signals.
+
+        Invokes sub-agents that read from the link graph (``index.db``)
+        or symbol graph (``symbols.db``): the graph-layer validator
+        subset from :data:`_GRAPH_LAYER_CHECKS`, deprecation candidate
+        detection, consistency checks, and the link-graph availability
+        probe.
+
+        When invoked via the two-pass flow, the link graph has already
+        been rebuilt by a mid-run ``build_index`` call (task 5.4), so
+        graph-dependent checks see the post-hash-dispatch state.
+
+        Each emitted :class:`CollectItem` is tagged with ``layer`` at
+        the emission site.  Passing ``layer=None`` (used by the legacy
+        single-pass :meth:`_collect` helper) disables tagging.
+
+        Asserts the scope-isolation caches populated by
+        :meth:`_collect_hash_layer` are present — the two-pass flow
+        relies on that invariant (task 5.8).
+        """
+        # Task 5.8: scope-isolation caches MUST be populated by the
+        # hash layer before graph collect runs.  In the two-pass flow
+        # this assertion guards against future refactors that might
+        # accidentally short-circuit the hash layer; in the legacy
+        # single-pass flow the helper calls both layers in sequence so
+        # the caches are always populated.
+        assert self._uncommitted is not None and self._active_iwh is not None, (
+            "scope caches must be populated by the hash layer before graph collect"
+        )
+        uncommitted = self._uncommitted
+        active_iwh = self._active_iwh
+
+        # 1. Graph-layer validation subset (bidirectional_deps,
+        #    orphan_artifacts, wikilink_resolution, aindex_coverage,
+        #    forward_dependencies, duplicate_slugs/aliases, ...).
+        self._collect_validation(
+            result,
+            check=check,
+            checks=_GRAPH_LAYER_CHECKS,
+            uncommitted=uncommitted,
+            active_iwh=active_iwh,
+            layer=layer,
+        )
+
+        # 2. Deprecation candidate detection — reads link-graph
+        #    snapshots for orphan-artifact discovery (emits
+        #    DeprecationCollectItem; no layer field on that dataclass).
+        self._collect_deprecation_candidates(result)
+
+        # 3. Consistency checks — per the curator-two-pass-collect
+        #    spec, these live exclusively in the graph layer because
+        #    they read wikilink / link-graph state (task 5.6).
+        self._collect_consistency(
+            result,
+            scope=scope,
+            uncommitted=uncommitted,
+            active_iwh=active_iwh,
+            layer=layer,
+        )
+
+        # 4. Link graph availability probe.
+        result.link_graph_available = self._check_link_graph()
 
     def _collect(
         self,
@@ -336,55 +1111,23 @@ class Coordinator:
         scope: Path | None = None,
         check: str | None = None,
     ) -> CollectResult:
-        """Gather signals from validation, staleness checks, and IWH scan."""
+        """Gather signals from validation, staleness checks, and IWH scan.
+
+        Legacy single-pass helper used when
+        :attr:`CuratorConfig.two_pass_collect` is ``False``.  Invokes
+        :meth:`_collect_hash_layer` and :meth:`_collect_graph_layer`
+        back-to-back with ``layer=None`` so the emitted items carry
+        no layer tag — preserving pre-two-pass behaviour for callers
+        that have not yet opted in to the split.
+
+        Task 5.4 owns wiring :meth:`_collect_hash_layer` and
+        :meth:`_collect_graph_layer` directly into :meth:`_run_pipeline`
+        as two separate passes; this helper is the ``False`` branch
+        for the kill-switch config flag.
+        """
         result = CollectResult()
-
-        # Determine scope isolation exclusions
-        uncommitted = _uncommitted_files(self.project_root)
-        active_iwh = _active_iwh_dirs(self.project_root, self.config.iwh.ttl_hours)
-        # Stash on self so _ctx() (dispatch phase) can expose them.
-        self._uncommitted = uncommitted
-        self._active_iwh = active_iwh
-
-        # 1. Validation
-        self._collect_validation(
-            result, check=check, uncommitted=uncommitted, active_iwh=active_iwh
-        )
-
-        # 2. Hash-based staleness detection
-        self._collect_staleness(result, scope=scope, uncommitted=uncommitted, active_iwh=active_iwh)
-
-        # 3. IWH signal scan
-        self._collect_iwh(result, scope=scope)
-
-        # 4. Comment detection
-        self._collect_comments(result, scope=scope, uncommitted=uncommitted, active_iwh=active_iwh)
-
-        # 5. Agent-edit detection via change_checker
-        self._collect_agent_edits(
-            result, scope=scope, uncommitted=uncommitted, active_iwh=active_iwh
-        )
-
-        # 6. Link graph availability
-        result.link_graph_available = self._check_link_graph()
-
-        # 7. Deprecation candidate detection (Phase 2)
-        self._collect_deprecation_candidates(result)
-
-        # 8. Token budget checks (Phase 3)
-        self._collect_budget_issues(result, scope=scope)
-
-        # 9. TODO/FIXME/HACK scanning (Phase 3)
-        self._collect_comment_audit_issues(result, scope=scope)
-
-        # 10. Consistency checks (curator-fix Phase 3 — group 8)
-        self._collect_consistency(
-            result,
-            scope=scope,
-            uncommitted=uncommitted,
-            active_iwh=active_iwh,
-        )
-
+        self._collect_hash_layer(result, scope=scope, check=check, layer=None)
+        self._collect_graph_layer(result, scope=scope, check=check, layer=None)
         return result
 
     def _collect_validation(
@@ -392,10 +1135,27 @@ class Coordinator:
         result: CollectResult,
         *,
         check: str | None = None,
+        checks: Iterable[str] | None = None,
         uncommitted: set[Path] | None = None,
         active_iwh: set[Path] | None = None,
+        layer: Literal["hash", "graph"] | None = None,
     ) -> None:
-        """Run validate_library() and add results to CollectResult."""
+        """Run validate_library() and add results to CollectResult.
+
+        ``checks`` is forwarded verbatim to :func:`validate_library`.  When
+        ``None`` (the default) every registered check runs -- matching the
+        legacy behaviour.  When provided, only the named checks execute;
+        this is the hook used by the two-pass collect phases to partition
+        validator work between the hash and graph layers.
+
+        ``layer`` tags every emitted :class:`CollectItem` with its
+        originating two-pass collect layer.  ``None`` (the default)
+        preserves the legacy single-pass behaviour.  ``_validation_before_count``
+        accumulates across successive calls within a single run so the
+        legacy flow (which invokes this method twice — once per layer —
+        to aggregate the full registry) still produces the same total
+        count as a single-call invocation would.
+        """
         from lexibrary.validator import validate_library  # noqa: PLC0415
 
         uncommitted = uncommitted or set()
@@ -406,11 +1166,16 @@ class Coordinator:
                 self.project_root,
                 self.lexibrary_dir,
                 check_filter=check,
+                checks=checks,
             )
             # Capture the raw issue count so the Phase 5 post-sweep
             # verification can compute a ``before`` figure without having
             # to re-run the validator when ``verify_after_sweep`` is False.
-            self._validation_before_count = len(report.issues)
+            # Accumulate across layer calls so the legacy single-pass
+            # flow (invoked via both layer methods with layer=None) still
+            # aggregates the full-registry count.
+            previous = self._validation_before_count or 0
+            self._validation_before_count = previous + len(report.issues)
             for issue in report.issues:
                 artifact_path = Path(issue.artifact) if issue.artifact else None
                 if artifact_path is not None and _should_skip_path(
@@ -424,6 +1189,7 @@ class Coordinator:
                         severity=issue.severity,
                         message=issue.message,
                         check=issue.check,
+                        layer=layer,
                     )
                 )
         except Exception as exc:
@@ -438,8 +1204,14 @@ class Coordinator:
         scope: Path | None = None,
         uncommitted: set[Path],
         active_iwh: set[Path],
+        layer: Literal["hash", "graph"] | None = None,
     ) -> None:
-        """Walk design files and detect stale source/interface hashes."""
+        """Walk design files and detect stale source/interface hashes.
+
+        ``layer`` tags every emitted :class:`CollectItem` with its
+        originating two-pass collect layer.  ``None`` (the default)
+        preserves the legacy single-pass behaviour.
+        """
         from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
             parse_design_file_metadata,
         )
@@ -484,16 +1256,27 @@ class Coordinator:
                         severity="info",
                         message=skip_msg,
                         check="scope_isolation",
+                        layer=layer,
                     )
                 )
                 continue
 
-            # Compare hashes
-            try:
-                current_source_hash, current_interface_hash = compute_hashes(source_path)
-            except Exception as exc:
-                self.summary.add("collect", exc, path=str(source_path))
-                continue
+            # Prefer the drift-hash cache populated by ``_prepare_indexes``
+            # (task 1.5): it already computed these hashes during the
+            # prepare pass, so re-invoking ``compute_hashes`` here would
+            # duplicate work.  The cache may be empty when
+            # ``curator_config.prepare_indexes`` is ``False`` (kill-switch
+            # opt-out) OR when a given source was not visited during
+            # prepare — fall back to ``compute_hashes`` in that case.
+            cached_hashes = self._drift_hashes.get(source_path)
+            if cached_hashes is not None:
+                current_source_hash, current_interface_hash = cached_hashes
+            else:
+                try:
+                    current_source_hash, current_interface_hash = compute_hashes(source_path)
+                except Exception as exc:
+                    self.summary.add("collect", exc, path=str(source_path))
+                    continue
 
             source_stale = metadata.source_hash != current_source_hash
             interface_stale = (
@@ -527,6 +1310,7 @@ class Coordinator:
                         interface_hash_stale=interface_stale,
                         updated_by=updated_by,
                         design_body_length=design_body_length,
+                        layer=layer,
                     )
                 )
 
@@ -549,8 +1333,14 @@ class Coordinator:
         result: CollectResult,
         *,
         scope: Path | None = None,
+        layer: Literal["hash", "graph"] | None = None,
     ) -> None:
-        """Scan IWH signals and add to results."""
+        """Scan IWH signals and add to results.
+
+        ``layer`` tags every emitted :class:`CollectItem` with its
+        originating two-pass collect layer.  ``None`` (the default)
+        preserves the legacy single-pass behaviour.
+        """
         from lexibrary.iwh.reader import find_all_iwh  # noqa: PLC0415
         from lexibrary.utils.paths import iwh_path as _iwh_path  # noqa: PLC0415
 
@@ -574,6 +1364,7 @@ class Coordinator:
                     severity="info",
                     message=f"IWH signal: scope={iwh.scope}, body={iwh.body[:80]}",
                     check="iwh_scan",
+                    layer=layer,
                 )
             )
 
@@ -649,6 +1440,7 @@ class Coordinator:
         scope: Path | None = None,
         uncommitted: set[Path],
         active_iwh: set[Path],
+        layer: Literal["hash", "graph"] | None = None,
     ) -> None:
         """Detect agent-edited design files via change_checker classification.
 
@@ -663,6 +1455,10 @@ class Coordinator:
 
         Only collects files not already present in the staleness items
         (to avoid duplicates).
+
+        ``layer`` tags every emitted :class:`CollectItem` with its
+        originating two-pass collect layer.  ``None`` (the default)
+        preserves the legacy single-pass behaviour.
         """
         from lexibrary.archivist.change_checker import ChangeLevel, check_change  # noqa: PLC0415
         from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
@@ -772,6 +1568,7 @@ class Coordinator:
                     updated_by=updated_by,
                     agent_edit_reason=reason,
                     design_body_length=design_body_length,
+                    layer=layer,
                 )
             )
 
@@ -793,6 +1590,7 @@ class Coordinator:
                         message=f"Invalid updated_by detected via validation: {item.message}",
                         check="agent_edit_detection",
                         agent_edit_reason="invalid_updated_by",
+                        layer=layer,
                     )
                 )
 
@@ -1201,6 +1999,7 @@ class Coordinator:
         scope: Path | None = None,
         uncommitted: set[Path],
         active_iwh: set[Path],
+        layer: Literal["hash", "graph"] | None = None,
     ) -> None:
         """Run :class:`ConsistencyChecker` checks and append ``CollectItem``s.
 
@@ -1219,6 +2018,14 @@ class Coordinator:
         ``detail`` on ``fix_instruction_detail``.  Triage then maps
         ``action_hint`` to a canonical ``action_key`` via
         :data:`lexibrary.curator.consistency_fixes.CONSISTENCY_ACTION_KEYS`.
+
+        ``layer`` tags every emitted :class:`CollectItem` with its
+        originating two-pass collect layer.  ``None`` (the default)
+        preserves the legacy single-pass behaviour.  Per the
+        ``curator-two-pass-collect`` spec this method SHALL only be
+        invoked from the graph-layer (or from the legacy single-pass
+        flow); it reads link-graph-derived state and so is not safe
+        to run before the mid-run ``build_index`` rebuild.
         """
         mode = self.curator_config.consistency_collect
         if mode == "off":
@@ -1257,6 +2064,7 @@ class Coordinator:
                     check="consistency",
                     action_hint=instruction.action,
                     fix_instruction_detail=instruction.detail,
+                    layer=layer,
                 )
             )
 
@@ -1297,13 +2105,6 @@ class Coordinator:
         except Exception as exc:
             self.summary.add("collect", exc, path="alias_collisions")
 
-        # Bidirectional dependency check.
-        try:
-            for instruction in checker.check_bidirectional_deps(design_files):
-                _append(instruction)
-        except Exception as exc:
-            self.summary.add("collect", exc, path="bidirectional_deps")
-
         # Orphaned .aindex cleanup.
         try:
             for instruction in checker.detect_orphaned_aindex():
@@ -1317,6 +2118,13 @@ class Coordinator:
                 _append(instruction)
         except Exception as exc:
             self.summary.add("collect", exc, path="orphaned_comments")
+
+        # Bidirectional dep cross-reference across design files.
+        try:
+            for instruction in checker.detect_design_dep_mismatch(design_files):
+                _append(instruction)
+        except Exception as exc:
+            self.summary.add("collect", exc, path="design_dep_mismatch")
 
         # Stale convention / playbook path refs.
         try:
@@ -1391,7 +2199,15 @@ class Coordinator:
     # -- Phase 2: Triage ----------------------------------------------------
 
     def _triage(self, collect: CollectResult) -> TriageResult:
-        """Classify and prioritise collected items for dispatch."""
+        """Classify and prioritise collected items for dispatch.
+
+        Propagates the two-pass ``layer`` tag from each source
+        :class:`CollectItem` onto the resulting :class:`TriageItem` so
+        the ``dispatched_details`` regression surface in ``_report``
+        can distinguish hash-pass vs graph-pass dispatches (schema v3).
+        Comment / budget / comment-audit collect items do not carry a
+        ``layer`` field today; their triage items inherit ``None``.
+        """
         result = TriageResult()
 
         for item in collect.items:
@@ -1401,6 +2217,7 @@ class Coordinator:
 
             triage_item = self._classify_item(item, collect.link_graph_available)
             if triage_item is not None:
+                triage_item.layer = item.layer
                 result.items.append(triage_item)
 
         # Triage comment items into the same priority queue
@@ -1809,18 +2626,51 @@ class Coordinator:
         triage: TriageResult,
         *,
         dry_run: bool = False,
+        budget_cap: int | None = None,
     ) -> DispatchResult:
-        """Apply autonomy gating and dispatch to sub-agent stubs."""
+        """Apply autonomy gating and dispatch to sub-agent stubs.
+
+        Parameters
+        ----------
+        triage:
+            The triage-phase result whose items will be dispatched.
+        dry_run:
+            When ``True``, record dispatched items with
+            ``outcome="dry_run"`` but do not actually invoke handlers.
+        budget_cap:
+            Optional per-pass LLM-call ceiling.  When ``None`` (default,
+            legacy behaviour), only the shared
+            ``curator_config.max_llm_calls_per_run`` cap applies.  When
+            set, this dispatch call stops issuing new LLM calls once
+            ``result.llm_calls_used >= budget_cap`` — even if the shared
+            counter would allow more.  Used by the two-pass flow to
+            enforce the 70/30 split: the hash-layer pass caps itself at
+            ``int(max_llm_calls_per_run * 0.7)`` while the graph-layer
+            pass uses the full ``max_llm_calls_per_run`` (the shared
+            counter, seeded with the hash-pass total, handles the
+            subtraction automatically).
+        """
         # Stash on self so handlers consuming _ctx() see the correct flag.
         self._dry_run = dry_run
-        result = DispatchResult()
+        # Seed ``llm_calls_used`` from ``self.pre_charged_llm_calls`` so the
+        # dispatch cap accounts for LLM calls already consumed before the
+        # dispatch phase (e.g., the reactive-hook archivist regeneration
+        # path under ``reactive_bootstrap_regenerate=True``, or — in the
+        # two-pass flow — the hash-layer dispatch that already ran).
+        # When the counter is zero (default), behaviour is unchanged.
+        result = DispatchResult(llm_calls_used=self.pre_charged_llm_calls)
         autonomy = self.curator_config.autonomy
         overrides = self.curator_config.risk_overrides
         max_llm = self.curator_config.max_llm_calls_per_run
+        # Effective per-pass ceiling.  When ``budget_cap`` is ``None`` the
+        # per-pass ceiling is the shared cap (so behaviour is identical to
+        # single-pass dispatch).  When set, take the stricter of the two —
+        # ``budget_cap`` must never exceed ``max_llm_calls_per_run``.
+        effective_cap = max_llm if budget_cap is None else min(budget_cap, max_llm)
 
         for item in triage.items:
-            # Check LLM call cap
-            if result.llm_calls_used >= max_llm:
+            # Check LLM call cap (per-pass budget_cap OR shared max_llm)
+            if result.llm_calls_used >= effective_cap:
                 result.llm_cap_reached = True
                 item_copy = TriageItem(
                     source_item=item.source_item,
@@ -1829,6 +2679,7 @@ class Coordinator:
                     priority=item.priority,
                     agent_edited=item.agent_edited,
                     reverse_dep_count=item.reverse_dep_count,
+                    layer=item.layer,
                 )
                 result.deferred.append(item_copy)
                 continue
@@ -1866,7 +2717,10 @@ class Coordinator:
                 continue
 
             if dry_run:
-                # In dry-run mode, record as dispatched but don't execute
+                # In dry-run mode, record as dispatched but don't execute.
+                # Propagate the two-pass ``layer`` tag from the triage item
+                # (schema v3) so downstream readers of ``dispatched_details``
+                # can distinguish hash-pass vs graph-pass dispatches.
                 result.dispatched.append(
                     SubAgentResult(
                         success=True,
@@ -1875,12 +2729,17 @@ class Coordinator:
                         message="dry-run: would dispatch",
                         llm_calls=0,
                         outcome="dry_run",
+                        layer=item.layer,
                     )
                 )
                 continue
 
-            # Dispatch to sub-agent handler (or stub fallback for unrecognized keys)
+            # Dispatch to sub-agent handler (or stub fallback for unrecognized keys).
+            # Handlers construct ``SubAgentResult`` without knowledge of the
+            # originating triage layer; overlay the tag here so the per-item
+            # ``layer`` field survives end-to-end in schema v3.
             agent_result = await self._route_to_handler(item)
+            agent_result.layer = item.layer
             result.dispatched.append(agent_result)
             result.llm_calls_used += agent_result.llm_calls
 
@@ -2098,10 +2957,10 @@ class Coordinator:
             "fix_broken_wikilink_fuzzy": consistency_fixes.apply_substitute_wikilink,
             "resolve_slug_collision": consistency_fixes.apply_slug_suffix,
             "resolve_alias_collision": consistency_fixes.apply_alias_dedup,
-            "add_missing_bidirectional_dep": consistency_fixes.apply_bidirectional_dep,
             "remove_orphaned_aindex": consistency_fixes.apply_orphaned_aindex_delete,
             "delete_orphaned_comments": consistency_fixes.apply_orphaned_comments_delete,
             "remove_orphan_zero_deps": consistency_fixes.apply_orphan_concept_delete,
+            "add_missing_reverse_dep": consistency_fixes.apply_add_reverse_dep,
             "flag_stale_convention": consistency_fixes.apply_flag_stale_convention,
             "flag_stale_playbook": consistency_fixes.apply_flag_stale_playbook,
             "suggest_new_concept": consistency_fixes.apply_suggest_new_concept,
@@ -2311,7 +3170,10 @@ class Coordinator:
         fixed = sum(1 for d in dispatch.dispatched if d.outcome == "fixed")
         stubbed = sum(1 for d in dispatch.dispatched if d.outcome == "stubbed")
 
-        # Populate dispatched_details for verbose rendering and persisted report
+        # Populate dispatched_details for verbose rendering and persisted report.
+        # Schema v3 adds the per-item ``layer`` key (``"hash"``/``"graph"``/``None``)
+        # so post-run introspection can attribute each dispatch to the
+        # two-pass layer that produced it.
         dispatched_details: list[dict[str, object]] = [
             {
                 "action_key": d.action_key,
@@ -2320,6 +3182,7 @@ class Coordinator:
                 "success": d.success,
                 "outcome": d.outcome,
                 "llm_calls": d.llm_calls,
+                "layer": d.layer,
             }
             for d in dispatch.dispatched
         ]
@@ -2412,7 +3275,7 @@ class Coordinator:
             comments_flagged=comments_flagged,
             descriptions_audited=descriptions_audited,
             summaries_audited=summaries_audited,
-            schema_version=2,
+            schema_version=3,
             stubbed=stubbed,
             dispatched_details=dispatched_details,
             deferred_details=deferred_details,

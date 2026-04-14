@@ -442,6 +442,52 @@ class TestUpdateFileNewFile:
 
 
 # ---------------------------------------------------------------------------
+# update_file — missing index.db (Phase 1a bidirectional-deps migration)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateFileMissingIndex:
+    """``update_file`` must survive a missing ``index.db`` — dogfood/bootstrap case.
+
+    Before Phase 1a the ``dependents`` list was hardcoded to ``[]``.  The
+    new path calls :func:`extract_dependents`, which raises
+    :class:`LinkGraphUnavailable` when ``index.db`` is absent.  The
+    pipeline catches that and writes the design file with
+    ``dependents=[]`` AND ``dependents_complete=False`` so the validator
+    knows the empty list is provisional.
+    """
+
+    @pytest.mark.asyncio()
+    async def test_missing_index_writes_dependents_complete_false(
+        self, tmp_path: Path
+    ) -> None:
+        from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
+            parse_design_file,
+        )
+
+        source = _make_source_file(tmp_path, "src/foo.py", "def bar(): pass")
+        config = _make_config()
+        archivist = _mock_archivist(summary="Foo module for testing.")
+
+        # Sanity: no index.db — extract_dependents will raise
+        # LinkGraphUnavailable and the pipeline must absorb it.
+        assert not (tmp_path / ".lexibrary" / "index.db").exists()
+
+        result = await update_file(source, tmp_path, config, archivist)
+
+        assert result.change == ChangeLevel.NEW_FILE
+        assert not result.failed
+
+        design_path = tmp_path / ".lexibrary" / "designs" / "src" / "foo.py.md"
+        assert design_path.exists()
+
+        parsed = parse_design_file(design_path)
+        assert parsed is not None
+        assert parsed.dependents == []
+        assert parsed.metadata.dependents_complete is False
+
+
+# ---------------------------------------------------------------------------
 # update_file — UNCHANGED scenario
 # ---------------------------------------------------------------------------
 

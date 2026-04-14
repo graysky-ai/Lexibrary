@@ -81,10 +81,8 @@ def design_update(
     # --- action == "generate" ---
 
     from lexibrary.archivist.pipeline import update_file  # noqa: PLC0415
-    from lexibrary.archivist.service import ArchivistService  # noqa: PLC0415
+    from lexibrary.archivist.service import build_archivist_service  # noqa: PLC0415
     from lexibrary.conventions.index import ConventionIndex  # noqa: PLC0415
-    from lexibrary.llm.client_registry import build_client_registry  # noqa: PLC0415
-    from lexibrary.llm.rate_limiter import RateLimiter  # noqa: PLC0415
     from lexibrary.playbooks.index import PlaybookIndex  # noqa: PLC0415
     from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
     from lexibrary.wiki.index import ConceptIndex  # noqa: PLC0415
@@ -110,9 +108,7 @@ def design_update(
     available_artifacts = artifact_names or None
 
     # Instantiate archivist service (only when we actually need generation)
-    rate_limiter = RateLimiter()
-    registry = build_client_registry(config, unlimited=unlimited)
-    archivist = ArchivistService(rate_limiter=rate_limiter, client_registry=registry)
+    archivist = build_archivist_service(config, unlimited=unlimited)
 
     rel_source = str(target.relative_to(project_root))
 
