@@ -6,3 +6,17 @@ comments:
     only adds domain-term detection and orphan concept detection on top of the scope-level
     checks.'
   date: '2026-04-11T07:38:13.098359Z'
+- body: "Phase 0 (curator-freshness task 1.1 \u2014 SHARED_BLOCK_B kill-switches):\
+    \ added three CuratorConfig fields: prepare_indexes (default True, disables _prepare_indexes\
+    \ AND the reactive post_edit bootstrap uniformly when False), reactive_bootstrap_regenerate\
+    \ (default False, gates only the LLM update_file step inside the reactive hook\
+    \ \u2014 default-off so the hook never silently consumes max_llm_calls_per_run),\
+    \ two_pass_collect (default True, falls back to the legacy single-pass _collect\
+    \ when False \u2014 scheduled for removal one release after two-pass proves stable).\
+    \ risk_overrides allow-list extended with the new narrow-key families (fix_bidirectional_deps,\
+    \ fix_duplicate_slugs, fix_duplicate_aliases, fix_wikilink_resolution) and the\
+    \ retired keys (add_missing_bidirectional_dep, remove_orphaned_reverse_dep, remove_orphaned_aindex,\
+    \ resolve_slug_collision, resolve_alias_collision, strip_unresolved_wikilink,\
+    \ fix_broken_wikilink_fuzzy) were removed from the allow-list as their families\
+    \ retired in groups 3, 6, 7, 9."
+  date: '2026-04-14T18:50:40.181229Z'

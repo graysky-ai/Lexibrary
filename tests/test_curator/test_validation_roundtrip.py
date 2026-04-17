@@ -464,14 +464,14 @@ class TestUnfixableCheckRemains:
         project = _build_minimal_library(tmp_path, name="unfixable")
         _write_source_file(project, "src/helpers.py", '"""Helpers."""\n')
 
-        # ``wikilink_resolution`` has no registered fixer (it is not in FIXERS).
+        # ``dangling_links`` has no registered fixer (it is not in FIXERS).
         # We synthesise a planted issue by patching the check to return one
         # deterministic issue, then verifying the curator surfaces a
         # ``no_fixer_registered:`` message in ``dispatched_details``.
         planted = ValidationIssue(
-            severity="error",
-            check="wikilink_resolution",
-            message="broken wikilink to [[Nowhere]]",
+            severity="info",
+            check="dangling_links",
+            message="dangling link from src/helpers.py",
             artifact="src/helpers.py",
         )
 
@@ -479,23 +479,23 @@ class TestUnfixableCheckRemains:
             return [planted]
 
         monkeypatch.setattr(
-            "lexibrary.validator.checks.check_wikilink_resolution",
+            "lexibrary.validator.checks.check_dangling_links",
             _return_planted,
         )
         monkeypatch.setitem(
             __import__("lexibrary.validator", fromlist=["AVAILABLE_CHECKS"]).AVAILABLE_CHECKS,
-            "wikilink_resolution",
-            (_return_planted, "error"),
+            "dangling_links",
+            (_return_planted, "info"),
         )
 
         # Sanity: the check is NOT in FIXERS.
-        assert "wikilink_resolution" not in FIXERS
+        assert "dangling_links" not in FIXERS
 
-        report = _run_coordinator(project, check="wikilink_resolution")
+        report = _run_coordinator(project, check="dangling_links")
 
         # The issue still exists (nothing fixed it).
         after = validate_library(project, project / ".lexibrary")
-        assert any(issue.check == "wikilink_resolution" for issue in after.issues)
+        assert any(issue.check == "dangling_links" for issue in after.issues)
 
         # The dispatched_details list records the no_fixer_registered message.
         messages = [str(entry.get("message", "")) for entry in report.dispatched_details]

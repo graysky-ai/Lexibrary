@@ -26,7 +26,7 @@ from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.curator.consistency import (
     ConsistencyChecker,
 )
-from lexibrary.wiki.resolver import UnresolvedLink, WikilinkResolver
+from lexibrary.wiki.resolver import WikilinkResolver
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -209,70 +209,14 @@ def _build_resolver(lex_dir: Path) -> WikilinkResolver:
 
 
 # ---------------------------------------------------------------------------
-# Wikilink Hygiene
+# Wikilink Hygiene (``check_wikilinks``) retired in Phase 4 Family D of the
+# ``curator-freshness`` change. Detection + fix migrated to the validator's
+# ``check_wikilink_resolution`` paired with the archivist-delegated
+# ``fix_wikilink_resolution`` fixer; see
+# tests/test_validator/test_fixes.py for unit coverage and
+# tests/test_curator/test_wikilink_resolution_integration.py for the
+# end-to-end coordinator round-trip.
 # ---------------------------------------------------------------------------
-
-
-class TestWikilinkHygiene:
-    """Test wikilink checking in design files."""
-
-    def test_broken_wikilink_stripped(self, tmp_path: Path) -> None:
-        """A wikilink that cannot be resolved should produce a strip instruction."""
-        project, lex_dir = _setup_project(tmp_path)
-        design_path = _make_design_file(project, "src/foo.py", wikilinks=["NonexistentConcept"])
-        resolver = _build_resolver(lex_dir)
-        checker = ConsistencyChecker(project, lex_dir, resolver=resolver)
-
-        instructions = checker.check_wikilinks(design_path)
-        assert len(instructions) >= 1
-        strip_instr = [i for i in instructions if i.action == "strip_unresolved_wikilink"]
-        assert len(strip_instr) == 1
-        assert "NonexistentConcept" in strip_instr[0].detail
-
-    def test_valid_wikilink_untouched(self, tmp_path: Path) -> None:
-        """A wikilink that resolves should NOT produce any instruction."""
-        project, lex_dir = _setup_project(tmp_path)
-        _make_concept_file(lex_dir, "CN-001", "Authentication")
-        design_path = _make_design_file(project, "src/foo.py", wikilinks=["Authentication"])
-        resolver = _build_resolver(lex_dir)
-        checker = ConsistencyChecker(project, lex_dir, resolver=resolver)
-
-        instructions = checker.check_wikilinks(design_path)
-        assert len(instructions) == 0
-
-    def test_fuzzy_match_detected(self, tmp_path: Path) -> None:
-        """A wikilink with a fuzzy match should produce a fix instruction.
-
-        The WikilinkResolver auto-resolves fuzzy matches against concepts.
-        To test the fuzzy-suggestion path in the consistency checker, we
-        mock the resolver to return an UnresolvedLink with suggestions.
-        """
-        project, lex_dir = _setup_project(tmp_path)
-        design_path = _make_design_file(project, "src/foo.py", wikilinks=["Authentcation"])
-
-        # Mock the resolver to return an UnresolvedLink with suggestions
-        mock_resolver = MagicMock(spec=WikilinkResolver)
-        mock_resolver.resolve.return_value = UnresolvedLink(
-            raw="[[Authentcation]]",
-            suggestions=["Authentication"],
-        )
-
-        checker = ConsistencyChecker(project, lex_dir, resolver=mock_resolver)
-        instructions = checker.check_wikilinks(design_path)
-
-        assert len(instructions) == 1
-        assert instructions[0].action == "fix_broken_wikilink_fuzzy"
-        assert "suggestions" in instructions[0].detail
-        assert "Authentication" in instructions[0].detail
-
-    def test_no_resolver_returns_empty(self, tmp_path: Path) -> None:
-        """When no resolver is provided, wikilink checks return empty."""
-        project, lex_dir = _setup_project(tmp_path)
-        design_path = _make_design_file(project, "src/foo.py", wikilinks=["Anything"])
-        checker = ConsistencyChecker(project, lex_dir, resolver=None)
-
-        instructions = checker.check_wikilinks(design_path)
-        assert instructions == []
 
 
 class TestDomainTermDetection:
@@ -308,37 +252,12 @@ class TestDomainTermDetection:
 
 
 # ---------------------------------------------------------------------------
-# Identifier Normalisation
+# Identifier Normalisation (slug / alias collision detection) retired in
+# Phase 4 Family B of the ``curator-freshness`` change. Detection migrated
+# to the validator's ``check_duplicate_slugs`` / ``check_duplicate_aliases``
+# — see tests/test_validator/test_cross_artifact_checks.py — and
+# tests/test_curator/test_duplicate_convergence.py documents parity.
 # ---------------------------------------------------------------------------
-
-
-class TestAliasCollisions:
-    """Test alias collision detection."""
-
-    def test_shared_alias_detected(self, tmp_path: Path) -> None:
-        """Two artifacts sharing an alias should be flagged."""
-        project, lex_dir = _setup_project(tmp_path)
-        _make_concept_file(lex_dir, "CN-001", "Authentication", aliases=["auth"])
-        _make_convention_file(lex_dir, "CV-001", "Auth Convention", aliases=["auth"])
-
-        checker = ConsistencyChecker(project, lex_dir)
-        instructions = checker.detect_alias_collisions(
-            lex_dir / "concepts", lex_dir / "conventions"
-        )
-        assert len(instructions) >= 2
-        assert all(i.action == "resolve_alias_collision" for i in instructions)
-
-    def test_no_collision_no_instruction(self, tmp_path: Path) -> None:
-        """When aliases are unique, no instruction should be returned."""
-        project, lex_dir = _setup_project(tmp_path)
-        _make_concept_file(lex_dir, "CN-001", "Authentication", aliases=["auth"])
-        _make_convention_file(lex_dir, "CV-001", "Convention", aliases=["conv"])
-
-        checker = ConsistencyChecker(project, lex_dir)
-        instructions = checker.detect_alias_collisions(
-            lex_dir / "concepts", lex_dir / "conventions"
-        )
-        assert len(instructions) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -347,39 +266,10 @@ class TestAliasCollisions:
 
 
 # ---------------------------------------------------------------------------
-# Orphaned .aindex Cleanup
+# Orphaned .aindex detection migrated to the validator in Phase 3 of the
+# ``curator-freshness`` change — see
+# :mod:`tests.test_validator.test_orphaned_aindex`.
 # ---------------------------------------------------------------------------
-
-
-class TestOrphanedAindex:
-    """Test orphaned .aindex detection and cleanup."""
-
-    def test_orphaned_aindex_detected(self, tmp_path: Path) -> None:
-        """An .aindex for a deleted source directory should be flagged."""
-        project, lex_dir = _setup_project(tmp_path)
-        # Create .aindex mirror but NO source directory
-        aindex_dir = lex_dir / "designs" / "src" / "deleted"
-        aindex_dir.mkdir(parents=True)
-        (aindex_dir / ".aindex").write_text("# deleted dir\n", encoding="utf-8")
-
-        checker = ConsistencyChecker(project, lex_dir)
-        instructions = checker.detect_orphaned_aindex()
-        assert len(instructions) == 1
-        assert instructions[0].action == "remove_orphaned_aindex"
-        assert "deleted" in instructions[0].detail
-
-    def test_valid_aindex_not_flagged(self, tmp_path: Path) -> None:
-        """An .aindex for an existing source directory should NOT be flagged."""
-        project, lex_dir = _setup_project(tmp_path)
-        # Create both source directory AND .aindex mirror
-        (project / "src" / "auth").mkdir(parents=True)
-        aindex_dir = lex_dir / "designs" / "src" / "auth"
-        aindex_dir.mkdir(parents=True)
-        (aindex_dir / ".aindex").write_text("# auth dir\n", encoding="utf-8")
-
-        checker = ConsistencyChecker(project, lex_dir)
-        instructions = checker.detect_orphaned_aindex()
-        assert len(instructions) == 0
 
 
 class TestOrphanedComments:
@@ -595,42 +485,20 @@ class TestIntegration:
         """A full consistency check produces instructions from multiple sources."""
         project, lex_dir = _setup_project(tmp_path)
 
-        # Create an orphaned .aindex
-        orphan_dir = lex_dir / "designs" / "src" / "deleted_mod"
-        orphan_dir.mkdir(parents=True)
-        (orphan_dir / ".aindex").write_text("# orphan\n", encoding="utf-8")
-
-        # Create a design file with broken wikilink
-        design_path = _make_design_file(project, "src/foo.py", wikilinks=["BrokenLink"])
+        # Create an orphaned .comments.yaml (no sibling design file)
+        comments_dir = lex_dir / "designs" / "src" / "deleted_mod"
+        comments_dir.mkdir(parents=True)
+        (comments_dir / ".comments.yaml").write_text("- comment: stale\n", encoding="utf-8")
 
         # Create an old blocked IWH
         _make_iwh_file(lex_dir, "src/blocked_mod", scope="blocked", hours_ago=200)
 
-        resolver = _build_resolver(lex_dir)
-        checker = ConsistencyChecker(project, lex_dir, resolver=resolver)
+        checker = ConsistencyChecker(project, lex_dir)
 
         # Run multiple checks
-        wikilink_instr = checker.check_wikilinks(design_path)
-        orphan_instr = checker.detect_orphaned_aindex()
+        comments_instr = checker.detect_orphaned_comments()
         iwh_instr = checker.detect_promotable_iwh(ttl_hours=72)
 
         # Should find issues from each source
-        assert len(wikilink_instr) >= 1
-        assert len(orphan_instr) >= 1
+        assert len(comments_instr) >= 1
         assert len(iwh_instr) >= 1
-
-    def test_uncommitted_files_context(self, tmp_path: Path) -> None:
-        """Verify checker works with scope-limited file sets."""
-        project, lex_dir = _setup_project(tmp_path)
-
-        # Only pass specific design files (simulating scope filtering)
-        d1 = _make_design_file(project, "src/included.py", wikilinks=["Missing"])
-        _make_design_file(project, "src/excluded.py", wikilinks=["AlsoMissing"])
-
-        resolver = _build_resolver(lex_dir)
-        checker = ConsistencyChecker(project, lex_dir, resolver=resolver)
-
-        # Check only the included file
-        instructions = checker.check_wikilinks(d1)
-        assert len(instructions) >= 1
-        assert all(i.target_path == d1 for i in instructions)

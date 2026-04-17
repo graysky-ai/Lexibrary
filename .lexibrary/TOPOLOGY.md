@@ -59,7 +59,7 @@ Lexibrarian/
       config/                -- Namespace re-exports; two-tier YAML config loader with deprecation migration; Pydantic v2 schema
       conventions/           -- Parser, serializer, and scope-aware in-memory index for convention markdown files
       crawler/               -- Bottom-up project crawl with SHA-256 change cache and LLM billboard summarization; ignore-filtered directory discovery
-      curator/               -- Autonomous maintenance agent: coordinator, collect filters, risk taxonomy, budget tracking, hook runners, reconciliation, staleness/consistency/deprecation/migration/cascade/auditing/iwh actions, comments handling, write contract, fingerprinting, dispatch context, validation fixers
+      curator/               -- Autonomous maintenance agent: coordinator, collect filters, risk taxonomy, budget tracking, hook runners, reconciliation, staleness/consistency/consistency fixes/deprecation/migration/cascade/auditing/iwh actions, comments handling, write contract, fingerprinting, dispatch context, validation fixers
       hooks/                 -- Idempotent git pre-commit and post-commit hook installers
       ignore/                -- IgnoreMatcher factory, unified matcher, and parsing of .gitignore / .lexignore files
       indexer/               -- In-memory AIndexFile generator and the .aindex write orchestrator
@@ -165,6 +165,7 @@ LLM interactions are defined declaratively in [baml_src/](baml_src/) (a second s
 | [src/lexibrary/curator/write_contract.py](src/lexibrary/curator/write_contract.py) | Shared atomic write / hashing contract used by all curator mutations |
 | [src/lexibrary/curator/staleness.py](src/lexibrary/curator/staleness.py) | Detects stale design files that need regeneration |
 | [src/lexibrary/curator/consistency.py](src/lexibrary/curator/consistency.py) | Checks consistency between source and design artifacts |
+| [src/lexibrary/curator/consistency_fixes.py](src/lexibrary/curator/consistency_fixes.py) | Executes fix actions (orphan removal, frontmatter repair, regeneration) emitted by the consistency checker |
 | [src/lexibrary/curator/validation_fixers.py](src/lexibrary/curator/validation_fixers.py) | Auto-fix actions for validator-detected issues |
 
 ### Domain Models and Artifacts

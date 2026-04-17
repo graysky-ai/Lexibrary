@@ -470,7 +470,7 @@ class TestLookupCommand:
         assert "Interface Contract" in result.output
 
     def test_lookup_missing(self, tmp_path: Path) -> None:
-        """Lookup without design file suggests running lexictl update."""
+        """Lookup without design file suggests running lexi design update."""
         project = _setup_archivist_project(tmp_path)
 
         old_cwd = os.getcwd()
@@ -482,7 +482,7 @@ class TestLookupCommand:
 
         assert result.exit_code == 1
         assert "No design file found" in result.output
-        assert "lexictl update" in result.output
+        assert "lexi design update" in result.output
 
     def test_lookup_stale(self, tmp_path: Path) -> None:
         """Lookup with changed source file shows staleness warning."""

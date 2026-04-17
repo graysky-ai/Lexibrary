@@ -28,7 +28,6 @@ from lexibrary.artifacts.design_file import (
     DesignFileFrontmatter,
     StalenessMetadata,
 )
-from lexibrary.artifacts.design_file_parser import parse_design_file
 from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.config.schema import LexibraryConfig
 from lexibrary.curator.coordinator import Coordinator
@@ -127,75 +126,27 @@ def _run(project: Path, *, autonomy: str = "full") -> object:
 
 
 # ---------------------------------------------------------------------------
-# Broken wikilink round-trip
+# Broken wikilink round-trip retired — Phase 4 Family D of the
+# ``curator-freshness`` change deleted the curator-side detector
+# (``check_wikilinks``) and its ``apply_strip_wikilink`` /
+# ``apply_substitute_wikilink`` helpers.  Wikilink repair now routes
+# through the validator's archivist-delegated ``fix_wikilink_resolution``
+# fixer; the end-to-end coordinator round-trip lives in
+# ``tests/test_curator/test_wikilink_resolution_integration.py``
+# (mirrors the group 4.4 pattern).
 # ---------------------------------------------------------------------------
 
 
-class TestBrokenWikilinkRoundtrip:
-    def test_broken_wikilink_roundtrip(self, tmp_path: Path) -> None:
-        """A design file with an unresolved wikilink loses that wikilink post-run."""
-        project = _setup_integration_project(tmp_path)
-        design_path = _write_design(
-            project, "src/foo.py", wikilinks=["NonexistentConcept", "KeepMe"]
-        )
-        _write_concept(project / ".lexibrary", "CN-001", "KeepMe")
-
-        _run(project)
-
-        parsed = parse_design_file(design_path)
-        assert parsed is not None
-        # "NonexistentConcept" should be gone.
-        assert "NonexistentConcept" not in parsed.wikilinks
-        # Resolved wikilink may or may not remain depending on resolver
-        # case handling — but the unresolved one must be gone.
-
-
 # ---------------------------------------------------------------------------
-# Slug collision round-trip
+# Slug / alias collision round-trip retired — Phase 4 Family B of the
+# ``curator-freshness`` change deleted the curator-side detectors
+# (``detect_slug_collisions`` / ``detect_alias_collisions``) and the
+# matching ``apply_slug_suffix`` / ``apply_alias_dedup`` helpers.
+# Collision detection now routes through the validator's propose-only
+# ``fix_duplicate_slugs`` / ``fix_duplicate_aliases`` fixers; an
+# integration test for that routing will land in group 7.4 alongside the
+# orphaned-aindex-style integration test.
 # ---------------------------------------------------------------------------
-
-
-class TestSlugCollisionRoundtrip:
-    def test_slug_collision_roundtrip(self, tmp_path: Path) -> None:
-        """Two design files with colliding description slugs get deterministic suffixes.
-
-        The consistency checker slugifies the first 60 chars of the
-        ``description`` frontmatter field; we plant two designs with the
-        *same* description so :func:`detect_slug_collisions` flags both.
-        """
-        project = _setup_integration_project(tmp_path)
-        # Force matching description slugs by rewriting frontmatter after
-        # the initial ``_write_design`` call.  We do a targeted YAML edit
-        # so the staleness resolver preserves the new description.
-        design_a = _write_design(project, "src/a.py")
-        design_b = _write_design(project, "src/b.py")
-        shared_desc = "Shared Collision Description"
-        for p in (design_a, design_b):
-            text = p.read_text(encoding="utf-8")
-            # Rewrite only the description frontmatter field.
-            lines = text.splitlines()
-            for i, line in enumerate(lines):
-                if line.startswith("description:"):
-                    lines[i] = f"description: {shared_desc}"
-                    break
-            p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-        before_a_id = "src-a-py"
-        before_b_id = "src-b-py"
-
-        _run(project)
-
-        # Both should still exist; at least one id should have been
-        # suffixed.  (The consistency check reports collisions on both
-        # halves, but our helper is idempotent so the end state still
-        # has distinct ids.)
-        parsed_a = parse_design_file(design_a)
-        parsed_b = parse_design_file(design_b)
-        assert parsed_a is not None
-        assert parsed_b is not None
-        # The slug_suffix helper appends a deterministic -NN suffix so at
-        # least one of the two ids should now have a numeric tail.
-        assert parsed_a.frontmatter.id != before_a_id or parsed_b.frontmatter.id != before_b_id
 
 
 # ---------------------------------------------------------------------------

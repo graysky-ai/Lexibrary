@@ -12,3 +12,11 @@ comments:
     \ registry type and the two CLI dispatchers in cli/_shared.py and curator/validation_fixers.py\
     \ (tasks.md spec text omits config but all real call sites pass three args)."
   date: '2026-04-14T02:47:34.211450Z'
+- body: 'Added fix_wikilink_resolution (curator-freshness Family D, group 9.2). Design-file
+    artifacts: parses design, derives source_path, delegates to archivist.pipeline.update_file
+    to regenerate from source (same pattern as fix_hash_freshness). Stack-post artifacts
+    are out-of-scope (no source to regenerate from) and return propose-only FixResult(fixed=False,
+    ''requires manual resolution''). Registered as FIXERS[''wikilink_resolution''].
+    Uses build_archivist_service factory and _run_sync to be safe from within the
+    curator''s async dispatch loop.'
+  date: '2026-04-14T10:18:01.205605Z'

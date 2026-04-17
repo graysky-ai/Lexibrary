@@ -22,17 +22,11 @@ EXPECTED_LOW_KEYS = {
     "reconcile_agent_interface_stable",
     "integrate_sidecar_comments",
     "delete_orphaned_comments",
-    "fix_broken_wikilink_fuzzy",
-    "strip_unresolved_wikilink",
-    "add_alias_fuzzy_match",
-    "resolve_slug_collision",
-    "resolve_alias_collision",
     "flag_stale_convention",
     "flag_stale_playbook",
     "autofix_validation_issue",
     "remove_orphan_zero_deps",
     "add_missing_reverse_dep",
-    "remove_orphaned_aindex",
     "consume_superseded_iwh",
     "write_reactive_iwh",
     "flag_unresolvable_agent_design",
@@ -59,6 +53,17 @@ EXPECTED_LOW_KEYS = {
     # ``remove_orphaned_reverse_dep`` consistency-side handlers with a
     # single archivist-pipeline-backed validator fix).
     "fix_bidirectional_deps",
+    # Duplicate-slug / duplicate-alias fixers registered by
+    # curator-freshness group 7 (Phase 4 Family B).  Both are propose-only
+    # — they replace the retired curator-side ``resolve_slug_collision`` /
+    # ``resolve_alias_collision`` handlers.
+    "fix_duplicate_slugs",
+    "fix_duplicate_aliases",
+    # Wikilink resolution fixer registered by curator-freshness group 9
+    # (Phase 4 Family D).  Replaces the retired curator-side
+    # ``strip_unresolved_wikilink`` / ``fix_broken_wikilink_fuzzy``
+    # handlers with an archivist-pipeline-backed validator fix.
+    "fix_wikilink_resolution",
 }
 
 EXPECTED_MEDIUM_KEYS = {
@@ -135,8 +140,20 @@ class TestRiskTaxonomy:
         # handlers retired in Phase 1a of ``curator-freshness``
         # (``add_missing_bidirectional_dep``, ``remove_orphaned_reverse_dep``)
         # plus 1 replacement fixer added in group 4 of ``curator-freshness``
-        # (``fix_bidirectional_deps``).
-        assert len(low_keys) == 35
+        # (``fix_bidirectional_deps``) minus 1 curator-side .aindex
+        # cleanup retired in Phase 3 of ``curator-freshness``
+        # (``remove_orphaned_aindex`` — replaced by the validator's
+        # ``fix_orphaned_aindex`` already counted above) minus 3 slug/alias
+        # handlers retired in Phase 4 Family B of ``curator-freshness``
+        # (``resolve_slug_collision``, ``resolve_alias_collision``, and the
+        # orphaned ``add_alias_fuzzy_match`` entry) plus 2 replacement
+        # propose-only fixers added in the same group
+        # (``fix_duplicate_slugs``, ``fix_duplicate_aliases``) minus 2
+        # wikilink hygiene handlers retired in Phase 4 Family D
+        # (``strip_unresolved_wikilink``, ``fix_broken_wikilink_fuzzy``)
+        # plus 1 replacement fixer added in the same group
+        # (``fix_wikilink_resolution``).
+        assert len(low_keys) == 32
 
     def test_medium_risk_count(self) -> None:
         medium_keys = {k for k, v in RISK_TAXONOMY.items() if v.level == "medium"}
@@ -176,8 +193,8 @@ class TestRiskTaxonomy:
             assert risk.function_ref, f"{key} has empty function_ref"
 
     def test_total_action_count(self) -> None:
-        # 35 Low + 12 Medium + 3 High = 50.
-        assert len(RISK_TAXONOMY) == 50
+        # 32 Low + 12 Medium + 3 High = 47.
+        assert len(RISK_TAXONOMY) == 47
 
 
 # ---------------------------------------------------------------------------

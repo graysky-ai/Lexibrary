@@ -143,11 +143,11 @@ class CuratorConfig(BaseModel):
     # Consistency collection scope (Phase 3 — group 8).
     # Controls which subset of :class:`ConsistencyChecker` checks run during
     # ``_collect_consistency``.  ``"off"`` disables all consistency checks,
-    # ``"scope"`` runs the scope-bounded checks (wikilink hygiene,
-    # slug/alias collisions, bidirectional deps, orphaned .aindex, orphaned
-    # .comments.yaml, stale conventions/playbooks, and promotable blocked
-    # IWH), and ``"full"`` additionally runs the library-wide checks
-    # (domain term detection, orphan concept detection).
+    # ``"scope"`` runs the scope-bounded checks (orphaned .comments.yaml,
+    # design-file bidirectional dep cross-reference, stale
+    # conventions/playbooks, and promotable blocked IWH), and ``"full"``
+    # additionally runs the library-wide checks (domain term detection,
+    # orphan concept detection).
     consistency_collect: Literal["off", "scope", "full"] = "scope"
     # Post-sweep verification (Phase 5 — group 10).  When ``True``, the
     # coordinator re-runs ``validate_library()`` after the dispatch phase

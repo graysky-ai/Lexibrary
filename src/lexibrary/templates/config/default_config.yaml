@@ -130,6 +130,12 @@ playbooks:
   staleness_commits: 100                 # Commits since last_verified before flagging stale
   staleness_days: 180                    # Calendar day fallback for staleness
 
+# Curator subsystem settings
+curator:
+  prepare_indexes: true                  # Phase 0: refresh symbol/link graphs before collect (opt-out for large libraries)
+  reactive_bootstrap_regenerate: false   # When true, reactive post-edit hook invokes archivist LLM regen (counts against max_llm_calls_per_run)
+  two_pass_collect: true                 # Phase 2: two-pass hash/graph collect with 70/30 budget split (kill-switch)
+
 # AST-based interface extraction
 ast:
   enabled: true                          # Enable interface skeleton extraction

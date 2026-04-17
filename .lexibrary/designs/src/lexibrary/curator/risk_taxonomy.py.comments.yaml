@@ -40,3 +40,7 @@ comments:
     3) with a single validator-side fixer that reconciles both dependencies and dependents
     from the link graph. Counts now: 35 Low / 12 Medium / 3 High / 50 Total.'
   date: '2026-04-14T02:49:43.973716Z'
+- body: 'Phase 3 of curator-freshness (task 6.2): remove_orphaned_aindex ActionRisk
+    entry retired. fix_orphaned_aindex (validator-bridge key, low risk) was added
+    in an earlier group and remains the canonical entry for this family.'
+  date: '2026-04-14T07:10:19.619944Z'

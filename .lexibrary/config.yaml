@@ -17,6 +17,8 @@ llm:
   model: gpt-5-mini
   api_key_env: OPENAI_API_KEY
   api_key_source: dotenv
+  max_retries: 3
+  timeout: 60
 
 # Per-artifact token budgets (validation targets for generated content)
 token_budgets:
@@ -30,8 +32,112 @@ token_budgets:
   archivist_max_tokens: 5000
   playbook_tokens: 500
 
+# Mapping strategies (glob patterns → generation strategy)
+mapping:
+  strategies: []
+
+# Ignore patterns for file discovery
+ignore:
+  use_gitignore: true
+  additional_patterns:
+    - ".lexibrary/"
+    - node_modules/
+    - __pycache__/
+    - .git/
+    - .venv/
+    - venv/
+    - "*.lock"
+    - .env
+    - ".env.*"
+    - "*.env"
+
+# Sweep settings (periodic re-indexing)
+sweep:
+  sweep_interval_seconds: 3600
+  sweep_skip_if_unchanged: true
+  log_level: info
+
+# Crawl behaviour
+crawl:
+  max_file_size_kb: 512
+  binary_extensions:
+    - .png
+    - .jpg
+    - .jpeg
+    - .gif
+    - .ico
+    - .svg
+    - .webp
+    - .mp3
+    - .mp4
+    - .wav
+    - .ogg
+    - .webm
+    - .woff
+    - .woff2
+    - .ttf
+    - .eot
+    - .zip
+    - .tar
+    - .gz
+    - .bz2
+    - .7z
+    - .rar
+    - .pdf
+    - .doc
+    - .docx
+    - .xls
+    - .xlsx
+    - .exe
+    - .dll
+    - .so
+    - .dylib
+    - .pyc
+    - .pyo
+    - .class
+    - .o
+    - .obj
+    - .sqlite
+    - .db
+
+# Concept system settings
+concepts:
+  deprecation_confirm: human
+
+# Deprecation lifecycle settings
+deprecation:
+  ttl_commits: 50
+  comment_warning_threshold: 10
+
+# Stack post staleness lifecycle
+stack:
+  staleness_confirm: human
+  staleness_ttl_commits: 200
+  staleness_ttl_short_commits: 100
+  lookup_display_limit: 3
+
 # Playbook system settings
 playbooks:
   lookup_display_limit: 5
   staleness_commits: 100
   staleness_days: 180
+
+# AST-based interface extraction
+ast:
+  enabled: true
+  languages:
+    - python
+
+# Curator subsystem settings
+curator:
+  reactive_bootstrap_regenerate: false  # When true, reactive post-edit hook invokes archivist LLM regen (counts against max_llm_calls_per_run)
+
+# Symbol-level code graph (.lexibrary/symbols.db)
+symbols:
+  enabled: true
+  include_enums: true
+  include_call_paths: false
+  call_path_depth: 2
+  max_enum_items: 20
+  max_call_path_items: 10
+  include_data_flows: false

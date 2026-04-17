@@ -3,7 +3,10 @@
 Provides a registry of fixers keyed by check name. Only auto-fixable
 checks have entries: ``hash_freshness``, ``orphan_artifacts``,
 ``aindex_coverage``, ``orphaned_aindex``, ``orphaned_iwh``,
-``orphaned_designs``, ``deprecated_ttl``, and ``bidirectional_deps``.
+``orphaned_designs``, ``deprecated_ttl``, ``bidirectional_deps``,
+``wikilink_resolution``, ``duplicate_slugs``, and ``duplicate_aliases``.
+The last two are propose-only — they emit a "requires manual resolution"
+result rather than mutating disk.
 """
 
 from __future__ import annotations
@@ -612,6 +615,167 @@ def fix_bidirectional_deps(
     )
 
 
+def fix_wikilink_resolution(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Repair a broken wikilink by re-generating the containing design file.
+
+    Phase 4 Family D fixer for ``wikilink_resolution`` issues. Follows the
+    same archivist-delegation pattern as :func:`fix_hash_freshness`: it
+    resolves the design file identified by ``issue.artifact``, reads the
+    underlying source path, and hands off to
+    :func:`lexibrary.archivist.pipeline.update_file` so the LLM pipeline
+    rewrites the design's wikilinks from scratch.
+
+    Stack-post wikilinks (``.lexibrary/stack/ST-*.md``) are out of scope —
+    Stack posts are human-authored and have no source to regenerate from,
+    so the fixer returns a propose-only ``FixResult`` for those artifacts.
+
+    Args:
+        issue: The validation issue describing the artifact with a broken
+            wikilink. ``issue.artifact`` is project-root-relative (e.g.
+            ``.lexibrary/designs/src/foo.py.md`` or
+            ``.lexibrary/stack/ST-001-xxx.md``).
+        project_root: Root directory of the project.
+        config: Project configuration.
+
+    Returns:
+        A :class:`FixResult` whose ``fixed`` flag reflects whether
+        ``update_file`` succeeded. Stack posts always return ``fixed=False``.
+    """
+    from lexibrary.archivist.pipeline import update_file  # noqa: PLC0415
+    from lexibrary.archivist.service import build_archivist_service  # noqa: PLC0415
+    from lexibrary.artifacts.design_file_parser import parse_design_file  # noqa: PLC0415
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    artifact_path = project_root / issue.artifact
+    designs_root = project_root / LEXIBRARY_DIR / DESIGNS_DIR
+
+    # Stack posts have no regeneration source — propose-only.
+    try:
+        artifact_path.resolve().relative_to(designs_root.resolve())
+    except ValueError:
+        return FixResult(
+            check=issue.check,
+            path=artifact_path,
+            fixed=False,
+            message=(
+                f"wikilink in non-design artifact requires manual resolution: {issue.artifact}"
+            ),
+        )
+
+    if not artifact_path.exists():
+        return FixResult(
+            check=issue.check,
+            path=artifact_path,
+            fixed=False,
+            message=f"design file not found: {issue.artifact}",
+        )
+
+    try:
+        parsed = parse_design_file(artifact_path)
+    except Exception as exc:
+        return FixResult(
+            check=issue.check,
+            path=artifact_path,
+            fixed=False,
+            message=f"could not parse design file: {exc}",
+        )
+    if parsed is None or not parsed.source_path:
+        return FixResult(
+            check=issue.check,
+            path=artifact_path,
+            fixed=False,
+            message=f"could not resolve source for design file: {issue.artifact}",
+        )
+
+    source_path = project_root / parsed.source_path
+    if not source_path.exists():
+        return FixResult(
+            check=issue.check,
+            path=artifact_path,
+            fixed=False,
+            message=f"source file not found: {parsed.source_path}",
+        )
+
+    try:
+        archivist = build_archivist_service(config)
+        result = _run_sync(update_file(source_path, project_root, config, archivist))
+    except Exception as exc:
+        logger.exception("Failed to fix wikilink_resolution for %s", issue.artifact)
+        return FixResult(
+            check=issue.check,
+            path=artifact_path,
+            fixed=False,
+            message=f"error: {exc}",
+        )
+
+    if result.failed:
+        return FixResult(
+            check=issue.check,
+            path=artifact_path,
+            fixed=False,
+            message=f"failed to re-generate design file for {issue.artifact}",
+        )
+
+    return FixResult(
+        check=issue.check,
+        path=artifact_path,
+        fixed=True,
+        message=f"re-generated design file to resolve wikilinks: {issue.artifact}",
+    )
+
+
+def fix_duplicate_slugs(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Propose-only fixer for ``duplicate_slugs`` validation issues.
+
+    Resolving a slug collision requires human judgement — renaming one of
+    the colliding files breaks existing wikilinks, and the "right" rename
+    depends on artifact history and external references that the fixer
+    cannot safely infer. The fixer therefore returns ``fixed=False`` with
+    a message directing the operator to resolve the collision manually.
+    """
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    artifact_path = project_root / LEXIBRARY_DIR / issue.artifact
+    return FixResult(
+        check=issue.check,
+        path=artifact_path,
+        fixed=False,
+        message="requires manual resolution",
+    )
+
+
+def fix_duplicate_aliases(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Propose-only fixer for ``duplicate_aliases`` validation issues.
+
+    Removing or renaming a duplicated alias/title changes how the
+    concept is addressed by wikilinks and external documents, so the
+    choice of which occurrence to keep must be made by a human. The
+    fixer returns ``fixed=False`` with a message directing the operator
+    to resolve the collision manually.
+    """
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    artifact_path = project_root / LEXIBRARY_DIR / issue.artifact
+    return FixResult(
+        check=issue.check,
+        path=artifact_path,
+        fixed=False,
+        message="requires manual resolution",
+    )
+
+
 # Checks whose fixers delete files from disk and therefore require user confirmation
 # before running in interactive mode.  This set is consumed by the CLI fix flow in
 # ``lexibrary.cli._shared._run_validate`` to gate a single y/n prompt before any
@@ -636,4 +800,7 @@ FIXERS: dict[str, Callable[[ValidationIssue, Path, LexibraryConfig], FixResult]]
     "orphaned_designs": fix_orphaned_designs,
     "deprecated_ttl": fix_deprecated_ttl,
     "bidirectional_deps": fix_bidirectional_deps,
+    "wikilink_resolution": fix_wikilink_resolution,
+    "duplicate_slugs": fix_duplicate_slugs,
+    "duplicate_aliases": fix_duplicate_aliases,
 }

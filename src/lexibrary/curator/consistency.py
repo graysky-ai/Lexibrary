@@ -2,8 +2,9 @@
 
 Performs read-only analysis on design files and library artifacts,
 returning structured fix instructions for the coordinator to execute.
-Uses WikilinkResolver for wikilink validation and the link graph
-for dependency and orphan detection.
+Uses WikilinkResolver for cross-file unresolved-term aggregation
+(``detect_domain_terms``) and the link graph for dependency and
+orphan detection.
 
 All mutations (file writes, deletes) are handled by the coordinator
 based on the instructions returned here -- this module never writes
@@ -20,7 +21,6 @@ from typing import Literal
 
 from lexibrary.artifacts.design_file_parser import (
     parse_design_file,
-    parse_design_file_frontmatter,
 )
 from lexibrary.wiki.patterns import extract_wikilinks
 from lexibrary.wiki.resolver import UnresolvedLink, WikilinkResolver
@@ -59,9 +59,10 @@ class ConsistencyReport:
 class ConsistencyChecker:
     """Read-only analyzer that returns structured fix instructions.
 
-    The checker uses :class:`WikilinkResolver` for wikilink validation
-    and the link graph (when available) for dependency and orphan queries.
-    It never writes to disk -- all mutations are expressed as
+    The checker uses :class:`WikilinkResolver` for cross-file
+    unresolved-term aggregation (``detect_domain_terms``) and the link
+    graph (when available) for dependency and orphan queries.  It never
+    writes to disk -- all mutations are expressed as
     :class:`FixInstruction` objects for the coordinator to execute.
     """
 
@@ -77,52 +78,13 @@ class ConsistencyChecker:
         self._resolver = resolver
 
     # -- Wikilink hygiene ---------------------------------------------------
-
-    def check_wikilinks(self, design_path: Path) -> list[FixInstruction]:
-        """Analyze wikilinks in a design file and return fix instructions.
-
-        - Broken wikilinks (no resolution) -> strip instruction
-        - Fuzzy matches -> fix instruction with suggestion
-        - Valid wikilinks -> no instruction (untouched)
-        """
-        if self._resolver is None:
-            return []
-
-        design = parse_design_file(design_path)
-        if design is None:
-            return []
-
-        instructions: list[FixInstruction] = []
-
-        for wikilink in design.wikilinks:
-            result = self._resolver.resolve(f"[[{wikilink}]]")
-            if isinstance(result, UnresolvedLink):
-                if result.suggestions:
-                    # Fuzzy match -- suggest fix
-                    instructions.append(
-                        FixInstruction(
-                            action="fix_broken_wikilink_fuzzy",
-                            target_path=design_path,
-                            detail=(
-                                f"Wikilink [[{wikilink}]] unresolved; "
-                                f"suggestions: {', '.join(result.suggestions)}"
-                            ),
-                            risk="low",
-                        )
-                    )
-                else:
-                    # No match at all -- strip
-                    instructions.append(
-                        FixInstruction(
-                            action="strip_unresolved_wikilink",
-                            target_path=design_path,
-                            detail=f"Wikilink [[{wikilink}]] cannot be resolved; strip it",
-                            risk="low",
-                        )
-                    )
-            # ResolvedLink -> valid, no instruction needed
-
-        return instructions
+    #
+    # Per-design-file wikilink hygiene (``check_wikilinks``) retired in
+    # Phase 4 Family D of the ``curator-freshness`` change. Detection moved
+    # to the validator's ``check_wikilink_resolution`` paired with the
+    # archivist-delegated ``fix_wikilink_resolution`` fixer. ``UnresolvedLink``
+    # is still imported below for ``detect_domain_terms``, which surfaces
+    # cross-file unresolved-term suggestions distinct from that fixer.
 
     def detect_domain_terms(
         self,
@@ -174,158 +136,13 @@ class ConsistencyChecker:
         return suggestions
 
     # -- Identifier normalisation -------------------------------------------
-
-    def detect_slug_collisions(
-        self,
-        artifact_paths: list[Path],
-    ) -> list[FixInstruction]:
-        """Detect artifacts that produce the same filesystem slug.
-
-        Scans frontmatter for titles, computes slugs, and flags
-        collisions for deterministic suffix resolution.
-        """
-        from lexibrary.artifacts.slugs import slugify  # noqa: PLC0415
-
-        slug_map: dict[str, list[tuple[str, Path]]] = {}
-        for path in artifact_paths:
-            fm = parse_design_file_frontmatter(path)
-            if fm is None:
-                continue
-            slug = slugify(fm.description[:60])
-            if slug not in slug_map:
-                slug_map[slug] = []
-            slug_map[slug].append((fm.id, path))
-
-        instructions: list[FixInstruction] = []
-        for slug, entries in slug_map.items():
-            if len(entries) > 1:
-                ids = [e[0] for e in entries]
-                for _, path in entries:
-                    instructions.append(
-                        FixInstruction(
-                            action="resolve_slug_collision",
-                            target_path=path,
-                            detail=f"Slug '{slug}' collides with artifacts: {', '.join(ids)}",
-                            risk="low",
-                        )
-                    )
-
-        return instructions
-
-    def detect_alias_collisions(
-        self,
-        concepts_dir: Path,
-        conventions_dir: Path,
-    ) -> list[FixInstruction]:
-        """Detect alias collisions across concepts and conventions.
-
-        Two artifacts sharing an alias (case-insensitive) receive a
-        deduplication instruction.
-        """
-        alias_map: dict[str, list[tuple[str, Path]]] = {}
-
-        # Concepts
-        if concepts_dir.is_dir():
-            for path in sorted(concepts_dir.glob("*.md")):
-                self._collect_aliases(path, alias_map, kind="concept")
-
-        # Conventions
-        if conventions_dir.is_dir():
-            for path in sorted(conventions_dir.glob("*.md")):
-                self._collect_aliases(path, alias_map, kind="convention")
-
-        instructions: list[FixInstruction] = []
-        for alias_lower, entries in alias_map.items():
-            if len(entries) > 1:
-                ids = [e[0] for e in entries]
-                for _, path in entries:
-                    instructions.append(
-                        FixInstruction(
-                            action="resolve_alias_collision",
-                            target_path=path,
-                            detail=(
-                                f"Alias '{alias_lower}' shared by: {', '.join(ids)}; "
-                                f"apply deterministic deduplication"
-                            ),
-                            risk="low",
-                        )
-                    )
-
-        return instructions
-
-    def _collect_aliases(
-        self,
-        path: Path,
-        alias_map: dict[str, list[tuple[str, Path]]],
-        kind: str,
-    ) -> None:
-        """Parse frontmatter aliases from a concept or convention file."""
-        import yaml  # noqa: PLC0415
-
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            return
-        # Quick frontmatter extraction
-        if not text.startswith("---\n"):
-            return
-        end = text.find("\n---\n", 4)
-        if end < 0:
-            return
-        try:
-            data = yaml.safe_load(text[4:end])
-        except Exception:
-            return
-        if not isinstance(data, dict):
-            return
-
-        artifact_id = data.get("id", path.stem)
-        aliases = data.get("aliases", [])
-        if not isinstance(aliases, list):
-            return
-
-        for alias in aliases:
-            if isinstance(alias, str) and alias.strip():
-                key = alias.strip().lower()
-                if key not in alias_map:
-                    alias_map[key] = []
-                alias_map[key].append((f"{kind}:{artifact_id}", path))
-
-    # -- Orphaned .aindex cleanup ------------------------------------------
-
-    def detect_orphaned_aindex(self) -> list[FixInstruction]:
-        """Detect .aindex files whose source directory no longer exists.
-
-        Walks ``.lexibrary/designs/`` looking for ``.aindex`` files and
-        checks whether the corresponding source directory exists under
-        project_root.
-        """
-        if not self.designs_dir.is_dir():
-            return []
-
-        instructions: list[FixInstruction] = []
-        for aindex_path in sorted(self.designs_dir.rglob(".aindex")):
-            # The .aindex file's parent directory mirrors the source directory
-            try:
-                rel = aindex_path.parent.relative_to(self.designs_dir)
-            except ValueError:
-                continue
-
-            source_dir = self.project_root / rel
-            if not source_dir.is_dir():
-                instructions.append(
-                    FixInstruction(
-                        action="remove_orphaned_aindex",
-                        target_path=aindex_path,
-                        detail=(
-                            f"Orphaned .aindex at {aindex_path.relative_to(self.lexibrary_dir)}: "
-                            f"source directory {rel} no longer exists"
-                        ),
-                        risk="low",
-                    )
-                )
-
-        return instructions
+    #
+    # Slug + alias collision detection retired by Phase 4 Family B of the
+    # ``curator-freshness`` OpenSpec change. The validator's
+    # ``check_duplicate_slugs`` / ``check_duplicate_aliases`` checks (paired
+    # with the propose-only ``fix_duplicate_slugs`` / ``fix_duplicate_aliases``
+    # fixers) are now the canonical detectors. See the SHARED_BLOCK_A
+    # migration table in ``openspec/changes/curator-freshness/tasks.md``.
 
     def detect_orphaned_comments(self) -> list[FixInstruction]:
         """Detect orphaned .comments.yaml sidecars whose parent design file is missing."""

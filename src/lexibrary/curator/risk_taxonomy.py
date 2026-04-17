@@ -55,30 +55,36 @@ RISK_TAXONOMY: dict[str, ActionRisk] = {
         rationale="Parent artifact already removed",
         function_ref="curator.consistency_fixes.apply_orphaned_comments_delete",
     ),
-    "fix_broken_wikilink_fuzzy": ActionRisk(
+    # ``fix_broken_wikilink_fuzzy`` and ``strip_unresolved_wikilink`` retired
+    # in Phase 4 Family D of the ``curator-freshness`` change. Wikilink
+    # repair now routes through the validator-side ``fix_wikilink_resolution``
+    # fixer (registered below), which delegates to the archivist pipeline
+    # to regenerate the design body from the source.
+    "fix_wikilink_resolution": ActionRisk(
         level="low",
-        rationale="Verifiable; confidence threshold applies",
-        function_ref="curator.consistency_fixes.apply_substitute_wikilink",
+        rationale="Mechanical regeneration via archivist pipeline",
+        function_ref="validator.fixes.fix_wikilink_resolution",
     ),
-    "strip_unresolved_wikilink": ActionRisk(
+    # ``add_alias_fuzzy_match`` removed alongside the slug/alias retirement
+    # in Phase 4 Family B of ``curator-freshness``. Its sole ``function_ref``
+    # target was ``apply_alias_dedup``, which retired with
+    # ``resolve_alias_collision``. No detector ever emitted the action, so
+    # the entry was dead code.
+    # Duplicate-slug / duplicate-alias routing added by Phase 4 Family B of
+    # the ``curator-freshness`` change. Both fixers are propose-only — they
+    # emit ``fixed=False`` with a "requires manual resolution" message
+    # because resolving a slug/alias collision requires human judgement
+    # (renaming or alias removal breaks existing wikilinks and external
+    # references that the fixer cannot safely infer).
+    "fix_duplicate_slugs": ActionRisk(
         level="low",
-        rationale="Removes dead reference",
-        function_ref="curator.consistency_fixes.apply_strip_wikilink",
+        rationale="Propose-only; surfaces collision for human resolution",
+        function_ref="validator.fixes.fix_duplicate_slugs",
     ),
-    "add_alias_fuzzy_match": ActionRisk(
+    "fix_duplicate_aliases": ActionRisk(
         level="low",
-        rationale="Non-destructive alias expansion",
-        function_ref="curator.consistency_fixes.apply_alias_dedup",
-    ),
-    "resolve_slug_collision": ActionRisk(
-        level="low",
-        rationale="Deterministic suffix algorithm",
-        function_ref="curator.consistency_fixes.apply_slug_suffix",
-    ),
-    "resolve_alias_collision": ActionRisk(
-        level="low",
-        rationale="Deterministic deduplication",
-        function_ref="curator.consistency_fixes.apply_alias_dedup",
+        rationale="Propose-only; surfaces collision for human resolution",
+        function_ref="validator.fixes.fix_duplicate_aliases",
     ),
     # Consistency convention/playbook staleness flagging (Phase 3 — group 8).
     # ``consistency.py`` emits ``flag_stale_convention`` and
@@ -157,11 +163,6 @@ RISK_TAXONOMY: dict[str, ActionRisk] = {
         level="low",
         rationale="Mechanical cross-reference repair; adds existing dep as reverse entry",
         function_ref="curator.consistency_fixes.apply_add_reverse_dep",
-    ),
-    "remove_orphaned_aindex": ActionRisk(
-        level="low",
-        rationale="Source directory deleted",
-        function_ref="curator.consistency_fixes.apply_orphaned_aindex_delete",
     ),
     "consume_superseded_iwh": ActionRisk(
         level="low",

@@ -66,6 +66,9 @@ CHECK_TO_ACTION_KEY: dict[str, str] = {
     "orphaned_designs": "fix_orphaned_designs",
     "deprecated_ttl": "fix_deprecated_ttl",
     "bidirectional_deps": "fix_bidirectional_deps",
+    "duplicate_slugs": "fix_duplicate_slugs",
+    "duplicate_aliases": "fix_duplicate_aliases",
+    "wikilink_resolution": "fix_wikilink_resolution",
 }
 
 # Set of action keys recognised by the validation bridge router.  Includes the
@@ -2005,10 +2008,9 @@ class Coordinator:
 
         Gated on ``self.curator_config.consistency_collect``:
         - ``"off"``   — skip all consistency checks.
-        - ``"scope"`` — run scope-bounded checks (wikilink hygiene,
-          slug/alias collisions, bidirectional deps, orphaned .aindex,
-          orphaned .comments.yaml, stale conventions / playbooks,
-          promotable blocked IWH).
+        - ``"scope"`` — run scope-bounded checks (orphaned .comments.yaml,
+          design-file bidirectional dep cross-reference, stale
+          conventions / playbooks, promotable blocked IWH).
         - ``"full"``  — also run library-wide checks (domain-term
           suggestion, orphan concept detection).
 
@@ -2077,40 +2079,18 @@ class Coordinator:
                 design_files.append(design_path)
 
         # -- Scope-bounded checks -----------------------------------------
-        # Wikilink hygiene: per-design-file pass.
-        for design_path in design_files:
-            try:
-                instructions = checker.check_wikilinks(design_path)
-            except Exception as exc:
-                self.summary.add("collect", exc, path=str(design_path))
-                continue
-            for instruction in instructions:
-                _append(instruction)
+        # Wikilink hygiene retired in Phase 4 Family D of the
+        # ``curator-freshness`` change. The validator's
+        # ``check_wikilink_resolution`` paired with
+        # :func:`lexibrary.validator.fixes.fix_wikilink_resolution` is now
+        # the canonical detector + fixer; the validation bridge surfaces
+        # the narrow ``fix_wikilink_resolution`` action key in reports.
 
-        # Slug collision detection across design files.
-        try:
-            for instruction in checker.detect_slug_collisions(design_files):
-                _append(instruction)
-        except Exception as exc:
-            self.summary.add("collect", exc, path="slug_collisions")
-
-        # Alias collisions across concepts + conventions.
-        try:
-            alias_instructions = checker.detect_alias_collisions(
-                self.lexibrary_dir / "concepts",
-                self.lexibrary_dir / "conventions",
-            )
-            for instruction in alias_instructions:
-                _append(instruction)
-        except Exception as exc:
-            self.summary.add("collect", exc, path="alias_collisions")
-
-        # Orphaned .aindex cleanup.
-        try:
-            for instruction in checker.detect_orphaned_aindex():
-                _append(instruction)
-        except Exception as exc:
-            self.summary.add("collect", exc, path="orphaned_aindex")
+        # Slug and alias collision detection retired in Phase 4 Family B of
+        # the ``curator-freshness`` change. The validator's
+        # ``check_duplicate_slugs`` / ``check_duplicate_aliases`` checks are
+        # routed through ``CHECK_TO_ACTION_KEY`` to the propose-only
+        # ``fix_duplicate_slugs`` / ``fix_duplicate_aliases`` fixers.
 
         # Orphaned .comments.yaml cleanup.
         try:
@@ -2953,11 +2933,6 @@ class Coordinator:
         # Canonical action_key -> helper function.  The mapping keys
         # mirror :data:`CONSISTENCY_ACTION_KEYS` values.
         handlers = {
-            "strip_unresolved_wikilink": consistency_fixes.apply_strip_wikilink,
-            "fix_broken_wikilink_fuzzy": consistency_fixes.apply_substitute_wikilink,
-            "resolve_slug_collision": consistency_fixes.apply_slug_suffix,
-            "resolve_alias_collision": consistency_fixes.apply_alias_dedup,
-            "remove_orphaned_aindex": consistency_fixes.apply_orphaned_aindex_delete,
             "delete_orphaned_comments": consistency_fixes.apply_orphaned_comments_delete,
             "remove_orphan_zero_deps": consistency_fixes.apply_orphan_concept_delete,
             "add_missing_reverse_dep": consistency_fixes.apply_add_reverse_dep,

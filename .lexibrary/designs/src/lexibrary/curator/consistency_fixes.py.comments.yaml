@@ -1,0 +1,5 @@
+comments:
+- body: 'Phase 3 of curator-freshness (task 6.2): remove_orphaned_aindex CONSISTENCY_ACTION_KEYS
+    entry and apply_orphaned_aindex_delete helper removed. Orphaned .aindex mutation
+    lives in validator/fixes.fix_orphaned_aindex.'
+  date: '2026-04-14T07:10:19.072052Z'

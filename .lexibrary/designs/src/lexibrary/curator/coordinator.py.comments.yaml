@@ -76,3 +76,8 @@ comments:
     under _run_pipeline_legacy for the kill-switch. Helpers _dispatch_written_paths
     and _merge_collect_results live at module scope.'
   date: '2026-04-14T06:21:46.687252Z'
+- body: 'Phase 3 of curator-freshness (task 6.2): _collect_consistency no longer calls
+    detect_orphaned_aindex and _dispatch_consistency_fix no longer routes remove_orphaned_aindex.
+    CHECK_TO_ACTION_KEY already maps orphaned_aindex -> fix_orphaned_aindex so the
+    validator bridge handles it.'
+  date: '2026-04-14T07:10:19.344929Z'

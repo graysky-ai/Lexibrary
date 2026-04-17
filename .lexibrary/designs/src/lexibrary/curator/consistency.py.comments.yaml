@@ -1,0 +1,6 @@
+comments:
+- body: 'Phase 3 of curator-freshness (task 6.2): ConsistencyChecker.detect_orphaned_aindex
+    retired. Orphaned .aindex cleanup now lives in validator/checks.find_orphaned_aindex
+    + validator/fixes.fix_orphaned_aindex; the coordinator routes orphaned_aindex
+    validator issues through the narrow fix_orphaned_aindex action key.'
+  date: '2026-04-14T07:10:18.799894Z'

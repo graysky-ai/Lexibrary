@@ -84,9 +84,8 @@ def _write_design_with_stale_hash(
     The frontmatter carries an ``abc-stale`` hash while the source file's
     actual on-disk hash will differ, producing a staleness signal during
     ``_collect_staleness``.  Optionally embeds a wikilink body line that
-    resolves to a missing target — the consistency checker's
-    ``strip_unresolved_wikilink`` detector picks this up during
-    graph-layer collect.
+    resolves to a missing target — the validator's ``wikilink_resolution``
+    check picks this up during graph-layer collect.
     """
     design_path.parent.mkdir(parents=True, exist_ok=True)
     generated_iso = datetime.now(UTC).isoformat()

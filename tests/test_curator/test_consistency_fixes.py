@@ -14,7 +14,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-import yaml
 
 from lexibrary.artifacts.design_file import (
     DesignFile,
@@ -24,14 +23,10 @@ from lexibrary.artifacts.design_file import (
 from lexibrary.artifacts.design_file_parser import parse_design_file
 from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.curator.consistency_fixes import (
-    apply_alias_dedup,
+    apply_add_reverse_dep,
     apply_flag_stale_convention,
     apply_orphan_concept_delete,
-    apply_orphaned_aindex_delete,
     apply_orphaned_comments_delete,
-    apply_slug_suffix,
-    apply_strip_wikilink,
-    apply_substitute_wikilink,
 )
 from lexibrary.curator.dispatch_context import DispatchContext
 from lexibrary.curator.models import CollectItem, TriageItem
@@ -145,175 +140,24 @@ def _make_item(
 
 
 # ---------------------------------------------------------------------------
-# apply_strip_wikilink
+# apply_strip_wikilink / apply_substitute_wikilink — retired in Phase 4
+# Family D of the curator-freshness OpenSpec change.  Wikilink repair
+# now routes through the validator's archivist-delegated
+# ``fix_wikilink_resolution`` fixer; see
+# tests/test_validator/test_fixes.py and
+# tests/test_curator/test_wikilink_resolution_integration.py for the
+# replacement coverage.
 # ---------------------------------------------------------------------------
 
 
-class TestApplyStripWikilink:
-    def test_apply_strip_wikilink_removes_wikilink(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        design_path = _make_design(
-            project,
-            "src/foo.py",
-            wikilinks=["NonexistentConcept", "KeepMe"],
-        )
-        item = _make_item(
-            action_key="strip_unresolved_wikilink",
-            action_hint="strip_unresolved_wikilink",
-            target_path=design_path,
-            detail="Wikilink [[NonexistentConcept]] cannot be resolved; strip it",
-        )
-        result = apply_strip_wikilink(item, _make_ctx(project, lex_dir))
-        assert result.success is True
-        assert result.outcome == "fixed"
-
-        parsed = parse_design_file(design_path)
-        assert parsed is not None
-        assert "NonexistentConcept" not in parsed.wikilinks
-        assert "KeepMe" in parsed.wikilinks
-
-    def test_apply_strip_wikilink_preserves_code_fences(self, tmp_path: Path) -> None:
-        """The strip helper edits only the ``## Wikilinks`` section."""
-        project, lex_dir = _setup_project(tmp_path)
-        design_path = _make_design(
-            project,
-            "src/foo.py",
-            wikilinks=["NonexistentConcept"],
-        )
-        result = apply_strip_wikilink(
-            _make_item(
-                action_key="strip_unresolved_wikilink",
-                action_hint="strip_unresolved_wikilink",
-                target_path=design_path,
-                detail="Wikilink [[NonexistentConcept]] cannot be resolved",
-            ),
-            _make_ctx(project, lex_dir),
-        )
-        assert result.success is True
-
-        parsed = parse_design_file(design_path)
-        assert parsed is not None
-        # Interface contract code fence must still be intact (parser
-        # handles fence stripping, so non-empty contract proves the
-        # fences round-trip).
-        assert "def foo" in parsed.interface_contract
-
-    def test_apply_strip_wikilink_updated_by_curator(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        design_path = _make_design(project, "src/foo.py", wikilinks=["Dead"])
-        apply_strip_wikilink(
-            _make_item(
-                action_key="strip_unresolved_wikilink",
-                action_hint="strip_unresolved_wikilink",
-                target_path=design_path,
-                detail="Wikilink [[Dead]] cannot be resolved",
-            ),
-            _make_ctx(project, lex_dir),
-        )
-        parsed = parse_design_file(design_path)
-        assert parsed is not None
-        assert parsed.frontmatter.updated_by == "curator"
-
-
 # ---------------------------------------------------------------------------
-# apply_substitute_wikilink
+# apply_slug_suffix / apply_alias_dedup — retired in Phase 4 Family B of
+# the curator-freshness OpenSpec change.  Slug / alias collision resolution
+# now routes through the validator's propose-only fixers
+# (``fix_duplicate_slugs`` / ``fix_duplicate_aliases``); see
+# tests/test_validator/test_cross_artifact_checks.py for the validator-side
+# check coverage.
 # ---------------------------------------------------------------------------
-
-
-class TestApplySubstituteWikilink:
-    def test_apply_substitute_wikilink_replaces_target(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        design_path = _make_design(
-            project,
-            "src/foo.py",
-            wikilinks=["Authentcation"],
-        )
-        item = _make_item(
-            action_key="fix_broken_wikilink_fuzzy",
-            action_hint="fix_broken_wikilink_fuzzy",
-            target_path=design_path,
-            detail="Wikilink [[Authentcation]] unresolved; suggestions: Authentication",
-        )
-        result = apply_substitute_wikilink(item, _make_ctx(project, lex_dir))
-        assert result.success is True
-        assert result.outcome == "fixed"
-
-        parsed = parse_design_file(design_path)
-        assert parsed is not None
-        assert "Authentication" in parsed.wikilinks
-        assert "Authentcation" not in parsed.wikilinks
-
-
-# ---------------------------------------------------------------------------
-# apply_slug_suffix
-# ---------------------------------------------------------------------------
-
-
-class TestApplySlugSuffix:
-    def test_apply_slug_suffix_updates_frontmatter(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        design_path = _make_design(
-            project,
-            "src/foo.py",
-            id_override="DS-042",
-        )
-        result = apply_slug_suffix(
-            _make_item(
-                action_key="resolve_slug_collision",
-                action_hint="resolve_slug_collision",
-                target_path=design_path,
-                detail="Slug 'foo' collides with artifacts: DS-042, DS-043",
-            ),
-            _make_ctx(project, lex_dir),
-        )
-        assert result.success is True
-
-        parsed = parse_design_file(design_path)
-        assert parsed is not None
-        assert parsed.frontmatter.id != "DS-042"
-        assert parsed.frontmatter.id.startswith("DS-042-")
-        assert parsed.frontmatter.updated_by == "curator"
-
-
-# ---------------------------------------------------------------------------
-# apply_alias_dedup
-# ---------------------------------------------------------------------------
-
-
-class TestApplyAliasDedup:
-    def test_apply_alias_dedup_removes_duplicates(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        concept_path = lex_dir / "concepts" / "CN-001-foo.md"
-        data = {
-            "title": "Foo",
-            "id": "CN-001",
-            "status": "active",
-            "aliases": ["Bar", "bar", "Baz"],  # Bar/bar collide
-            "tags": [],
-        }
-        text = f"---\n{yaml.dump(data, default_flow_style=False, sort_keys=False)}---\n\n# Foo\n"
-        concept_path.write_text(text, encoding="utf-8")
-
-        result = apply_alias_dedup(
-            _make_item(
-                action_key="resolve_alias_collision",
-                action_hint="resolve_alias_collision",
-                target_path=concept_path,
-                detail="Alias 'bar' shared by: concept:CN-001",
-            ),
-            _make_ctx(project, lex_dir),
-        )
-        assert result.success is True
-
-        text_after = concept_path.read_text(encoding="utf-8")
-        # Parse frontmatter block
-        end = text_after.find("\n---\n", 4)
-        fm = yaml.safe_load(text_after[4:end])
-        aliases = fm["aliases"]
-        # "Bar" kept, "bar" dropped, "Baz" kept
-        assert "Bar" in aliases
-        assert "Baz" in aliases
-        assert "bar" not in aliases
 
 
 # ---------------------------------------------------------------------------
@@ -325,28 +169,11 @@ class TestApplyAliasDedup:
 
 
 # ---------------------------------------------------------------------------
-# apply_orphaned_aindex_delete / apply_orphaned_comments_delete
+# apply_orphaned_aindex_delete retired — .aindex cleanup migrated to the
+# validator's ``fix_orphaned_aindex`` fixer; see
+# :mod:`tests.test_validator.test_orphaned_aindex`.
+# apply_orphaned_comments_delete
 # ---------------------------------------------------------------------------
-
-
-class TestOrphanedAindexDelete:
-    def test_apply_orphaned_aindex_delete_removes_file(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        orphan = lex_dir / "designs" / "src" / "gone" / ".aindex"
-        orphan.parent.mkdir(parents=True)
-        orphan.write_text("# orphan\n", encoding="utf-8")
-
-        result = apply_orphaned_aindex_delete(
-            _make_item(
-                action_key="remove_orphaned_aindex",
-                action_hint="remove_orphaned_aindex",
-                target_path=orphan,
-                detail="Orphaned .aindex",
-            ),
-            _make_ctx(project, lex_dir),
-        )
-        assert result.success is True
-        assert not orphan.exists()
 
 
 class TestOrphanedCommentsDelete:
@@ -431,16 +258,15 @@ class TestHelperContractProperties:
         design_path = _make_design(
             project,
             "src/foo.py",
-            wikilinks=["DeadLink"],
             dependents=[],
         )
-        # Use the strip helper as a representative rewriter.
-        apply_strip_wikilink(
+        # Use the reverse-dep helper as a representative rewriter.
+        apply_add_reverse_dep(
             _make_item(
-                action_key="strip_unresolved_wikilink",
-                action_hint="strip_unresolved_wikilink",
+                action_key="add_missing_reverse_dep",
+                action_hint="add_missing_reverse_dep",
                 target_path=design_path,
-                detail="Wikilink [[DeadLink]] cannot be resolved",
+                detail="src/bar.py lists src/foo.py as a dependency",
             ),
             _make_ctx(project, lex_dir),
         )
@@ -456,16 +282,16 @@ class TestHelperContractProperties:
         design_path = _make_design(
             project,
             "src/foo.py",
-            wikilinks=["Stripped"],
+            dependents=[],
         )
         # Source file was created by _make_design; compute its hash.
         src_hash = hash_file(project / "src" / "foo.py")
-        apply_strip_wikilink(
+        apply_add_reverse_dep(
             _make_item(
-                action_key="strip_unresolved_wikilink",
-                action_hint="strip_unresolved_wikilink",
+                action_key="add_missing_reverse_dep",
+                action_hint="add_missing_reverse_dep",
                 target_path=design_path,
-                detail="Wikilink [[Stripped]] cannot be resolved",
+                detail="src/bar.py lists src/foo.py as a dependency",
             ),
             _make_ctx(project, lex_dir),
         )
@@ -513,47 +339,20 @@ class TestFlagStaleConvention:
 
 
 class TestHelperFailureModes:
-    def test_strip_wikilink_missing_detail_target(self, tmp_path: Path) -> None:
+    def test_add_reverse_dep_missing_detail_target(self, tmp_path: Path) -> None:
         project, lex_dir = _setup_project(tmp_path)
-        design_path = _make_design(project, "src/foo.py", wikilinks=["Something"])
-        result = apply_strip_wikilink(
+        design_path = _make_design(project, "src/foo.py")
+        result = apply_add_reverse_dep(
             _make_item(
-                action_key="strip_unresolved_wikilink",
-                action_hint="strip_unresolved_wikilink",
+                action_key="add_missing_reverse_dep",
+                action_hint="add_missing_reverse_dep",
                 target_path=design_path,
-                detail="no brackets here",
+                detail="malformed detail string",
             ),
             _make_ctx(project, lex_dir),
         )
         assert result.success is False
         assert result.outcome == "fixer_failed"
-
-    def test_orphaned_aindex_delete_missing_path(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        result = apply_orphaned_aindex_delete(
-            _make_item(
-                action_key="remove_orphaned_aindex",
-                action_hint="remove_orphaned_aindex",
-                target_path=None,
-                detail="Orphaned",
-            ),
-            _make_ctx(project, lex_dir),
-        )
-        assert result.success is False
-
-    def test_substitute_wikilink_no_suggestion(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        design_path = _make_design(project, "src/foo.py", wikilinks=["X"])
-        result = apply_substitute_wikilink(
-            _make_item(
-                action_key="fix_broken_wikilink_fuzzy",
-                action_hint="fix_broken_wikilink_fuzzy",
-                target_path=design_path,
-                detail="Wikilink [[X]] unresolved; no suggestions",
-            ),
-            _make_ctx(project, lex_dir),
-        )
-        assert result.success is False
 
 
 # ---------------------------------------------------------------------------
@@ -576,11 +375,6 @@ def test_consistency_action_keys_map_is_authoritative() -> None:
 @pytest.mark.parametrize(
     "action_key",
     [
-        "strip_unresolved_wikilink",
-        "fix_broken_wikilink_fuzzy",
-        "resolve_slug_collision",
-        "resolve_alias_collision",
-        "remove_orphaned_aindex",
         "delete_orphaned_comments",
         "remove_orphan_zero_deps",
         "add_missing_reverse_dep",

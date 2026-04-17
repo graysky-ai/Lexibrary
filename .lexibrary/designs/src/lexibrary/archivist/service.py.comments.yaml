@@ -1,0 +1,11 @@
+comments:
+- body: "Phase 0 (curator-freshness task 1.2): added build_archivist_service(config,\
+    \ *, unlimited=False) -> ArchivistService factory. Stateless \u2014 no module-level\
+    \ cache \u2014 constructs a fresh RateLimiter, calls build_client_registry(config,\
+    \ unlimited=unlimited), and returns a new ArchivistService. All direct 'ArchivistService(...)'\
+    \ construction sites in cli/design.py and curator/hooks.py's reactive bootstrap\
+    \ now route through this factory; a grep after the refactor shows zero remaining\
+    \ inline constructions outside service.py. Exists so the reactive post-edit hook\
+    \ (task 2.3), the CLI design commands, and any future ad-hoc callers share one\
+    \ client-registry + rate-limiter assembly path."
+  date: '2026-04-14T18:50:15.410833Z'

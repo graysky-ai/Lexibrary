@@ -20,12 +20,6 @@ from unittest.mock import patch
 
 import yaml
 
-from lexibrary.artifacts.design_file import (
-    DesignFile,
-    DesignFileFrontmatter,
-    StalenessMetadata,
-)
-from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.config.schema import LexibraryConfig
 from lexibrary.curator.consistency_fixes import CONSISTENCY_ACTION_KEYS
 from lexibrary.curator.coordinator import Coordinator
@@ -66,40 +60,17 @@ def _make_source(project: Path, rel: str, content: str = "def foo(): pass\n") ->
     return src
 
 
-def _make_design_with_wikilink(
-    project: Path,
-    source_rel: str,
-    *,
-    wikilink_target: str,
-) -> Path:
-    """Create a design file with a single planted wikilink."""
-    _make_source(project, source_rel)
-    design_path = project / ".lexibrary" / "designs" / f"{source_rel}.md"
-    design_path.parent.mkdir(parents=True, exist_ok=True)
+def _plant_orphaned_comments(project: Path, source_rel: str) -> Path:
+    """Plant an orphaned ``.comments.yaml`` whose sibling design file is missing.
 
-    df = DesignFile(
-        source_path=source_rel,
-        frontmatter=DesignFileFrontmatter(
-            description=f"Design for {source_rel}",
-            id=source_rel.replace("/", "-").replace(".", "-"),
-            updated_by="archivist",
-            status="active",
-        ),
-        summary=f"Summary of {source_rel}",
-        interface_contract="def foo(): ...",
-        dependencies=[],
-        dependents=[],
-        wikilinks=[wikilink_target],
-        metadata=StalenessMetadata(
-            source=source_rel,
-            source_hash="a" * 64,
-            interface_hash=None,
-            generated=datetime.now(UTC),
-            generator="test",
-        ),
-    )
-    design_path.write_text(serialize_design_file(df), encoding="utf-8")
-    return design_path
+    Returns the path to the planted ``.comments.yaml`` so the caller can
+    treat it as the design path for filter / scope assertions.
+    """
+    comments_dir = project / ".lexibrary" / "designs" / source_rel
+    comments_dir.mkdir(parents=True, exist_ok=True)
+    comments_path = comments_dir / ".comments.yaml"
+    comments_path.write_text("- comment: stale orphan\n", encoding="utf-8")
+    return comments_path
 
 
 def _make_concept(lex_dir: Path, concept_id: str, title: str) -> Path:
@@ -148,9 +119,9 @@ def _plant_old_blocked_iwh(
 
 class TestCollectConsistency:
     def test_collect_consistency_populates_items(self, tmp_path: Path) -> None:
-        """Planting a broken wikilink produces a ``source='consistency'`` item."""
+        """Planting an orphaned ``.comments.yaml`` produces a ``source='consistency'`` item."""
         project = _setup_project(tmp_path)
-        _make_design_with_wikilink(project, "src/foo.py", wikilink_target="NonexistentConcept")
+        _plant_orphaned_comments(project, "src/removed_mod")
         coord = Coordinator(project, LexibraryConfig())
         result = CollectResult()
         coord._collect_consistency(  # noqa: SLF001
@@ -158,27 +129,26 @@ class TestCollectConsistency:
         )
         consistency_items = [i for i in result.items if i.source == "consistency"]
         assert len(consistency_items) >= 1
-        # At least one should be a strip instruction for NonexistentConcept
         hints = [i.action_hint for i in consistency_items]
-        assert "strip_unresolved_wikilink" in hints
+        assert "delete_orphaned_comments" in hints
 
     def test_collect_consistency_respects_scope(self, tmp_path: Path) -> None:
         """``consistency_collect='scope'`` runs scope-bounded checks only."""
         project = _setup_project(tmp_path)
-        _make_design_with_wikilink(project, "src/foo.py", wikilink_target="NonexistentConcept")
+        _plant_orphaned_comments(project, "src/removed_mod")
         config = LexibraryConfig.model_validate({"curator": {"consistency_collect": "scope"}})
         coord = Coordinator(project, config)
         result = CollectResult()
         coord._collect_consistency(  # noqa: SLF001
             result, scope=None, uncommitted=set(), active_iwh=set()
         )
-        # Scope mode should still produce wikilink hygiene items.
+        # Scope mode should still produce orphaned-comments items.
         assert any(i.source == "consistency" for i in result.items)
 
     def test_collect_consistency_off(self, tmp_path: Path) -> None:
         """``consistency_collect='off'`` short-circuits without producing items."""
         project = _setup_project(tmp_path)
-        _make_design_with_wikilink(project, "src/foo.py", wikilink_target="Nonexistent")
+        _plant_orphaned_comments(project, "src/removed_mod")
         config = LexibraryConfig.model_validate({"curator": {"consistency_collect": "off"}})
         coord = Coordinator(project, config)
         result = CollectResult()
@@ -190,21 +160,19 @@ class TestCollectConsistency:
     def test_collect_consistency_filters_uncommitted(self, tmp_path: Path) -> None:
         """Paths listed in ``uncommitted`` are skipped during collect."""
         project = _setup_project(tmp_path)
-        design_path = _make_design_with_wikilink(
-            project, "src/foo.py", wikilink_target="Nonexistent"
-        )
+        comments_path = _plant_orphaned_comments(project, "src/removed_mod")
         coord = Coordinator(project, LexibraryConfig())
         result = CollectResult()
         coord._collect_consistency(  # noqa: SLF001
             result,
             scope=None,
-            uncommitted={design_path.resolve()},
+            uncommitted={comments_path.resolve()},
             active_iwh=set(),
         )
-        # When the design path is treated as uncommitted, its wikilink
-        # hygiene findings should be filtered out.
+        # When the orphan path is treated as uncommitted, its
+        # delete_orphaned_comments finding should be filtered out.
         hints = [i.action_hint for i in result.items if i.source == "consistency"]
-        assert "strip_unresolved_wikilink" not in hints
+        assert "delete_orphaned_comments" not in hints
 
     def test_collect_consistency_scope_mode_includes_promotable_iwh(self, tmp_path: Path) -> None:
         """``consistency_collect='scope'`` surfaces stale blocked IWH for promotion.
@@ -257,16 +225,16 @@ class TestClassifyConsistency:
 
         item = CollectItem(
             source="consistency",
-            path=tmp_path / "fake.md",
+            path=tmp_path / "fake.comments.yaml",
             severity="info",
-            message="strip it",
+            message="orphan",
             check="consistency",
-            action_hint="strip_unresolved_wikilink",
-            fix_instruction_detail="Wikilink [[Dead]] cannot be resolved",
+            action_hint="delete_orphaned_comments",
+            fix_instruction_detail="Orphaned .comments.yaml: no sibling design file",
         )
         triage = coord._classify_consistency(item)  # noqa: SLF001
         assert triage.issue_type == "consistency_fix"
-        assert triage.action_key == "strip_unresolved_wikilink"
+        assert triage.action_key == "delete_orphaned_comments"
         assert triage.risk_level == "low"
 
     def test_classify_consistency_medium_risk(self, tmp_path: Path) -> None:
@@ -339,28 +307,29 @@ class TestDispatchConsistencyFix:
     def test_dispatch_consistency_fix_routes_by_action_key(self, tmp_path: Path) -> None:
         """The dispatcher calls the matching fix helper by action_key."""
         project = _setup_project(tmp_path)
-        design_path = _make_design_with_wikilink(project, "src/foo.py", wikilink_target="Dead")
+        comments_path = _plant_orphaned_comments(project, "src/removed_mod")
         coord = Coordinator(project, LexibraryConfig())
 
         collect = CollectItem(
             source="consistency",
-            path=design_path,
+            path=comments_path,
             severity="info",
-            message="strip",
+            message="orphan",
             check="consistency",
-            action_hint="strip_unresolved_wikilink",
-            fix_instruction_detail="Wikilink [[Dead]] cannot be resolved",
+            action_hint="delete_orphaned_comments",
+            fix_instruction_detail="Orphaned .comments.yaml: no sibling design file",
         )
         triage = TriageItem(
             source_item=collect,
             issue_type="consistency_fix",
-            action_key="strip_unresolved_wikilink",
+            action_key="delete_orphaned_comments",
             priority=15.0,
         )
         result = coord._dispatch_consistency_fix(triage)  # noqa: SLF001
         assert isinstance(result, SubAgentResult)
         assert result.success is True
         assert result.outcome == "fixed"
+        assert not comments_path.exists()
 
     def test_dispatch_consistency_fix_unknown_key_stubbed(self, tmp_path: Path) -> None:
         project = _setup_project(tmp_path)
@@ -411,9 +380,11 @@ class TestConsistencyAutonomyGating:
     def test_consistency_fix_not_called_in_dry_run(self, tmp_path: Path) -> None:
         """Dry-run mode records ``outcome='dry_run'`` without invoking helpers."""
         project = _setup_project(tmp_path)
-        _make_design_with_wikilink(project, "src/foo.py", wikilink_target="Dead")
+        _plant_orphaned_comments(project, "src/removed_mod")
 
-        with patch("lexibrary.curator.consistency_fixes.apply_strip_wikilink") as mock_helper:
+        with patch(
+            "lexibrary.curator.consistency_fixes.apply_orphaned_comments_delete"
+        ) as mock_helper:
             mock_helper.side_effect = AssertionError("should not be called in dry_run")
             coord = Coordinator(project, LexibraryConfig())
             report = asyncio.run(coord.run(dry_run=True))

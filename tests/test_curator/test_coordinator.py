@@ -403,9 +403,9 @@ class TestTriagePhase:
                 CollectItem(
                     source="validation",
                     path=Path("some/artifact"),
-                    severity="error",
-                    message="broken wikilink",
-                    check="wikilink_resolution",
+                    severity="info",
+                    message="unhandled check",
+                    check="check_with_no_fixer",
                 ),
             ]
         )
@@ -413,7 +413,7 @@ class TestTriagePhase:
         result = coord._triage(collect)
         assert len(result.items) == 1
         assert result.items[0].issue_type == "consistency"
-        # wikilink_resolution has no entry in CHECK_TO_ACTION_KEY, so the
+        # ``check_with_no_fixer`` is not in CHECK_TO_ACTION_KEY, so the
         # classifier falls back to the umbrella key.
         assert result.items[0].action_key == "autofix_validation_issue"
 
