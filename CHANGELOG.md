@@ -2,6 +2,33 @@
 
 All notable changes to Lexibrary are documented in this file.
 
+## [0.6.1] - 2026-04-18
+
+### Added
+- **Multi-root scope support** — New `scope_roots` config field (list of `ScopeRoot` mappings) replaces single `scope_root`; new `config/scope.py` with `find_owning_root` helper funneled through archivist, conventions, validator, lookup, bootstrap, and CLI gating
+- **Resolve-time config guards** — `LexibraryConfig.resolved_scope_roots()` validates path-traversal, nested roots, and duplicates; `check_config_valid` now reports these as validation errors (closes ST-043 gap)
+- **Two-pass curator collection** — New config options for two-pass collection and reactive bootstrap regeneration
+- **Curator coordinator expansion** — Bidirectional integration, duplicate integration, orphaned aindex integration, prepare_indexes service, wikilink resolution integration, coordinator performance tests
+- **Validator fixes** — New `fix_bidirectional_deps` check with fixer, expanded info/infrastructure/warning check coverage
+- **Archivist reconcile_deps_only gate** — New test coverage for partial pipeline reconciliation
+- **Per-root topology sections** — `generate_raw_topology` emits one section per scope root with placeholder fallback for empty documents
+- **Conventions ancestry** — `_build_ancestry` now includes normalized `file_path` for directory-scoped convention matching
+- **Performance benchmark marker** — New `pyproject.toml` pytest marker for categorising perf tests
+- **Curator ordering doc** — New `curator-order-of-operations.md`
+
+### Changed
+- **Config schema** — `scope_root: str` replaced by `scope_roots: list[ScopeRoot]`; legacy `scope_root:` keys now raise an actionable validation error with migration instructions
+- **`_walk_scope`** — Refactored into a single-scope helper; multi-root iteration lives in `discover_source_files`
+- **`reindex_directories`** — Skips out-of-scope directories rather than indexing them as single entries
+- **`check_convention_gap`** — Falls back to project root when config loading fails, preventing silent skips
+- **Test helpers** — Consolidated `_make_config(scope_root | scope_roots)` replaces prior `_make_config` + `_make_multiroot_config` split
+- **Config file references** — `.env.example` and docs updated to reference `.lexibrary/config.yaml` instead of the old `lexibrary.toml`
+- **Documentation** — cli-reference, configuration, library-structure, troubleshooting, design-files, how-it-works, project-setup, validation refreshed for multi-root layout
+- **Agent documentation** — `AGENTS.md` clarifies session-start procedures and IWH signal handling; topology-builder SKILL updated
+
+### Removed
+- **`CURATOR_REPORT_FINDINGS.md`** — Obsolete planning/findings document (503 lines)
+
 ## [0.6.0] - 2026-04-13
 
 ### Added
