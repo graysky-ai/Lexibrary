@@ -1433,7 +1433,7 @@ def check_config_valid(
 
     # Validate with Pydantic
     try:
-        LexibraryConfig.model_validate(data)
+        config = LexibraryConfig.model_validate(data)
     except ValidationError as exc:
         for error in exc.errors():
             field_path = " -> ".join(str(loc) for loc in error["loc"])
@@ -1445,6 +1445,24 @@ def check_config_valid(
                     artifact=artifact,
                 )
             )
+        return issues
+
+    # Scope-root resolution guards (path-traversal, nested-roots, duplicates)
+    # live in ``resolved_scope_roots`` rather than Pydantic validators because
+    # they depend on the concrete ``project_root``. Surface them here so
+    # ``lexi validate`` reports a structured error instead of crashing later
+    # in a downstream command.
+    try:
+        config.resolved_scope_roots(project_root)
+    except ValueError as exc:
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                check="config_valid",
+                message=f"Validation error at 'scope_roots': {exc}",
+                artifact=artifact,
+            )
+        )
 
     return issues
 
