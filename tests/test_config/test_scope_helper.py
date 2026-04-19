@@ -90,9 +90,7 @@ def test_resolved_scope_roots_rejects_path_traversal_names_entry(
     tmp_path: Path,
 ) -> None:
     """Path-traversal error names the offending entry."""
-    config = LexibraryConfig.model_validate(
-        {"scope_roots": [{"path": "../../etc"}]}
-    )
+    config = LexibraryConfig.model_validate({"scope_roots": [{"path": "../../etc"}]})
     with pytest.raises(ValueError) as exc_info:
         config.resolved_scope_roots(tmp_path)
     assert "../../etc" in str(exc_info.value)
@@ -103,9 +101,7 @@ def test_resolved_scope_roots_rejects_nested_roots_names_both(
 ) -> None:
     """Nested-root error names both declared paths so the user can fix either."""
     (tmp_path / "src").mkdir()
-    config = LexibraryConfig.model_validate(
-        {"scope_roots": [{"path": "."}, {"path": "src/"}]}
-    )
+    config = LexibraryConfig.model_validate({"scope_roots": [{"path": "."}, {"path": "src/"}]})
     with pytest.raises(ValueError) as exc_info:
         config.resolved_scope_roots(tmp_path)
     message = str(exc_info.value)
@@ -116,8 +112,6 @@ def test_resolved_scope_roots_rejects_nested_roots_names_both(
 def test_resolved_scope_roots_rejects_duplicate_entries(tmp_path: Path) -> None:
     """Duplicate entries (exact same ``path`` string) raise."""
     (tmp_path / "src").mkdir()
-    config = LexibraryConfig.model_validate(
-        {"scope_roots": [{"path": "src/"}, {"path": "src/"}]}
-    )
+    config = LexibraryConfig.model_validate({"scope_roots": [{"path": "src/"}, {"path": "src/"}]})
     with pytest.raises(ValueError, match="Duplicate"):
         config.resolved_scope_roots(tmp_path)

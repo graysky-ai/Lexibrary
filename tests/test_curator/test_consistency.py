@@ -1,19 +1,21 @@
 """Tests for the curator consistency checker.
 
 Covers: wikilink hygiene, identifier normalisation, orphaned .aindex
-cleanup, orphaned .comments.yaml detection, orphan concept detection,
-convention/playbook staleness detection, and blocked IWH promotion.
+cleanup, orphaned .comments.yaml detection, convention/playbook
+staleness detection, and blocked IWH promotion.
 
 Bidirectional-deps detection migrated to the validator in Phase 1a of
 the ``curator-freshness`` change — see
 :class:`tests.test_validator.test_info_checks.TestCheckBidirectionalDeps`.
+
+Orphan concept detection retired in curator-4 Group 21 — the canonical
+test lives in :class:`tests.test_validator.test_check_orphan_concepts`.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import yaml
 
@@ -116,60 +118,9 @@ def _make_concept_file(
     return path
 
 
-def _make_convention_file(
-    lex_dir: Path,
-    conv_id: str,
-    title: str,
-    *,
-    scope: str = "project",
-    body: str = "",
-    aliases: list[str] | None = None,
-) -> Path:
-    """Create a minimal convention file."""
-    from lexibrary.artifacts.slugs import slugify  # noqa: PLC0415
-
-    slug = slugify(title)
-    path = lex_dir / "conventions" / f"{conv_id}-{slug}.md"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fm = {
-        "title": title,
-        "id": conv_id,
-        "scope": scope,
-        "status": "active",
-        "source": "user",
-        "priority": 0,
-        "tags": [],
-        "aliases": aliases or [],
-    }
-    text = f"---\n{yaml.dump(fm, default_flow_style=False)}---\n\n{body}\n"
-    path.write_text(text, encoding="utf-8")
-    return path
-
-
-def _make_playbook_file(
-    lex_dir: Path,
-    pb_id: str,
-    title: str,
-    *,
-    body: str = "",
-) -> Path:
-    """Create a minimal playbook file."""
-    from lexibrary.artifacts.slugs import slugify  # noqa: PLC0415
-
-    slug = slugify(title)
-    path = lex_dir / "playbooks" / f"{pb_id}-{slug}.md"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fm = {
-        "title": title,
-        "id": pb_id,
-        "status": "active",
-        "aliases": [],
-        "tags": [],
-        "triggers": [],
-    }
-    text = f"---\n{yaml.dump(fm, default_flow_style=False)}---\n\n{body}\n"
-    path.write_text(text, encoding="utf-8")
-    return path
+# ``_make_convention_file`` / ``_make_playbook_file`` retired alongside the
+# ``TestConventionStaleness`` / ``TestPlaybookStaleness`` suites in curator-4
+# Group 22 — the only callers were the deleted staleness-detection tests.
 
 
 def _make_iwh_file(
@@ -303,136 +254,19 @@ class TestOrphanedComments:
 
 
 # ---------------------------------------------------------------------------
-# Orphan Concept Detection
+# Orphan concept detection retired in curator-4 Group 21; replaced by
+# the validator's ``check_orphan_concepts`` + ``escalate_orphan_concepts``
+# escalation fixer.
 # ---------------------------------------------------------------------------
 
 
-class TestOrphanConcepts:
-    """Test orphan concept detection via link graph."""
-
-    def test_orphan_concept_detected_with_graph(self, tmp_path: Path) -> None:
-        """A concept with zero inbound links should be flagged."""
-        project, lex_dir = _setup_project(tmp_path)
-        _make_concept_file(lex_dir, "CN-042", "OrphanConcept")
-
-        # Mock the link graph to return zero reverse deps
-        mock_graph = MagicMock()
-        mock_graph.reverse_deps.return_value = []
-
-        with patch("lexibrary.linkgraph.query.LinkGraph.open", return_value=mock_graph):
-            checker = ConsistencyChecker(project, lex_dir)
-            instructions = checker.detect_orphan_concepts(
-                lex_dir / "concepts", link_graph_available=True
-            )
-
-        assert len(instructions) == 1
-        assert instructions[0].action == "remove_orphan_zero_deps"
-        detail_lower = instructions[0].detail.lower()
-        assert "orphanconcept" in detail_lower or "orphan" in detail_lower
-        mock_graph.close.assert_called_once()
-
-    def test_linked_concept_not_flagged(self, tmp_path: Path) -> None:
-        """A concept with inbound links should NOT be flagged."""
-        project, lex_dir = _setup_project(tmp_path)
-        _make_concept_file(lex_dir, "CN-001", "UsedConcept")
-
-        mock_graph = MagicMock()
-        mock_graph.reverse_deps.return_value = [MagicMock()]  # has links
-
-        with patch("lexibrary.linkgraph.query.LinkGraph.open", return_value=mock_graph):
-            checker = ConsistencyChecker(project, lex_dir)
-            instructions = checker.detect_orphan_concepts(
-                lex_dir / "concepts", link_graph_available=True
-            )
-
-        assert len(instructions) == 0
-        mock_graph.close.assert_called_once()
-
-    def test_no_graph_skips_detection(self, tmp_path: Path) -> None:
-        """When link graph is unavailable, orphan detection should be skipped."""
-        project, lex_dir = _setup_project(tmp_path)
-        _make_concept_file(lex_dir, "CN-001", "MaybOrphan")
-
-        checker = ConsistencyChecker(project, lex_dir)
-        instructions = checker.detect_orphan_concepts(
-            lex_dir / "concepts", link_graph_available=False
-        )
-
-        assert len(instructions) == 0
-
-
 # ---------------------------------------------------------------------------
-# Convention/Playbook Staleness Detection
+# Convention / playbook staleness detection retired in curator-4 Group 22.
+# Coverage migrated to the validator-side checks + the escalation fixers
+# (``tests/test_validator/test_check_convention_stale.py``,
+# ``tests/test_validator/test_check_playbook_staleness.py``,
+# ``tests/test_validator/test_escalate_fixers.py``).
 # ---------------------------------------------------------------------------
-
-
-class TestConventionStaleness:
-    """Test convention staleness detection."""
-
-    def test_stale_path_flagged(self, tmp_path: Path) -> None:
-        """A convention referencing a deleted path should be flagged."""
-        project, lex_dir = _setup_project(tmp_path)
-        _make_convention_file(
-            lex_dir,
-            "CV-001",
-            "Old Convention",
-            body="This applies to files in `src/old_module/` which is important.",
-        )
-
-        checker = ConsistencyChecker(project, lex_dir)
-        instructions = checker.detect_stale_conventions(lex_dir / "conventions")
-        assert len(instructions) >= 1
-        assert instructions[0].action == "flag_stale_convention"
-        assert "src/old_module/" in instructions[0].detail
-
-    def test_valid_path_not_flagged(self, tmp_path: Path) -> None:
-        """A convention referencing an existing path should NOT be flagged."""
-        project, lex_dir = _setup_project(tmp_path)
-        (project / "src" / "auth").mkdir(parents=True)
-        _make_convention_file(
-            lex_dir,
-            "CV-001",
-            "Auth Convention",
-            body="This applies to src/auth/ directory.",
-        )
-
-        checker = ConsistencyChecker(project, lex_dir)
-        instructions = checker.detect_stale_conventions(lex_dir / "conventions")
-        assert len(instructions) == 0
-
-
-class TestPlaybookStaleness:
-    """Test playbook staleness detection."""
-
-    def test_stale_playbook_path_flagged(self, tmp_path: Path) -> None:
-        """A playbook referencing a deleted path should be flagged."""
-        project, lex_dir = _setup_project(tmp_path)
-        _make_playbook_file(
-            lex_dir,
-            "PB-001",
-            "Old Playbook",
-            body="Run tests in src/old_tests/ directory.",
-        )
-
-        checker = ConsistencyChecker(project, lex_dir)
-        instructions = checker.detect_stale_playbooks(lex_dir / "playbooks")
-        assert len(instructions) >= 1
-        assert instructions[0].action == "flag_stale_playbook"
-
-    def test_valid_playbook_path_not_flagged(self, tmp_path: Path) -> None:
-        """A playbook referencing an existing path should NOT be flagged."""
-        project, lex_dir = _setup_project(tmp_path)
-        (project / "src" / "utils").mkdir(parents=True)
-        _make_playbook_file(
-            lex_dir,
-            "PB-001",
-            "Valid Playbook",
-            body="Check src/utils/ for helpers.",
-        )
-
-        checker = ConsistencyChecker(project, lex_dir)
-        instructions = checker.detect_stale_playbooks(lex_dir / "playbooks")
-        assert len(instructions) == 0
 
 
 # ---------------------------------------------------------------------------

@@ -165,8 +165,8 @@ def playbook_verify(
     """Update a playbook's last_verified date to today."""
     from datetime import date  # noqa: PLC0415
 
+    from lexibrary.lifecycle.refresh import refresh_playbook_staleness  # noqa: PLC0415
     from lexibrary.playbooks.parser import parse_playbook_file  # noqa: PLC0415
-    from lexibrary.playbooks.serializer import serialize_playbook_file  # noqa: PLC0415
 
     project_root = require_project_root()
     playbooks_dir = project_root / ".lexibrary" / "playbooks"
@@ -191,11 +191,13 @@ def playbook_verify(
         error(f"Failed to parse playbook file: {pb_path.relative_to(project_root)}")
         raise typer.Exit(1)
 
-    today = date.today()
-    pb.frontmatter.last_verified = today
-    content = serialize_playbook_file(pb)
-    pb_path.write_text(content, encoding="utf-8")
+    # Delegate the frontmatter stamp + atomic write to the lifecycle helper
+    # so this CLI command and the ``lexi validate --fix --interactive`` flow
+    # share one implementation. The helper is ``_output``-free; user-facing
+    # messages live here.
+    refresh_playbook_staleness(pb_path)
 
+    today = date.today()
     info(f"Verified '{pb.frontmatter.title}' -- last_verified set to {today.isoformat()}")
 
 
@@ -221,10 +223,8 @@ def playbook_deprecate(
     ] = None,
 ) -> None:
     """Set a playbook's status to deprecated."""
-    from datetime import UTC, datetime  # noqa: PLC0415
-
+    from lexibrary.lifecycle.playbook_deprecation import deprecate_playbook  # noqa: PLC0415
     from lexibrary.playbooks.parser import parse_playbook_file  # noqa: PLC0415
-    from lexibrary.playbooks.serializer import serialize_playbook_file  # noqa: PLC0415
 
     project_root = require_project_root()
     playbooks_dir = project_root / ".lexibrary" / "playbooks"
@@ -249,32 +249,32 @@ def playbook_deprecate(
         error(f"Failed to parse playbook file: {pb_path.relative_to(project_root)}")
         raise typer.Exit(1)
 
+    # Pre-check on the parsed frontmatter: surface user-facing "already
+    # deprecated" before calling the (silent, idempotent) helper.
     if pb.frontmatter.status == "deprecated":
         error(f"Already deprecated: '{pb.frontmatter.title}'")
         raise typer.Exit(1)
 
-    # Update status, set deprecated_at timestamp, and optionally superseded_by
-    timestamp = datetime.now(tz=UTC).replace(microsecond=0)
-    pb.frontmatter.status = "deprecated"
-    pb.frontmatter.deprecated_at = timestamp
-
-    if superseded_by is not None:
-        pb.frontmatter.superseded_by = superseded_by
-
-    # If reason provided, append deprecation note to body
-    if reason is not None:
-        deprecation_note = f"\n\n> **Deprecated:** {reason}\n"
-        pb.body = (
-            pb.body.rstrip("\n") + deprecation_note if pb.body else deprecation_note.lstrip("\n")
-        )
-
-    content = serialize_playbook_file(pb)
-    pb_path.write_text(content, encoding="utf-8")
-
-    info(
-        f"Deprecated '{pb.frontmatter.title}' -- "
-        f"status set to deprecated at {timestamp.isoformat()}"
+    # Delegate the mutation to the lifecycle helper. The helper writes the
+    # frontmatter (status + deprecated_at + deprecated_reason + superseded_by)
+    # and, for playbooks, appends the ``> **Deprecated: {reason}`` body note.
+    # The helper is ``_output``-free; user-facing messages live here.
+    effective_reason = reason if reason is not None else "deprecated via CLI"
+    deprecate_playbook(
+        pb_path,
+        reason=effective_reason,
+        superseded_by=superseded_by,
     )
+
+    # Re-read the freshly-written file so we surface the authoritative
+    # deprecated_at timestamp in the confirmation message.
+    updated = parse_playbook_file(pb_path)
+    timestamp_iso = (
+        updated.frontmatter.deprecated_at.isoformat()
+        if updated is not None and updated.frontmatter.deprecated_at is not None
+        else ""
+    )
+    info(f"Deprecated '{pb.frontmatter.title}' -- status set to deprecated at {timestamp_iso}")
 
 
 # ---------------------------------------------------------------------------

@@ -22,10 +22,12 @@ EXPECTED_LOW_KEYS = {
     "reconcile_agent_interface_stable",
     "integrate_sidecar_comments",
     "delete_orphaned_comments",
-    "flag_stale_convention",
-    "flag_stale_playbook",
+    # ``flag_stale_convention`` / ``flag_stale_playbook`` retired in curator-4
+    # Group 22 (replaced by ``escalate_convention_stale`` /
+    # ``escalate_playbook_staleness`` listed below).
     "autofix_validation_issue",
-    "remove_orphan_zero_deps",
+    # ``remove_orphan_zero_deps`` retired in curator-4 Group 19 (replaced by
+    # the ``escalate_orphan_concepts`` escalation fixer listed below).
     "add_missing_reverse_dep",
     "consume_superseded_iwh",
     "write_reactive_iwh",
@@ -64,6 +66,14 @@ EXPECTED_LOW_KEYS = {
     # ``strip_unresolved_wikilink`` / ``fix_broken_wikilink_fuzzy``
     # handlers with an archivist-pipeline-backed validator fix.
     "fix_wikilink_resolution",
+    # curator-4 Group 19: four escalate_* fixers route to operator
+    # resolution (no artifact mutation; IWH breadcrumb only) plus the TTL
+    # variant of the IWH-cleanup fixer.
+    "escalate_orphan_concepts",
+    "escalate_stale_concept",
+    "escalate_convention_stale",
+    "escalate_playbook_staleness",
+    "fix_orphaned_iwh_signals",
 }
 
 EXPECTED_MEDIUM_KEYS = {
@@ -84,6 +94,9 @@ EXPECTED_MEDIUM_KEYS = {
     # Validation bridge — medium because deprecation workflow
     # deletes / mutates files (curator-fix Phase 2)
     "fix_orphaned_designs",
+    # curator-4 Group 19: token-budget condensation uses a lossy BAML
+    # transformation and consumes (counted) LLM budget.
+    "fix_lookup_token_budget_exceeded",
 }
 
 EXPECTED_HIGH_KEYS = {
@@ -152,15 +165,21 @@ class TestRiskTaxonomy:
         # wikilink hygiene handlers retired in Phase 4 Family D
         # (``strip_unresolved_wikilink``, ``fix_broken_wikilink_fuzzy``)
         # plus 1 replacement fixer added in the same group
-        # (``fix_wikilink_resolution``).
-        assert len(low_keys) == 32
+        # (``fix_wikilink_resolution``).  curator-4 Group 19: minus 1
+        # retired (``remove_orphan_zero_deps``) plus 5 added
+        # (``escalate_orphan_concepts``, ``escalate_stale_concept``,
+        # ``escalate_convention_stale``, ``escalate_playbook_staleness``,
+        # ``fix_orphaned_iwh_signals``).  curator-4 Group 22: minus 2
+        # retired (``flag_stale_convention``, ``flag_stale_playbook``).
+        assert len(low_keys) == 34
 
     def test_medium_risk_count(self) -> None:
         medium_keys = {k for k, v in RISK_TAXONOMY.items() if v.level == "medium"}
         # 14 previously minus 2 orphan/dead stubs removed by
         # curator-fix-2 group 1 (``rewrite_insights_section``,
-        # ``flag_conflicting_conventions``).
-        assert len(medium_keys) == 12
+        # ``flag_conflicting_conventions``).  curator-4 Group 19 adds 1
+        # (``fix_lookup_token_budget_exceeded``).
+        assert len(medium_keys) == 13
 
     def test_high_risk_count(self) -> None:
         high_keys = {k for k, v in RISK_TAXONOMY.items() if v.level == "high"}
@@ -193,8 +212,9 @@ class TestRiskTaxonomy:
             assert risk.function_ref, f"{key} has empty function_ref"
 
     def test_total_action_count(self) -> None:
-        # 32 Low + 12 Medium + 3 High = 47.
-        assert len(RISK_TAXONOMY) == 47
+        # 34 Low + 13 Medium + 3 High = 50 (curator-4 Group 22 delta: -2 Low
+        # retired — ``flag_stale_convention`` / ``flag_stale_playbook``).
+        assert len(RISK_TAXONOMY) == 50
 
 
 # ---------------------------------------------------------------------------

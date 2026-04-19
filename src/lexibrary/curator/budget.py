@@ -2,8 +2,19 @@
 
 Scans knowledge-layer files (design files, START_HERE.md, HANDOFF.md) for
 token budget overruns and provides an LLM-based condensation function.
-The write contract is NOT handled here -- the coordinator manages all
-file writes after condensation.
+
+Two condensation entry points are exposed:
+
+1. :func:`condense_file` (standalone) — reads a design file, invokes
+   ``CuratorCondenseFile`` BAML, re-serialises with
+   ``updated_by="archivist"`` and refreshed hashes, and atomically writes
+   the condensed body.  Designed for non-agent-session callers (validator
+   fixer + curator sub-agent under ``full`` autonomy).  Mirrors the
+   ``reconcile_deps_only`` extraction pattern introduced by
+   ``curator-freshness``.
+2. :func:`_call_baml_condense` (internal) — thin BAML wrapper returning
+   the raw condensed body.  Reused under ``propose``/``auto_low``
+   autonomy where the sub-agent reports a proposal without writing.
 
 Risk classification:
 - ``condense_file`` is **High** risk (lossy transformation).
@@ -13,16 +24,20 @@ Risk classification:
 
 from __future__ import annotations
 
-import contextlib
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+from lexibrary.artifacts.design_file_parser import parse_design_file
+from lexibrary.artifacts.design_file_serializer import serialize_design_file
+from lexibrary.ast_parser import compute_hashes
 from lexibrary.baml_client.async_client import BamlAsyncClient, b
+from lexibrary.config.schema import LexibraryConfig
 from lexibrary.curator.config import BudgetConfig, CuratorConfig
 from lexibrary.curator.models import SubAgentResult, TriageItem
 from lexibrary.tokenizer import TokenCounter, create_tokenizer
+from lexibrary.tokenizer.approximate import ApproximateCounter
 from lexibrary.utils.atomic import atomic_write
 from lexibrary.utils.paths import LEXIBRARY_DIR
 
@@ -64,7 +79,27 @@ class BudgetIssue:
 
 @dataclass
 class CondenseResult:
-    """Result of a condensation operation via the Budget Trimmer BAML function."""
+    """Outcome of a :func:`condense_file` call.
+
+    Token counts flank the BAML rewrite: ``before_tokens`` is the
+    approximate token count of the on-disk file at entry, and
+    ``after_tokens`` is the approximate count of the body written back
+    to disk.  ``trimmed_sections`` is the per-section manifest the BAML
+    prompt produced while condensing.
+    """
+
+    before_tokens: int
+    after_tokens: int
+    trimmed_sections: list[str] = field(default_factory=list)
+
+
+@dataclass
+class _BamlCondenseOutput:
+    """Internal result of an isolated BAML :func:`CuratorCondenseFile` call.
+
+    Used by both :func:`condense_file` (write path) and the curator
+    sub-agent's ``propose``/``auto_low`` branches (no-write path).
+    """
 
     condensed_content: str
     trimmed_sections: list[str]
@@ -193,31 +228,31 @@ def scan_token_budgets(
 # ---------------------------------------------------------------------------
 
 
-async def condense_file(
+async def _call_baml_condense(
     issue: BudgetIssue,
-    config: CuratorConfig,
     *,
     baml_client: BamlAsyncClient | None = None,
-) -> CondenseResult:
-    """Condense an over-budget file via the CuratorCondenseFile BAML function.
+) -> _BamlCondenseOutput:
+    """Invoke ``CuratorCondenseFile`` BAML for *issue* and return the raw output.
 
-    Reads the file content, calls the BAML function, and returns the result.
-    Does **NOT** write the file -- the coordinator handles writes.
+    Internal helper shared between :func:`condense_file` (write path) and
+    the curator sub-agent's propose/auto_low branches (no-write path).
 
     Parameters
     ----------
     issue:
         The ``BudgetIssue`` describing the over-budget file.
-    config:
-        Curator configuration (unused currently, reserved for future options).
     baml_client:
         Optional BAML async client for the LLM call.  When ``None``, the
         default ``b`` singleton is used.  Pass a mock in tests.
 
     Returns
     -------
-    CondenseResult
-        The condensed content and a manifest of what was trimmed.
+    _BamlCondenseOutput
+        ``success=True`` with condensed content + trimmed sections on a
+        successful call, ``success=False`` with empty fields on read or
+        BAML failure.  The helper intentionally does not raise — it
+        converts failures into a typed result so callers can branch.
     """
     client = baml_client if baml_client is not None else b
 
@@ -225,7 +260,7 @@ async def condense_file(
         file_content = issue.path.read_text(encoding="utf-8")
     except OSError as exc:
         logger.error("Failed to read %s: %s", issue.path, exc)
-        return CondenseResult(
+        return _BamlCondenseOutput(
             condensed_content="",
             trimmed_sections=[],
             success=False,
@@ -238,45 +273,164 @@ async def condense_file(
             section_priority_hints=_DEFAULT_PRIORITY_HINTS,
         )
 
-        return CondenseResult(
+        return _BamlCondenseOutput(
             condensed_content=output.condensed_content,
             trimmed_sections=list(output.trimmed_sections),
             success=True,
         )
     except Exception as exc:
         logger.error("BAML CuratorCondenseFile failed for %s: %s", issue.path, exc)
-        return CondenseResult(
+        return _BamlCondenseOutput(
             condensed_content="",
             trimmed_sections=[],
             success=False,
         )
 
 
+async def condense_file(
+    design_path: Path,
+    project_root: Path,
+    config: LexibraryConfig,
+    *,
+    baml_client: BamlAsyncClient | None = None,
+) -> CondenseResult:
+    """Condense an over-budget design file and persist the result atomically.
+
+    Standalone helper — no curator agent session required.  Mirrors the
+    ``reconcile_deps_only`` extraction pattern introduced by
+    ``curator-freshness``.  The existing curator budget sub-agent
+    delegates its single-file condensation step here under ``full``
+    autonomy; :func:`lexibrary.validator.fixes.fix_lookup_token_budget_exceeded`
+    calls this helper directly.
+
+    The helper:
+
+    1. Reads *design_path* and measures its current token count using the
+       :class:`~lexibrary.tokenizer.approximate.ApproximateCounter`.
+    2. Invokes the ``CuratorCondenseFile`` BAML function with the default
+       priority hints (Interface, Dependencies, Insights preserved in
+       full).
+    3. Parses the condensed body, flips ``frontmatter.updated_by`` to
+       ``"archivist"`` (precedent: ``curator-freshness`` non-agent-session
+       writes set ``archivist`` rather than ``curator``), and refreshes
+       ``metadata.source_hash`` / ``metadata.interface_hash`` from the
+       current on-disk source file.
+    4. Re-serialises (:func:`serialize_design_file` recomputes
+       ``metadata.design_hash`` from the rendered body) and atomically
+       writes the result to *design_path*.
+    5. Recomputes the token count after the write and returns both
+       counts plus the BAML-reported trimmed-section manifest.
+
+    Parameters
+    ----------
+    design_path:
+        Absolute path to the design file under ``.lexibrary/designs/``.
+    project_root:
+        Absolute project root.  Used to resolve the source file from
+        the design file's ``source_path`` for hash recomputation.
+    config:
+        Full :class:`~lexibrary.config.schema.LexibraryConfig`.  The
+        helper reads ``config.curator.budget.token_limits.design_file``
+        as the BAML ``budget_target``.
+    baml_client:
+        Optional BAML async client.  When ``None``, the default ``b``
+        singleton is used.  Pass a mock in tests.
+
+    Returns
+    -------
+    CondenseResult
+        ``before_tokens``/``after_tokens`` around the rewrite plus the
+        trimmed-section manifest from BAML.
+
+    Raises
+    ------
+    OSError
+        If the design file cannot be read or the atomic write fails.
+    RuntimeError
+        If the BAML call raises or the condensed body cannot be parsed
+        as a valid design file.  The helper propagates failure so the
+        caller (curator sub-agent or validator fixer) can convert it to
+        a typed result with a structured error message.
+    """
+    # 1. Read current content + measure token count at entry.
+    counter = ApproximateCounter()
+    original_content = design_path.read_text(encoding="utf-8")
+    before_tokens = counter.count(original_content)
+
+    # 2. Call BAML.  The design-file budget target drives how aggressively
+    #    the BAML prompt trims.
+    budget_target = config.curator.budget.token_limits.design_file
+    issue = BudgetIssue(
+        path=design_path,
+        current_tokens=before_tokens,
+        budget_target=budget_target,
+        file_type="design_file",
+    )
+    output = await _call_baml_condense(issue, baml_client=baml_client)
+    if not output.success:
+        raise RuntimeError(f"BAML CuratorCondenseFile failed for {design_path}")
+
+    # 3. Parse the condensed body.  The BAML prompt is expected to return
+    #    a fully-formed design file (YAML frontmatter + H1 + sections +
+    #    HTML comment footer).  Write the raw output to a sibling temp
+    #    file so we can use :func:`parse_design_file` — which takes a
+    #    Path — then mutate and re-serialise before the final atomic
+    #    write.  The temp file is unlinked regardless of success.
+    import tempfile  # noqa: PLC0415 — keep top-of-file imports narrow
+
+    tmp_fd, tmp_name = tempfile.mkstemp(
+        suffix=".condense.tmp",
+        dir=design_path.parent,
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with open(tmp_fd, "w", encoding="utf-8") as fh:
+            fh.write(output.condensed_content)
+
+        parsed = parse_design_file(tmp_path)
+        if parsed is None:
+            raise RuntimeError(
+                f"condense_file: BAML output for {design_path} is not a valid design file"
+            )
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+    # 4. Flip authorship + refresh hashes from the current on-disk source.
+    parsed.frontmatter.updated_by = "archivist"
+    source_abs = project_root / parsed.source_path
+    try:
+        fresh_source_hash, fresh_interface_hash = compute_hashes(source_abs)
+    except Exception:
+        # Source may have been deleted since the design was generated.
+        # Fall back to the design's existing hashes so the rewrite still
+        # captures the condensed body; callers get a valid file either
+        # way.  Logged for operator visibility.
+        logger.warning(
+            "condense_file: compute_hashes failed for %s; preserving existing "
+            "source_hash/interface_hash",
+            source_abs,
+        )
+    else:
+        parsed.metadata.source_hash = fresh_source_hash
+        parsed.metadata.interface_hash = fresh_interface_hash
+
+    # 5. Re-serialise (this recomputes metadata.design_hash from the
+    #    rendered body) and atomic-write to the final path.
+    serialised = serialize_design_file(parsed)
+    atomic_write(design_path, serialised)
+
+    after_tokens = counter.count(serialised)
+    return CondenseResult(
+        before_tokens=before_tokens,
+        after_tokens=after_tokens,
+        trimmed_sections=list(output.trimmed_sections),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Dispatcher entry point (Phase 1.5)
 # ---------------------------------------------------------------------------
-
-
-def _write_condensed_file(file_path: Path, condensed_content: str) -> None:
-    """Write condensed content to a design file with updated metadata.
-
-    Uses ``atomic_write()``.  For design files the frontmatter's
-    ``updated_by`` field should already have been reset to
-    ``"curator"`` by the BAML function output; this helper just writes
-    the new content atomically.
-    """
-    from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
-        parse_design_file_frontmatter,
-    )
-
-    fm = None
-    with contextlib.suppress(Exception):
-        fm = parse_design_file_frontmatter(file_path)
-
-    if fm is not None:
-        atomic_write(file_path, condensed_content)
-    else:
-        atomic_write(file_path, condensed_content)
 
 
 async def dispatch_budget_condense(
@@ -285,13 +439,14 @@ async def dispatch_budget_condense(
 ) -> SubAgentResult:
     """Dispatch a budget issue to the Budget Trimmer sub-agent.
 
-    Under ``full`` autonomy the condensed content is written to disk
-    via ``atomic_write()`` with the BAML-produced content.  Under
-    ``auto_low`` or ``propose`` the condensation is proposed only
-    (returned in the result message).
-
-    Extracted from :class:`Coordinator._dispatch_budget_condense`
-    (Phase 1.5 dispatcher refactor).
+    Under ``full`` autonomy the per-file condensation is delegated to
+    the standalone :func:`condense_file` helper, which runs BAML and
+    atomically writes the condensed body.  Under ``auto_low`` or
+    ``propose`` this dispatcher calls :func:`_call_baml_condense`
+    directly (no write) and reports the proposal.  The sub-agent keeps
+    its autonomy gating, event emission, and ``llm_calls`` counter
+    plumbing; only the BAML-call + write step moved into
+    :func:`condense_file` (Phase 4 of ``curator-4``).
     """
     budget_item = item.budget_item
     if budget_item is None:
@@ -302,6 +457,42 @@ async def dispatch_budget_condense(
             message="No budget item available for condensation",
         )
 
+    autonomy = ctx.config.curator.autonomy
+
+    # Under full autonomy, delegate everything (BAML + write) to the
+    # standalone helper.  The helper refreshes hashes and stamps
+    # ``updated_by="archivist"`` per the curator-freshness precedent.
+    if autonomy == "full":
+        try:
+            result = await condense_file(
+                budget_item.path,
+                ctx.project_root,
+                ctx.config,
+            )
+        except Exception as exc:
+            ctx.summary.add("dispatch", exc, path=str(budget_item.path))
+            return SubAgentResult(
+                success=False,
+                action_key="condense_file",
+                path=budget_item.path,
+                message=f"Budget condensation error: {exc}",
+                llm_calls=1,
+            )
+
+        return SubAgentResult(
+            success=True,
+            action_key="condense_file",
+            path=budget_item.path,
+            message=(
+                f"Condensed from {result.before_tokens} to "
+                f"~{result.after_tokens} tokens; "
+                f"trimmed: {', '.join(result.trimmed_sections)}"
+            ),
+            llm_calls=1,
+        )
+
+    # Under auto_low / propose, call BAML but do NOT write.  The
+    # proposal is surfaced via the SubAgentResult message.
     issue = BudgetIssue(
         path=budget_item.path,
         current_tokens=budget_item.current_tokens,
@@ -310,7 +501,7 @@ async def dispatch_budget_condense(
     )
 
     try:
-        condense_result = await condense_file(issue, ctx.config.curator)
+        output = await _call_baml_condense(issue)
     except Exception as exc:
         ctx.summary.add("dispatch", exc, path=str(budget_item.path))
         return SubAgentResult(
@@ -320,7 +511,7 @@ async def dispatch_budget_condense(
             message=f"Budget condensation error: {exc}",
         )
 
-    if not condense_result.success:
+    if not output.success:
         return SubAgentResult(
             success=False,
             action_key="condense_file",
@@ -329,34 +520,6 @@ async def dispatch_budget_condense(
             llm_calls=1,
         )
 
-    # Under full autonomy, write the condensed file
-    autonomy = ctx.config.curator.autonomy
-    if autonomy == "full":
-        try:
-            _write_condensed_file(budget_item.path, condense_result.condensed_content)
-        except Exception as exc:
-            ctx.summary.add("dispatch", exc, path=str(budget_item.path))
-            return SubAgentResult(
-                success=False,
-                action_key="condense_file",
-                path=budget_item.path,
-                message=f"Failed to write condensed file: {exc}",
-                llm_calls=1,
-            )
-
-        return SubAgentResult(
-            success=True,
-            action_key="condense_file",
-            path=budget_item.path,
-            message=(
-                f"Condensed from {budget_item.current_tokens} to "
-                f"~{budget_item.budget_target} tokens; "
-                f"trimmed: {', '.join(condense_result.trimmed_sections)}"
-            ),
-            llm_calls=1,
-        )
-
-    # Under auto_low or propose, just report the proposal
     return SubAgentResult(
         success=True,
         action_key="propose_condensation",
@@ -364,7 +527,7 @@ async def dispatch_budget_condense(
         message=(
             f"Proposed condensation from {budget_item.current_tokens} to "
             f"~{budget_item.budget_target} tokens; "
-            f"would trim: {', '.join(condense_result.trimmed_sections)}"
+            f"would trim: {', '.join(output.trimmed_sections)}"
         ),
         llm_calls=1,
     )

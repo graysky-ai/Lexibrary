@@ -1,0 +1,6 @@
+comments:
+- body: 'curator-4: soft-deprecate (deprecate_convention) is now a reusable primitive,
+    not CLI-only. Shared between lexi validate --fix --interactive and lexictl curate
+    resolve. ConventionFileFrontmatter has no superseded_by, so the helper signature
+    omits it. Idempotent on already-deprecated input.'
+  date: '2026-04-19T03:01:12.153025Z'

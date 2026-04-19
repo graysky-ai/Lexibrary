@@ -3,10 +3,11 @@
 Provides a registry of fixers keyed by check name. Only auto-fixable
 checks have entries: ``hash_freshness``, ``orphan_artifacts``,
 ``aindex_coverage``, ``orphaned_aindex``, ``orphaned_iwh``,
-``orphaned_designs``, ``deprecated_ttl``, ``bidirectional_deps``,
-``wikilink_resolution``, ``duplicate_slugs``, and ``duplicate_aliases``.
-The last two are propose-only — they emit a "requires manual resolution"
-result rather than mutating disk.
+``orphaned_iwh_signals``, ``orphaned_designs``, ``deprecated_ttl``,
+``bidirectional_deps``, ``wikilink_resolution``,
+``lookup_token_budget_exceeded``, ``duplicate_slugs``, and
+``duplicate_aliases``. The last two are propose-only — they emit a
+"requires manual resolution" result rather than mutating disk.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import threading
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 from lexibrary.config.schema import LexibraryConfig
 from lexibrary.utils.paths import DESIGNS_DIR
@@ -26,6 +27,20 @@ from lexibrary.validator.report import ValidationIssue
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+# Checks routed through the escalate_* fixer family (curator-4 Group 15).
+# These fixers mutate no artifact — they write an IWH signal describing the
+# pending decision when running autonomously, and the bridge in
+# ``curator.validation_fixers`` maps the result to ``outcome="escalation_required"``
+# so the coordinator can surface a ``PendingDecision`` entry in its report.
+ESCALATION_CHECKS: frozenset[str] = frozenset(
+    {
+        "orphan_concepts",
+        "stale_concept",
+        "convention_stale",
+        "playbook_staleness",
+    }
+)
 
 
 def _run_sync(coro: Coroutine[Any, Any, T]) -> T:
@@ -63,12 +78,25 @@ def _run_sync(coro: Coroutine[Any, Any, T]) -> T:
 
 @dataclass
 class FixResult:
-    """Result from attempting to auto-fix a validation issue."""
+    """Result from attempting to auto-fix a validation issue.
+
+    The optional ``outcome_hint`` field lets the bridge in
+    ``curator.validation_fixers.fix_validation_issue`` distinguish between
+    a plain "did not fix" outcome and a deliberate escalation (used by the
+    curator-4 ``escalate_*`` fixer family — see :data:`ESCALATION_CHECKS`).
+    When ``outcome_hint == "escalation_required"``, the bridge sets
+    ``SubAgentResult.outcome = "escalation_required"`` and the coordinator
+    captures a ``PendingDecision`` entry referencing ``iwh_path`` (when
+    present) in ``CuratorReport.pending_decisions``.
+    """
 
     check: str
     path: Path
     fixed: bool
     message: str
+    llm_calls: int = 0
+    outcome_hint: Literal["escalation_required"] | None = None
+    iwh_path: Path | None = None
 
 
 def fix_hash_freshness(
@@ -343,6 +371,123 @@ def fix_orphaned_iwh(
         path=iwh_path,
         fixed=True,
         message=f"deleted orphaned .iwh file: {issue.artifact}",
+    )
+
+
+def fix_orphaned_iwh_signals(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Delete an IWH signal whose age exceeds ``config.iwh.ttl_hours``.
+
+    Distinct from :func:`fix_orphaned_iwh`, which targets signals whose
+    source directory has disappeared. This fixer targets *expired* signals
+    — structurally valid ``.iwh`` files whose ``created`` timestamp has
+    aged past the configured TTL. IWH signals are intentionally ephemeral,
+    so deletion is the intended remedy.
+
+    Behaviour:
+        - If the file no longer exists, returns ``fixed=False`` with
+          message "already consumed".
+        - If the file is unparseable, returns ``fixed=False`` with message
+          "parse error" and leaves the file untouched (orphaned-iwh fixer
+          handles structural orphans).
+        - If the signal is now within TTL (because TTL was raised since
+          detection), returns ``fixed=False`` with message "signal within
+          TTL".
+        - If ``config.validator.fix_orphaned_iwh_signals_delete`` is
+          ``False``, returns ``fixed=False`` with message
+          "auto-delete disabled by config".
+        - Otherwise deletes the file and walks up empty parent directories
+          under ``.lexibrary/designs/`` (stopping at ``designs_dir``).
+
+    Args:
+        issue: The validation issue describing the expired IWH signal.
+        project_root: Root directory of the project.
+        config: Project configuration (reads ``iwh.ttl_hours`` and
+            ``validator.fix_orphaned_iwh_signals_delete``).
+
+    Returns:
+        A FixResult indicating whether the fix succeeded.
+    """
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from lexibrary.iwh.parser import parse_iwh  # noqa: PLC0415
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    lexibrary_dir = project_root / LEXIBRARY_DIR
+    designs_dir = lexibrary_dir / DESIGNS_DIR
+
+    # issue.artifact is relative to lexibrary_dir, e.g. "designs/src/stale/.iwh"
+    iwh_path = lexibrary_dir / issue.artifact
+    if not iwh_path.exists():
+        return FixResult(
+            check=issue.check,
+            path=iwh_path,
+            fixed=False,
+            message="already consumed",
+        )
+
+    parsed = parse_iwh(iwh_path)
+    if parsed is None:
+        # Unparseable — do NOT delete. Leave for the orphaned_iwh pathway.
+        return FixResult(
+            check=issue.check,
+            path=iwh_path,
+            fixed=False,
+            message="parse error",
+        )
+
+    # Re-check TTL at fix time: configuration may have changed since the
+    # issue was detected, or the signal may be within the current window.
+    ttl_hours = config.iwh.ttl_hours
+    created = parsed.created
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    age_hours = (datetime.now(tz=UTC) - created).total_seconds() / 3600
+    if ttl_hours <= 0 or age_hours <= ttl_hours:
+        return FixResult(
+            check=issue.check,
+            path=iwh_path,
+            fixed=False,
+            message="signal within TTL",
+        )
+
+    if not config.validator.fix_orphaned_iwh_signals_delete:
+        return FixResult(
+            check=issue.check,
+            path=iwh_path,
+            fixed=False,
+            message="auto-delete disabled by config",
+        )
+
+    try:
+        iwh_path.unlink()
+    except OSError as exc:
+        return FixResult(
+            check=issue.check,
+            path=iwh_path,
+            fixed=False,
+            message=f"failed to delete .iwh file: {exc}",
+        )
+
+    # Clean up empty parent directories up to (but not including) designs root
+    parent = iwh_path.parent
+    while parent != designs_dir and parent.is_dir():
+        try:
+            if any(parent.iterdir()):
+                break
+            parent.rmdir()
+            parent = parent.parent
+        except OSError:
+            break
+
+    return FixResult(
+        check=issue.check,
+        path=iwh_path,
+        fixed=True,
+        message=f"deleted expired IWH ({int(age_hours)}h old)",
     )
 
 
@@ -725,6 +870,137 @@ def fix_wikilink_resolution(
         path=artifact_path,
         fixed=True,
         message=f"re-generated design file to resolve wikilinks: {issue.artifact}",
+        llm_calls=1,
+    )
+
+
+def fix_lookup_token_budget_exceeded(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Condense an over-budget design file via ``curator.budget.condense_file``.
+
+    Curator-4 Phase 4 fixer for ``lookup_token_budget_exceeded`` info-severity
+    issues.  The check is emitted by
+    :func:`lexibrary.validator.checks.check_lookup_token_budget_exceeded`
+    when a single design file consumes the entire
+    ``token_budgets.lookup_total_tokens`` budget (at which point
+    supplementary lookup sections — known issues, IWH signals, links —
+    are always truncated).
+    The fixer calls the standalone :func:`lexibrary.curator.budget.condense_file`
+    helper (extracted in curator-4 Group 11) to rewrite the design-file
+    body with ``updated_by="archivist"`` and refreshed hashes.
+    Gated behind the ``config.validator.fix_lookup_token_budget_condense``
+    kill-switch (defaults to ``False``) because condensation mutates
+    content and consumes LLM budget.
+
+    Args:
+        issue: The ``lookup_token_budget_exceeded`` validation issue.
+            ``issue.artifact`` is a path relative to ``.lexibrary/``
+            (e.g. ``designs/src/foo.py.md``) — matching the format
+            emitted by the check.
+        project_root: Absolute project root.  Forwarded to ``condense_file``
+            for source-hash recomputation.
+        config: Project configuration.  Reads
+            ``config.token_budgets.lookup_total_tokens`` for the re-count
+            threshold and ``config.validator.fix_lookup_token_budget_condense``
+            as the kill-switch.
+
+    Returns:
+        A :class:`FixResult` describing the outcome.  ``fixed=True``
+        (with ``llm_calls=1``) when the file condensed below budget;
+        ``fixed=False`` with a descriptive message for the several
+        no-op/failure paths (under budget at fix time, kill-switch off,
+        condensation did not reduce enough, BAML raised).
+    """
+    from lexibrary.curator.budget import condense_file  # noqa: PLC0415
+    from lexibrary.tokenizer.approximate import ApproximateCounter  # noqa: PLC0415
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    # ``issue.artifact`` is relative to ``.lexibrary/`` (e.g. ``designs/src/foo.py.md``).
+    lexibrary_dir = project_root / LEXIBRARY_DIR
+    design_path = lexibrary_dir / issue.artifact
+
+    if not design_path.exists():
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            llm_calls=0,
+            message=f"design file not found: {issue.artifact}",
+        )
+
+    budget = config.token_budgets.lookup_total_tokens
+    counter = ApproximateCounter()
+
+    # (ii) Re-count tokens — the file may have been trimmed since detection.
+    try:
+        current_content = design_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            llm_calls=0,
+            message=f"could not read design file: {exc}",
+        )
+    current_tokens = counter.count(current_content)
+    if current_tokens <= budget:
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            llm_calls=0,
+            message="file fits budget now",
+        )
+
+    # (iii) Kill-switch gate — defaults to False per Group 1 config addition.
+    if not config.validator.fix_lookup_token_budget_condense:
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            llm_calls=0,
+            message=(
+                "auto-condense disabled by config; increase "
+                "token_budgets.lookup_total_tokens or trim manually"
+            ),
+        )
+
+    # (iv) Invoke the async condense_file helper via the _run_sync bridge.
+    try:
+        result = _run_sync(condense_file(design_path, project_root, config))
+    except Exception as exc:
+        # BAML failure (or any other) — we cannot tell how much of the LLM
+        # call completed, so conservatively charge zero (parity with the
+        # "fixer raised" branch in curator.validation_fixers.fix_validation_issue).
+        logger.exception("Failed to fix lookup_token_budget_exceeded for %s", issue.artifact)
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            llm_calls=0,
+            message=f"error: {exc}",
+        )
+
+    # (v/vi) Re-count after write — if still over budget, return failure but
+    # leave the condensed body on disk (the rewrite still improved things).
+    if result.after_tokens > budget:
+        return FixResult(
+            check=issue.check,
+            path=design_path,
+            fixed=False,
+            llm_calls=1,
+            message="condensation did not reduce below budget",
+        )
+
+    return FixResult(
+        check=issue.check,
+        path=design_path,
+        fixed=True,
+        llm_calls=1,
+        message=(f"condensed from {result.before_tokens} to {result.after_tokens} tokens"),
     )
 
 
@@ -776,6 +1052,287 @@ def fix_duplicate_aliases(
     )
 
 
+# ---------------------------------------------------------------------------
+# Escalation fixer family (curator-4 Group 15)
+# ---------------------------------------------------------------------------
+
+
+def _is_autonomous_context(config: LexibraryConfig) -> bool:
+    """Return True when the current fixer invocation is autonomous.
+
+    The interactive CLI flow (``lexi validate --fix --interactive``)
+    short-circuits ``FIXERS`` dispatch for checks in
+    :data:`ESCALATION_CHECKS` BEFORE reaching this helper, so any
+    invocation that gets here is autonomous by construction. The TTY
+    check is kept as a belt-and-braces guard — if ``sys.stdout`` is a
+    TTY AND no caller short-circuited, something is wrong; returning
+    False suppresses the IWH write in that edge case. ``config`` is
+    accepted for forward compatibility (future heuristics may inspect
+    configured autonomy markers) but is currently unused.
+    """
+    import sys  # noqa: PLC0415
+
+    del config  # currently unused — reserved for future heuristics
+    return not sys.stdout.isatty()
+
+
+def _resolve_concept_path(
+    issue: ValidationIssue,
+    project_root: Path,
+) -> Path | None:
+    """Resolve the concept .md path from an ``orphan_concepts``/``stale_concept`` issue.
+
+    The checks emit ``issue.artifact`` as ``"concepts/<title>"`` (no ``.md``
+    suffix — see ``check_orphan_concepts`` and ``check_stale_concepts``).
+    The on-disk filename is ``<id>-<slug>.md``, so we look up the concept
+    by title via :class:`ConceptIndex` and return its ``file_path``.
+    """
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+    from lexibrary.wiki.index import ConceptIndex  # noqa: PLC0415
+
+    concepts_dir = project_root / LEXIBRARY_DIR / "concepts"
+    if not concepts_dir.is_dir():
+        return None
+
+    artifact = issue.artifact
+    # Strip the "concepts/" prefix if present; the remainder is the title.
+    title = artifact
+    prefix = "concepts/"
+    if title.startswith(prefix):
+        title = title[len(prefix) :]
+
+    index = ConceptIndex.load(concepts_dir)
+    concept = index.find(title)
+    if concept is None or concept.file_path is None:
+        return None
+    return concept.file_path
+
+
+def _write_escalation_iwh(
+    *,
+    artifact_path: Path,
+    body: str,
+) -> Path | None:
+    """Write an IWH signal describing an escalation to the artifact's parent dir.
+
+    Mirrors the pattern used by ``curator.iwh_actions.write_reactive_iwh``:
+    scope is ``"warning"`` (the closest value in the existing ``IWHScope``
+    Literal — there is no ``"escalation"`` value in the schema), author
+    is ``"curator"``. Returns the IWH path on success, or ``None`` if the
+    write fails.
+    """
+    from lexibrary.iwh.writer import write_iwh  # noqa: PLC0415
+
+    directory = artifact_path.parent
+    try:
+        return write_iwh(directory, author="curator", scope="warning", body=body)
+    except OSError as exc:
+        logger.warning("Failed to write escalation IWH at %s: %s", directory, exc)
+        return None
+
+
+def escalate_orphan_concepts(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Queue an ``orphan_concepts`` issue for operator resolution.
+
+    Writes no mutation to the concept artifact. When running autonomously
+    (coordinator path), writes an IWH signal at the concept's parent
+    directory describing the pending decision. Always returns a
+    ``FixResult`` with ``outcome_hint="escalation_required"`` so the
+    bridge surfaces a ``PendingDecision`` entry in the curator report.
+
+    Args:
+        issue: The ``orphan_concepts`` validation issue.
+            ``issue.artifact`` is ``"concepts/<title>"`` (no ``.md``).
+        project_root: Absolute project root.
+        config: Project configuration.
+
+    Returns:
+        A :class:`FixResult` with ``fixed=False``, ``llm_calls=0``, and
+        ``outcome_hint="escalation_required"``. ``iwh_path`` is populated
+        only when an IWH signal was successfully written (autonomous runs).
+    """
+    concept_path = _resolve_concept_path(issue, project_root)
+    target = concept_path if concept_path is not None else project_root / issue.artifact
+
+    iwh_path: Path | None = None
+    if _is_autonomous_context(config) and concept_path is not None:
+        body = (
+            "escalation: orphan_concepts — concept has zero inbound "
+            "link-graph references\n"
+            f"Artifact: {issue.artifact}\n"
+            f"Message: {issue.message}\n"
+            "Suggested actions: ignore / deprecate / refresh"
+        )
+        iwh_path = _write_escalation_iwh(artifact_path=concept_path, body=body)
+
+    return FixResult(
+        check=issue.check,
+        path=target,
+        fixed=False,
+        llm_calls=0,
+        outcome_hint="escalation_required",
+        iwh_path=iwh_path,
+        message=f"escalation queued: orphan_concepts ({target.name})",
+    )
+
+
+def escalate_stale_concept(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Queue a ``stale_concept`` issue for operator resolution.
+
+    Re-scans ``linked_files`` at fix time to count missing entries for
+    an informational message (actual resolution — refresh or deprecate —
+    happens later via the interactive CLI or ``lexictl curate resolve``).
+    """
+    from lexibrary.wiki.parser import parse_concept_file  # noqa: PLC0415
+
+    concept_path = _resolve_concept_path(issue, project_root)
+    target = concept_path if concept_path is not None else project_root / issue.artifact
+
+    # Re-count missing linked_files at fix time for the message body.
+    missing_count = 0
+    if concept_path is not None:
+        parsed = parse_concept_file(concept_path)
+        if parsed is not None:
+            for file_ref in parsed.linked_files:
+                if not (project_root / file_ref).exists():
+                    missing_count += 1
+
+    iwh_path: Path | None = None
+    if _is_autonomous_context(config) and concept_path is not None:
+        body = (
+            "escalation: stale_concept — "
+            f"{missing_count} linked_files entries missing\n"
+            f"Artifact: {issue.artifact}\n"
+            f"Message: {issue.message}\n"
+            "Suggested actions: ignore / deprecate / refresh"
+        )
+        iwh_path = _write_escalation_iwh(artifact_path=concept_path, body=body)
+
+    return FixResult(
+        check=issue.check,
+        path=target,
+        fixed=False,
+        llm_calls=0,
+        outcome_hint="escalation_required",
+        iwh_path=iwh_path,
+        message=(
+            f"escalation queued: stale_concept ({target.name}) — "
+            f"{missing_count} missing linked_files"
+        ),
+    )
+
+
+def escalate_convention_stale(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Queue a ``convention_stale`` issue for operator resolution.
+
+    Lists the missing scope paths from the current convention in the
+    IWH body so the operator can decide between refreshing the scope
+    and deprecating the convention.
+    """
+    from lexibrary.artifacts.convention import split_scope  # noqa: PLC0415
+    from lexibrary.conventions.parser import parse_convention_file  # noqa: PLC0415
+    from lexibrary.utils.paths import LEXIBRARY_DIR  # noqa: PLC0415
+
+    # convention_stale emits artifact relative to .lexibrary/ (e.g.
+    # "conventions/foo.md"). See check_convention_stale in checks.py.
+    convention_path = project_root / LEXIBRARY_DIR / issue.artifact
+
+    missing_paths: list[str] = []
+    if convention_path.exists():
+        parsed = parse_convention_file(convention_path)
+        if parsed is not None:
+            for sp in split_scope(parsed.frontmatter.scope):
+                scope_dir = project_root / sp
+                if not scope_dir.is_dir():
+                    missing_paths.append(sp)
+
+    missing_detail = ", ".join(missing_paths) if missing_paths else "(none)"
+
+    iwh_path: Path | None = None
+    if _is_autonomous_context(config) and convention_path.exists():
+        body = (
+            "escalation: convention_stale — missing scope path(s): "
+            f"{missing_detail}\n"
+            f"Artifact: {issue.artifact}\n"
+            f"Message: {issue.message}\n"
+            "Suggested actions: ignore / deprecate / refresh"
+        )
+        iwh_path = _write_escalation_iwh(artifact_path=convention_path, body=body)
+
+    return FixResult(
+        check=issue.check,
+        path=convention_path,
+        fixed=False,
+        llm_calls=0,
+        outcome_hint="escalation_required",
+        iwh_path=iwh_path,
+        message=(
+            f"escalation queued: convention_stale ({convention_path.name}) — "
+            f"missing scope: {missing_detail}"
+        ),
+    )
+
+
+def escalate_playbook_staleness(
+    issue: ValidationIssue,
+    project_root: Path,
+    config: LexibraryConfig,
+) -> FixResult:
+    """Queue a ``playbook_staleness`` issue for operator resolution.
+
+    Includes a delta from ``last_verified`` (when set) in the IWH body so
+    the operator can see how stale the playbook is at a glance.
+    """
+    from datetime import date  # noqa: PLC0415
+
+    from lexibrary.playbooks.parser import parse_playbook_file  # noqa: PLC0415
+
+    # playbook_staleness emits artifact relative to project_root
+    # (e.g. ".lexibrary/playbooks/foo.md"). See check_playbook_staleness.
+    playbook_path = project_root / issue.artifact
+
+    staleness_detail = "never verified"
+    if playbook_path.exists():
+        parsed = parse_playbook_file(playbook_path)
+        if parsed is not None and parsed.frontmatter.last_verified is not None:
+            delta_days = (date.today() - parsed.frontmatter.last_verified).days
+            staleness_detail = f"{delta_days} days since last_verified"
+
+    iwh_path: Path | None = None
+    if _is_autonomous_context(config) and playbook_path.exists():
+        body = (
+            f"escalation: playbook_staleness — {staleness_detail}\n"
+            f"Artifact: {issue.artifact}\n"
+            f"Message: {issue.message}\n"
+            "Suggested actions: ignore / deprecate / refresh"
+        )
+        iwh_path = _write_escalation_iwh(artifact_path=playbook_path, body=body)
+
+    return FixResult(
+        check=issue.check,
+        path=playbook_path,
+        fixed=False,
+        llm_calls=0,
+        outcome_hint="escalation_required",
+        iwh_path=iwh_path,
+        message=(
+            f"escalation queued: playbook_staleness ({playbook_path.name}) — {staleness_detail}"
+        ),
+    )
+
+
 # Checks whose fixers delete files from disk and therefore require user confirmation
 # before running in interactive mode.  This set is consumed by the CLI fix flow in
 # ``lexibrary.cli._shared._run_validate`` to gate a single y/n prompt before any
@@ -797,10 +1354,19 @@ FIXERS: dict[str, Callable[[ValidationIssue, Path, LexibraryConfig], FixResult]]
     "aindex_coverage": fix_aindex_coverage,
     "orphaned_aindex": fix_orphaned_aindex,
     "orphaned_iwh": fix_orphaned_iwh,
+    "orphaned_iwh_signals": fix_orphaned_iwh_signals,
     "orphaned_designs": fix_orphaned_designs,
     "deprecated_ttl": fix_deprecated_ttl,
     "bidirectional_deps": fix_bidirectional_deps,
     "wikilink_resolution": fix_wikilink_resolution,
+    "lookup_token_budget_exceeded": fix_lookup_token_budget_exceeded,
     "duplicate_slugs": fix_duplicate_slugs,
     "duplicate_aliases": fix_duplicate_aliases,
+    # curator-4: escalation fixers — members of ESCALATION_CHECKS.
+    # These fixers mutate no artifact; they write an IWH signal in autonomous
+    # runs and the bridge maps the outcome_hint to "escalation_required".
+    "orphan_concepts": escalate_orphan_concepts,
+    "stale_concept": escalate_stale_concept,
+    "convention_stale": escalate_convention_stale,
+    "playbook_staleness": escalate_playbook_staleness,
 }

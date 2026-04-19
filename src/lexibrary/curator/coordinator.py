@@ -31,6 +31,7 @@ from lexibrary.curator.models import (
     CuratorReport,
     DeprecationCollectItem,
     DispatchResult,
+    PendingDecision,
     SubAgentResult,
     TriageItem,
     TriageResult,
@@ -69,6 +70,19 @@ CHECK_TO_ACTION_KEY: dict[str, str] = {
     "duplicate_slugs": "fix_duplicate_slugs",
     "duplicate_aliases": "fix_duplicate_aliases",
     "wikilink_resolution": "fix_wikilink_resolution",
+    # curator-4 — four escalation routes + two operational fixers.  The
+    # escalate_* fixers write IWH signals in autonomous runs and set
+    # ``outcome="escalation_required"`` on the bridged SubAgentResult;
+    # the coordinator surfaces a ``PendingDecision`` entry in the report
+    # for each.  ``fix_lookup_token_budget_exceeded`` and
+    # ``fix_orphaned_iwh_signals`` are mechanical repairs that mirror the
+    # existing low-risk fixer family.
+    "orphan_concepts": "escalate_orphan_concepts",
+    "stale_concept": "escalate_stale_concept",
+    "convention_stale": "escalate_convention_stale",
+    "playbook_staleness": "escalate_playbook_staleness",
+    "lookup_token_budget_exceeded": "fix_lookup_token_budget_exceeded",
+    "orphaned_iwh_signals": "fix_orphaned_iwh_signals",
 }
 
 # Set of action keys recognised by the validation bridge router.  Includes the
@@ -2106,17 +2120,10 @@ class Coordinator:
         except Exception as exc:
             self.summary.add("collect", exc, path="design_dep_mismatch")
 
-        # Stale convention / playbook path refs.
-        try:
-            for instruction in checker.detect_stale_conventions(self.lexibrary_dir / "conventions"):
-                _append(instruction)
-        except Exception as exc:
-            self.summary.add("collect", exc, path="stale_conventions")
-        try:
-            for instruction in checker.detect_stale_playbooks(self.lexibrary_dir / "playbooks"):
-                _append(instruction)
-        except Exception as exc:
-            self.summary.add("collect", exc, path="stale_playbooks")
+        # Stale convention / playbook path refs retired in curator-4 Group 22
+        # — the validator's ``check_convention_stale`` /
+        # ``check_playbook_staleness`` checks now drive this concern via the
+        # escalation fixers (see ``CHECK_TO_ACTION_KEY`` for routing).
 
         # Promotable blocked IWH: scope-level (runs in both "scope" and
         # "full" modes).  The check walks ``.lexibrary/designs/`` for
@@ -2140,14 +2147,9 @@ class Coordinator:
         except Exception as exc:
             self.summary.add("collect", exc, path="domain_terms")
 
-        try:
-            for instruction in checker.detect_orphan_concepts(
-                self.lexibrary_dir / "concepts",
-                link_graph_available=result.link_graph_available,
-            ):
-                _append(instruction)
-        except Exception as exc:
-            self.summary.add("collect", exc, path="orphan_concepts")
+        # Orphan concept detection retired in curator-4 Group 21; replaced
+        # by the validator's ``check_orphan_concepts`` (with TTL honouring)
+        # and the ``escalate_orphan_concepts`` escalation fixer.
 
     def _build_wikilink_resolver(self) -> WikilinkResolver | None:
         """Build a :class:`WikilinkResolver` from the library layout.
@@ -2934,10 +2936,11 @@ class Coordinator:
         # mirror :data:`CONSISTENCY_ACTION_KEYS` values.
         handlers = {
             "delete_orphaned_comments": consistency_fixes.apply_orphaned_comments_delete,
-            "remove_orphan_zero_deps": consistency_fixes.apply_orphan_concept_delete,
             "add_missing_reverse_dep": consistency_fixes.apply_add_reverse_dep,
-            "flag_stale_convention": consistency_fixes.apply_flag_stale_convention,
-            "flag_stale_playbook": consistency_fixes.apply_flag_stale_playbook,
+            # ``flag_stale_convention`` / ``flag_stale_playbook`` retired in
+            # curator-4 Group 22 — replaced by the validator escalation fixers
+            # ``escalate_convention_stale`` / ``escalate_playbook_staleness``
+            # routed through ``CHECK_TO_ACTION_KEY``.
             "suggest_new_concept": consistency_fixes.apply_suggest_new_concept,
             "promote_blocked_iwh": consistency_fixes.apply_promote_blocked_iwh,
         }
@@ -3234,6 +3237,36 @@ class Coordinator:
         }
         trigger_value = trigger if trigger in valid_triggers else "on_demand"
 
+        # curator-4 Group 19: collect escalation results into
+        # ``pending_decisions``.  Every ``SubAgentResult`` with
+        # ``outcome == "escalation_required"`` was produced by one of the
+        # four ``escalate_*`` validator fixers; the bridge (see
+        # ``curator.validation_fixers.fix_validation_issue``) threads the
+        # originating validator check name and the IWH signal path through
+        # the result so the report can surface a ``PendingDecision`` entry
+        # without re-inspecting the dispatch input.  ``suggested_actions``
+        # is fixed to ``["ignore", "deprecate", "refresh"]`` for all four
+        # escalation checks per the design spec.
+        pending_decisions: list[PendingDecision] = []
+        for d in dispatch.dispatched:
+            if d.outcome != "escalation_required":
+                continue
+            # Defensive: the bridge sets ``check`` on escalation outcomes.
+            # If somehow missing, skip the entry rather than crash the
+            # report — the ``dispatched_details`` list still carries the
+            # full record for post-run debugging.
+            if d.check is None:
+                continue
+            pending_decisions.append(
+                PendingDecision(
+                    check=d.check,
+                    path=d.path if d.path is not None else Path(""),
+                    message=d.message,
+                    suggested_actions=["ignore", "deprecate", "refresh"],
+                    iwh_path=d.iwh_path,
+                )
+            )
+
         report = CuratorReport(
             checked=len(triage.items),
             fixed=fixed,
@@ -3250,10 +3283,11 @@ class Coordinator:
             comments_flagged=comments_flagged,
             descriptions_audited=descriptions_audited,
             summaries_audited=summaries_audited,
-            schema_version=3,
+            schema_version=4,
             stubbed=stubbed,
             dispatched_details=dispatched_details,
             deferred_details=deferred_details,
+            pending_decisions=pending_decisions,
             trigger=trigger_value,  # type: ignore[arg-type]
             verification=verification,
         )
@@ -3297,6 +3331,10 @@ class Coordinator:
             "comments_flagged": report.comments_flagged,
             "descriptions_audited": report.descriptions_audited,
             "summaries_audited": report.summaries_audited,
+            # curator-4 Group 19: escalation queue.  Persisted so admins
+            # can replay operator decisions via ``lexictl curate resolve``
+            # (Group 18).
+            "pending_decisions": [pd.model_dump(mode="json") for pd in report.pending_decisions],
         }
         # Phase 5 (curator-fix): emit the post-sweep verification block only
         # when the feature is enabled and the delta was computed.  The key's

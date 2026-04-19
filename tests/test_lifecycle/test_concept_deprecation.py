@@ -15,9 +15,11 @@ from unittest.mock import patch
 from lexibrary.lifecycle.concept_deprecation import (
     ConceptDeletionResult,
     check_concept_ttl_expiry,
+    deprecate_concept,
     find_concept_references,
     hard_delete_expired_concepts,
 )
+from lexibrary.wiki.parser import parse_concept_file
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -511,3 +513,149 @@ class TestConceptDeletionResult:
         assert len(result.deleted) == 1
         assert len(result.skipped_referenced) == 1
         assert len(result.comments_deleted) == 1
+
+
+# ---------------------------------------------------------------------------
+# deprecate_concept()
+# ---------------------------------------------------------------------------
+
+
+class TestDeprecateConcept:
+    """Tests for the soft-deprecate helper ``deprecate_concept``."""
+
+    def test_active_to_deprecated_sets_four_fields(self, tmp_path: Path) -> None:
+        """Active concept -> deprecated: status, deprecated_at, deprecated_reason,
+        superseded_by."""
+        concept_path = _create_concept_file(
+            tmp_path,
+            "to-deprecate",
+            title="To Deprecate",
+            status="active",
+        )
+
+        deprecate_concept(
+            concept_path,
+            reason="no_inbound_links",
+            superseded_by="Scope Root",
+        )
+
+        reloaded = parse_concept_file(concept_path)
+        assert reloaded is not None
+        assert reloaded.frontmatter.status == "deprecated"
+        assert reloaded.frontmatter.deprecated_at is not None
+        # microsecond-zero invariant per spec
+        assert reloaded.frontmatter.deprecated_at.microsecond == 0
+        assert reloaded.frontmatter.deprecated_reason == "no_inbound_links"
+        assert reloaded.frontmatter.superseded_by == "Scope Root"
+
+    def test_active_to_deprecated_without_supersession(self, tmp_path: Path) -> None:
+        """reason only -- superseded_by stays None."""
+        concept_path = _create_concept_file(
+            tmp_path,
+            "plain-deprecate",
+            title="Plain Deprecate",
+            status="active",
+        )
+
+        deprecate_concept(concept_path, reason="merged")
+
+        reloaded = parse_concept_file(concept_path)
+        assert reloaded is not None
+        assert reloaded.frontmatter.status == "deprecated"
+        assert reloaded.frontmatter.deprecated_reason == "merged"
+        assert reloaded.frontmatter.superseded_by is None
+
+    def test_already_deprecated_is_noop(self, tmp_path: Path) -> None:
+        """Already deprecated -> no-op; deprecated_at unchanged, no raise."""
+        original_stamp = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
+        concept_path = _create_concept_file(
+            tmp_path,
+            "already-dep",
+            title="Already Deprecated",
+            status="deprecated",
+            deprecated_at=original_stamp,
+        )
+
+        # Should not raise ValueError -- idempotent no-op semantics.
+        deprecate_concept(
+            concept_path,
+            reason="different_reason",
+            superseded_by="Some Other Concept",
+        )
+
+        reloaded = parse_concept_file(concept_path)
+        assert reloaded is not None
+        assert reloaded.frontmatter.status == "deprecated"
+        # deprecated_at MUST be unchanged (preserves downstream TTL math).
+        assert reloaded.frontmatter.deprecated_at == original_stamp
+        # deprecated_reason MUST be unchanged from its pre-call value (None in
+        # this fixture -- the concept was deprecated but never had a reason
+        # recorded).
+        assert reloaded.frontmatter.deprecated_reason is None
+        # superseded_by MUST be unchanged.
+        assert reloaded.frontmatter.superseded_by is None
+
+    def test_unparseable_returns_none(self, tmp_path: Path) -> None:
+        """Unparseable file -> returns None without raising."""
+        concepts_dir = tmp_path / ".lexibrary" / "concepts"
+        concepts_dir.mkdir(parents=True)
+        bad_file = concepts_dir / "bad.md"
+        # A file that is not valid frontmatter at all.
+        bad_file.write_text("not valid yaml frontmatter", encoding="utf-8")
+        original_contents = bad_file.read_text(encoding="utf-8")
+
+        # Should return silently -- no raise.
+        deprecate_concept(bad_file, reason="whatever")
+
+        # Unparseable file is left untouched.
+        assert bad_file.read_text(encoding="utf-8") == original_contents
+
+    def test_atomic_write_leaves_no_temp_file(self, tmp_path: Path) -> None:
+        """Successful write leaves the concept at the target path and no temp
+        files lingering in the concepts dir."""
+        concept_path = _create_concept_file(
+            tmp_path,
+            "atomic-test",
+            title="Atomic Test",
+            status="active",
+        )
+
+        deprecate_concept(concept_path, reason="test_reason")
+
+        # Target file exists and is the only .md in the dir.
+        concepts_dir = concept_path.parent
+        md_files = sorted(concepts_dir.glob("*.md"))
+        assert md_files == [concept_path]
+        # No stray temp files from the atomic write.
+        tmp_files = list(concepts_dir.glob("*.tmp"))
+        assert tmp_files == []
+
+    def test_atomic_write_preserves_original_on_serializer_failure(self, tmp_path: Path) -> None:
+        """If serializer raises mid-write, the original file is untouched.
+
+        Simulates atomicity: ``atomic_write`` writes to a temp file then
+        ``os.replace``\\ s into the target.  If the serializer call itself
+        raises (before any write), the original must remain intact.
+        """
+        import contextlib  # noqa: PLC0415
+        import unittest.mock as _mock  # noqa: PLC0415
+
+        concept_path = _create_concept_file(
+            tmp_path,
+            "atomic-fail",
+            title="Atomic Fail",
+            status="active",
+        )
+        original_contents = concept_path.read_text(encoding="utf-8")
+
+        with (
+            _mock.patch(
+                "lexibrary.lifecycle.concept_deprecation.serialize_concept_file",
+                side_effect=RuntimeError("boom"),
+            ),
+            contextlib.suppress(RuntimeError),
+        ):
+            deprecate_concept(concept_path, reason="test")
+
+        # Original file content is byte-for-byte unchanged.
+        assert concept_path.read_text(encoding="utf-8") == original_contents

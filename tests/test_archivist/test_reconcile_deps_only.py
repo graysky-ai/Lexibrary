@@ -120,9 +120,7 @@ class TestReconcileDepsOnlyStale:
     """Stale Dependencies / Dependents get rewritten in place."""
 
     @pytest.mark.asyncio()
-    async def test_stale_lists_rewritten_and_flag_flipped(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_stale_lists_rewritten_and_flag_flipped(self, tmp_path: Path) -> None:
         project_root, lexibrary_dir = _seed_project(tmp_path)
         _seed_python_sources(project_root)
 
@@ -171,9 +169,7 @@ class TestReconcileDepsOnlyIdempotent:
     """Second call with no state change is a no-op (no rewrite)."""
 
     @pytest.mark.asyncio()
-    async def test_idempotent_second_call_does_not_rewrite(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_idempotent_second_call_does_not_rewrite(self, tmp_path: Path) -> None:
         project_root, lexibrary_dir = _seed_project(tmp_path)
         _seed_python_sources(project_root)
 

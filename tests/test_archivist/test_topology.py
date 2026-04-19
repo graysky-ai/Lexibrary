@@ -2837,9 +2837,7 @@ class TestMultiRootTopology:
         assert "BAML schemas" in baml_block
         assert "Python source code" not in baml_block
 
-    def test_project_sections_emitted_once_outside_root_wrappers(
-        self, tmp_path: Path
-    ) -> None:
+    def test_project_sections_emitted_once_outside_root_wrappers(self, tmp_path: Path) -> None:
         """``config`` and ``stats`` sections appear once, outside per-root wrappers."""
         self._seed_two_root_project(tmp_path)
         result_path = generate_raw_topology(tmp_path)

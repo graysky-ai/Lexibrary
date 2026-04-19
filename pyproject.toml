@@ -60,6 +60,9 @@ packages = ["src/lexibrary"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# `.env*` globs are excluded so pytest's rootdir walk does not `stat()` .env,
+# which is denied by the Claude Code macOS sandbox and aborts collection.
+addopts = "--ignore-glob=.env*"
 markers = [
     "benchmark: performance benchmark tests; opt in with `-m benchmark`, skip with `-m 'not benchmark'`",
 ]

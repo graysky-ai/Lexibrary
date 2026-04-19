@@ -1,12 +1,18 @@
-"""Hard deletion of expired deprecated conventions.
+"""Convention deprecation primitives.
 
-Provides TTL expiry checking and hard deletion of deprecated convention
-``.md`` files and their sibling ``.comments.yaml`` files.  Designed to
-be called from the ``lexictl update`` pipeline alongside the existing
-design-file and concept deprecation passes.
+Provides both *soft-deprecate* (frontmatter status flip) and
+*hard-delete* (TTL-expired removal) operations for convention files.
+
+Soft-deprecate is a reusable primitive shared by the CLI
+(``lexi convention deprecate``) and the validator escalation flow
+(`lexi validate --fix --interactive`).  Hard-delete is invoked from the
+``lexictl update`` pipeline to reap conventions whose deprecation TTL
+has expired.
 
 Public API
 ----------
+- :func:`deprecate_convention` -- soft-deprecate: flip status, stamp
+  ``deprecated_at`` and ``deprecated_reason`` in frontmatter
 - :func:`check_convention_ttl_expiry` -- check if a deprecated convention
   has exceeded its TTL
 - :func:`hard_delete_expired_conventions` -- delete expired conventions
@@ -17,11 +23,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from lexibrary.conventions.parser import parse_convention_file
+from lexibrary.conventions.serializer import serialize_convention_file
 from lexibrary.lifecycle.convention_comments import convention_comment_path
 from lexibrary.lifecycle.deprecation import _count_commits_since
+from lexibrary.utils.atomic import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +49,58 @@ class ConventionDeletionResult:
 
     comments_deleted: list[Path]
     """Paths of deleted ``.comments.yaml`` files."""
+
+
+# ---------------------------------------------------------------------------
+# Soft-deprecate
+# ---------------------------------------------------------------------------
+
+
+def deprecate_convention(
+    convention_path: Path,
+    *,
+    reason: str,
+) -> None:
+    """Mark a convention as deprecated by updating its frontmatter.
+
+    Sets ``status`` to ``"deprecated"``, ``deprecated_at`` to the current
+    UTC timestamp (seconds precision), and ``deprecated_reason`` to
+    *reason*.  The convention file is re-serialized and written atomically
+    (temp file + ``os.replace``).
+
+    ``ConventionFileFrontmatter`` has no ``superseded_by`` field, so the
+    helper signature omits the parameter (intentional divergence from the
+    concept / playbook equivalents).
+
+    Idempotent: if the convention is already deprecated, the helper is a
+    no-op and preserves the existing ``deprecated_at`` / ``deprecated_reason``
+    values.  Returns ``None`` on parse failure (parity with
+    :func:`lexibrary.lifecycle.deprecation.deprecate_design`).
+
+    Parameters
+    ----------
+    convention_path:
+        Absolute path to the convention ``.md`` file.
+    reason:
+        Free-text deprecation reason (e.g. ``"scope_path_missing"``).
+
+    Returns
+    -------
+    None
+    """
+    convention = parse_convention_file(convention_path)
+    if convention is None:
+        return
+
+    # Idempotent: already deprecated -- do not re-stamp deprecated_at.
+    if convention.frontmatter.status == "deprecated":
+        return
+
+    convention.frontmatter.status = "deprecated"
+    convention.frontmatter.deprecated_at = datetime.now(UTC).replace(microsecond=0)
+    convention.frontmatter.deprecated_reason = reason
+
+    atomic_write(convention_path, serialize_convention_file(convention))
 
 
 # ---------------------------------------------------------------------------

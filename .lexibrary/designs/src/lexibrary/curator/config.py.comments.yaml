@@ -20,3 +20,11 @@ comments:
     \ fix_broken_wikilink_fuzzy) were removed from the allow-list as their families\
     \ retired in groups 3, 6, 7, 9."
   date: '2026-04-14T18:50:40.181229Z'
+- body: 'curator-4 Group 20: NEW_FAMILY_ACTION_KEYS extended with six curator-4 action
+    keys (four escalate_* routers + fix_lookup_token_budget_exceeded + fix_orphaned_iwh_signals)
+    per SHARED_BLOCK_H. The allow-list pre-seeds these keys so risk_overrides configs
+    can reference them without triggering the unknown-key warning before their ActionRisk
+    entries settle in RISK_TAXONOMY. remove_orphan_zero_deps was retired in Group
+    19 and is intentionally NOT in the allow-list (falls through to warn-and-ignore
+    path).'
+  date: '2026-04-18T21:58:45.521244Z'

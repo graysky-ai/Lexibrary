@@ -241,9 +241,7 @@ def test_scope_roots_default() -> None:
 
 def test_scope_roots_list_of_mappings() -> None:
     """YAML list-of-mappings shape loads into ScopeRoot instances."""
-    data = yaml.safe_load(
-        "scope_roots:\n  - path: src/\n  - path: baml_src/\n"
-    )
+    data = yaml.safe_load("scope_roots:\n  - path: src/\n  - path: baml_src/\n")
     config = LexibraryConfig.model_validate(data)
     assert [sr.path for sr in config.scope_roots] == ["src/", "baml_src/"]
     assert all(isinstance(sr, ScopeRoot) for sr in config.scope_roots)
@@ -288,9 +286,7 @@ def test_resolved_scope_roots_one_missing(tmp_path: Path) -> None:
 
 def test_resolved_scope_roots_rejects_path_traversal(tmp_path: Path) -> None:
     """A path that escapes ``project_root`` after resolution raises."""
-    config = LexibraryConfig.model_validate(
-        {"scope_roots": [{"path": "../escape"}]}
-    )
+    config = LexibraryConfig.model_validate({"scope_roots": [{"path": "../escape"}]})
     with pytest.raises(ValueError, match="../escape"):
         config.resolved_scope_roots(tmp_path)
 
@@ -298,9 +294,7 @@ def test_resolved_scope_roots_rejects_path_traversal(tmp_path: Path) -> None:
 def test_resolved_scope_roots_rejects_nested_roots(tmp_path: Path) -> None:
     """Nested roots (e.g. '.' + 'src/') raise with both paths named."""
     (tmp_path / "src").mkdir()
-    config = LexibraryConfig.model_validate(
-        {"scope_roots": [{"path": "."}, {"path": "src/"}]}
-    )
+    config = LexibraryConfig.model_validate({"scope_roots": [{"path": "."}, {"path": "src/"}]})
     with pytest.raises(ValueError) as exc_info:
         config.resolved_scope_roots(tmp_path)
     message = str(exc_info.value)
@@ -311,9 +305,7 @@ def test_resolved_scope_roots_rejects_nested_roots(tmp_path: Path) -> None:
 def test_resolved_scope_roots_rejects_duplicates(tmp_path: Path) -> None:
     """Duplicate declared paths raise."""
     (tmp_path / "src").mkdir()
-    config = LexibraryConfig.model_validate(
-        {"scope_roots": [{"path": "src/"}, {"path": "src/"}]}
-    )
+    config = LexibraryConfig.model_validate({"scope_roots": [{"path": "src/"}, {"path": "src/"}]})
     with pytest.raises(ValueError, match="Duplicate"):
         config.resolved_scope_roots(tmp_path)
 
@@ -333,9 +325,7 @@ def test_owning_root_outside_all_roots(tmp_path: Path) -> None:
     """owning_root returns None when the path is under no declared root."""
     (tmp_path / "src").mkdir()
     (tmp_path / "docs").mkdir()
-    config = LexibraryConfig.model_validate(
-        {"scope_roots": [{"path": "src/"}]}
-    )
+    config = LexibraryConfig.model_validate({"scope_roots": [{"path": "src/"}]})
     result = config.owning_root(tmp_path / "docs" / "README.md", tmp_path)
     assert result is None
 

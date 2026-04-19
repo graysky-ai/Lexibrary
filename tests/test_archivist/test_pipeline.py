@@ -458,9 +458,7 @@ class TestUpdateFileMissingIndex:
     """
 
     @pytest.mark.asyncio()
-    async def test_missing_index_writes_dependents_complete_false(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_missing_index_writes_dependents_complete_false(self, tmp_path: Path) -> None:
         from lexibrary.artifacts.design_file_parser import (  # noqa: PLC0415
             parse_design_file,
         )

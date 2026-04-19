@@ -166,7 +166,7 @@ class TestOutcomeCounters:
             trigger="on_demand",
         )
 
-        assert report.schema_version == 3
+        assert report.schema_version == 4
 
 
 class TestReportDetails:
@@ -281,7 +281,7 @@ class TestWriteReportJson:
         assert report.report_path is not None
         data = json.loads(report.report_path.read_text(encoding="utf-8"))
 
-        assert data["schema_version"] == 3
+        assert data["schema_version"] == 4
         assert data["stubbed"] == 1
         assert data["fixed"] == 1
         assert data["trigger"] == "on_demand"

@@ -1,0 +1,7 @@
+comments:
+- body: "curator-4: new capability \u2014 operator-chosen resolution alternative to\
+    \ deprecation. Exposes refresh_stale_concept (prunes missing linked_files), refresh_orphan_concept\
+    \ (bumps last_verified), refresh_convention_stale (new_scope override with path-existence\
+    \ validation), and refresh_playbook_staleness (bumps last_verified). Shared between\
+    \ lexi validate --fix --interactive and lexictl curate resolve."
+  date: '2026-04-19T03:01:21.792454Z'

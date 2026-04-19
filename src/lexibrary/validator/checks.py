@@ -1835,12 +1835,21 @@ def check_orphan_concepts(
     Scans all design files and Stack posts for [[wikilink]] references,
     then checks which concepts in the concepts directory have no inbound
     references at all.
+
+    Honours ``concepts.orphan_verify_ttl_days`` from config: when a concept
+    has a ``last_verified`` date and ``(date.today() - last_verified).days``
+    is within the configured TTL window, the orphan warning is suppressed.
+    Setting ``orphan_verify_ttl_days`` to 0 disables TTL honouring and always
+    emits the warning regardless of ``last_verified``.
     """
     issues: list[ValidationIssue] = []
 
     concepts_dir = lexibrary_dir / "concepts"
     if not concepts_dir.is_dir():
         return issues
+
+    config = load_config(project_root)
+    orphan_verify_ttl_days = config.concepts.orphan_verify_ttl_days
 
     # Build the concept index
     concept_index = ConceptIndex.load(concepts_dir)
@@ -1897,6 +1906,16 @@ def check_orphan_concepts(
 
         is_referenced = any(s in referenced for s in searchable)
         if not is_referenced:
+            # TTL honouring: when orphan_verify_ttl_days > 0 and the concept has a
+            # last_verified date within that window, suppress the warning. The
+            # operator has recently vouched for this concept even though nothing
+            # currently links to it. Setting orphan_verify_ttl_days to 0 disables
+            # TTL honouring entirely.
+            if orphan_verify_ttl_days > 0 and concept.frontmatter.last_verified is not None:
+                days_since_verified = (date.today() - concept.frontmatter.last_verified).days
+                if days_since_verified <= orphan_verify_ttl_days:
+                    continue
+
             concept_slug = next(
                 (
                     p.stem

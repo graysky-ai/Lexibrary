@@ -1709,9 +1709,7 @@ class TestLexictlBootstrapCommand:
         """Bootstrap uses scope_roots from config when --scope is not provided."""
         project = _setup_project(tmp_path)
         # Write config with a single scope_roots entry pointing at src/.
-        (project / ".lexibrary" / "config.yaml").write_text(
-            "scope_roots:\n  - path: src\n"
-        )
+        (project / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: src\n")
         # Create another directory outside the declared roots.
         (project / "lib").mkdir()
         (project / "lib" / "x.py").write_text("x = 1\n")
@@ -1732,9 +1730,7 @@ class TestLexictlBootstrapCommand:
         """
         project = _setup_project(tmp_path)
         # Restrict declared scope_roots to src/.
-        (project / ".lexibrary" / "config.yaml").write_text(
-            "scope_roots:\n  - path: src\n"
-        )
+        (project / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: src\n")
         # Create a directory outside every declared root.
         (project / "external").mkdir()
         (project / "external" / "file.py").write_text("x = 1\n")
@@ -2262,13 +2258,20 @@ class TestValidateFix:
         # Even with no issues, check that it still behaves correctly
         assert "Fixed" in output or "No validation issues" not in output
 
-    def test_fix_not_on_lexi_validate(self) -> None:
-        """--fix is NOT available on lexi validate (agent CLI)."""
+    def test_fix_available_on_lexi_validate(self) -> None:
+        """--fix is available on lexi validate (curator-4 Group 17).
+
+        Supersedes the earlier "not on lexi validate" rule — the interactive
+        escalation flow lives under ``lexi validate --fix --interactive`` for
+        non-admin operators. Autonomous ``--fix`` works as well.
+        """
         from lexibrary.cli import lexi_app
 
-        result = runner.invoke(lexi_app, ["validate", "--fix"])
-        # Typer should report --fix as unrecognized or show an error
-        assert result.exit_code != 0
+        result = runner.invoke(lexi_app, ["validate", "--fix", "--help"])
+        # ``--help`` exits 0 and advertises the flag if accepted.
+        assert result.exit_code == 0
+        assert "--fix" in result.output
+        assert "--interactive" in result.output
 
 
 # ---------------------------------------------------------------------------

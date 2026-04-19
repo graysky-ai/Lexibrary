@@ -610,9 +610,7 @@ class TestConventionIndexFindByAnyScope:
         single = [ScopeRoot(path=".")]
         multi = index.find_by_any_scope("src/auth/login.py", single)
         legacy = index.find_by_scope("src/auth/login.py")
-        assert [c.frontmatter.title for c in multi] == [
-            c.frontmatter.title for c in legacy
-        ]
+        assert [c.frontmatter.title for c in multi] == [c.frontmatter.title for c in legacy]
 
 
 # ---------------------------------------------------------------------------
@@ -629,9 +627,7 @@ class TestConventionIndexFindByAnyScopeLimited:
         index = ConventionIndex(tmp_path)
         index.load()
         roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
-        result, total = index.find_by_any_scope_limited(
-            "baml_src/foo/example.baml", roots, limit=5
-        )
+        result, total = index.find_by_any_scope_limited("baml_src/foo/example.baml", roots, limit=5)
         assert total == 2
         assert len(result) == 2
 
@@ -644,9 +640,7 @@ class TestConventionIndexFindByAnyScopeLimited:
         index = ConventionIndex(tmp_path)
         index.load()
         roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
-        result, total = index.find_by_any_scope_limited(
-            "baml_src/foo/example.baml", roots, limit=2
-        )
+        result, total = index.find_by_any_scope_limited("baml_src/foo/example.baml", roots, limit=2)
         assert total == 4
         # Most leaf-ward kept: baml_src + baml_src/foo
         titles = [c.frontmatter.title for c in result]
@@ -657,9 +651,7 @@ class TestConventionIndexFindByAnyScopeLimited:
         index = ConventionIndex(tmp_path)
         index.load()
         roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
-        result, total = index.find_by_any_scope_limited(
-            "baml_src/foo/example.baml", roots, limit=0
-        )
+        result, total = index.find_by_any_scope_limited("baml_src/foo/example.baml", roots, limit=0)
         assert result == []
         assert total == 1
 
@@ -669,9 +661,7 @@ class TestConventionIndexFindByAnyScopeLimited:
         index = ConventionIndex(tmp_path)
         index.load()
         roots = [ScopeRoot(path="src/"), ScopeRoot(path="baml_src/")]
-        result, total = index.find_by_any_scope_limited(
-            "docs/README.md", roots, limit=5
-        )
+        result, total = index.find_by_any_scope_limited("docs/README.md", roots, limit=5)
         assert result == []
         assert total == 0
 

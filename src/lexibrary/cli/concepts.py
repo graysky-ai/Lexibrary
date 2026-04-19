@@ -183,10 +183,14 @@ def concept_deprecate(
         str | None,
         typer.Option("--superseded-by", help="Title of the concept that replaces this one."),
     ] = None,
+    reason: Annotated[
+        str | None,
+        typer.Option("--reason", help="Reason recorded in deprecated_reason frontmatter."),
+    ] = None,
 ) -> None:
     """Set a concept's status to deprecated and return confirmation."""
+    from lexibrary.lifecycle.concept_deprecation import deprecate_concept  # noqa: PLC0415
     from lexibrary.wiki.parser import parse_concept_file  # noqa: PLC0415
-    from lexibrary.wiki.serializer import serialize_concept_file  # noqa: PLC0415
 
     project_root = require_project_root()
 
@@ -196,13 +200,17 @@ def concept_deprecate(
         error(f"Concept file not found: {concept_path.relative_to(project_root)}")
         raise typer.Exit(1)
 
-    # Parse the concept file
+    # Parse the concept file for the pre-check and user-facing messaging.
+    # The helper re-parses on its own; this is intentional so that the CLI
+    # can show the canonical title/supersession message without mutating
+    # frontmatter.
     concept = parse_concept_file(concept_path)
     if concept is None:
         error(f"Failed to parse concept file: {concept_path.relative_to(project_root)}")
         raise typer.Exit(1)
 
-    # Already deprecated -- exit 0 with informational message
+    # Already deprecated -- exit 0 with informational message.  The helper
+    # is idempotent (no-op) in this case; we print a friendlier CLI note.
     if concept.frontmatter.status == "deprecated":
         msg = f"Already deprecated: {concept.frontmatter.title}"
         if concept.frontmatter.superseded_by:
@@ -210,18 +218,12 @@ def concept_deprecate(
         warn(msg)
         return
 
-    # Update status, deprecated_at timestamp, and optional superseded_by
-    from datetime import UTC  # noqa: PLC0415
-    from datetime import datetime as _datetime
-
-    concept.frontmatter.status = "deprecated"
-    concept.frontmatter.deprecated_at = _datetime.now(UTC).replace(microsecond=0)
-    if superseded_by is not None:
-        concept.frontmatter.superseded_by = superseded_by
-
-    # Re-serialize and write
-    serialized = serialize_concept_file(concept)
-    concept_path.write_text(serialized, encoding="utf-8")
+    # Delegate frontmatter mutation + atomic write to the lifecycle helper.
+    deprecate_concept(
+        concept_path,
+        reason=reason if reason is not None else "",
+        superseded_by=superseded_by,
+    )
 
     # Print confirmation
     msg = f"Deprecated concept {concept.frontmatter.title}"

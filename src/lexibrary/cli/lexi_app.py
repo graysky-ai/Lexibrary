@@ -171,8 +171,7 @@ def lookup(
     # Check scope: target must be under one of the declared scope_roots.
     if config.owning_root(target, project_root) is None:
         error(
-            f"{file} is outside all configured scope_roots: "
-            f"{[r.path for r in config.scope_roots]}"
+            f"{file} is outside all configured scope_roots: {[r.path for r in config.scope_roots]}"
         )
         raise typer.Exit(1) from None
 
@@ -467,6 +466,24 @@ def validate(
             help="Output results as JSON instead of tables.",
         ),
     ] = False,
+    fix: Annotated[
+        bool,
+        typer.Option(
+            "--fix",
+            help="Auto-fix fixable issues after validation.",
+        ),
+    ] = False,
+    interactive: Annotated[
+        bool,
+        typer.Option(
+            "--interactive",
+            help=(
+                "Prompt per-issue for escalation checks (orphan_concepts, "
+                "stale_concept, convention_stale, playbook_staleness). "
+                "Requires --fix and a TTY."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Return consistency check results. Reports errors by default; use --severity for more."""
     from lexibrary.cli._format import OutputFormat, get_format  # noqa: PLC0415
@@ -475,9 +492,13 @@ def validate(
     if fmt == OutputFormat.json:
         json_output = True
 
+    if interactive and not fix:
+        error("--interactive requires --fix")
+        raise typer.Exit(1)
+
     project_root = require_project_root()
 
-    if fmt == OutputFormat.plain:
+    if fmt == OutputFormat.plain and not fix:
         from lexibrary.validator import validate_library  # noqa: PLC0415
 
         lexibrary_dir = project_root / ".lexibrary"
@@ -501,7 +522,14 @@ def validate(
                 )
         raise typer.Exit(report.exit_code())
 
-    exit_code = _run_validate(project_root, severity=severity, check=check, json_output=json_output)
+    exit_code = _run_validate(
+        project_root,
+        severity=severity,
+        check=check,
+        json_output=json_output,
+        fix=fix,
+        interactive=interactive,
+    )
     raise typer.Exit(exit_code)
 
 
@@ -749,8 +777,7 @@ def impact(
     # Check scope: file must be under one of the declared scope_roots.
     if config.owning_root(target, project_root) is None:
         error(
-            f"{file} is outside all configured scope_roots: "
-            f"{[r.path for r in config.scope_roots]}"
+            f"{file} is outside all configured scope_roots: {[r.path for r in config.scope_roots]}"
         )
         raise typer.Exit(1) from None
 

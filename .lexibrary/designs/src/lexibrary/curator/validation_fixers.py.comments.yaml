@@ -1,0 +1,8 @@
+comments:
+- body: "curator-4: bridge (fix_validation_issue) now propagates FixResult.llm_calls\
+    \ into SubAgentResult.llm_calls on both success and failure branches (pre-existing\
+    \ plumbing bug: fix_wikilink_resolution used update_file but reported zero). Also\
+    \ honours FixResult.outcome_hint='escalation_required' \u2014 sets SubAgentResult.outcome='escalation_required'\
+    \ and success=False, then the coordinator collects the escalation into CuratorReport.pending_decisions\
+    \ using the FixResult.iwh_path breadcrumb."
+  date: '2026-04-19T03:01:38.276284Z'

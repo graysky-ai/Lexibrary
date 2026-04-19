@@ -25,7 +25,9 @@ class ActionRisk:
 
 # ---------------------------------------------------------------------------
 # Canonical risk taxonomy — every action the curator may perform.
-# 35 Low  ·  12 Medium  ·  3 High
+# Totals: 34 Low / 13 Medium / 3 High / 50 Total
+# (curator-4 Group 22 — N=2 ``apply_*`` entries retired:
+# ``apply_flag_stale_convention`` + ``apply_flag_stale_playbook``.)
 # ---------------------------------------------------------------------------
 
 RISK_TAXONOMY: dict[str, ActionRisk] = {
@@ -86,22 +88,11 @@ RISK_TAXONOMY: dict[str, ActionRisk] = {
         rationale="Propose-only; surfaces collision for human resolution",
         function_ref="validator.fixes.fix_duplicate_aliases",
     ),
-    # Consistency convention/playbook staleness flagging (Phase 3 — group 8).
-    # ``consistency.py`` emits ``flag_stale_convention`` and
-    # ``flag_stale_playbook`` from ``detect_stale_conventions`` /
-    # ``detect_stale_playbooks``.  Both are Low risk because the fix helper
-    # only writes a warning IWH signal next to the target file -- no
-    # artifact mutation happens without human review.
-    "flag_stale_convention": ActionRisk(
-        level="low",
-        rationale="Writes warning IWH signal only; no artifact mutation",
-        function_ref="curator.consistency_fixes.apply_flag_stale_convention",
-    ),
-    "flag_stale_playbook": ActionRisk(
-        level="low",
-        rationale="Writes warning IWH signal only; no artifact mutation",
-        function_ref="curator.consistency_fixes.apply_flag_stale_playbook",
-    ),
+    # ``flag_stale_convention`` / ``flag_stale_playbook`` retired in curator-4
+    # Group 22.  Convention / playbook staleness now flows through the
+    # validator's ``check_convention_stale`` / ``check_playbook_staleness``
+    # checks paired with the ``escalate_convention_stale`` /
+    # ``escalate_playbook_staleness`` escalation fixers registered below.
     "autofix_validation_issue": ActionRisk(
         level="low",
         rationale="Pre-vetted fixes from validator registry",
@@ -154,10 +145,60 @@ RISK_TAXONOMY: dict[str, ActionRisk] = {
         rationale="Mechanical regeneration via archivist pipeline",
         function_ref="validator.fixes.fix_bidirectional_deps",
     ),
-    "remove_orphan_zero_deps": ActionRisk(
+    # --- curator-4: escalation + two new operational fixers ---------------
+    # The four ``escalate_*`` fixers do not mutate artifacts — they write an
+    # IWH signal and return ``outcome_hint="escalation_required"`` so the
+    # bridge surfaces a ``PendingDecision`` entry in the curator report.  All
+    # four are Low because their only side-effect is an IWH breadcrumb.
+    "escalate_orphan_concepts": ActionRisk(
         level="low",
-        rationale="Nothing references it",
-        function_ref="curator.consistency_fixes.apply_orphan_concept_delete",
+        rationale=(
+            "Routes orphan concept to operator resolution "
+            "(Ignore / Deprecate / Refresh); no artifact mutation; writes "
+            "IWH signal in autonomous runs."
+        ),
+        function_ref="curator.validation_fixers.fix_validation_issue",
+    ),
+    "escalate_stale_concept": ActionRisk(
+        level="low",
+        rationale=("Routes concept with missing linked_files to operator resolution; no mutation."),
+        function_ref="curator.validation_fixers.fix_validation_issue",
+    ),
+    "escalate_convention_stale": ActionRisk(
+        level="low",
+        rationale=(
+            "Routes convention with missing scope path to operator resolution; no mutation."
+        ),
+        function_ref="curator.validation_fixers.fix_validation_issue",
+    ),
+    "escalate_playbook_staleness": ActionRisk(
+        level="low",
+        rationale=(
+            "Routes playbook past last_verified window to operator resolution; no mutation."
+        ),
+        function_ref="curator.validation_fixers.fix_validation_issue",
+    ),
+    # ``fix_lookup_token_budget_exceeded`` is Medium because it runs the
+    # ``CuratorCondenseFile`` BAML call via ``curator.budget.condense_file``;
+    # the transformation is lossy and consumes (counted) LLM budget.
+    "fix_lookup_token_budget_exceeded": ActionRisk(
+        level="medium",
+        rationale=(
+            "Runs CuratorCondenseFile on over-budget design bodies via "
+            "curator.budget.condense_file; mutates content; consumes LLM "
+            "budget (counted)."
+        ),
+        function_ref="curator.validation_fixers.fix_validation_issue",
+    ),
+    # TTL-variant IWH cleanup.  Low because IWH signals are intentionally
+    # ephemeral and the TTL defines the expected lifetime.
+    "fix_orphaned_iwh_signals": ActionRisk(
+        level="low",
+        rationale=(
+            "Deletes expired IWH signal files (TTL variant).  IWH is "
+            "intentionally ephemeral; TTL defines expected lifetime."
+        ),
+        function_ref="curator.validation_fixers.fix_validation_issue",
     ),
     "add_missing_reverse_dep": ActionRisk(
         level="low",

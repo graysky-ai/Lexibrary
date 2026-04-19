@@ -44,10 +44,9 @@ logger = logging.getLogger(__name__)
 CONSISTENCY_ACTION_KEYS: dict[str, str] = {
     # Cleanup
     "delete_orphaned_comments": "delete_orphaned_comments",
-    "remove_orphan_zero_deps": "remove_orphan_zero_deps",
-    # Convention / playbook staleness
-    "flag_stale_convention": "flag_stale_convention",
-    "flag_stale_playbook": "flag_stale_playbook",
+    # Convention / playbook staleness handlers retired in curator-4 Group 22 —
+    # replaced by the validator escalation fixers
+    # (``escalate_convention_stale`` / ``escalate_playbook_staleness``).
     # Bidirectional dep cross-reference
     "add_missing_reverse_dep": "add_missing_reverse_dep",
     # Medium-risk (deferred under auto_low)
@@ -238,74 +237,6 @@ def apply_orphaned_comments_delete(item: TriageItem, ctx: DispatchContext) -> Su
     )
 
 
-def apply_orphan_concept_delete(item: TriageItem, ctx: DispatchContext) -> SubAgentResult:
-    """Delete an orphan concept file and its sibling ``.comments.yaml`` if present.
-
-    Per ``tasks.md`` 8.7: "``apply_orphan_concept_delete`` should also
-    remove sibling ``.comments.yaml`` if it exists".
-    """
-    action_key = item.action_key
-    target_path = item.source_item.path
-    if target_path is None:
-        return _result(
-            action_key=action_key,
-            path=None,
-            message="No target path for remove_orphan_zero_deps",
-            success=False,
-            outcome="fixer_failed",
-        )
-
-    if not target_path.exists():
-        return _result(
-            action_key=action_key,
-            path=target_path,
-            message="Orphan concept already absent",
-            outcome="fixed",
-        )
-
-    # Derive sibling .comments.yaml (same stem + .comments.yaml).
-    # Concept files are named ``CN-NNN-slug.md``; the comments sidecar
-    # drops the ``.md`` extension and appends ``.comments.yaml`` (matching
-    # other sidecar conventions in this codebase).
-    stem = target_path.name
-    if stem.endswith(".md"):
-        stem = stem[:-3]
-    comments_sibling = target_path.parent / f"{stem}.comments.yaml"
-
-    try:
-        target_path.unlink()
-    except OSError as exc:
-        ctx.summary.add("dispatch", exc, path=str(target_path))
-        return _result(
-            action_key=action_key,
-            path=target_path,
-            message=f"Failed to delete orphan concept: {exc}",
-            success=False,
-            outcome="errored",
-        )
-
-    removed_sibling = False
-    if comments_sibling.exists():
-        try:
-            comments_sibling.unlink()
-            removed_sibling = True
-        except OSError as exc:
-            logger.warning(
-                "Removed orphan concept %s but failed to delete sibling comments %s: %s",
-                target_path,
-                comments_sibling,
-                exc,
-            )
-
-    suffix = " (plus sibling comments)" if removed_sibling else ""
-    return _result(
-        action_key=action_key,
-        path=target_path,
-        message=f"Deleted orphan concept {target_path.name}{suffix}",
-        outcome="fixed",
-    )
-
-
 # ---------------------------------------------------------------------------
 # Convention / playbook / medium-risk helpers
 # ---------------------------------------------------------------------------
@@ -344,92 +275,15 @@ def _write_flag_iwh(
         return None
 
 
-def apply_flag_stale_convention(item: TriageItem, ctx: DispatchContext) -> SubAgentResult:
-    """Escalation-only: flag a convention that references a path that no longer exists.
-
-    Writes a ``scope=warning`` IWH signal in the convention's directory
-    so the next agent session sees the warning.  Does NOT modify the
-    convention body -- human review decides whether to rewrite scope or
-    deprecate.
-    """
-    action_key = item.action_key
-    target_path = item.source_item.path
-    if target_path is None:
-        return _result(
-            action_key=action_key,
-            path=None,
-            message="No target path for flag_stale_convention",
-            success=False,
-            outcome="fixer_failed",
-        )
-
-    body = (
-        f"Stale convention: {target_path.name}\n"
-        f"{item.source_item.fix_instruction_detail}\n"
-        f"Action: review and rewrite scope or deprecate."
-    )
-    iwh_path = _write_flag_iwh(
-        target_path,
-        project_root=ctx.project_root,
-        lexibrary_dir=ctx.lexibrary_dir,
-        body=body,
-    )
-    if iwh_path is None:
-        return _result(
-            action_key=action_key,
-            path=target_path,
-            message="Failed to write warning IWH for stale convention",
-            success=False,
-            outcome="errored",
-        )
-
-    return _result(
-        action_key=action_key,
-        path=target_path,
-        message=f"Flagged stale convention {target_path.name}",
-        outcome="fixed",
-    )
-
-
-def apply_flag_stale_playbook(item: TriageItem, ctx: DispatchContext) -> SubAgentResult:
-    """Flag a playbook that references a path that no longer exists."""
-    action_key = item.action_key
-    target_path = item.source_item.path
-    if target_path is None:
-        return _result(
-            action_key=action_key,
-            path=None,
-            message="No target path for flag_stale_playbook",
-            success=False,
-            outcome="fixer_failed",
-        )
-
-    body = (
-        f"Stale playbook: {target_path.name}\n"
-        f"{item.source_item.fix_instruction_detail}\n"
-        f"Action: review and update path refs or deprecate."
-    )
-    iwh_path = _write_flag_iwh(
-        target_path,
-        project_root=ctx.project_root,
-        lexibrary_dir=ctx.lexibrary_dir,
-        body=body,
-    )
-    if iwh_path is None:
-        return _result(
-            action_key=action_key,
-            path=target_path,
-            message="Failed to write warning IWH for stale playbook",
-            success=False,
-            outcome="errored",
-        )
-
-    return _result(
-        action_key=action_key,
-        path=target_path,
-        message=f"Flagged stale playbook {target_path.name}",
-        outcome="fixed",
-    )
+# ---------------------------------------------------------------------------
+# ``apply_flag_stale_convention`` / ``apply_flag_stale_playbook`` retired in
+# curator-4 Group 22.  Convention / playbook staleness now flows through the
+# validator's ``check_convention_stale`` / ``check_playbook_staleness`` checks
+# paired with the escalation fixers ``escalate_convention_stale`` /
+# ``escalate_playbook_staleness`` (see ``validator/fixes.py``).  The escalation
+# fixers write an IWH breadcrumb and surface a ``PendingDecision`` in the
+# curator report instead of mutating artifacts directly.
+# ---------------------------------------------------------------------------
 
 
 def apply_suggest_new_concept(item: TriageItem, ctx: DispatchContext) -> SubAgentResult:

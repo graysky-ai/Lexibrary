@@ -26,6 +26,13 @@ class PlaybookFileFrontmatter(BaseModel):
     estimated_minutes: int | None = None
     last_verified: date | None = None
     deprecated_at: datetime | None = None
+    deprecated_reason: str | None = Field(
+        default=None,
+        description=(
+            "Free-text reason for deprecation. Set by lifecycle helpers and CLI "
+            "deprecation commands."
+        ),
+    )
     superseded_by: str | None = None
     aliases: list[str] = []
 

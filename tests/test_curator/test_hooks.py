@@ -253,9 +253,7 @@ class TestPostEditHookBootstrap:
     """
 
     @pytest.mark.asyncio
-    async def test_bootstrap_runs_regardless_of_hash_equality(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_bootstrap_runs_regardless_of_hash_equality(self, tmp_path: Path) -> None:
         """Bootstrap refresh_file + build_index run even when source_hash
         matches the cached frontmatter hash — the hook does not short-circuit
         on hash equality."""
@@ -268,12 +266,8 @@ class TestPostEditHookBootstrap:
         config = _make_bootstrap_config()
 
         with (
-            patch(
-                "lexibrary.symbolgraph.builder.refresh_file"
-            ) as mock_refresh,
-            patch(
-                "lexibrary.linkgraph.builder.build_index"
-            ) as mock_build_index,
+            patch("lexibrary.symbolgraph.builder.refresh_file") as mock_refresh,
+            patch("lexibrary.linkgraph.builder.build_index") as mock_build_index,
             patch("lexibrary.curator.coordinator.Coordinator") as mock_coord,
         ):
             mock_coord.return_value.pre_charged_llm_calls = 0
@@ -285,9 +279,7 @@ class TestPostEditHookBootstrap:
             mock_build_index.assert_called_once_with(project, changed_paths=[fp])
 
     @pytest.mark.asyncio
-    async def test_regenerate_false_does_not_call_update_file(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_regenerate_false_does_not_call_update_file(self, tmp_path: Path) -> None:
         """reactive_bootstrap_regenerate=False (default) -> update_file NOT
         invoked by the bootstrap."""
         project = _setup_project(tmp_path)
@@ -301,9 +293,7 @@ class TestPostEditHookBootstrap:
                 "lexibrary.archivist.pipeline.update_file",
                 new_callable=AsyncMock,
             ) as mock_update,
-            patch(
-                "lexibrary.archivist.service.build_archivist_service"
-            ) as mock_build_arch,
+            patch("lexibrary.archivist.service.build_archivist_service") as mock_build_arch,
             patch("lexibrary.curator.coordinator.Coordinator") as mock_coord,
         ):
             mock_coord.return_value.pre_charged_llm_calls = 0
@@ -315,9 +305,7 @@ class TestPostEditHookBootstrap:
             mock_build_arch.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_regenerate_true_charges_llm_budget(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_regenerate_true_charges_llm_budget(self, tmp_path: Path) -> None:
         """reactive_bootstrap_regenerate=True -> update_file called; a
         successful regeneration increments pre_charged_llm_calls so the call
         counts against max_llm_calls_per_run via the coordinator's counter."""
@@ -348,9 +336,7 @@ class TestPostEditHookBootstrap:
                 new_callable=AsyncMock,
                 return_value=successful_result,
             ) as mock_update,
-            patch(
-                "lexibrary.archivist.service.build_archivist_service"
-            ) as mock_build_arch,
+            patch("lexibrary.archivist.service.build_archivist_service") as mock_build_arch,
             patch(
                 "lexibrary.curator.coordinator.Coordinator",
                 return_value=coord_instance,
@@ -364,30 +350,19 @@ class TestPostEditHookBootstrap:
             assert coord_instance.pre_charged_llm_calls == 1
             # And the counter is strictly below the cap, so the dispatch
             # phase still has budget remaining.
-            assert (
-                coord_instance.pre_charged_llm_calls
-                < config.curator.max_llm_calls_per_run
-            )
+            assert coord_instance.pre_charged_llm_calls < config.curator.max_llm_calls_per_run
 
     @pytest.mark.asyncio
-    async def test_prepare_indexes_false_skips_refresh_and_update(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_prepare_indexes_false_skips_refresh_and_update(self, tmp_path: Path) -> None:
         """prepare_indexes=False -> neither the refresh pair nor update_file
         is invoked; the hook hands straight off to the coordinator."""
         project = _setup_project(tmp_path)
         fp = _make_source_file(project, "src/lexibrary/foo.py")
-        config = _make_bootstrap_config(
-            prepare_indexes=False, reactive_bootstrap_regenerate=True
-        )
+        config = _make_bootstrap_config(prepare_indexes=False, reactive_bootstrap_regenerate=True)
 
         with (
-            patch(
-                "lexibrary.symbolgraph.builder.refresh_file"
-            ) as mock_refresh,
-            patch(
-                "lexibrary.linkgraph.builder.build_index"
-            ) as mock_build_index,
+            patch("lexibrary.symbolgraph.builder.refresh_file") as mock_refresh,
+            patch("lexibrary.linkgraph.builder.build_index") as mock_build_index,
             patch(
                 "lexibrary.archivist.pipeline.update_file",
                 new_callable=AsyncMock,
@@ -429,9 +404,7 @@ class TestPostEditHookBootstrap:
         # guard gets exercised; the symbolgraph helper is a plain sync
         # function with no side effects when symbols.db is absent.
         with (
-            patch(
-                "lexibrary.linkgraph.builder.build_index"
-            ) as mock_build_index,
+            patch("lexibrary.linkgraph.builder.build_index") as mock_build_index,
             patch("lexibrary.curator.coordinator.Coordinator") as mock_coord,
         ):
             mock_coord.return_value.pre_charged_llm_calls = 0
@@ -447,10 +420,7 @@ class TestPostEditHookBootstrap:
             mock_build_index.assert_called_once_with(project, changed_paths=[fp])
             # refresh_file's internal guard emitted a log note about the
             # missing DB.
-            assert any(
-                "symbols.db does not exist" in rec.getMessage()
-                for rec in caplog.records
-            )
+            assert any("symbols.db does not exist" in rec.getMessage() for rec in caplog.records)
 
     @pytest.mark.asyncio
     async def test_pid_lock_held_skips_bootstrap_without_racing(
@@ -480,12 +450,8 @@ class TestPostEditHookBootstrap:
         )
 
         with (
-            patch(
-                "lexibrary.symbolgraph.builder.refresh_file"
-            ) as mock_refresh,
-            patch(
-                "lexibrary.linkgraph.builder.build_index"
-            ) as mock_build_index,
+            patch("lexibrary.symbolgraph.builder.refresh_file") as mock_refresh,
+            patch("lexibrary.linkgraph.builder.build_index") as mock_build_index,
             patch("lexibrary.curator.coordinator.Coordinator") as mock_coord,
         ):
             mock_coord.return_value.pre_charged_llm_calls = 0
@@ -493,9 +459,7 @@ class TestPostEditHookBootstrap:
             # lock via CuratorLockError — the existing _run_coordinator
             # wrapper already handles that; return a value to keep the
             # assertion crisp.
-            mock_coord.return_value.run = AsyncMock(
-                side_effect=CuratorLockError("lock held")
-            )
+            mock_coord.return_value.run = AsyncMock(side_effect=CuratorLockError("lock held"))
 
             import logging
 

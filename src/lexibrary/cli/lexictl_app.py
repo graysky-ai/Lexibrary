@@ -30,9 +30,14 @@ lexictl_app = typer.Typer(
 iwh_ctl_app = typer.Typer(help="IWH signal maintenance commands.", rich_markup_mode=None)
 lexictl_app.add_typer(iwh_ctl_app, name="iwh")
 
-from lexibrary.cli.curate import curate  # noqa: E402
+from lexibrary.cli.curate import curate_app  # noqa: E402
 
-lexictl_app.command("curate")(curate)
+# curator-4 Group 18: ``curate`` is a Typer sub-app with ``run`` (default,
+# original behaviour) and ``resolve`` (admin replay of pending decisions).
+# The ``invoke_without_command=True`` callback on ``curate_app`` preserves
+# ``lexictl curate`` (no subcommand) behaviour so the refactor is backward
+# compatible.
+lexictl_app.add_typer(curate_app, name="curate")
 
 
 # ---------------------------------------------------------------------------
@@ -614,8 +619,7 @@ def bootstrap(
         scope_dirs = list(config.resolved_scope_roots(project_root).resolved)
         if not scope_dirs:
             error(
-                "No scope_roots resolved on disk. "
-                f"Declared: {[r.path for r in config.scope_roots]}"
+                f"No scope_roots resolved on disk. Declared: {[r.path for r in config.scope_roots]}"
             )
             raise typer.Exit(1)
 
@@ -633,9 +637,7 @@ def bootstrap(
 
     index_stats = IndexStats()
     for scope_dir in scope_dirs:
-        rel_scope = (
-            scope_dir.relative_to(project_root) if scope_dir != project_root else Path(".")
-        )
+        rel_scope = scope_dir.relative_to(project_root) if scope_dir != project_root else Path(".")
         info(f"Bootstrapping {rel_scope} in {project_root.name} ({mode_label} mode)...")
         per_root_stats = index_recursive(
             scope_dir, project_root, config, progress_callback=_index_progress
@@ -826,8 +828,23 @@ def validate(
             help="Auto-fix fixable issues after validation.",
         ),
     ] = False,
+    interactive: Annotated[
+        bool,
+        typer.Option(
+            "--interactive",
+            help=(
+                "Prompt per-issue for escalation checks (orphan_concepts, "
+                "stale_concept, convention_stale, playbook_staleness). "
+                "Requires --fix and a TTY."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Run consistency checks on the library."""
+    if interactive and not fix:
+        error("--interactive requires --fix")
+        raise typer.Exit(1)
+
     project_root = require_project_root()
     exit_code = _run_validate(
         project_root,
@@ -836,6 +853,7 @@ def validate(
         json_output=json_output,
         ci_mode=ci,
         fix=fix,
+        interactive=interactive,
     )
     raise typer.Exit(exit_code)
 

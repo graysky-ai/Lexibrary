@@ -143,7 +143,9 @@ class TestFixersRegistry:
         assert FIXERS["wikilink_resolution"] is fix_wikilink_resolution
 
     def test_does_not_contain_non_fixable(self) -> None:
-        assert "orphan_concepts" not in FIXERS
+        # "orphan_concepts" IS now registered (curator-4 group 16) as an
+        # escalation fixer — see TestEscalationFixersRegistered for the
+        # positive assertion.
         assert "token_budgets" not in FIXERS
         assert "concept_frontmatter" not in FIXERS
 

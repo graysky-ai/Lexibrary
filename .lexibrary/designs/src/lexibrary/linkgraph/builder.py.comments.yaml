@@ -5,3 +5,9 @@ comments:
     refactor with no behavioral change -- the shared function has identical behavior
     to the local one it replaces.
   date: '2026-04-07T22:14:55.141402Z'
+- body: _resolve_concept_ref now falls back to ConceptIndex.find_by_id() when title/alias
+    lookup fails. Without this, stack-post refs.concepts entries written as artifact
+    IDs (e.g. 'CN-020') fell through to synthetic stub paths '.lexibrary/concepts/CN-020.md'
+    that persisted in the artifacts table on every rebuild, producing permanent dangling_links
+    + orphan_artifacts noise. Extends the ST-024 fix to cover the ID form.
+  date: '2026-04-18T20:40:46.097670Z'

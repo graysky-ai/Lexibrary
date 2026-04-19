@@ -14,7 +14,6 @@ to disk.
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -171,131 +170,14 @@ class ConsistencyChecker:
 
         return instructions
 
-    # -- Orphan concept detection ------------------------------------------
-
-    def detect_orphan_concepts(
-        self,
-        concepts_dir: Path,
-        link_graph_available: bool = False,
-    ) -> list[FixInstruction]:
-        """Detect concepts with zero inbound links.
-
-        When the link graph is available, queries for inbound references.
-        Zero-inbound concepts with no dependents are flagged as Low risk
-        (auto-removable under auto_low). Others are flagged as Medium
-        risk (proposed for human review).
-        """
-        if not concepts_dir.is_dir():
-            return []
-
-        if not link_graph_available:
-            logger.info("Link graph unavailable -- skipping orphan concept detection")
-            return []
-
-        from lexibrary.linkgraph.query import LinkGraph  # noqa: PLC0415
-
-        db_path = self.lexibrary_dir / "index.db"
-        graph = LinkGraph.open(db_path)
-        if graph is None:
-            return []
-
-        instructions: list[FixInstruction] = []
-        try:
-            for concept_path in sorted(concepts_dir.glob("*.md")):
-                try:
-                    rel = str(concept_path.relative_to(self.project_root))
-                except ValueError:
-                    rel = str(concept_path)
-
-                reverse = graph.reverse_deps(rel)
-                if len(reverse) == 0:
-                    instructions.append(
-                        FixInstruction(
-                            action="remove_orphan_zero_deps",
-                            target_path=concept_path,
-                            detail=f"Concept {concept_path.name} has zero inbound links",
-                            risk="low",
-                        )
-                    )
-        finally:
-            graph.close()
-
-        return instructions
-
-    # -- Convention/playbook staleness detection ----------------------------
-
-    def detect_stale_conventions(
-        self,
-        conventions_dir: Path,
-    ) -> list[FixInstruction]:
-        """Check conventions for references to file paths that no longer exist.
-
-        Scans the body and scope fields of each convention for path-like
-        references and checks whether they exist on disk.
-        """
-        if not conventions_dir.is_dir():
-            return []
-
-        instructions: list[FixInstruction] = []
-        for conv_path in sorted(conventions_dir.glob("*.md")):
-            stale_paths = self._check_artifact_path_refs(conv_path)
-            for stale in stale_paths:
-                instructions.append(
-                    FixInstruction(
-                        action="flag_stale_convention",
-                        target_path=conv_path,
-                        detail=f"Convention references path '{stale}' which no longer exists",
-                        risk="low",
-                    )
-                )
-
-        return instructions
-
-    def detect_stale_playbooks(
-        self,
-        playbooks_dir: Path,
-    ) -> list[FixInstruction]:
-        """Check playbooks for references to file paths that no longer exist."""
-        if not playbooks_dir.is_dir():
-            return []
-
-        instructions: list[FixInstruction] = []
-        for pb_path in sorted(playbooks_dir.glob("*.md")):
-            stale_paths = self._check_artifact_path_refs(pb_path)
-            for stale in stale_paths:
-                instructions.append(
-                    FixInstruction(
-                        action="flag_stale_playbook",
-                        target_path=pb_path,
-                        detail=f"Playbook references path '{stale}' which no longer exists",
-                        risk="low",
-                    )
-                )
-
-        return instructions
-
-    # Path reference extraction pattern: matches src/... or tests/... paths
-    _PATH_REF_RE = re.compile(r"(?:^|\s|`)((?:src|tests)/[a-zA-Z0-9_/.-]+)")
-
-    def _check_artifact_path_refs(self, artifact_path: Path) -> list[str]:
-        """Extract path-like references from an artifact and check existence."""
-        try:
-            text = artifact_path.read_text(encoding="utf-8")
-        except OSError:
-            return []
-
-        stale: list[str] = []
-        seen: set[str] = set()
-        for match in self._PATH_REF_RE.finditer(text):
-            ref = match.group(1).rstrip(".,;:)")
-            if ref in seen:
-                continue
-            seen.add(ref)
-            candidate = self.project_root / ref
-            if not candidate.exists():
-                stale.append(ref)
-
-        return stale
+    # -- Convention/playbook staleness detection retired in curator-4 Group 22.
+    # ``detect_stale_conventions`` / ``detect_stale_playbooks`` are replaced
+    # by the validator's ``check_convention_stale`` / ``check_playbook_staleness``
+    # checks, routed through the ``escalate_convention_stale`` /
+    # ``escalate_playbook_staleness`` escalation fixers.  Curator-side
+    # ``flag_stale_convention`` / ``flag_stale_playbook`` handlers and the
+    # shared ``_check_artifact_path_refs`` helper were deleted alongside the
+    # detectors.
 
     # -- Design-file bidirectional dep cross-reference -----------------------
 
@@ -323,12 +205,10 @@ class ConsistencyChecker:
             src = design.source_path
             source_to_design[src] = design_path
             source_to_deps[src] = [
-                d.strip() for d in design.dependencies
-                if d.strip() and d.strip() != "(none)"
+                d.strip() for d in design.dependencies if d.strip() and d.strip() != "(none)"
             ]
             source_to_dependents[src] = {
-                d.strip() for d in design.dependents
-                if d.strip() and d.strip() != "(none)"
+                d.strip() for d in design.dependents if d.strip() and d.strip() != "(none)"
             }
 
         instructions: list[FixInstruction] = []

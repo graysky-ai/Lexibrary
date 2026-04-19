@@ -448,6 +448,76 @@ class TestTriagePhase:
         assert "fix_orphaned_designs" in action_keys
         assert "autofix_validation_issue" not in action_keys
 
+    def test_check_to_action_key_contains_curator_4_entries(self) -> None:
+        """curator-4 Group 19 adds six validator-check → action-key routes.
+
+        Four route to the ``escalate_*`` fixer family (operator-resolution
+        escalations with no artifact mutation).  Two route to the new
+        ``fix_lookup_token_budget_exceeded`` and ``fix_orphaned_iwh_signals``
+        operational fixers.
+        """
+        from lexibrary.curator.coordinator import CHECK_TO_ACTION_KEY
+
+        assert CHECK_TO_ACTION_KEY["orphan_concepts"] == "escalate_orphan_concepts"
+        assert CHECK_TO_ACTION_KEY["stale_concept"] == "escalate_stale_concept"
+        assert CHECK_TO_ACTION_KEY["convention_stale"] == "escalate_convention_stale"
+        assert CHECK_TO_ACTION_KEY["playbook_staleness"] == "escalate_playbook_staleness"
+        assert (
+            CHECK_TO_ACTION_KEY["lookup_token_budget_exceeded"]
+            == "fix_lookup_token_budget_exceeded"
+        )
+        assert CHECK_TO_ACTION_KEY["orphaned_iwh_signals"] == "fix_orphaned_iwh_signals"
+
+    def test_triage_classifies_curator_4_escalation_checks(self, tmp_path: Path) -> None:
+        """Escalation checks route to the matching ``escalate_*`` action key."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        collect = CollectResult(
+            items=[
+                CollectItem(
+                    source="validation",
+                    path=Path(".lexibrary/designs/concepts/foo.md"),
+                    severity="info",
+                    message="orphan concept",
+                    check="orphan_concepts",
+                ),
+                CollectItem(
+                    source="validation",
+                    path=Path(".lexibrary/designs/concepts/bar.md"),
+                    severity="info",
+                    message="stale concept",
+                    check="stale_concept",
+                ),
+                CollectItem(
+                    source="validation",
+                    path=Path(".lexibrary/conventions/scope/baz.md"),
+                    severity="info",
+                    message="convention stale",
+                    check="convention_stale",
+                ),
+                CollectItem(
+                    source="validation",
+                    path=Path(".lexibrary/playbooks/qux.md"),
+                    severity="info",
+                    message="playbook staleness",
+                    check="playbook_staleness",
+                ),
+            ]
+        )
+
+        result = coord._triage(collect)
+        action_keys = {item.action_key for item in result.items}
+        assert action_keys == {
+            "escalate_orphan_concepts",
+            "escalate_stale_concept",
+            "escalate_convention_stale",
+            "escalate_playbook_staleness",
+        }
+        # None fell back to the umbrella key.
+        assert "autofix_validation_issue" not in action_keys
+
     def test_triage_classifies_iwh(self, tmp_path: Path) -> None:
         project = _setup_minimal_project(tmp_path)
         config = LexibraryConfig()
@@ -914,6 +984,123 @@ class TestReportPhase:
         report = coord._report(CollectResult(), TriageResult(), dispatch)
         assert report.sub_agent_calls["regenerate_stale_design"] == 2
         assert report.sub_agent_calls["autofix_validation_issue"] == 1
+
+    def test_report_populates_pending_decisions_for_escalations(self, tmp_path: Path) -> None:
+        """curator-4 Group 19 — escalation outcomes flow into pending_decisions.
+
+        Every ``SubAgentResult`` with ``outcome == "escalation_required"`` must
+        appear as a ``PendingDecision`` entry on ``CuratorReport.pending_decisions``
+        with the originating ``check`` and IWH signal path preserved.
+        """
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        escalation_paths = {
+            "orphan_concepts": (
+                Path(".lexibrary/designs/concepts/foo.md"),
+                Path(".lexibrary/designs/concepts/foo.iwh"),
+            ),
+            "stale_concept": (
+                Path(".lexibrary/designs/concepts/bar.md"),
+                Path(".lexibrary/designs/concepts/bar.iwh"),
+            ),
+            "convention_stale": (
+                Path(".lexibrary/conventions/scope/baz.md"),
+                Path(".lexibrary/conventions/scope/baz.iwh"),
+            ),
+            "playbook_staleness": (
+                Path(".lexibrary/playbooks/qux.md"),
+                Path(".lexibrary/playbooks/qux.iwh"),
+            ),
+        }
+        action_key_map = {
+            "orphan_concepts": "escalate_orphan_concepts",
+            "stale_concept": "escalate_stale_concept",
+            "convention_stale": "escalate_convention_stale",
+            "playbook_staleness": "escalate_playbook_staleness",
+        }
+        dispatch = DispatchResult(
+            dispatched=[
+                SubAgentResult(
+                    success=False,
+                    action_key=action_key_map[check],
+                    path=path,
+                    message=f"escalation queued: {check} ({path.name})",
+                    llm_calls=0,
+                    outcome="escalation_required",
+                    check=check,
+                    iwh_path=iwh,
+                )
+                for check, (path, iwh) in escalation_paths.items()
+            ],
+        )
+
+        report = coord._report(CollectResult(), TriageResult(), dispatch)
+
+        assert len(report.pending_decisions) == 4
+        decisions_by_check = {d.check: d for d in report.pending_decisions}
+        assert set(decisions_by_check) == set(escalation_paths)
+        for check, (path, iwh) in escalation_paths.items():
+            decision = decisions_by_check[check]
+            assert decision.path == path
+            assert decision.iwh_path == iwh
+            assert decision.suggested_actions == ["ignore", "deprecate", "refresh"]
+            # The escalate_* fixer's human-readable message is preserved as-is.
+            assert check in decision.message
+
+    def test_report_pending_decisions_empty_when_no_escalations(self, tmp_path: Path) -> None:
+        """No escalation outcomes -> ``pending_decisions`` is an empty list."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        dispatch = DispatchResult(
+            dispatched=[
+                SubAgentResult(
+                    success=True,
+                    action_key="fix_hash_freshness",
+                    path=Path("src/foo.py"),
+                    outcome="fixed",
+                    check="hash_freshness",
+                ),
+            ],
+        )
+
+        report = coord._report(CollectResult(), TriageResult(), dispatch)
+        assert report.pending_decisions == []
+
+    def test_report_pending_decisions_serialized_to_json(self, tmp_path: Path) -> None:
+        """Persisted JSON report carries the ``pending_decisions`` section."""
+        project = _setup_minimal_project(tmp_path)
+        config = LexibraryConfig()
+        coord = Coordinator(project, config)
+
+        dispatch = DispatchResult(
+            dispatched=[
+                SubAgentResult(
+                    success=False,
+                    action_key="escalate_orphan_concepts",
+                    path=Path(".lexibrary/designs/concepts/foo.md"),
+                    message="escalation queued: orphan_concepts (foo.md)",
+                    llm_calls=0,
+                    outcome="escalation_required",
+                    check="orphan_concepts",
+                    iwh_path=Path(".lexibrary/designs/concepts/foo.iwh"),
+                ),
+            ],
+        )
+
+        report = coord._report(CollectResult(), TriageResult(), dispatch)
+        assert report.report_path is not None
+        data = json.loads(report.report_path.read_text(encoding="utf-8"))
+        assert "pending_decisions" in data
+        assert len(data["pending_decisions"]) == 1
+        entry = data["pending_decisions"][0]
+        assert entry["check"] == "orphan_concepts"
+        assert entry["path"] == ".lexibrary/designs/concepts/foo.md"
+        assert entry["iwh_path"] == ".lexibrary/designs/concepts/foo.iwh"
+        assert entry["suggested_actions"] == ["ignore", "deprecate", "refresh"]
 
 
 # ---------------------------------------------------------------------------
@@ -1938,7 +2125,7 @@ class TestTwoPassFlow:
       ``CuratorReport.dispatched_details``) carries a ``layer`` key whose
       value is drawn from ``{"hash", "graph"}`` in the two-pass flow.
     * The legacy single-pass kill-switch (``two_pass_collect=False``)
-      still emits ``schema_version=3``; the schema bump stands even when
+      still emits ``schema_version=4``; the schema bump stands even when
       per-item ``layer`` may be absent / ``None`` on that path.
     * The 70/30 budget split caps hash-layer LLM spend at
       ``int(max_llm_calls_per_run * 0.7)`` while the shared counter
@@ -2141,20 +2328,20 @@ class TestTwoPassFlow:
     @patch("lexibrary.curator.coordinator._uncommitted_files", return_value=set())
     @patch("lexibrary.curator.coordinator._active_iwh_dirs", return_value=set())
     @patch("lexibrary.linkgraph.query.LinkGraph.open", return_value=None)
-    def test_legacy_flow_emits_schema_version_three(
+    def test_legacy_flow_emits_schema_version_four(
         self,
         _mock_graph: MagicMock,
         _mock_iwh: MagicMock,
         _mock_uncommitted: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Kill-switch (``two_pass_collect=False``) still emits schema v3.
+        """Kill-switch (``two_pass_collect=False``) still emits schema v4.
 
-        The schema bump from v2 to v3 stands even when the coordinator
-        runs the legacy single-pass flow; only the per-item ``layer``
-        field is permitted to be ``None`` on that path.  Confirms both
-        the in-memory ``CuratorReport`` and the persisted JSON report
-        carry ``schema_version == 3``.
+        The schema bump from v3 to v4 (curator-4 Phase 6) stands even
+        when the coordinator runs the legacy single-pass flow; only the
+        per-item ``layer`` field is permitted to be ``None`` on that
+        path.  Confirms both the in-memory ``CuratorReport`` and the
+        persisted JSON report carry ``schema_version == 4``.
         """
         project = _setup_minimal_project(tmp_path)
         _make_source_file(project, "src/foo.py", "def foo(): pass\n")
@@ -2177,10 +2364,10 @@ class TestTwoPassFlow:
             coord = Coordinator(project, config)
             report = asyncio.run(coord.run())
 
-        assert report.schema_version == 3
+        assert report.schema_version == 4
         assert report.report_path is not None
         data = json.loads(report.report_path.read_text(encoding="utf-8"))
-        assert data["schema_version"] == 3
+        assert data["schema_version"] == 4
 
     @patch("lexibrary.curator.coordinator._uncommitted_files", return_value=set())
     @patch("lexibrary.curator.coordinator._active_iwh_dirs", return_value=set())

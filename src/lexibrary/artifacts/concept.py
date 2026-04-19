@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from lexibrary.artifacts.slugs import slugify
 
@@ -21,6 +21,20 @@ class ConceptFileFrontmatter(BaseModel):
     status: Literal["draft", "active", "deprecated"] = "active"
     superseded_by: str | None = None
     deprecated_at: datetime | None = None
+    deprecated_reason: str | None = Field(
+        default=None,
+        description=(
+            "Free-text reason for deprecation. Set by lifecycle helpers and CLI "
+            "deprecation commands."
+        ),
+    )
+    last_verified: date | None = Field(
+        default=None,
+        description=(
+            "Date of last operator verification. check_orphan_concepts skips concepts "
+            "within concepts.orphan_verify_ttl_days of this date."
+        ),
+    )
 
 
 class ConceptFile(BaseModel):

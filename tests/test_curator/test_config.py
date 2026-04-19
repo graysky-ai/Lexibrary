@@ -12,6 +12,7 @@ from lexibrary.config.loader import load_config
 from lexibrary.config.schema import ConceptConfig, ConventionConfig, LexibraryConfig
 from lexibrary.curator.config import (
     DEPRECATION_ACTION_KEYS,
+    NEW_FAMILY_ACTION_KEYS,
     AuditingConfig,
     BudgetConfig,
     BudgetTokenLimits,
@@ -685,3 +686,75 @@ class TestConfigLoaderPhase3:
         assert config.curator.budget.token_limits.design_file == 4000
         assert config.curator.auditing.quality_threshold == 0.7
         assert config.curator.reactive.enabled is False
+
+
+# --- curator-4 Group 20: risk_overrides allow-list for new family keys ---
+
+
+CURATOR_4_NEW_ACTION_KEYS = (
+    "escalate_orphan_concepts",
+    "escalate_stale_concept",
+    "escalate_convention_stale",
+    "escalate_playbook_staleness",
+    "fix_lookup_token_budget_exceeded",
+    "fix_orphaned_iwh_signals",
+)
+
+
+class TestCurator4RiskOverridesAllowList:
+    """curator-4 Group 20 — six new action keys join the allow-list.
+
+    SHARED_BLOCK_H adds the four ``escalate_*`` fixers plus
+    ``fix_lookup_token_budget_exceeded`` and ``fix_orphaned_iwh_signals`` to
+    the ``NEW_FAMILY_ACTION_KEYS`` set so that configs may reference them
+    under ``curator.risk_overrides`` without triggering the unknown-key
+    warning.
+    """
+
+    @pytest.mark.parametrize("key", CURATOR_4_NEW_ACTION_KEYS)
+    def test_new_key_present_in_allow_list(self, key: str) -> None:
+        """Each curator-4 action key is pre-seeded in NEW_FAMILY_ACTION_KEYS."""
+        assert key in NEW_FAMILY_ACTION_KEYS
+
+    @pytest.mark.parametrize("key", CURATOR_4_NEW_ACTION_KEYS)
+    def test_new_key_accepted_without_warning(self, key: str) -> None:
+        """Each curator-4 action key is accepted by CuratorConfig with no warning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            config = CuratorConfig(risk_overrides={key: "low"})
+            assert config.risk_overrides == {key: "low"}
+            unknown_warnings = [x for x in w if "Unknown risk_overrides key" in str(x.message)]
+            assert unknown_warnings == []
+
+    def test_all_new_keys_accepted_together(self) -> None:
+        """All six curator-4 keys in one risk_overrides dict — no warnings."""
+        overrides = {key: "low" for key in CURATOR_4_NEW_ACTION_KEYS}
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            config = CuratorConfig(risk_overrides=overrides)
+            assert config.risk_overrides == overrides
+            unknown_warnings = [x for x in w if "Unknown risk_overrides key" in str(x.message)]
+            assert unknown_warnings == []
+
+    def test_remove_orphan_zero_deps_warned_and_ignored(self) -> None:
+        """``remove_orphan_zero_deps`` retired in curator-4 Group 19.
+
+        The key is no longer in ``RISK_TAXONOMY`` and was never added to
+        ``NEW_FAMILY_ACTION_KEYS``, so configs that still reference it must
+        fall through to the unknown-key warning path.  The override value is
+        still accepted (backwards-compat) per the existing
+        ``test_unknown_key_still_accepted`` precedent.
+        """
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            config = CuratorConfig(risk_overrides={"remove_orphan_zero_deps": "medium"})
+            unknown_warnings = [x for x in w if "Unknown risk_overrides key" in str(x.message)]
+            assert len(unknown_warnings) == 1
+            assert "remove_orphan_zero_deps" in str(unknown_warnings[0].message)
+            # Value still accepted — unknown keys warn, they do not raise.
+            assert config.risk_overrides == {"remove_orphan_zero_deps": "medium"}
+
+    def test_remove_orphan_zero_deps_absent_from_allow_list(self) -> None:
+        """Retired key must NOT appear in either allow-list."""
+        assert "remove_orphan_zero_deps" not in NEW_FAMILY_ACTION_KEYS
+        assert "remove_orphan_zero_deps" not in DEPRECATION_ACTION_KEYS

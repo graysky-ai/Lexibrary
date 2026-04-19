@@ -976,9 +976,7 @@ async def reconcile_deps_only(design_path: Path, project_root: Path) -> None:
     """
     design = parse_design_file(design_path)
     if design is None:
-        logger.info(
-            "reconcile_deps_only: cannot parse %s; skipping", design_path
-        )
+        logger.info("reconcile_deps_only: cannot parse %s; skipping", design_path)
         return
 
     rel_source = design.source_path
@@ -987,9 +985,8 @@ async def reconcile_deps_only(design_path: Path, project_root: Path) -> None:
     new_dependencies = extract_dependencies(abs_source, project_root)
     new_dependents = extract_dependents(Path(rel_source), project_root)
 
-    if (
-        list(design.dependencies) == list(new_dependencies)
-        and list(design.dependents) == list(new_dependents)
+    if list(design.dependencies) == list(new_dependencies) and list(design.dependents) == list(
+        new_dependents
     ):
         return
 
@@ -1863,17 +1860,13 @@ async def update_project(
                     # Graph rebuild succeeded above but the DB was concurrently
                     # removed / corrupted; abandon the sweep quietly — the next
                     # run will retry.
-                    logger.info(
-                        "Link graph unavailable mid-reconcile sweep; stopping"
-                    )
+                    logger.info("Link graph unavailable mid-reconcile sweep; stopping")
                     break
                 except Exception as exc:
                     logger.exception(
                         "reconcile_deps_only failed for %s — continuing sweep",
                         design_md,
                     )
-                    stats.error_summary.add(
-                        "archivist", exc, path=str(design_md)
-                    )
+                    stats.error_summary.add("archivist", exc, path=str(design_md))
 
     return stats

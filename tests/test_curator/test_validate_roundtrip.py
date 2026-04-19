@@ -231,8 +231,10 @@ def _build_mixed_library(tmp_path: Path, *, name: str = "mixed") -> Path:
 
     Curator-side consistency actions
     --------------------------------
-    * ``flag_stale_convention`` — ``CV-001-stale.md`` references
-      ``src/old_auth/`` which does not exist.
+    * ``flag_stale_convention`` curator-side handler retired in curator-4
+      Group 22; the planted ``CV-001-stale.md`` convention (scope
+      ``src/old_auth/`` which does not exist) now surfaces as a
+      validator-side ``convention_orphaned_scope`` issue instead.
 
     IWH residual / consistency
     --------------------------
@@ -287,7 +289,10 @@ def _build_mixed_library(tmp_path: Path, *, name: str = "mixed") -> Path:
     _write_aindex(project, "src/deleted")
 
     # --- Consistency planted issues -------------------------------------
-    # flag_stale_convention: convention references src/old_auth/ which is absent.
+    # convention_orphaned_scope: convention references src/old_auth/ which
+    # is absent.  Previously the curator-side ``flag_stale_convention``
+    # handler dispatched on this planted issue; that handler retired in
+    # curator-4 Group 22 in favour of the validator-side check.
     _write_convention(
         project,
         "CV-001",
@@ -478,10 +483,11 @@ class TestMixedFixtureRoundtrip:
         assert "fix_wikilink_resolution" in action_keys, (
             f"expected fix_wikilink_resolution dispatch, got: {sorted(action_keys)}"
         )
-        # Consistency router — stale convention.
-        assert "flag_stale_convention" in action_keys, (
-            f"expected flag_stale_convention dispatch, got: {sorted(action_keys)}"
-        )
+        # ``flag_stale_convention`` curator-side handler retired in curator-4
+        # Group 22 — the planted convention's orphaned scope now surfaces as
+        # ``check_convention_orphaned_scope`` on the validator side (no
+        # narrow fixer registered yet; it falls through to the umbrella
+        # ``autofix_validation_issue`` action key).
         # IWH residual (consistency `full` mode) — blocked IWH promotion.
         assert "promote_blocked_iwh" in action_keys, (
             f"expected promote_blocked_iwh dispatch, got: {sorted(action_keys)}"
@@ -489,9 +495,11 @@ class TestMixedFixtureRoundtrip:
 
         # Per-category after-count assertions — each planted FIXERS check
         # must drop to zero.  Consistency-only categories are not guaranteed
-        # to clear from the validator side (e.g. ``flag_stale_convention``
-        # only writes a warning IWH without rewriting the convention
-        # scope), so we only assert the FIXERS deltas here.
+        # to clear from the validator side (the legacy
+        # ``flag_stale_convention`` curator-side handler was retired in
+        # curator-4 Group 22; the planted convention's orphaned scope now
+        # flows through the validator bridge), so we only assert the FIXERS
+        # deltas here.
         assert after_checks.get("hash_freshness", 0) == 0, (
             f"hash_freshness should be resolved, got: {after_checks.get('hash_freshness')}"
         )
@@ -523,50 +531,13 @@ class TestMixedFixtureRoundtrip:
 
 
 # ---------------------------------------------------------------------------
-# Test class 1b — flag_stale_convention escalation-only pin
+# ``TestFlagStaleConventionEscalationOnly`` retired in curator-4 Group 22.
+# The curator-side ``flag_stale_convention`` handler it pinned was deleted
+# along with the ``detect_stale_conventions`` detector; convention staleness
+# now flows through the validator's ``check_convention_stale`` check paired
+# with the ``escalate_convention_stale`` escalation fixer (see
+# ``tests/test_validator/test_escalate_fixers.py``).
 # ---------------------------------------------------------------------------
-
-
-class TestFlagStaleConventionEscalationOnly:
-    """``flag_stale_convention`` is escalation-only: writes a warning IWH but
-    does NOT rewrite the convention body, so ``convention_orphaned_scope`` in
-    the validator must stay at the same count after the curator sweep.
-    """
-
-    def test_flag_stale_convention_does_not_reduce_validator_count(
-        self,
-        tmp_path: Path,
-        deterministic_hash_freshness: None,
-    ) -> None:
-        project = _build_mixed_library(tmp_path, name="flag-stale-pin")
-
-        before = validate_library(project, project / ".lexibrary")
-        before_checks = _count_by_check(before)
-        convention_before = before_checks.get("convention_orphaned_scope", 0)
-        assert convention_before >= 1, (
-            f"expected planted convention_orphaned_scope, got: {before_checks}"
-        )
-
-        # ``flag_stale_convention`` is collected in ``scope`` mode, so use
-        # ``consistency_collect="scope"`` to exercise that collect path.
-        report = _run_coordinator(project, consistency_collect="scope")
-
-        # The curator must have dispatched ``flag_stale_convention`` — the
-        # whole point of this test is that it ran yet did not reduce the
-        # validator count.
-        action_keys = _dispatched_action_keys(report)
-        assert "flag_stale_convention" in action_keys, (
-            f"expected flag_stale_convention dispatch, got: {sorted(action_keys)}"
-        )
-
-        after = validate_library(project, project / ".lexibrary")
-        after_checks = _count_by_check(after)
-        convention_after = after_checks.get("convention_orphaned_scope", 0)
-        assert convention_after == convention_before, (
-            f"flag_stale_convention is escalation-only and must not reduce "
-            f"convention_orphaned_scope: before={convention_before} "
-            f"after={convention_after}"
-        )
 
 
 # ---------------------------------------------------------------------------

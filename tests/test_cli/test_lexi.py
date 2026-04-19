@@ -509,9 +509,7 @@ class TestLookupCommand:
         """Lookup outside any declared scope_root should print Block A message and exit."""
         project = _setup_archivist_project(tmp_path)
         # Restrict declared scope_roots to src/ only.
-        (project / ".lexibrary" / "config.yaml").write_text(
-            "scope_roots:\n  - path: src\n"
-        )
+        (project / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: src\n")
         # Create a file outside every declared root.
         (project / "scripts").mkdir()
         (project / "scripts" / "deploy.sh").write_text("#!/bin/bash\n")
@@ -3944,9 +3942,7 @@ class TestDesignUpdateCommand:
         """File outside any declared scope_roots should fail with Block A wording."""
         # Set up project with scope_roots restricted to src/
         (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_roots:\n  - path: src\n"
-        )
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: src\n")
         (tmp_path / "src").mkdir()
         # Create a file in project root but outside every declared root.
         outside = tmp_path / "outside.py"
@@ -4693,9 +4689,7 @@ class TestImpact:
         (tmp_path / "external" / "file.py").write_text("x = 1\n")
 
         # Restrict scope_roots to src/ so external/ is outside every declared root.
-        (project / ".lexibrary" / "config.yaml").write_text(
-            "scope_roots:\n  - path: src\n"
-        )
+        (project / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: src\n")
 
         result = runner.invoke(
             lexi_app,
@@ -5150,9 +5144,7 @@ class TestLookupDirectory:
     def test_directory_lookup_outside_scope(self, tmp_path: Path) -> None:
         """Directory lookup outside every declared scope_root should exit with Block A error."""
         project = _setup_archivist_project(tmp_path)
-        (project / ".lexibrary" / "config.yaml").write_text(
-            "scope_roots:\n  - path: src\n"
-        )
+        (project / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: src\n")
         (project / "scripts").mkdir()
 
         old_cwd = os.getcwd()

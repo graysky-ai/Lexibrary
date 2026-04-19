@@ -352,9 +352,7 @@ class TestStepScopeRootInteractive:
             result = _step_scope_root(tmp_path, console, use_defaults=False)
         assert result == [ScopeRoot(path="custom/")]
 
-    def test_zero_detected_default_is_dot(
-        self, tmp_path: Path, console: Console
-    ) -> None:
+    def test_zero_detected_default_is_dot(self, tmp_path: Path, console: Console) -> None:
         """Zero detected: text prompt's default value is ``.`` (matches Pydantic default)."""
         captured: dict[str, object] = {}
 
@@ -390,9 +388,7 @@ class TestStepScopeRootInteractive:
             result = _step_scope_root(tmp_path, console, use_defaults=False)
         assert result == [ScopeRoot(path="src/")]
 
-    def test_single_detected_root_pre_checked(
-        self, tmp_path: Path, console: Console
-    ) -> None:
+    def test_single_detected_root_pre_checked(self, tmp_path: Path, console: Console) -> None:
         """When exactly one root is detected, the checkbox option is pre-checked."""
         (tmp_path / "src").mkdir()
         captured_kwargs: dict[str, object] = {}

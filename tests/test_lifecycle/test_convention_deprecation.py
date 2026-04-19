@@ -1,19 +1,24 @@
-"""Tests for convention hard deletion (TTL expiry and comment cleanup).
+"""Tests for convention deprecation primitives.
 
-Tests for ``lexibrary.lifecycle.convention_deprecation``:
-- TTL expiry checking for deprecated conventions
-- Hard deletion of convention .md files and sibling .comments.yaml files
-- Preservation of non-expired and non-deprecated conventions
+Covers:
+- Soft-deprecate helper (``deprecate_convention``) -- frontmatter status
+  flip, idempotency, atomic write, parse-failure behaviour.
+- TTL expiry checking for deprecated conventions.
+- Hard deletion of convention .md files and sibling .comments.yaml files.
+- Preservation of non-expired and non-deprecated conventions.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
+from lexibrary.conventions.parser import parse_convention_file
 from lexibrary.lifecycle.convention_deprecation import (
     ConventionDeletionResult,
     check_convention_ttl_expiry,
+    deprecate_convention,
     hard_delete_expired_conventions,
 )
 
@@ -403,3 +408,169 @@ class TestConventionDeletionResult:
         )
         assert len(result.deleted) == 1
         assert len(result.comments_deleted) == 1
+
+
+# ---------------------------------------------------------------------------
+# deprecate_convention()  (soft-deprecate helper)
+# ---------------------------------------------------------------------------
+
+
+class TestDeprecateConvention:
+    """Tests for ``deprecate_convention`` soft-deprecate helper."""
+
+    def test_active_to_deprecated_sets_three_fields(self, tmp_path: Path) -> None:
+        """Active convention: flips status, stamps ``deprecated_at``
+        and ``deprecated_reason``.
+        """
+        convention_path = _create_convention_file(
+            tmp_path, "auth-required", title="Auth required", status="active"
+        )
+
+        before = datetime.now(UTC).replace(microsecond=0)
+        deprecate_convention(convention_path, reason="scope_path_missing")
+        after = datetime.now(UTC).replace(microsecond=0)
+
+        updated = parse_convention_file(convention_path)
+        assert updated is not None
+        assert updated.frontmatter.status == "deprecated"
+        assert updated.frontmatter.deprecated_reason == "scope_path_missing"
+        assert updated.frontmatter.deprecated_at is not None
+        # Timestamp is within the invocation window, microsecond=0
+        assert before <= updated.frontmatter.deprecated_at <= after
+        assert updated.frontmatter.deprecated_at.microsecond == 0
+
+    def test_draft_to_deprecated(self, tmp_path: Path) -> None:
+        """Draft conventions are also soft-deprecate eligible."""
+        convention_path = _create_convention_file(
+            tmp_path, "draft-rule", title="Draft Rule", status="draft"
+        )
+
+        deprecate_convention(convention_path, reason="superseded")
+
+        updated = parse_convention_file(convention_path)
+        assert updated is not None
+        assert updated.frontmatter.status == "deprecated"
+        assert updated.frontmatter.deprecated_reason == "superseded"
+        assert updated.frontmatter.deprecated_at is not None
+
+    def test_already_deprecated_is_noop(self, tmp_path: Path) -> None:
+        """Idempotent: already-deprecated input is a no-op; fields unchanged."""
+        original_iso = "2025-06-01T12:34:56+00:00"
+        convention_path = _create_convention_file(
+            tmp_path,
+            "already-dep",
+            title="Already Deprecated",
+            status="deprecated",
+            deprecated_at=original_iso,
+        )
+        # Seed a prior deprecated_reason by re-writing the file with one
+        # so we can confirm it is preserved (the fixture helper does not
+        # currently emit ``deprecated_reason``; append it manually).
+        text = convention_path.read_text(encoding="utf-8")
+        # Insert deprecated_reason after deprecated_at line
+        text = text.replace(
+            f"deprecated_at: '{original_iso}'",
+            (f"deprecated_at: '{original_iso}'\ndeprecated_reason: original_reason"),
+        )
+        convention_path.write_text(text, encoding="utf-8")
+
+        mtime_before = convention_path.stat().st_mtime_ns
+
+        deprecate_convention(convention_path, reason="new_reason_should_be_ignored")
+
+        # File content: fields unchanged
+        updated = parse_convention_file(convention_path)
+        assert updated is not None
+        assert updated.frontmatter.status == "deprecated"
+        assert updated.frontmatter.deprecated_reason == "original_reason"
+        assert updated.frontmatter.deprecated_at is not None
+        assert updated.frontmatter.deprecated_at.isoformat() == original_iso
+
+        # No-op: the file must not be rewritten (mtime preserved).
+        mtime_after = convention_path.stat().st_mtime_ns
+        assert mtime_after == mtime_before
+
+    def test_unparseable_returns_none(self, tmp_path: Path) -> None:
+        """Parse failure -> helper returns None, file untouched."""
+        conventions_dir = tmp_path / ".lexibrary" / "conventions"
+        conventions_dir.mkdir(parents=True)
+        bad_path = conventions_dir / "bad.md"
+        bad_path.write_text("not valid yaml frontmatter", encoding="utf-8")
+
+        original = bad_path.read_text(encoding="utf-8")
+        result = deprecate_convention(bad_path, reason="anything")
+        assert result is None
+        assert bad_path.read_text(encoding="utf-8") == original
+
+    def test_missing_file_returns_none(self, tmp_path: Path) -> None:
+        """Nonexistent convention path -> None, no side effects."""
+        conventions_dir = tmp_path / ".lexibrary" / "conventions"
+        conventions_dir.mkdir(parents=True)
+        missing = conventions_dir / "not-there.md"
+        assert not missing.exists()
+
+        result = deprecate_convention(missing, reason="anything")
+        assert result is None
+        assert not missing.exists()
+
+    def test_atomic_write_leaves_no_temp_files(self, tmp_path: Path) -> None:
+        """Happy-path write produces exactly the target file -- temp cleaned up."""
+        convention_path = _create_convention_file(
+            tmp_path, "atomic-conv", title="Atomic Conv", status="active"
+        )
+        conventions_dir = convention_path.parent
+
+        deprecate_convention(convention_path, reason="atomic_test")
+
+        # Only the target .md file remains (no .tmp stragglers).
+        entries = sorted(p.name for p in conventions_dir.iterdir())
+        assert entries == ["atomic-conv.md"]
+
+        # And content is sensible.
+        updated = parse_convention_file(convention_path)
+        assert updated is not None
+        assert updated.frontmatter.status == "deprecated"
+        assert updated.frontmatter.deprecated_reason == "atomic_test"
+
+    def test_preserves_other_frontmatter_fields(self, tmp_path: Path) -> None:
+        """Body, title, scope, tags, aliases, priority survive the flip."""
+        conventions_dir = tmp_path / ".lexibrary" / "conventions"
+        conventions_dir.mkdir(parents=True, exist_ok=True)
+        convention_path = conventions_dir / "rich-conv.md"
+        convention_path.write_text(
+            "\n".join(
+                [
+                    "---",
+                    "title: 'Rich Convention'",
+                    "id: CV-099",
+                    "scope: src/auth, src/users",
+                    "tags:",
+                    "  - python",
+                    "  - security",
+                    "status: active",
+                    "source: user",
+                    "priority: 3",
+                    "aliases:",
+                    "  - rich-alias",
+                    "---",
+                    "",
+                    "Always validate tokens before use.\n",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        deprecate_convention(convention_path, reason="preservation_check")
+
+        updated = parse_convention_file(convention_path)
+        assert updated is not None
+        assert updated.frontmatter.status == "deprecated"
+        assert updated.frontmatter.deprecated_reason == "preservation_check"
+        # Unrelated fields preserved:
+        assert updated.frontmatter.title == "Rich Convention"
+        assert updated.frontmatter.id == "CV-099"
+        assert updated.frontmatter.scope == "src/auth, src/users"
+        assert updated.frontmatter.tags == ["python", "security"]
+        assert updated.frontmatter.priority == 3
+        assert updated.frontmatter.aliases == ["rich-alias"]
+        assert "Always validate tokens before use." in updated.body

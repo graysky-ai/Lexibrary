@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from pydantic import BaseModel
+from pydantic import Field as PydanticField
+
 # ---------------------------------------------------------------------------
 # Collect phase
 # ---------------------------------------------------------------------------
@@ -184,11 +187,20 @@ class SubAgentResult:
         "no_fixer",
         "dry_run",
         "errored",
+        "escalation_required",
     ] = "fixed"
     # Two-pass collect tagging (schema v3). Inherited from the originating
     # ``TriageItem``'s ``layer`` at dispatch time. ``None`` preserves legacy
     # single-pass flow behaviour.
     layer: Literal["hash", "graph"] | None = None
+    # curator-4 Group 19: escalation metadata propagated by the bridge from
+    # the originating ``FixResult`` / ``ValidationIssue``.  The coordinator's
+    # ``_report`` step consumes these fields to emit a ``PendingDecision``
+    # entry in ``CuratorReport.pending_decisions`` for every dispatched
+    # result whose ``outcome == "escalation_required"``.  Both default to
+    # ``None`` so non-escalation paths are unaffected.
+    check: str | None = None
+    iwh_path: Path | None = None
 
 
 @dataclass
@@ -204,6 +216,24 @@ class DispatchResult:
 # ---------------------------------------------------------------------------
 # Report phase
 # ---------------------------------------------------------------------------
+
+
+class PendingDecision(BaseModel):
+    """An operator-resolution decision queued by an escalation fixer.
+
+    Emitted by the four ``escalate_*`` validator fixers (curator-4 Phase 6)
+    when the coordinator runs autonomously — the fixer writes an IWH
+    signal and contributes one ``PendingDecision`` entry to
+    ``CuratorReport.pending_decisions``.  The admin replay path
+    (``lexictl curate resolve``) walks these entries through the
+    interactive 3-option loop (ignore / deprecate / refresh).
+    """
+
+    check: str
+    path: Path
+    message: str
+    suggested_actions: list[Literal["ignore", "deprecate", "refresh"]]
+    iwh_path: Path | None = PydanticField(default=None)
 
 
 @dataclass
@@ -234,10 +264,17 @@ class CuratorReport:
     #   v2: honest counters + dispatched/deferred detail lists.
     #   v3: per-item ``layer`` field on CollectItem/TriageItem/SubAgentResult
     #       tagging hash vs graph layer.
-    schema_version: int = 3
+    #   v4: ``pending_decisions: list[PendingDecision]`` section for
+    #       operator-resolution escalations (curator-4 Phase 6).
+    schema_version: int = 4
     stubbed: int = 0
     dispatched_details: list[dict[str, object]] = field(default_factory=list)
     deferred_details: list[dict[str, object]] = field(default_factory=list)
+    # Curator-4 Phase 6 (escalation framework): operator-resolution queue.
+    # Populated by the bridge whenever a ``SubAgentResult`` carries
+    # ``outcome="escalation_required"``.  Default empty list preserves
+    # backward compatibility for runs with no escalations.
+    pending_decisions: list[PendingDecision] = field(default_factory=list)
     trigger: Literal[
         "on_demand",
         "reactive_post_edit",

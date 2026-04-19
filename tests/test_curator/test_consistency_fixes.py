@@ -24,8 +24,6 @@ from lexibrary.artifacts.design_file_parser import parse_design_file
 from lexibrary.artifacts.design_file_serializer import serialize_design_file
 from lexibrary.curator.consistency_fixes import (
     apply_add_reverse_dep,
-    apply_flag_stale_convention,
-    apply_orphan_concept_delete,
     apply_orphaned_comments_delete,
 )
 from lexibrary.curator.dispatch_context import DispatchContext
@@ -197,53 +195,9 @@ class TestOrphanedCommentsDelete:
 
 
 # ---------------------------------------------------------------------------
-# apply_orphan_concept_delete
+# ``apply_orphan_concept_delete`` retired in curator-4 Group 21 — replaced
+# by the validator's ``escalate_orphan_concepts`` escalation fixer.
 # ---------------------------------------------------------------------------
-
-
-class TestApplyOrphanConceptDelete:
-    def test_apply_orphan_concept_delete_removes_file(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        concept = lex_dir / "concepts" / "CN-099-orphan.md"
-        concept.write_text(
-            "---\ntitle: Orphan\nid: CN-099\nstatus: active\n---\n\nBody\n",
-            encoding="utf-8",
-        )
-        sibling = lex_dir / "concepts" / "CN-099-orphan.comments.yaml"
-        sibling.write_text("- note: stale\n", encoding="utf-8")
-
-        result = apply_orphan_concept_delete(
-            _make_item(
-                action_key="remove_orphan_zero_deps",
-                action_hint="remove_orphan_zero_deps",
-                target_path=concept,
-                detail="Zero inbound",
-            ),
-            _make_ctx(project, lex_dir),
-        )
-        assert result.success is True
-        assert not concept.exists()
-        # Sibling should also be deleted per tasks.md 8.7.
-        assert not sibling.exists()
-
-    def test_apply_orphan_concept_delete_without_sibling(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        concept = lex_dir / "concepts" / "CN-099-orphan.md"
-        concept.write_text(
-            "---\ntitle: Orphan\nid: CN-099\nstatus: active\n---\n\nBody\n",
-            encoding="utf-8",
-        )
-        result = apply_orphan_concept_delete(
-            _make_item(
-                action_key="remove_orphan_zero_deps",
-                action_hint="remove_orphan_zero_deps",
-                target_path=concept,
-                detail="Zero inbound",
-            ),
-            _make_ctx(project, lex_dir),
-        )
-        assert result.success is True
-        assert not concept.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -305,32 +259,10 @@ class TestHelperContractProperties:
 
 
 # ---------------------------------------------------------------------------
-# IWH-flagging helpers
+# IWH-flagging helpers for convention / playbook staleness retired in
+# curator-4 Group 22.  Coverage moved to the validator-side escalation-fixer
+# tests in ``tests/test_validator/test_escalate_fixers.py``.
 # ---------------------------------------------------------------------------
-
-
-class TestFlagStaleConvention:
-    def test_apply_flag_stale_convention_writes_iwh(self, tmp_path: Path) -> None:
-        project, lex_dir = _setup_project(tmp_path)
-        conv = lex_dir / "conventions" / "CV-001-old.md"
-        conv.write_text(
-            "---\ntitle: Old\nid: CV-001\nscope: src/gone/\nstatus: active\n---\n\nBody\n",
-            encoding="utf-8",
-        )
-        result = apply_flag_stale_convention(
-            _make_item(
-                action_key="flag_stale_convention",
-                action_hint="flag_stale_convention",
-                target_path=conv,
-                detail="Convention references path 'src/gone/' which no longer exists",
-            ),
-            _make_ctx(project, lex_dir),
-        )
-        assert result.success is True
-        # IWH should be written into the conventions mirror directory.
-        iwh_path = lex_dir / "conventions" / ".iwh"
-        assert iwh_path.exists()
-        assert "Stale convention" in iwh_path.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -376,10 +308,13 @@ def test_consistency_action_keys_map_is_authoritative() -> None:
     "action_key",
     [
         "delete_orphaned_comments",
-        "remove_orphan_zero_deps",
+        # ``remove_orphan_zero_deps`` retired in curator-4 Group 21 (replaced
+        # by the validator's ``escalate_orphan_concepts`` escalation fixer).
+        # ``flag_stale_convention`` / ``flag_stale_playbook`` retired in
+        # curator-4 Group 22 (replaced by the validator's
+        # ``escalate_convention_stale`` / ``escalate_playbook_staleness``
+        # escalation fixers).
         "add_missing_reverse_dep",
-        "flag_stale_convention",
-        "flag_stale_playbook",
         "suggest_new_concept",
         "promote_blocked_iwh",
     ],

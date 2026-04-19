@@ -211,12 +211,20 @@ def convention_deprecate(
         str,
         typer.Argument(help="Convention file slug (filename stem, e.g. 'use-pathspec-gitignore')."),
     ],
+    *,
+    reason: Annotated[
+        str,
+        typer.Option(
+            "--reason",
+            help="Free-text reason recorded in frontmatter.deprecated_reason.",
+        ),
+    ] = "manual",
 ) -> None:
     """Set a convention's status to deprecated and return confirmation."""
-    from datetime import UTC, datetime  # noqa: PLC0415
-
     from lexibrary.conventions.parser import parse_convention_file  # noqa: PLC0415
-    from lexibrary.conventions.serializer import serialize_convention_file  # noqa: PLC0415
+    from lexibrary.lifecycle.convention_deprecation import (  # noqa: PLC0415
+        deprecate_convention,
+    )
 
     project_root = require_project_root()
     conventions_dir = project_root / ".lexibrary" / "conventions"
@@ -241,22 +249,24 @@ def convention_deprecate(
         error(f"Failed to parse convention file: {conv_path.relative_to(project_root)}")
         raise typer.Exit(1)
 
-    # Already deprecated -- do nothing
+    # Already deprecated -- do nothing (pre-check for user-facing message;
+    # the helper itself is silent and idempotent).
     if conv.frontmatter.status == "deprecated":
         warn(f"Already deprecated: '{conv.frontmatter.title}'")
         return
 
-    # Update status, set deprecated_at timestamp, and re-serialize
-    timestamp = datetime.now(tz=UTC).replace(microsecond=0)
-    conv.frontmatter.status = "deprecated"
-    conv.frontmatter.deprecated_at = timestamp
-    content = serialize_convention_file(conv)
-    conv_path.write_text(content, encoding="utf-8")
+    # Delegate frontmatter mutation + atomic write to the lifecycle helper.
+    deprecate_convention(conv_path, reason=reason)
 
-    info(
-        f"Deprecated '{conv.frontmatter.title}' -- "
-        f"status set to deprecated at {timestamp.isoformat()}"
+    # Re-parse to obtain the exact timestamp written by the helper for the
+    # user-facing confirmation line.
+    updated = parse_convention_file(conv_path)
+    timestamp_iso = (
+        updated.frontmatter.deprecated_at.isoformat()
+        if updated is not None and updated.frontmatter.deprecated_at is not None
+        else ""
     )
+    info(f"Deprecated '{conv.frontmatter.title}' -- status set to deprecated at {timestamp_iso}")
 
 
 # ---------------------------------------------------------------------------

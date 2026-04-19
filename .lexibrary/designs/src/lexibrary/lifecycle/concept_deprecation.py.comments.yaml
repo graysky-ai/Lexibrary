@@ -1,0 +1,6 @@
+comments:
+- body: 'curator-4: soft-deprecate (deprecate_concept) is now a reusable primitive,
+    not CLI-only. Both the lexi validate --fix --interactive flow and the lexictl
+    curate resolve admin flow call this helper. Keep user-facing messages in the CLI
+    layer.'
+  date: '2026-04-19T03:01:08.093861Z'

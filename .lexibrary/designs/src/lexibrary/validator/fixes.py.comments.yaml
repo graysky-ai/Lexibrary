@@ -20,3 +20,14 @@ comments:
     Uses build_archivist_service factory and _run_sync to be safe from within the
     curator''s async dispatch loop.'
   date: '2026-04-14T10:18:01.205605Z'
+- body: 'curator-4: added four escalate_* fixers (escalate_orphan_concepts, escalate_stale_concept,
+    escalate_convention_stale, escalate_playbook_staleness) that route operator-mediated
+    decisions to pending_decisions via outcome_hint=''escalation_required'' + IWH
+    breadcrumb. Added two operational fixers: fix_lookup_token_budget_exceeded (calls
+    curator.budget.condense_file, gated by validator.fix_lookup_token_budget_condense)
+    and fix_orphaned_iwh_signals (TTL-based delete, gated by validator.fix_orphaned_iwh_signals_delete).
+    FixResult gained llm_calls:int and outcome_hint:Literal fields; fix_wikilink_resolution
+    now reports llm_calls=1 in the success branch (was under-counting). ESCALATION_CHECKS
+    frozenset partitions the four escalation checks so the interactive CLI can short-circuit
+    FIXERS dispatch.'
+  date: '2026-04-19T03:01:31.776209Z'

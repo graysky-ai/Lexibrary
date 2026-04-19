@@ -17,7 +17,8 @@ def serialize_playbook_file(playbook: PlaybookFile) -> str:
     - ``---`` delimited YAML frontmatter with a tooltip comment above ``title``
     - ``trigger_files`` rendered as a YAML flow list for readability
     - Optional fields (``estimated_minutes``, ``deprecated_at``,
-      ``superseded_by``, ``aliases``) omitted when ``None`` or empty
+      ``deprecated_reason``, ``superseded_by``, ``aliases``) omitted when
+      ``None`` or empty
     - ``last_verified`` serialized as ISO date (YYYY-MM-DD)
     - ``deprecated_at`` serialized as ISO datetime string
     - A blank line after the closing ``---``
@@ -50,6 +51,9 @@ def serialize_playbook_file(playbook: PlaybookFile) -> str:
 
     if fm.deprecated_at is not None:
         fm_data["deprecated_at"] = fm.deprecated_at.isoformat()
+
+    if fm.deprecated_reason is not None:
+        fm_data["deprecated_reason"] = fm.deprecated_reason
 
     if fm.superseded_by is not None:
         fm_data["superseded_by"] = fm.superseded_by

@@ -235,10 +235,14 @@ async def _bootstrap_archivist_regenerate(
         result.change == ChangeLevel.UNCHANGED
         or result.change == ChangeLevel.AGENT_UPDATED
         or result.skip_reason is not None
-        or (result.failed and result.failure_reason in {
-            "cannot read source file",
-            "unresolved merge conflict markers",
-        })
+        or (
+            result.failed
+            and result.failure_reason
+            in {
+                "cannot read source file",
+                "unresolved merge conflict markers",
+            }
+        )
         or (
             result.failed
             and result.failure_reason is not None
@@ -322,9 +326,7 @@ async def post_edit_hook(
     # ``pre_charged_llm_calls`` counter, so the dispatch phase that follows
     # picks up the consumed budget.
     if config.curator.reactive_bootstrap_regenerate:
-        await _bootstrap_archivist_regenerate(
-            file_path, project_root, config, coordinator
-        )
+        await _bootstrap_archivist_regenerate(file_path, project_root, config, coordinator)
 
     await _run_coordinator(
         project_root,

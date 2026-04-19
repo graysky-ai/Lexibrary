@@ -150,47 +150,12 @@ def _run(project: Path, *, autonomy: str = "full") -> object:
 
 
 # ---------------------------------------------------------------------------
-# Orphan concept round-trip
+# Orphan concept round-trip retired in curator-4 Group 21.  The curator-side
+# ``detect_orphan_concepts`` detector and the ``apply_orphan_concept_delete``
+# dispatch handler were deleted; orphan concepts are now handled via the
+# validator's ``check_orphan_concepts`` + ``escalate_orphan_concepts``
+# escalation fixer (see tests/test_validator/ for coverage).
 # ---------------------------------------------------------------------------
-
-
-class TestOrphanConceptRoundtrip:
-    def test_orphan_concept_roundtrip(self, tmp_path: Path) -> None:
-        """An orphan concept with a link graph zero-deps finding is deleted under full autonomy.
-
-        This test exercises the dispatch path by fabricating a consistency
-        ``CollectItem`` directly (the link-graph-backed orphan detection
-        requires an ``index.db`` which the minimal fixture lacks).
-        """
-        project = _setup_integration_project(tmp_path)
-        orphan = _write_concept(project / ".lexibrary", "CN-099", "Orphan")
-
-        # Directly exercise the dispatcher with a fabricated triage item
-        # so we don't depend on detect_orphan_concepts + index.db.
-        from lexibrary.curator.models import CollectItem, TriageItem  # noqa: PLC0415
-
-        coord = Coordinator(
-            project,
-            LexibraryConfig.model_validate({"curator": {"autonomy": "full"}}),
-        )
-        collect = CollectItem(
-            source="consistency",
-            path=orphan,
-            severity="info",
-            message="zero inbound",
-            check="consistency",
-            action_hint="remove_orphan_zero_deps",
-            fix_instruction_detail="Concept CN-099 has zero inbound",
-        )
-        triage = TriageItem(
-            source_item=collect,
-            issue_type="consistency_fix",
-            action_key="remove_orphan_zero_deps",
-            priority=15.0,
-        )
-        result = coord._dispatch_consistency_fix(triage)  # noqa: SLF001
-        assert result.success is True
-        assert not orphan.exists()
 
 
 # ---------------------------------------------------------------------------

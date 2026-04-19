@@ -6,6 +6,7 @@ and check_deprecated_concept_usage.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from pathlib import Path
 
 from lexibrary.utils.hashing import hash_file
@@ -64,6 +65,7 @@ aliases: {aliases}
 tags: {tags}
 status: {status}
 {superseded_line}
+{last_verified_line}
 ---
 
 {body}
@@ -100,6 +102,7 @@ def _write_concept_file(
     tags: list[str] | None = None,
     status: str = "active",
     superseded_by: str | None = None,
+    last_verified: date | None = None,
     body: str = "A concept description.",
 ) -> Path:
     """Write a concept file under .lexibrary/concepts/."""
@@ -109,6 +112,7 @@ def _write_concept_file(
     aliases_yaml = "[" + ", ".join(aliases or []) + "]"
     tags_yaml = "[" + ", ".join(tags or ["general"]) + "]"
     superseded_line = f"superseded_by: {superseded_by}" if superseded_by else ""
+    last_verified_line = f"last_verified: {last_verified.isoformat()}" if last_verified else ""
 
     filename = title.lower().replace(" ", "-") + ".md"
     concept_path = concepts_dir / filename
@@ -119,6 +123,7 @@ def _write_concept_file(
             tags=tags_yaml,
             status=status,
             superseded_line=superseded_line,
+            last_verified_line=last_verified_line,
             body=body,
         ),
         encoding="utf-8",
@@ -135,6 +140,11 @@ def _write_config(project_root: Path, **overrides: object) -> None:
         budgets = overrides["token_budgets"]
         lines.append("token_budgets:")
         for key, val in budgets.items():  # type: ignore[union-attr]
+            lines.append(f"  {key}: {val}")
+    if "concepts" in overrides:
+        concepts = overrides["concepts"]
+        lines.append("concepts:")
+        for key, val in concepts.items():  # type: ignore[union-attr]
             lines.append(f"  {key}: {val}")
     config_path = config_dir / "config.yaml"
     config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -503,6 +513,71 @@ class TestCheckOrphanConcepts:
         names = {i.artifact for i in issues}
         assert "concepts/Orphan A" in names
         assert "concepts/Orphan B" in names
+
+    def test_ttl_fresh_concept_without_last_verified_is_flagged(self, tmp_path: Path) -> None:
+        """Orphan with no last_verified is still flagged under default TTL."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / ".lexibrary"
+        lexibrary_dir.mkdir()
+
+        # No config.yaml → default orphan_verify_ttl_days=90; concept has no
+        # last_verified → TTL suppression does not apply → emit.
+        _write_concept_file(lexibrary_dir, "Orphan Concept")
+
+        issues = check_orphan_concepts(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        assert issues[0].check == "orphan_concepts"
+
+    def test_ttl_recent_last_verified_suppresses_warning(self, tmp_path: Path) -> None:
+        """last_verified 10 days ago with TTL=90 → suppressed."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / ".lexibrary"
+        lexibrary_dir.mkdir()
+
+        _write_config(project_root, concepts={"orphan_verify_ttl_days": 90})
+        _write_concept_file(
+            lexibrary_dir,
+            "Recently Verified Orphan",
+            last_verified=date.today() - timedelta(days=10),
+        )
+
+        issues = check_orphan_concepts(project_root, lexibrary_dir)
+        assert len(issues) == 0
+
+    def test_ttl_stale_last_verified_emits_warning(self, tmp_path: Path) -> None:
+        """last_verified 100 days ago with TTL=90 → flagged."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / ".lexibrary"
+        lexibrary_dir.mkdir()
+
+        _write_config(project_root, concepts={"orphan_verify_ttl_days": 90})
+        _write_concept_file(
+            lexibrary_dir,
+            "Stale Verified Orphan",
+            last_verified=date.today() - timedelta(days=100),
+        )
+
+        issues = check_orphan_concepts(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        assert issues[0].check == "orphan_concepts"
+        assert issues[0].artifact == "concepts/Stale Verified Orphan"
+
+    def test_ttl_zero_always_emits_regardless_of_last_verified(self, tmp_path: Path) -> None:
+        """TTL=0 disables honouring: even a concept verified today is flagged."""
+        project_root = tmp_path
+        lexibrary_dir = project_root / ".lexibrary"
+        lexibrary_dir.mkdir()
+
+        _write_config(project_root, concepts={"orphan_verify_ttl_days": 0})
+        _write_concept_file(
+            lexibrary_dir,
+            "Verified Today Orphan",
+            last_verified=date.today(),
+        )
+
+        issues = check_orphan_concepts(project_root, lexibrary_dir)
+        assert len(issues) == 1
+        assert issues[0].check == "orphan_concepts"
 
 
 # ---------------------------------------------------------------------------

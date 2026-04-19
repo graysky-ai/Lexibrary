@@ -1,0 +1,6 @@
+comments:
+- body: 'curator-4: new lifecycle module. deprecate_playbook is a reusable primitive
+    (status flip + body-note append), shared between lexi playbook deprecate (CLI),
+    lexi validate --fix --interactive, and lexictl curate resolve. Idempotent on already-deprecated
+    input.'
+  date: '2026-04-19T03:01:16.106672Z'

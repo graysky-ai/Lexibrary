@@ -48,9 +48,7 @@ def _setup_project(tmp_path: Path, scope_root: str = ".") -> Path:
     a stray ``load_config`` call would still succeed.
     """
     (tmp_path / ".lexibrary").mkdir()
-    (tmp_path / ".lexibrary" / "config.yaml").write_text(
-        f"scope_roots:\n  - path: {scope_root}\n"
-    )
+    (tmp_path / ".lexibrary" / "config.yaml").write_text(f"scope_roots:\n  - path: {scope_root}\n")
     return tmp_path
 
 
@@ -644,9 +642,7 @@ class TestBootstrapQuickMultiRoot:
         # A file outside every declared root must NOT be discovered.
         _make_source_file(project, "docs/ignore_me.py", "c = 3\n")
 
-        config = LexibraryConfig(
-            scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")]
-        )
+        config = LexibraryConfig(scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")])
         stats = bootstrap_quick(project, config)
 
         # Both in-scope files processed; the docs/ file is outside every root.
@@ -670,9 +666,7 @@ class TestBootstrapQuickMultiRoot:
         # not a ``FileNotFoundError`` from the path resolver.
         (project / "docs").mkdir()
 
-        config = LexibraryConfig(
-            scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")]
-        )
+        config = LexibraryConfig(scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")])
 
         with pytest.raises(ValueError) as excinfo:
             bootstrap_quick(project, config, scope_override="docs")
@@ -699,9 +693,7 @@ class TestBootstrapQuickMultiRoot:
         _make_source_file(project, "src/a.py", "a = 1\n")
         # ``baml_src/`` does not exist on disk.
 
-        config = LexibraryConfig(
-            scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")]
-        )
+        config = LexibraryConfig(scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")])
         stats = bootstrap_quick(project, config)
 
         captured = capsys.readouterr()
@@ -730,9 +722,7 @@ class TestBootstrapQuickMultiRoot:
         project = _setup_project(tmp_path)
         _make_source_file(project, "src/a.py", "a = 1\n")
 
-        config = LexibraryConfig(
-            scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="ghost")]
-        )
+        config = LexibraryConfig(scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="ghost")])
 
         resolved = config.resolved_scope_roots(project)
         captured = capsys.readouterr()
@@ -765,9 +755,7 @@ class TestBootstrapFullMultiRoot:
         # Outside every declared root — must not be processed.
         _make_source_file(project, "docs/ignore_me.py", "c = 3\n")
 
-        config = LexibraryConfig(
-            scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")]
-        )
+        config = LexibraryConfig(scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")])
 
         with patch(
             "lexibrary.lifecycle.bootstrap.update_file",
@@ -801,9 +789,7 @@ class TestBootstrapFullMultiRoot:
         _make_source_file(project, "baml_src/main.py", "b = 2\n")
         (project / "docs").mkdir()
 
-        config = LexibraryConfig(
-            scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")]
-        )
+        config = LexibraryConfig(scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")])
 
         with pytest.raises(ValueError) as excinfo:
             await bootstrap_full(
@@ -830,9 +816,7 @@ class TestBootstrapFullMultiRoot:
         _make_source_file(project, "src/a.py", "a = 1\n")
         # ``baml_src/`` does not exist on disk.
 
-        config = LexibraryConfig(
-            scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")]
-        )
+        config = LexibraryConfig(scope_roots=[ScopeRoot(path="src"), ScopeRoot(path="baml_src")])
 
         with patch(
             "lexibrary.lifecycle.bootstrap.update_file",

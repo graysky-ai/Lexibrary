@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from lexibrary.artifacts.slugs import slugify
 
@@ -23,6 +23,13 @@ class ConventionFileFrontmatter(BaseModel):
     priority: int = 0
     aliases: list[str] = []
     deprecated_at: datetime | None = None
+    deprecated_reason: str | None = Field(
+        default=None,
+        description=(
+            "Free-text reason for deprecation. Set by lifecycle helpers and CLI "
+            "deprecation commands."
+        ),
+    )
 
 
 class ConventionFile(BaseModel):

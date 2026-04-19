@@ -30,26 +30,37 @@ DEPRECATION_ACTION_KEYS: frozenset[str] = frozenset(
     }
 )
 
-# Narrow family action keys introduced by the ``curator-freshness`` change.
-# Each key is the validator-side fixer that replaces one or more retired
-# curator-side consistency action keys (see SHARED_BLOCK_A in
-# ``openspec/changes/curator-freshness/tasks.md``).
+# Narrow family action keys introduced by the ``curator-freshness`` and
+# ``curator-4`` changes.  Each key is the validator-side fixer that replaces
+# one or more retired curator-side consistency action keys (see SHARED_BLOCK_A
+# in ``openspec/changes/curator-freshness/tasks.md`` and SHARED_BLOCK_H in
+# ``openspec/changes/curator-4/tasks.md``).
 #
 # Pre-seeded here so that configs referencing these keys do not trigger the
 # unknown-key warning before the matching ``ActionRisk`` entries land in
-# ``RISK_TAXONOMY`` (they arrive incrementally across groups 4, 6, 7, 8, 9).
+# ``RISK_TAXONOMY`` (they arrive incrementally across groups 4, 6, 7, 8, 9 of
+# ``curator-freshness`` and group 19 of ``curator-4``).
 # As curator-side action keys retire (e.g. group 3.8 retired
 # ``add_missing_bidirectional_dep`` and ``remove_orphaned_reverse_dep`` when
 # their taxonomy entries were deleted), they drop out of the known set
 # automatically because the known set is derived from ``RISK_TAXONOMY``.
 NEW_FAMILY_ACTION_KEYS: frozenset[str] = frozenset(
     {
+        # curator-freshness keys
         "fix_bidirectional_deps",
         "fix_orphaned_aindex",
         "fix_duplicate_slugs",
         "fix_duplicate_aliases",
         "fix_orphan_concepts",
         "fix_wikilink_resolution",
+        # curator-4 keys: four escalation routers (Ignore / Deprecate /
+        # Refresh) + two mechanical operational fixers.
+        "escalate_orphan_concepts",
+        "escalate_stale_concept",
+        "escalate_convention_stale",
+        "escalate_playbook_staleness",
+        "fix_lookup_token_budget_exceeded",
+        "fix_orphaned_iwh_signals",
     }
 )
 
@@ -71,9 +82,7 @@ def _known_action_keys() -> frozenset[str]:
             from lexibrary.curator.risk_taxonomy import RISK_TAXONOMY
 
             _KNOWN_KEYS_CACHE = (
-                frozenset(RISK_TAXONOMY)
-                | DEPRECATION_ACTION_KEYS
-                | NEW_FAMILY_ACTION_KEYS
+                frozenset(RISK_TAXONOMY) | DEPRECATION_ACTION_KEYS | NEW_FAMILY_ACTION_KEYS
             )
         except ImportError:
             # Taxonomy module not yet available — fall back to deprecation +

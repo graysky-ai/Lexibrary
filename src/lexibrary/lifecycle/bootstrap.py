@@ -136,9 +136,7 @@ def _resolve_bootstrap_scope_dirs(
         override_dir = (project_root / scope_override).resolve()
         if not _is_within_any_scope(override_dir, project_root, config):
             declared = [r.path for r in config.scope_roots]
-            raise ValueError(
-                f"{scope_override} is outside all configured scope_roots: {declared}"
-            )
+            raise ValueError(f"{scope_override} is outside all configured scope_roots: {declared}")
         return [override_dir]
 
     resolved = config.resolved_scope_roots(project_root)

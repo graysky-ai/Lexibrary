@@ -499,13 +499,15 @@ class IndexBuilder:
         """Resolve a named concept reference to its project-relative file path.
 
         Used by stack post ``concepts`` refs and convention wikilinks, where
-        the artifact is explicitly expected to be a concept. When the name
-        matches a real concept (by title or alias) the actual file path is
-        returned; otherwise a synthetic stub path is returned so the curator
-        can still surface a dangling reference.
+        the artifact is explicitly expected to be a concept. Resolution tries
+        title/alias via ``find()`` first, then artifact ID (e.g. ``CN-020``)
+        via ``find_by_id()``; a synthetic stub path is returned only if
+        neither matches, so the curator still surfaces a dangling reference.
         """
         if self._concept_index is not None:
             concept = self._concept_index.find(name)
+            if concept is None:
+                concept = self._concept_index.find_by_id(name)
             if concept is not None and concept.file_path is not None:
                 try:
                     return str(concept.file_path.relative_to(self.project_root))

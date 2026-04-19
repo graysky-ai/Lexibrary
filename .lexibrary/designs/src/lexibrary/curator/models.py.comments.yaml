@@ -1,0 +1,10 @@
+comments:
+- body: "Added PendingDecision Pydantic model (escalation fixer output queue) and\
+    \ bumped CuratorReport.schema_version from 3 to 4. SubAgentResult.outcome Literal\
+    \ now includes 'escalation_required'. Escalation fixers (curator-4 Phase 6) write\
+    \ one PendingDecision per autonomous run, allowing lexictl curate resolve to replay\
+    \ the 3-option loop (ignore/deprecate/refresh) later. PendingDecision deliberately\
+    \ uses Pydantic (not dataclass) for JSON round-trip semantics \u2014 callers serialize\
+    \ the report via its model_dump_json method. iwh_path is None when the decision\
+    \ originated from an interactive run."
+  date: '2026-04-18T20:36:50.530730Z'

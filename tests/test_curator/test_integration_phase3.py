@@ -145,10 +145,36 @@ def _read_file_content(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _mock_condense_result() -> MagicMock:
-    """Create a mock BAML condense result."""
+def _mock_condense_result(source_rel: str = "src/fat.py") -> MagicMock:
+    """Create a mock BAML condense result.
+
+    After the ``curator-4`` Phase 4 extraction of the standalone
+    :func:`condense_file` helper, the helper re-parses BAML output as a
+    full design file before rewriting.  The mock therefore returns a
+    serialised :class:`DesignFile` rather than a sketch of one.
+    """
+    df = DesignFile(
+        source_path=source_rel,
+        frontmatter=DesignFileFrontmatter(
+            description="Condensed",
+            id=source_rel.replace("/", "-").replace(".", "-"),
+            updated_by="curator",
+            status="active",
+        ),
+        summary="Short summary.",
+        interface_contract="def test_func(): ...",
+        dependencies=[],
+        dependents=[],
+        metadata=StalenessMetadata(
+            source=source_rel,
+            source_hash="baml-sentinel",
+            interface_hash="baml-sentinel",
+            generated=datetime.now(UTC),
+            generator="test",
+        ),
+    )
     result = MagicMock()
-    result.condensed_content = "---\ndescription: Condensed\n---\n# Condensed\n\nShort content.\n"
+    result.condensed_content = serialize_design_file(df)
     result.trimmed_sections = ["Design Rationale", "Historical Context"]
     return result
 
@@ -349,7 +375,7 @@ class TestBudgetTrimmerFull:
         coord = Coordinator(project, config)
 
         mock_baml = AsyncMock()
-        mock_baml.CuratorCondenseFile.return_value = _mock_condense_result()
+        mock_baml.CuratorCondenseFile.return_value = _mock_condense_result("src/verbose.py")
 
         with patch("lexibrary.curator.budget.b", mock_baml):
             report = await coord.run()

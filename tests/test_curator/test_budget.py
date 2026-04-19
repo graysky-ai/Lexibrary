@@ -4,21 +4,39 @@ Covers:
 - scan_token_budgets detects over-budget design files
 - scan_token_budgets skips files within budget
 - scan_token_budgets detects over-budget START_HERE.md and HANDOFF.md
-- condense_file with mocked BAML returns a CondenseResult
-- condense_file does NOT write any files (coordinator responsibility)
-- condense_file handles read errors gracefully
-- condense_file handles BAML errors gracefully
+- condense_file (standalone, post curator-4 extraction) runs BAML and
+  writes the condensed body atomically with updated_by="archivist"
+- condense_file refreshes source_hash / interface_hash from source
+- condense_file raises RuntimeError when BAML fails or produces an
+  unparseable body
+
+Note: the standalone ``condense_file`` introduced by ``curator-4``
+Phase 4 replaced the earlier BAML-wrapper-only function of the same
+name.  The earlier behaviour lives on as the private
+``_call_baml_condense`` helper; the tests here exercise the new public
+signature.  Additional coverage lives in
+``tests/test_curator/test_condense_file_helper.py``.
 """
 
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
+from lexibrary.artifacts.design_file import (
+    DesignFile,
+    DesignFileFrontmatter,
+    StalenessMetadata,
+)
+from lexibrary.artifacts.design_file_parser import parse_design_file
+from lexibrary.artifacts.design_file_serializer import serialize_design_file
+from lexibrary.config.schema import LexibraryConfig
 from lexibrary.curator.budget import (
-    BudgetIssue,
     condense_file,
     scan_token_budgets,
 )
@@ -261,133 +279,138 @@ class TestScanTokenBudgets:
 
 
 # ---------------------------------------------------------------------------
-# condense_file tests (mocked BAML)
+# condense_file tests (standalone helper — curator-4 Phase 4 extraction)
 # ---------------------------------------------------------------------------
+#
+# The ``condense_file`` public signature changed in curator-4: it now
+# takes ``(design_path, project_root, config)``, runs BAML, and writes
+# the condensed body atomically.  The in-flight BAML output tests moved
+# to ``tests/test_curator/test_condense_file_helper.py``; the tests
+# below keep the legacy sub-agent coverage alive against the new
+# signature so ``pytest tests/test_curator/test_budget*`` remains the
+# "budget sub-agent smoke suite" it was before the extraction.
+
+
+def _write_design_fixture(
+    project_root: Path,
+    source_rel: str,
+    *,
+    body_seed: str = "Summary paragraph for the fixture design file.\n",
+) -> Path:
+    """Build a minimal valid design file on disk and return its Path.
+
+    Creates a matching stub source file so :func:`compute_hashes` does
+    not raise during :func:`condense_file` hash refresh.
+    """
+    source_abs = project_root / source_rel
+    source_abs.parent.mkdir(parents=True, exist_ok=True)
+    source_abs.write_text("def noop() -> None:\n    return None\n", encoding="utf-8")
+
+    design_path = project_root / ".lexibrary" / "designs" / f"{source_rel}.md"
+    design_path.parent.mkdir(parents=True, exist_ok=True)
+
+    df = DesignFile(
+        source_path=source_rel,
+        frontmatter=DesignFileFrontmatter(
+            description="Budget test fixture.",
+            id="DS-BUDGET-TEST",
+            updated_by="agent",
+        ),
+        summary=body_seed,
+        interface_contract="def noop() -> None: ...",
+        dependencies=[],
+        dependents=[],
+        metadata=StalenessMetadata(
+            source=source_rel,
+            source_hash="stale-source-hash",
+            interface_hash="stale-interface-hash",
+            design_hash="stale-design-hash",
+            generated=datetime.now(UTC).replace(tzinfo=None),
+            generator="test",
+        ),
+    )
+    design_path.write_text(serialize_design_file(df), encoding="utf-8")
+    return design_path
+
+
+def _condensed_fixture_body(source_rel: str) -> str:
+    """Return a serialised design body for the BAML mock to 'produce'."""
+    df = DesignFile(
+        source_path=source_rel,
+        frontmatter=DesignFileFrontmatter(
+            description="Condensed fixture.",
+            id="DS-BUDGET-TEST",
+            updated_by="curator",  # will be flipped to archivist by helper
+        ),
+        summary="Condensed summary.",
+        interface_contract="def noop() -> None: ...",
+        dependencies=[],
+        dependents=[],
+        metadata=StalenessMetadata(
+            source=source_rel,
+            source_hash="baml-source-hash",
+            interface_hash="baml-interface-hash",
+            design_hash="baml-design-hash",
+            generated=datetime.now(UTC).replace(tzinfo=None),
+            generator="test",
+        ),
+    )
+    return serialize_design_file(df)
 
 
 class TestCondenseFile:
-    """Tests for condense_file with mocked BAML client."""
+    """Sub-agent-level smoke tests against the new ``condense_file`` signature."""
 
-    def test_successful_condensation(self, tmp_path: Path) -> None:
-        """condense_file returns CondenseResult with condensed content."""
-        file_path = tmp_path / "design.md"
-        file_path.write_text("# Big design file\n\nLots of content here.\n" * 100)
-
-        issue = BudgetIssue(
-            path=file_path,
-            current_tokens=5000,
-            budget_target=4000,
-            file_type="design_file",
-        )
+    def test_successful_condensation_writes_and_updates_authorship(self, tmp_path: Path) -> None:
+        """condense_file writes condensed body with updated_by=archivist."""
+        source_rel = "src/mod.py"
+        design_path = _write_design_fixture(tmp_path, source_rel)
+        condensed_body = _condensed_fixture_body(source_rel)
 
         mock_client = AsyncMock()
         mock_client.CuratorCondenseFile.return_value = _make_baml_condense_mock(
-            condensed_content="# Condensed design file\n\nKey content preserved.\n",
-            trimmed_sections=["Removed 5 redundant examples from Summary"],
+            condensed_content=condensed_body,
+            trimmed_sections=["Removed verbose examples"],
         )
 
-        config = CuratorConfig()
-        result = asyncio.run(condense_file(issue, config, baml_client=mock_client))
+        config = LexibraryConfig()
+        result = asyncio.run(condense_file(design_path, tmp_path, config, baml_client=mock_client))
 
-        assert result.success is True
-        assert result.condensed_content == "# Condensed design file\n\nKey content preserved.\n"
-        assert len(result.trimmed_sections) == 1
-        assert "redundant examples" in result.trimmed_sections[0]
+        # CondenseResult carries before/after plus trimmed manifest.
+        assert result.before_tokens > 0
+        assert result.after_tokens > 0
+        assert result.trimmed_sections == ["Removed verbose examples"]
 
-        # Verify the BAML function was called with correct args
-        mock_client.CuratorCondenseFile.assert_called_once_with(
-            file_content=file_path.read_text(encoding="utf-8"),
-            budget_target=4000,
-            section_priority_hints=["Interface", "Dependencies", "Insights"],
-        )
+        # Post-write: frontmatter updated_by flipped to archivist.
+        parsed = parse_design_file(design_path)
+        assert parsed is not None
+        assert parsed.frontmatter.updated_by == "archivist"
 
-    def test_does_not_write_files(self, tmp_path: Path) -> None:
-        """condense_file does NOT write any files -- coordinator handles writes."""
-        file_path = tmp_path / "design.md"
-        original_content = "# Original content\n\nSome text.\n"
-        file_path.write_text(original_content)
-
-        issue = BudgetIssue(
-            path=file_path,
-            current_tokens=5000,
-            budget_target=4000,
-            file_type="design_file",
-        )
-
-        mock_client = AsyncMock()
-        mock_client.CuratorCondenseFile.return_value = _make_baml_condense_mock(
-            condensed_content="# Condensed\n",
-            trimmed_sections=["Removed bulk"],
-        )
-
-        config = CuratorConfig()
-        asyncio.run(condense_file(issue, config, baml_client=mock_client))
-
-        # Verify the original file was NOT modified
-        assert file_path.read_text(encoding="utf-8") == original_content
-
-    def test_handles_read_error(self, tmp_path: Path) -> None:
-        """condense_file returns failure when the file cannot be read."""
-        # Point to a non-existent file
-        issue = BudgetIssue(
-            path=tmp_path / "nonexistent.md",
-            current_tokens=5000,
-            budget_target=4000,
-            file_type="design_file",
-        )
-
-        mock_client = AsyncMock()
-        config = CuratorConfig()
-        result = asyncio.run(condense_file(issue, config, baml_client=mock_client))
-
-        assert result.success is False
-        assert result.condensed_content == ""
-        assert result.trimmed_sections == []
-
-        # BAML should NOT have been called
-        mock_client.CuratorCondenseFile.assert_not_called()
-
-    def test_handles_baml_error(self, tmp_path: Path) -> None:
-        """condense_file returns failure when BAML call raises an exception."""
-        file_path = tmp_path / "design.md"
-        file_path.write_text("# Content\n")
-
-        issue = BudgetIssue(
-            path=file_path,
-            current_tokens=5000,
-            budget_target=4000,
-            file_type="design_file",
-        )
+    def test_handles_baml_error_raises(self, tmp_path: Path) -> None:
+        """condense_file raises RuntimeError when the BAML call fails."""
+        source_rel = "src/mod.py"
+        design_path = _write_design_fixture(tmp_path, source_rel)
 
         mock_client = AsyncMock()
         mock_client.CuratorCondenseFile.side_effect = RuntimeError("BAML timeout")
 
-        config = CuratorConfig()
-        result = asyncio.run(condense_file(issue, config, baml_client=mock_client))
-
-        assert result.success is False
-        assert result.condensed_content == ""
-        assert result.trimmed_sections == []
+        config = LexibraryConfig()
+        with pytest.raises(RuntimeError):
+            asyncio.run(condense_file(design_path, tmp_path, config, baml_client=mock_client))
 
     def test_uses_default_priority_hints(self, tmp_path: Path) -> None:
         """condense_file passes the default priority hints to BAML."""
-        file_path = tmp_path / "design.md"
-        file_path.write_text("# Content\n")
-
-        issue = BudgetIssue(
-            path=file_path,
-            current_tokens=5000,
-            budget_target=4000,
-            file_type="design_file",
-        )
+        source_rel = "src/mod.py"
+        design_path = _write_design_fixture(tmp_path, source_rel)
+        condensed_body = _condensed_fixture_body(source_rel)
 
         mock_client = AsyncMock()
         mock_client.CuratorCondenseFile.return_value = _make_baml_condense_mock(
-            condensed_content="condensed", trimmed_sections=[]
+            condensed_content=condensed_body, trimmed_sections=[]
         )
 
-        config = CuratorConfig()
-        asyncio.run(condense_file(issue, config, baml_client=mock_client))
+        config = LexibraryConfig()
+        asyncio.run(condense_file(design_path, tmp_path, config, baml_client=mock_client))
 
         call_kwargs = mock_client.CuratorCondenseFile.call_args
         assert call_kwargs.kwargs["section_priority_hints"] == [
@@ -395,27 +418,3 @@ class TestCondenseFile:
             "Dependencies",
             "Insights",
         ]
-
-    def test_start_here_condensation(self, tmp_path: Path) -> None:
-        """condense_file works for START_HERE.md files."""
-        file_path = tmp_path / "START_HERE.md"
-        file_path.write_text("# Project Overview\n\nLong overview...\n" * 50)
-
-        issue = BudgetIssue(
-            path=file_path,
-            current_tokens=4000,
-            budget_target=3000,
-            file_type="start_here",
-        )
-
-        mock_client = AsyncMock()
-        mock_client.CuratorCondenseFile.return_value = _make_baml_condense_mock(
-            condensed_content="# Project Overview\n\nBrief overview.\n",
-            trimmed_sections=["Shortened verbose overview"],
-        )
-
-        config = CuratorConfig()
-        result = asyncio.run(condense_file(issue, config, baml_client=mock_client))
-
-        assert result.success is True
-        assert "Brief overview" in result.condensed_content

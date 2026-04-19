@@ -278,6 +278,15 @@ class ConceptConfig(BaseModel):
     deprecation_confirm: Literal["human", "maintainer"] = "human"
     curator_deprecation_confirm: bool = False
     lookup_display_limit: int = 10
+    orphan_verify_ttl_days: int = Field(
+        default=90,
+        ge=0,
+        description=(
+            "Number of days after a concept's last_verified date during which "
+            "check_orphan_concepts will skip emitting an orphan-concept issue. "
+            "Set to 0 to disable TTL honouring and always emit."
+        ),
+    )
 
 
 class IWHConfig(BaseModel):
@@ -296,6 +305,37 @@ class DeprecationConfig(BaseModel):
 
     ttl_commits: int = 50
     comment_warning_threshold: int = 10
+
+
+class ValidatorConfig(BaseModel):
+    """Validator fixer kill-switch configuration.
+
+    Gates opt-in behaviours for the validator fixers introduced by the
+    curator-4 escalation work. Each flag controls whether the matching
+    ``fix_*`` fixer in :mod:`lexibrary.validator.fixes` actually mutates
+    the repository; when a flag is ``False``, the fixer returns a
+    ``FixResult`` with ``fixed=False`` and an explanatory message instead.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    fix_lookup_token_budget_condense: bool = Field(
+        default=False,
+        description=(
+            "When True, ``fix_lookup_token_budget_exceeded`` invokes "
+            "``curator.budget.condense_file`` on over-budget design bodies. "
+            "Defaults to False because condensation mutates content and "
+            "consumes LLM budget."
+        ),
+    )
+    fix_orphaned_iwh_signals_delete: bool = Field(
+        default=True,
+        description=(
+            "When True, ``fix_orphaned_iwh_signals`` deletes expired IWH "
+            "signal files past their TTL. IWH signals are intentionally "
+            "ephemeral, so this defaults to True."
+        ),
+    )
 
 
 class TopologyConfig(BaseModel):
@@ -373,6 +413,7 @@ class LexibraryConfig(BaseModel):
     topology: TopologyConfig = Field(default_factory=TopologyConfig)
     iwh: IWHConfig = Field(default_factory=IWHConfig)
     deprecation: DeprecationConfig = Field(default_factory=DeprecationConfig)
+    validator: ValidatorConfig = Field(default_factory=ValidatorConfig)
     stack: StackConfig = Field(default_factory=StackConfig)
     symbols: SymbolGraphConfig = Field(default_factory=SymbolGraphConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
@@ -451,8 +492,10 @@ class LexibraryConfig(BaseModel):
         # when one is relative to (or equal to) another.
         for i, (sr_a, path_a) in enumerate(resolved_pairs):
             for sr_b, path_b in resolved_pairs[i + 1 :]:
-                if path_a == path_b or path_a.is_relative_to(path_b) or path_b.is_relative_to(
-                    path_a
+                if (
+                    path_a == path_b
+                    or path_a.is_relative_to(path_b)
+                    or path_b.is_relative_to(path_a)
                 ):
                     raise ValueError(
                         f"scope_roots entries {sr_a.path!r} and {sr_b.path!r} "

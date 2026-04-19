@@ -1,13 +1,18 @@
-"""Hard deletion of expired deprecated concepts.
+"""Soft and hard deprecation of concept artefacts.
 
-Provides TTL expiry checking, pre-deletion reference scanning, and
-hard deletion of deprecated concept ``.md`` files and their sibling
-``.comments.yaml`` files.  Designed to be called from the
-``lexictl update`` pipeline alongside the existing design-file
-deprecation pass.
+Provides the soft-deprecate primitive (status flip + metadata stamp) used by
+both CLI commands and the validator/interactive resolver paths, plus TTL
+expiry checking, pre-deletion reference scanning, and hard deletion of
+deprecated concept ``.md`` files and their sibling ``.comments.yaml`` files.
+
+Soft-deprecate is a reusable primitive (not CLI-only) so that validator
+auto-fixers and the interactive ``lexi validate --fix --interactive`` loop
+can resolve stale concept state without reimplementing frontmatter mutation.
 
 Public API
 ----------
+- :func:`deprecate_concept` -- soft-deprecate a concept (status flip +
+  metadata stamp); idempotent on already-deprecated input
 - :func:`check_concept_ttl_expiry` -- check if a deprecated concept has
   exceeded its TTL
 - :func:`find_concept_references` -- scan active artefacts for references
@@ -20,11 +25,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from lexibrary.lifecycle.concept_comments import concept_comment_path
 from lexibrary.lifecycle.deprecation import _count_commits_since
+from lexibrary.utils.atomic import atomic_write
 from lexibrary.wiki.parser import parse_concept_file
+from lexibrary.wiki.serializer import serialize_concept_file
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +55,56 @@ class ConceptDeletionResult:
 
     comments_deleted: list[Path]
     """Paths of deleted ``.comments.yaml`` files."""
+
+
+# ---------------------------------------------------------------------------
+# Soft deprecate (frontmatter mutation)
+# ---------------------------------------------------------------------------
+
+
+def deprecate_concept(
+    concept_path: Path,
+    *,
+    reason: str,
+    superseded_by: str | None = None,
+) -> None:
+    """Mark a concept as deprecated by updating its frontmatter.
+
+    Sets ``status`` to ``"deprecated"``, ``deprecated_at`` to the current UTC
+    timestamp (microsecond-zero), ``deprecated_reason`` to *reason*, and
+    optionally ``superseded_by`` when provided. Re-serializes and atomically
+    writes the concept file.
+
+    Idempotent: no-op for already-deprecated artefacts. Does NOT re-stamp
+    ``deprecated_at`` on already-deprecated input (preserves downstream TTL
+    math). Returns ``None`` on parse failure (parity with
+    :func:`lexibrary.lifecycle.deprecation.deprecate_design`).
+
+    Parameters
+    ----------
+    concept_path:
+        Absolute path to the concept ``.md`` file.
+    reason:
+        Free-text reason recorded in ``deprecated_reason`` (e.g.
+        ``"no_inbound_links"``, ``"all_linked_files_missing"``).
+    superseded_by:
+        Optional title of the concept that replaces this one.
+    """
+    concept = parse_concept_file(concept_path)
+    if concept is None:
+        return
+
+    # Idempotent: no-op for already-deprecated concepts.
+    if concept.frontmatter.status == "deprecated":
+        return
+
+    concept.frontmatter.status = "deprecated"
+    concept.frontmatter.deprecated_at = datetime.now(UTC).replace(microsecond=0)
+    concept.frontmatter.deprecated_reason = reason
+    if superseded_by is not None:
+        concept.frontmatter.superseded_by = superseded_by
+
+    atomic_write(concept_path, serialize_concept_file(concept))
 
 
 # ---------------------------------------------------------------------------
