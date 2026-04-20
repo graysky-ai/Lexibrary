@@ -2,6 +2,23 @@
 
 All notable changes to Lexibrary are documented in this file.
 
+## [0.6.2] - 2026-04-21
+
+### Added
+- **Curator escalation pipeline** — New `src/lexibrary/cli/_escalation.py` and `ESCALATION_CHECKS` registry route `orphan_concepts`, `stale_concept`, `convention_stale`, and `playbook_staleness` through a 3-option operator prompt shared with `lexi validate --fix --interactive`; autonomous runs emit IWH signals and `PendingDecision` report entries instead of mutating
+- **`lexictl curate resolve` subcommand** — Admin-only replay of `CuratorReport.pending_decisions` through the interactive operator prompt; supports `--report` and `--batch-ignore-all` for CI
+- **Soft-deprecation lifecycle helpers** — New `lifecycle/playbook_deprecation.py` and `lifecycle/refresh.py` centralise status flips, `deprecated_reason`/`last_verified` stamping, and body annotation for concepts, conventions, and playbooks
+- **`deprecated_reason` / `last_verified` frontmatter** — New optional fields on `ConceptFileFrontmatter`, `ConventionFileFrontmatter`, and `PlaybookFileFrontmatter`; `--reason` flag added to `concept deprecate`, `convention deprecate`, and `playbook deprecate` CLI commands
+- **Validator fixer kill-switches** — New `ValidatorConfig` block with `fix_lookup_token_budget_condense` (default `False`) and `fix_orphaned_iwh_signals_delete` (default `True`) gating the new `fix_lookup_token_budget_exceeded` and `fix_orphaned_iwh_signals` fixers
+- **Orphan verify TTL** — New `concepts.orphan_verify_ttl_days` config (default 90) lets `check_orphan_concepts` honour a recent operator verification window
+- **Standalone `condense_file`** — New non-agent-session condensation entry point in `curator/budget.py` mirrors the `reconcile_deps_only` extraction pattern for the validator fixer and `full`-autonomy sub-agent path
+- **Test coverage** — New suites covering escalation fixers, condense-file helper, pending-decisions schema, frontmatter round-trip (`deprecated_reason`, `last_verified`), lookup token-budget fixer, orphaned IWH fixer, fixer registry, curate resolve CLI, operational fixer integration, validate interactive flow, and kill-switch config
+
+### Changed
+- **`lexictl curate` is now a command group** — Default (no subcommand) still invokes the coordinator pipeline via Typer's `invoke_without_command` callback, preserving the prior `lexictl curate [flags]` behaviour; `run` and `resolve` are explicit subcommands
+- **Concept/convention/playbook deprecate CLIs** — Delegate frontmatter mutation and atomic writes to the new lifecycle helpers; CLI layer retains user-facing messaging only
+- **`validator/fixes.py`** — Expanded to host the escalation fixer family, lookup-token-budget condensation fixer, and orphaned IWH signal cleanup
+
 ## [0.6.1] - 2026-04-18
 
 ### Added
