@@ -50,6 +50,11 @@ ignore:
     - .env
     - ".env.*"
     - "*.env"
+    - "*.md"
+    - "*.json"
+    - "*.yaml"
+    - "*.yml"
+    - "*.csv"
 
 # Sweep settings (periodic re-indexing)
 sweep:
