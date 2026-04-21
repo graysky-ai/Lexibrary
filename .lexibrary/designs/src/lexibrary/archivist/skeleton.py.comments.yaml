@@ -1,0 +1,9 @@
+comments:
+- body: "Added is_constants_only() gate (\xA72.4c, Group 15 of design-cleanup) alongside\
+    \ classify_aggregator \u2014 both are skeleton-level detectors that drive complexity_warning\
+    \ suppression. is_constants_only returns True when a Python module has no top-level\
+    \ def, class, or decorated_definition (only module-level assignments, imports,\
+    \ docstrings), including empty files. Non-Python / unreadable / unparseable files\
+    \ return False so the pipeline keeps the LLM's complexity_warning path active\
+    \ when the gate cannot conclude."
+  date: '2026-04-21T08:09:14.910586Z'

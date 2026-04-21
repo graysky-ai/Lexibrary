@@ -1,0 +1,12 @@
+comments:
+- body: "Wired \xA72.4c Complexity Warning skeleton gate (design-cleanup Group 15).\
+    \ After the existing Group 13 aggregator classification and just before the DesignFile\
+    \ constructor, the pipeline now forces complexity_warning to None when classification.is_aggregator\
+    \ OR is_constants_only(source_path) returns True. Rationale: aggregator and constants-only\
+    \ modules have no top-level behaviour for a complexity_warning to describe; the\
+    \ LLM's output is discarded deterministically rather than relying on prompt tightening.\
+    \ The BAML ArchivistGenerateDesignFile function has no complexity_warning input\
+    \ slot, so suppression is implemented as a post-output filter \u2014 this matches\
+    \ the spec's 'DesignFileOutput.complexity_warning SHALL be None for these modules'\
+    \ requirement in aggregator-design-rendering."
+  date: '2026-04-21T08:09:22.556096Z'

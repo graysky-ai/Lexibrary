@@ -59,6 +59,11 @@ existing file.
    noting the failure. Run `lexi design comment <rel-path> --body "..."` to
    capture rationale for behavioral, contract, or cross-file changes.
    Do not manually edit design files.
+   - Capture durable rationale, not release notes. "Phase N: added feature
+     X" belongs in `lexi stack post`, not in the design file's `## Insights`
+     section — Insights should survive re-rendering because it names a
+     load-bearing invariant or decision, not because it logs when a change
+     shipped.
 2. **Run tests**: Run the relevant tests after each change. Fix failures before
    making further changes — do not accumulate failures.
 3. **Validate the library**: Run `lexi validate` after a batch of related changes

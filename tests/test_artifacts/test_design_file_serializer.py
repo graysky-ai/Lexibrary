@@ -76,9 +76,16 @@ class TestSerializeDesignFileFrontmatter:
 class TestSerializeDesignFileFrontmatterStatus:
     """Tests for status and deprecation fields in serialized frontmatter (Task 2.1)."""
 
-    def test_frontmatter_includes_status_active(self) -> None:
+    def test_frontmatter_omits_status_active(self) -> None:
+        """Default ``status: active`` SHALL be omitted from the serialized
+        frontmatter (§1.4 — design-cleanup). The parser defaults a missing
+        ``status`` key to ``"active"`` so on-disk absence is equivalent."""
         result = serialize_design_file(_design_file())
-        assert "status: active" in result
+        # Extract just the YAML frontmatter block (between the first two "---" lines).
+        lines = result.split("\n")
+        closing_idx = lines.index("---", 1)
+        fm_block = "\n".join(lines[: closing_idx + 1])
+        assert "status:" not in fm_block
 
     def test_frontmatter_includes_status_deprecated(self) -> None:
         df = _design_file(frontmatter=_frontmatter(status="deprecated"))
@@ -191,41 +198,27 @@ class TestSerializeDesignFileStructure:
         assert result.endswith("\n")
 
 
-class TestSerializeDesignFileDependentsAnnotation:
-    """Tests for D-070 annotation in the Dependents section."""
+class TestSerializeDesignFileDependentsNoHint:
+    """§1.2: The `*(see `lexi lookup` ...)*` hint line SHALL NOT appear in
+    the Dependents section of freshly serialized output. (Previously asserted
+    as D-070 annotation presence; the hint was static noise on every design
+    file and was removed in §1.2.)"""
 
-    def test_annotation_present_with_empty_dependents(self) -> None:
-        """Annotation appears after Dependents heading even with no dependents (task 1.2)."""
+    def test_no_hint_with_empty_dependents(self) -> None:
+        """With no dependents, the section is heading + (none) only — no hint."""
         result = serialize_design_file(_design_file())
         dep_body = result.split("## Dependents")[1].split("##")[0]
-        assert "*(see `lexi lookup` for live reverse references)*" in dep_body
+        assert "*(see `lexi lookup` for live reverse references)*" not in dep_body
         assert "(none)" in dep_body
 
-    def test_annotation_before_none_marker(self) -> None:
-        """Annotation appears before the (none) marker in empty dependents."""
-        result = serialize_design_file(_design_file())
-        dep_body = result.split("## Dependents")[1].split("##")[0]
-        annotation_idx = dep_body.index("*(see `lexi lookup` for live reverse references)*")
-        none_idx = dep_body.index("(none)")
-        assert annotation_idx < none_idx
-
-    def test_annotation_present_with_non_empty_dependents(self) -> None:
-        """Annotation appears alongside populated dependents list (task 1.3)."""
+    def test_no_hint_with_non_empty_dependents(self) -> None:
+        """With dependents, the bullet list is emitted directly — no hint line."""
         df = _design_file(dependents=["src/lexibrary/__main__.py", "src/lexibrary/cli.py"])
         result = serialize_design_file(df)
         dep_body = result.split("## Dependents")[1].split("##")[0]
-        assert "*(see `lexi lookup` for live reverse references)*" in dep_body
+        assert "*(see `lexi lookup` for live reverse references)*" not in dep_body
         assert "- src/lexibrary/__main__.py" in dep_body
         assert "- src/lexibrary/cli.py" in dep_body
-
-    def test_annotation_before_bullet_items(self) -> None:
-        """Annotation appears before the bullet items when dependents exist."""
-        df = _design_file(dependents=["src/lexibrary/__main__.py"])
-        result = serialize_design_file(df)
-        dep_body = result.split("## Dependents")[1].split("##")[0]
-        annotation_idx = dep_body.index("*(see `lexi lookup` for live reverse references)*")
-        bullet_idx = dep_body.index("- src/lexibrary/__main__.py")
-        assert annotation_idx < bullet_idx
 
 
 class TestSerializeDesignFileOptionalSections:
@@ -296,23 +289,27 @@ class TestSerializeDesignFileFooter:
 
     def test_design_hash_is_sha256_hex(self) -> None:
         result = serialize_design_file(_design_file())
-        # Extract design_hash value
-        for line in result.splitlines():
-            if line.startswith("design_hash:"):
-                value = line.split(": ", 1)[1].strip()
-                assert len(value) == 64
-                assert all(c in "0123456789abcdef" for c in value)
-                break
-        else:
-            raise AssertionError("design_hash not found in footer")
-
-    def test_footer_multiline_format(self) -> None:
-        result = serialize_design_file(_design_file())
-        # Footer should span multiple lines (key: value pairs)
+        # Extract design_hash value from the compact inline footer (§1.3):
+        # ``<!-- lexibrary:meta {..., design_hash: <hex>, ...} -->``.
         footer_start = result.index("<!-- lexibrary:meta")
         footer_end = result.index("-->", footer_start)
+        footer = result[footer_start:footer_end]
+        marker = "design_hash: "
+        idx = footer.index(marker)
+        value = footer[idx + len(marker) :].split(",", 1)[0].strip()
+        assert len(value) == 64
+        assert all(c in "0123456789abcdef" for c in value)
+
+    def test_footer_single_line_inline_format(self) -> None:
+        """§1.3: the meta footer MUST be a single-line inline YAML mapping —
+        ``<!-- lexibrary:meta {k: v, ...} -->`` — with no embedded newlines."""
+        result = serialize_design_file(_design_file())
+        footer_start = result.index("<!-- lexibrary:meta")
+        footer_end = result.index("-->", footer_start) + len("-->")
         footer_content = result[footer_start:footer_end]
-        assert "\n" in footer_content
+        assert "\n" not in footer_content
+        assert footer_content.startswith("<!-- lexibrary:meta {")
+        assert footer_content.endswith("} -->")
 
     def test_language_tag_python(self) -> None:
         df = _design_file(source_path="src/foo.py")

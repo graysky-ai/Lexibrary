@@ -91,4 +91,10 @@ class DesignFile(BaseModel):
     tags: list[str] = []
     stack_refs: list[str] = []
     preserved_sections: dict[str, str] = {}
+    # Aggregator-only: when set (non-None, non-empty), the serializer renders
+    # ``## Re-exports`` instead of ``## Interface Contract``. Keys are source
+    # modules (the ``X`` in ``from X import A, B``); values are the list of
+    # names re-exported from that module. See §2.1 aggregator-design-rendering
+    # spec and :func:`lexibrary.archivist.skeleton.classify_aggregator`.
+    reexports: dict[str, list[str]] | None = None
     metadata: StalenessMetadata

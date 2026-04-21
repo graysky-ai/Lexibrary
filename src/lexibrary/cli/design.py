@@ -151,10 +151,23 @@ def design_comment(
     *,
     body: Annotated[
         str,
-        typer.Option("--body", "-b", help="Comment text to append."),
+        typer.Option(
+            "--body",
+            "-b",
+            help=(
+                "Durable design rationale to append to the file's ## Insights "
+                "section. Use for intent (why this shape? what invariant?), "
+                "not release history. For 'Phase N: shipped X' release notes, "
+                "use `lexi stack post` instead."
+            ),
+        ),
     ],
 ) -> None:
-    """Append a comment to a design file and return confirmation."""
+    """Append durable design rationale to a file's ## Insights section.
+
+    Use for intent (why this shape? what invariant?), not release history.
+    For 'Phase N: shipped X' release notes, use `lexi stack post` instead.
+    """
     from lexibrary.lifecycle.design_comments import append_design_comment  # noqa: PLC0415
     from lexibrary.utils.paths import mirror_path  # noqa: PLC0415
 

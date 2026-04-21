@@ -4,3 +4,12 @@ comments:
     have been extracted to the shared location. The thin wrapper maintains backward
     compatibility for existing callers.'
   date: '2026-04-12T03:15:01.552823Z'
+- body: "\xA72.3 change: _extract_js_deps now walks every descendant of the AST (was\
+    \ depth-1 _children iteration) so imports nested inside function bodies, class\
+    \ bodies, or conditional branches are captured. Type-only imports (import type\
+    \ { X } from ...) are detected by inspecting the import_statement's direct children\
+    \ for a bare 'type' token \u2014 tree-sitter-typescript does NOT emit a separate\
+    \ import_type_statement node in this grammar version, despite what the original\
+    \ design-cleanup spec claimed. Mirrors the Python side (_extract_python_deps)\
+    \ but with skip_type_checking=False since JS/TS has no TYPE_CHECKING equivalent."
+  date: '2026-04-21T07:14:43.423879Z'

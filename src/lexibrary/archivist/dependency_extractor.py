@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import cast
 
 from lexibrary.ast_parser.registry import get_parser
 from lexibrary.symbolgraph.python_imports import (
@@ -103,11 +104,18 @@ def _extract_python_deps(
     file_path: Path,
     project_root: Path,
 ) -> list[str]:
-    """Extract Python import dependencies from an AST root node."""
+    """Extract Python import dependencies from an AST root node.
+
+    Walks every descendant of the root so that imports nested inside function
+    bodies, ``try``/``except`` blocks, class bodies, and top-level conditional
+    branches are all captured. Imports guarded by ``if TYPE_CHECKING:`` are
+    skipped during the walk so they do not appear as runtime dependencies —
+    matches the semantics of runtime-only ``ast_import`` edges.
+    """
     source_dir = file_path.parent
     deps: list[str] = []
 
-    for node in _children(root):
+    for node in _walk_descendants(root, skip_type_checking=True):
         node_type = getattr(node, "type", "")
 
         if node_type == "import_statement":
@@ -192,14 +200,26 @@ def _extract_js_deps(
     file_path: Path,
     project_root: Path,
 ) -> list[str]:
-    """Extract JavaScript/TypeScript import dependencies from an AST root node."""
+    """Extract JavaScript/TypeScript import dependencies from an AST root node.
+
+    Walks the entire AST (not just depth-1 children) so deferred imports inside
+    function bodies, class bodies, or conditional branches are also captured.
+
+    TypeScript type-only imports (``import type { X } from ...``) are excluded:
+    in the current tree-sitter-typescript grammar the ``type`` keyword appears
+    as a direct child token of ``import_statement``, so we detect it by
+    inspecting the statement's direct children rather than relying on a
+    separate node type.
+    """
     source_dir = file_path.parent
     deps: list[str] = []
 
-    for node in _children(root):
+    for node in _walk_descendants(root, skip_type_checking=False):
         node_type = getattr(node, "type", "")
 
         if node_type in ("import_statement", "export_statement"):
+            if node_type == "import_statement" and _is_type_only_import(node):
+                continue
             import_path = _find_string_import_path(node)
             if import_path and (import_path.startswith("./") or import_path.startswith("../")):
                 resolved = _resolve_js_import(import_path, source_dir, project_root)
@@ -207,6 +227,23 @@ def _extract_js_deps(
                     deps.append(resolved)
 
     return sorted(set(deps))
+
+
+def _is_type_only_import(node: object) -> bool:
+    """Return True when an ``import_statement`` is a type-only import.
+
+    Detects the ``import type ... from ...`` form, where tree-sitter-typescript
+    emits a bare ``type`` token as a direct child of the ``import_statement``
+    between the ``import`` keyword and the ``import_clause``.
+    """
+    for child in _children(node):
+        child_type = getattr(child, "type", "")
+        if child_type == "import_clause":
+            # Reached the clause without seeing a standalone ``type`` — regular import.
+            return False
+        if child_type == "type":
+            return True
+    return False
 
 
 def _find_string_import_path(node: object) -> str | None:
@@ -251,3 +288,109 @@ def _node_text(node: object) -> str:
 def _children(node: object) -> list[object]:
     """Get all direct children of a tree-sitter node."""
     return list(getattr(node, "children", []))
+
+
+def _condition_contains_type_checking(node: object) -> bool:
+    """Return True iff the ``if_statement`` condition subtree references TYPE_CHECKING.
+
+    Extracts the ``condition`` field of the ``if_statement`` node (tree-sitter-python
+    names the if-predicate via a field) and walks ONLY that subtree for an
+    identifier whose text equals ``TYPE_CHECKING``. The attribute-access form
+    ``typing.TYPE_CHECKING`` is also detected — we scan every identifier
+    descendant, not just the root.
+
+    If the grammar does not expose ``child_by_field_name`` (older tree-sitter
+    bindings) we fall back to scanning everything BEFORE the first ``:`` token
+    in the node's direct children, which is still condition-scoped but is a
+    coarser heuristic.
+    """
+    condition_node = _child_by_field(node, "condition")
+    if condition_node is not None:
+        return _subtree_has_identifier(condition_node, "TYPE_CHECKING")
+
+    # Fallback for grammars without field-name support: iterate direct
+    # children in document order (list preserves order) and stop at ``:``.
+    for child in _children(node):
+        child_type = getattr(child, "type", "")
+        if child_type == ":":
+            return False
+        if _subtree_has_identifier(child, "TYPE_CHECKING"):
+            return True
+    return False
+
+
+def _subtree_has_identifier(root: object, target_text: str) -> bool:
+    """Return True iff ``root``'s subtree contains an identifier whose text
+    equals ``target_text`` (bare) OR an attribute access whose rightmost
+    segment equals ``target_text`` (e.g. ``typing.TYPE_CHECKING``).
+    """
+    stack: list[object] = [root]
+    while stack:
+        current = stack.pop()
+        current_type = getattr(current, "type", "")
+        if current_type == "identifier":
+            if _node_text(current) == target_text:
+                return True
+        elif current_type == "attribute":
+            # tree-sitter-python: attribute has fields "object" and "attribute".
+            # We only consider the trailing "attribute" segment here — the
+            # object chain is descended via normal recursion if needed.
+            attr = _child_by_field(current, "attribute")
+            if attr is not None and _node_text(attr) == target_text:
+                return True
+        stack.extend(_children(current))
+    return False
+
+
+def _child_by_field(node: object, field_name: str) -> object | None:
+    """Return the tree-sitter field-named child of ``node``, or None.
+
+    Mirrors ``Node.child_by_field_name`` while keeping the grammar dependency
+    optional at import time (matches the ``getattr(node, ...)`` pattern used
+    elsewhere in this module).
+    """
+    method = getattr(node, "child_by_field_name", None)
+    if callable(method):
+        result = method(field_name)
+        if result is None:
+            return None
+        return cast("object", result)
+    return None
+
+
+def _walk_descendants(
+    root: object,
+    *,
+    skip_type_checking: bool = True,
+) -> list[object]:
+    """Yield every descendant node beneath ``root`` (iterative DFS).
+
+    Uses an explicit stack (list) instead of recursion to avoid Python's
+    recursion limit on deep ASTs. The returned list preserves depth-first
+    ordering from the root.
+
+    When ``skip_type_checking`` is True AND a visited node is an
+    ``if_statement`` whose condition subtree contains an identifier with text
+    ``TYPE_CHECKING``, the walker does NOT descend into that node's body.
+    The ``if_statement`` itself is still yielded (callers typically dispatch
+    only on ``import_statement`` / ``import_from_statement`` types so this is
+    harmless), but none of its descendants are yielded.
+
+    The grammar-optional pattern of :func:`_children` is preserved — any node
+    without a ``children`` attribute simply yields no descendants.
+    """
+    results: list[object] = []
+    stack: list[object] = list(_children(root))
+    while stack:
+        current = stack.pop()
+        results.append(current)
+        current_type = getattr(current, "type", "")
+        if (
+            skip_type_checking
+            and current_type == "if_statement"
+            and _condition_contains_type_checking(current)
+        ):
+            # Skip descending into the TYPE_CHECKING-guarded body.
+            continue
+        stack.extend(_children(current))
+    return results

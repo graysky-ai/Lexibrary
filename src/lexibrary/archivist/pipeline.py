@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import logging
+import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -23,7 +24,11 @@ from lexibrary.archivist.change_checker import (
 )
 from lexibrary.archivist.dependency_extractor import extract_dependencies
 from lexibrary.archivist.service import ArchivistService, DesignFileRequest
-from lexibrary.archivist.skeleton import generate_skeleton_design
+from lexibrary.archivist.skeleton import (
+    classify_aggregator,
+    generate_skeleton_design,
+    is_constants_only,
+)
 from lexibrary.archivist.topology import generate_raw_topology
 from lexibrary.artifacts.aindex import AIndexEntry
 from lexibrary.artifacts.aindex_parser import parse_aindex
@@ -74,6 +79,81 @@ _GENERATOR_ID = "lexibrary-v2"
 
 # Type for an optional progress callback: receives (file_path, change_level)
 ProgressCallback = Callable[[Path, ChangeLevel, str | None], None]
+
+
+# §2.4(b) — Deterministic complexity_warning post-filter heuristic.
+#
+# The LLM can still emit generic hedging ("be careful when modifying imports")
+# even after the §2.4(a) prompt tightening. This module-level filter drops
+# warnings that are BOTH (a) short (below the length threshold from the Group
+# 14 audit — 500 chars, NOT the 120-char placeholder in the spec block) AND
+# (b) lacking any signal marker that ties them to the specific module. A
+# warning survives when ANY marker matches — an identifier from the skeleton,
+# a dotted call path (``yaml.safe_load``), a SQL keyword, a file path literal,
+# a CLI flag, a version string, or a proper-noun phrase.
+#
+# Regex extensions beyond SHARED_BLOCK_E come from the closing section of
+# ``plans/design-cleanup/complexity-warning-audit.md`` (Group 14.5).
+_VERSION_RE = re.compile(r"(?:Python|Node|Java|Go|Rust)\s+\d+(?:\.\d+)?\+?|v\d+\.\d+(?:\.\d+)?")
+_PROPER_NOUN_RE = re.compile(r"\b[A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+)+\b")
+_DOTTED_IDENT_RE = re.compile(r"\b[a-z][a-zA-Z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){1,}\b")
+_SQL_MARKER_RE = re.compile(
+    r"\b(?:FTS\d|WAL\b|PRAGMA|COLLATE\s+\w+|INSERT\s+OR\s+IGNORE|ON\s+DELETE\s+CASCADE|"
+    r"lastrowid|sqlite3\.\w+|SCHEMA_VERSION|PathSpec|gitignore)\b"
+)
+_FILE_PATH_RE = re.compile(
+    r"(?:\.lexibrary/|\.git/|src/lexibrary/|baml_src/|\.cursor/|\.claude/|"
+    r"\.comments\.yaml|\.aindex|\.iwh|py\.typed)"
+)
+_CLI_FLAG_RE = re.compile(r"--[a-z][a-z0-9-]+")
+
+
+def _has_code_identifier(text: str, skeleton: str | None) -> bool:
+    """Return True iff any identifier of length ≥2 from the skeleton appears in text."""
+    if skeleton is None:
+        return False
+    tokens = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]{1,}", skeleton))
+    return any(tok in text for tok in tokens if len(tok) >= 2)
+
+
+def _filter_complexity_warning(
+    raw: str | None,
+    *,
+    interface_skeleton: str | None,
+    length_threshold: int = 500,
+) -> str | None:
+    """Drop generic-hedge complexity warnings; preserve load-bearing ones.
+
+    Called after the LLM returns ``DesignFileOutput.complexity_warning``. A
+    warning is kept when EITHER its length ≥ ``length_threshold`` OR it
+    contains at least one signal marker (identifier from the skeleton, dotted
+    call path, proper noun, version string, SQL keyword, file-path literal, or
+    CLI flag). Otherwise it is dropped (returns ``None``). The filter NEVER
+    synthesises a warning from ``None`` input — if the LLM emits ``None``, the
+    result is ``None``.
+    """
+    if raw is None:
+        return None
+    text = raw.strip().strip('"').strip("'")
+    # Long enough → keep.
+    if len(text) >= length_threshold:
+        return raw
+    # Any signal marker → keep.
+    if _has_code_identifier(text, interface_skeleton):
+        return raw
+    if _DOTTED_IDENT_RE.search(text):
+        return raw
+    if _PROPER_NOUN_RE.search(text):
+        return raw
+    if _VERSION_RE.search(text):
+        return raw
+    if _SQL_MARKER_RE.search(text):
+        return raw
+    if _FILE_PATH_RE.search(text):
+        return raw
+    if _CLI_FLAG_RE.search(text):
+        return raw
+    return None
 
 
 @dataclass
@@ -870,6 +950,64 @@ async def update_file(
         dependents = []
         dependents_complete = False
 
+    # Tag-cap validation: the BAML prompt caps tags at 3, but if the LLM
+    # returns more we silently truncate and log the dropped entries (archivist
+    # contract, archivist-pipeline spec: "Archivist-output tag-count
+    # validation").  No LLM re-call is performed.
+    raw_tags = list(output.tags) if output.tags else []
+    if len(raw_tags) > 3:
+        dropped = raw_tags[3:]
+        logger.warning(
+            "Archivist emitted %d tags for %s; truncating to 3 (dropped: %s)",
+            len(raw_tags),
+            rel_path,
+            dropped,
+        )
+        output_tags = raw_tags[:3]
+    else:
+        output_tags = raw_tags
+
+    # §2.1 Aggregator detection: modules whose top-level is almost entirely
+    # ``from X import Y`` re-exports (per classify_aggregator's three gates)
+    # route through the ``## Re-exports`` rendering path instead of
+    # ``## Interface Contract``. The LLM-provided interface_contract is
+    # discarded for aggregators since the re-export listing is the
+    # canonical contract.
+    classification = classify_aggregator(source_path)
+    if classification.is_aggregator:
+        interface_contract_value = ""
+        reexports_value: dict[str, list[str]] | None = classification.reexports_by_source
+    else:
+        interface_contract_value = output.interface_contract or ""
+        reexports_value = None
+
+    # §2.4(c) Complexity Warning suppression gate: for aggregator modules
+    # and constants-only modules, the LLM has no top-level behaviour to
+    # warn about. We discard whatever ``complexity_warning`` the LLM
+    # emitted so the downstream ``## Complexity Warning`` section never
+    # renders for these files. See ``aggregator-design-rendering`` spec:
+    # "The LLM SHALL NOT see a ``complexity_warning`` field for these
+    # modules and the resulting ``DesignFileOutput.complexity_warning``
+    # SHALL be ``None``." The BAML function has no ``complexity_warning``
+    # input, so we enforce this as a deterministic post-filter on the
+    # output.
+    complexity_warning_value: str | None = output.complexity_warning
+    if classification.is_aggregator or is_constants_only(source_path):
+        complexity_warning_value = None
+
+    # §2.4(b) Deterministic complexity_warning post-filter. After the Group 15
+    # suppression above (which zeroes aggregators + constants-only modules),
+    # the remaining raw warning from the LLM still lands here. The filter
+    # drops warnings that are BOTH short (< 500 chars, per Group 14 audit)
+    # AND lacking any signal marker (identifier from skeleton, dotted call,
+    # proper noun, version string, SQL keyword, file-path literal, CLI flag).
+    # ``None`` input stays ``None`` — the filter never synthesises a warning.
+    complexity_warning_value = _filter_complexity_warning(
+        complexity_warning_value,
+        interface_skeleton=skeleton_text,
+        length_threshold=500,
+    )
+
     design_file = DesignFile(
         source_path=rel_path,
         frontmatter=DesignFileFrontmatter(
@@ -878,15 +1016,16 @@ async def update_file(
             updated_by="archivist",
         ),
         summary=description,
-        interface_contract=output.interface_contract or "",
+        interface_contract=interface_contract_value,
         dependencies=deps,
         dependents=dependents,
         tests=output.tests,
-        complexity_warning=output.complexity_warning,
+        complexity_warning=complexity_warning_value,
         wikilinks=list(output.wikilinks) if output.wikilinks else [],
-        tags=list(output.tags) if output.tags else [],
+        tags=output_tags,
         stack_refs=[],
         preserved_sections=preserved_sections,
+        reexports=reexports_value,
         metadata=StalenessMetadata(
             source=rel_path,
             source_hash=content_hash,

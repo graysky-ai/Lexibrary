@@ -457,6 +457,53 @@ Body.
         assert len(s_issues) == 1
         assert "draft" in s_issues[0].message
 
+    def test_omitted_status_returns_empty(self, tmp_path: Path) -> None:
+        """A design file with NO ``status`` key SHALL NOT produce a status-related
+        issue — the serializer now omits the default value and the check treats
+        an absent ``status`` as equivalent to ``active``."""
+        ld = tmp_path / ".lexibrary"
+        _write_design(
+            ld / "designs" / "src",
+            "no-status",
+            raw_content="""---
+description: Design file without explicit status
+id: DS-010
+updated_by: archivist
+---
+
+# no-status
+
+Design body.
+""",
+        )
+
+        issues = check_design_frontmatter(tmp_path, ld)
+        s_issues = [i for i in issues if "status" in i.message.lower()]
+        assert s_issues == []
+
+    def test_status_deprecated_returns_empty(self, tmp_path: Path) -> None:
+        """A design file with ``status: deprecated`` SHALL NOT produce an issue."""
+        ld = tmp_path / ".lexibrary"
+        _write_design(
+            ld / "designs" / "src",
+            "deprecated-file",
+            raw_content="""---
+description: Deprecated design file
+id: DS-011
+updated_by: archivist
+status: deprecated
+---
+
+# deprecated-file
+
+Design body.
+""",
+        )
+
+        issues = check_design_frontmatter(tmp_path, ld)
+        s_issues = [i for i in issues if "status" in i.message.lower()]
+        assert s_issues == []
+
     def test_recursive_scan(self, tmp_path: Path) -> None:
         """Recursively finds design files in subdirectories."""
         ld = tmp_path / ".lexibrary"

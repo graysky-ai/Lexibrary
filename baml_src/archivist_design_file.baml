@@ -69,17 +69,29 @@ function ArchivistGenerateDesignFile(
        third-party and standard library imports.
     4. **tests**: If you can identify a corresponding test file or test
        description, include it. Otherwise leave null.
-    5. **complexity_warning**: Flag any non-obvious behaviour, tricky edge
-       cases, or architectural gotchas. Leave null if the file is
-       straightforward.
+    5. **complexity_warning**: Emit `complexity_warning` ONLY when the
+       warning can cite a specific invariant, symbol name, file path, or
+       version string (e.g. "Python 3.11+", "SQLite WAL mode", a named
+       transaction boundary, a named private helper whose contract
+       matters). Do NOT emit generic hedging cautions that would apply to
+       any module of the same type (e.g. "be careful with `__init__.py`
+       files"). Leave `complexity_warning` null when no specific invariant
+       is load-bearing.
     6. **wikilinks**: ONLY use names from the available artifacts list above.
-       Do not invent new names. If no available artifacts are relevant, return
-       an empty list. Every entry in this list MUST exactly match one of the
+       Do not invent new names. Emit a wikilink ONLY when the target is a
+       named concept/convention/playbook that MATERIALLY SHAPES the file's
+       design. The bar is "would removing this link leave the design file
+       meaningfully less informative?" — a passing mention of the name alone
+       is not sufficient. If no available artifacts meet the bar, return an
+       empty list. Every entry in this list MUST exactly match one of the
        provided artifact names. If no available artifacts section is present,
        list concept names (domain terms, patterns, or conventions) that a
-       reader should understand using short noun phrases.
-    7. **tags**: Provide 3-7 short lowercase labels categorizing the file
-       (e.g. "config", "parser", "pydantic-model", "cli", "async").
+       reader should understand using short noun phrases, applying the same
+       material-shaping bar.
+    7. **tags**: Emit AT MOST 3 short lowercase tags. Each tag SHOULD add
+       signal not already derivable from the filename or the summary field.
+       If fewer than 3 tags add non-derivable signal, emit only those; empty
+       is acceptable.
     8. **enum_notes**: For every enum or named constant listed in the "ENUMS
        AND CONSTANTS" section, produce an entry with its role in the system.
        Keep role descriptions to one clause. If no enums are listed, leave

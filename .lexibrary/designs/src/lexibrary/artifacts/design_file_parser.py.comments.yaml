@@ -1,0 +1,8 @@
+comments:
+- body: "Group 3 (\xA71.1): Interface Contract parser now strips up to two layers\
+    \ of fences (outer canonical fence + optional legacy inner fence). Tolerance is\
+    \ one-way: newly-serialized files always have a single outer fence, but legacy\
+    \ on-disk files written before the \xA71.1 fix may contain a nested ```<lang>\
+    \ opener and ``` closer inside the outer fence. The parser strips both so DesignFile.interface_contract\
+    \ never carries fence artifacts."
+  date: '2026-04-21T07:11:06.794835Z'

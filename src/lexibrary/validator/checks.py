@@ -823,21 +823,9 @@ def check_design_frontmatter(
                 )
             )
 
-        # status — must be one of valid values
-        if "status" not in data:
-            issues.append(
-                ValidationIssue(
-                    severity="error",
-                    check="design_frontmatter",
-                    message="Missing mandatory field: status",
-                    artifact=rel_path,
-                    suggestion=(
-                        f"Edit {rel_path} and add 'status:' set to one of: "
-                        f"{', '.join(sorted(valid_statuses))}."
-                    ),
-                )
-            )
-        elif data["status"] not in valid_statuses:
+        # status — optional; when absent, treat as "active" (serializer omits the
+        # default value). When present, validate against the allowed set.
+        if "status" in data and data["status"] not in valid_statuses:
             issues.append(
                 ValidationIssue(
                     severity="error",

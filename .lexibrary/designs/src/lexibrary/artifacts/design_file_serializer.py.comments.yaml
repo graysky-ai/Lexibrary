@@ -1,0 +1,7 @@
+comments:
+- body: "Group 3 (\xA71.1): Interface Contract body now passes through a fence-stripping\
+    \ step before the outer fence is emitted. A leading ```<lang>\\n and/or trailing\
+    \ \\n``` are stripped, preventing the doubled-fence defect where an upstream LLM\
+    \ wraps the skeleton in its own fence. The serializer remains the single owner\
+    \ of the canonical outer fence."
+  date: '2026-04-21T07:11:01.182783Z'

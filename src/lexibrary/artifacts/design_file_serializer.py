@@ -1,13 +1,24 @@
 """Serializer for design file artifacts to markdown format."""
 
+# Staleness hashes in the footer serve three distinct purposes:
+#   source_hash     — SHA-256 of raw source bytes (detects source drift).
+#   interface_hash  — SHA-256 of the extracted interface skeleton (detects
+#                     skeleton drift without re-reading source).
+#   design_hash     — SHA-256 of the rendered design body excluding the
+#                     footer (detects agent/human edits to the design file).
+
 from __future__ import annotations
 
 import hashlib
+import re
 
 import yaml
 
 from lexibrary.artifacts.design_file import DesignFile
 from lexibrary.utils.languages import detect_language
+
+# Matches a leading inner code fence, e.g. ```python\n, ```ts\n, or ```\n.
+_INNER_FENCE_OPEN_RE = re.compile(r"^```[A-Za-z0-9_+-]*\n")
 
 # Mapping from detect_language() result to fenced-code-block tag
 _LANG_TAG: dict[str, str] = {
@@ -58,6 +69,29 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+# YAML flow-style reserved characters: if any appear in a scalar, quote the
+# whole value. Outside the flow context `{`, `}`, and `,` are unremarkable,
+# but the compact meta footer IS a flow mapping, so they matter here. The
+# remaining characters are the leading-indicator set that triggers YAML's
+# plain-scalar ambiguity rules.
+_YAML_FLOW_RESERVED = frozenset("{},:#&*!|>'\"%@`")
+
+
+def _yaml_flow_scalar(value: str) -> str:
+    """Emit ``value`` as a flow-style YAML scalar.
+
+    Unquoted when the value contains no reserved YAML character; otherwise
+    wrapped in single quotes with embedded single quotes doubled. SHA-256
+    hex digests, ISO-8601 timestamps, and plain source paths are safe
+    unquoted (matches SHARED_BLOCK_B's "SHA-256 hex digests are safe
+    unquoted" guarantee).
+    """
+    if any(ch in _YAML_FLOW_RESERVED for ch in value):
+        escaped = value.replace("'", "''")
+        return f"'{escaped}'"
+    return value
+
+
 def serialize_design_file(data: DesignFile) -> str:
     """Serialize a DesignFile to markdown with YAML frontmatter and HTML comment footer."""
     parts: list[str] = []
@@ -70,8 +104,10 @@ def serialize_design_file(data: DesignFile) -> str:
         "description": description,
         "id": data.frontmatter.id,
         "updated_by": data.frontmatter.updated_by,
-        "status": data.frontmatter.status,
     }
+    # Omit status when equal to the default "active"; only emit non-default values.
+    if data.frontmatter.status != "active":
+        frontmatter_dict["status"] = data.frontmatter.status
     # Conditionally include deprecation fields only when non-null
     if data.frontmatter.deprecated_at is not None:
         frontmatter_dict["deprecated_at"] = data.frontmatter.deprecated_at.isoformat()
@@ -86,14 +122,36 @@ def serialize_design_file(data: DesignFile) -> str:
     parts.append(f"# {data.source_path}")
     parts.append("")
 
-    # --- Interface Contract ---
-    parts.append("## Interface Contract")
-    parts.append("")
-    lang = _lang_tag(data.source_path)
-    parts.append(f"```{lang}")
-    parts.append(data.interface_contract)
-    parts.append("```")
-    parts.append("")
+    # --- Interface Contract OR Re-exports ---
+    # Aggregator modules (detected by classify_aggregator in the pipeline)
+    # render ``## Re-exports`` in place of ``## Interface Contract``. The
+    # dedicated path SHALL suppress the Interface Contract section entirely.
+    if data.reexports:
+        parts.append("## Re-exports")
+        parts.append("")
+        for source_module, names in data.reexports.items():
+            joined = ", ".join(names)
+            parts.append(f"- From `{source_module}`: {joined}")
+        parts.append("")
+    else:
+        # Strip a leading ```<lang>\n and trailing \n``` from the contract body so
+        # we never emit a doubled fence when the upstream producer (e.g. the LLM)
+        # already wrapped the skeleton in its own code fence. The outer fence we
+        # append below is the canonical one.
+        contract = data.interface_contract
+        if _INNER_FENCE_OPEN_RE.match(contract):
+            contract = _INNER_FENCE_OPEN_RE.sub("", contract, count=1)
+        if contract.endswith("\n```"):
+            contract = contract[: -len("\n```")]
+        elif contract.endswith("```"):
+            contract = contract[: -len("```")]
+        parts.append("## Interface Contract")
+        parts.append("")
+        lang = _lang_tag(data.source_path)
+        parts.append(f"```{lang}")
+        parts.append(contract)
+        parts.append("```")
+        parts.append("")
 
     # --- Dependencies ---
     parts.append("## Dependencies")
@@ -106,9 +164,11 @@ def serialize_design_file(data: DesignFile) -> str:
     parts.append("")
 
     # --- Dependents ---
+    # The `*(see `lexi lookup` for live reverse references)*` hint line was
+    # removed in §1.2 — `lexi lookup` is the authoritative source for reverse
+    # references and the hint was static noise on every design file. The
+    # parser still tolerates legacy on-disk files that carry the hint.
     parts.append("## Dependents")
-    parts.append("")
-    parts.append("*(see `lexi lookup` for live reverse references)*")
     parts.append("")
     if data.dependents:
         for dep in data.dependents:
@@ -192,19 +252,26 @@ def serialize_design_file(data: DesignFile) -> str:
     body_text = "\n".join(parts)
     design_hash = _sha256(body_text)
 
-    # --- HTML comment metadata footer ---
+    # --- HTML comment metadata footer (compact inline YAML, §1.3) ---
+    # Single-line form: `<!-- lexibrary:meta {k: v, k: v, ...} -->`. Values
+    # are emitted unquoted unless they contain a reserved YAML character (per
+    # SHARED_BLOCK_B). SHA-256 hex digests, ISO-8601 timestamps, and plain
+    # source paths are all safe unquoted. The ``interface_hash`` key is
+    # omitted entirely when ``metadata.interface_hash is None`` (matches the
+    # pre-§1.3 conditional-emit behaviour).
     meta = data.metadata
-    footer_lines = ["<!-- lexibrary:meta"]
-    footer_lines.append(f"source: {meta.source}")
-    footer_lines.append(f"source_hash: {meta.source_hash}")
+    footer_fields: list[tuple[str, str]] = [
+        ("source", meta.source),
+        ("source_hash", meta.source_hash),
+    ]
     if meta.interface_hash is not None:
-        footer_lines.append(f"interface_hash: {meta.interface_hash}")
-    footer_lines.append(f"design_hash: {design_hash}")
-    footer_lines.append(f"generated: {meta.generated.isoformat()}")
-    footer_lines.append(f"generator: {meta.generator}")
-    footer_lines.append(f"dependents_complete: {str(meta.dependents_complete).lower()}")
-    footer_lines.append("-->")
+        footer_fields.append(("interface_hash", meta.interface_hash))
+    footer_fields.append(("design_hash", design_hash))
+    footer_fields.append(("generated", meta.generated.isoformat()))
+    footer_fields.append(("generator", meta.generator))
+    footer_fields.append(("dependents_complete", str(meta.dependents_complete).lower()))
 
-    parts.append("\n".join(footer_lines))
+    inner = ", ".join(f"{key}: {_yaml_flow_scalar(value)}" for key, value in footer_fields)
+    parts.append(f"<!-- lexibrary:meta {{{inner}}} -->")
 
     return "\n".join(parts) + "\n"
