@@ -1,6 +1,6 @@
 [project]
 name = "lexibrary"
-version = "0.6.2"
+version = "0.6.3"
 description = "AI-friendly codebase indexer — creates .aindex files for LLM context navigation"
 authors = [{ name = "Shannon Gray" }]
 readme = "README.md"

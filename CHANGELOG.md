@@ -2,6 +2,47 @@
 
 All notable changes to Lexibrary are documented in this file.
 
+## [0.6.3] - 2026-04-22
+
+### Added
+- **Aggregator detector** — New `classify_aggregator` in
+  `archivist/skeleton.py` with three gates (re-export ratio 0.8, body-size
+  ≤ 3 non-comment lines, no conditional logic) for identifying re-export-
+  only modules; paired with `is_constants_only` for modules consisting of
+  top-level value assignments
+- **`## Re-exports` design file section** — Aggregator modules now render
+  a compact `## Re-exports` section grouping re-exported names by source
+  module, replacing `## Interface Contract` when detected; new
+  `DesignFile.reexports` field round-trips through parser and serializer
+- **Complexity-warning post-filter** — New module-level filter in
+  `archivist/pipeline.py` drops generic-hedge `complexity_warning` output
+  that lacks signal markers (skeleton identifiers, dotted call paths,
+  proper nouns, version strings, SQL keywords, file-path literals, CLI
+  flags); length threshold 500 chars
+- **Constants-only complexity suppression** — Pipeline now suppresses
+  `complexity_warning` for modules that `is_constants_only` identifies as
+  top-level value assignments
+- **Wikilink resolution surfacing check** — New validator check
+  surfaces unresolved wikilinks as actionable issues
+- **Recursive dependency extraction** — Extended
+  `archivist/dependency_extractor.py` with recursive traversal
+- **Test coverage** — New suites for aggregator detector, complexity
+  warning filter, recursive dependency extraction, pipeline complexity
+  suppression, pipeline prompt tightening, tag cap, design file
+  aggregator round-trip, and wikilink resolution surfacing
+
+### Changed
+- **BAML archivist prompt** (`archivist_design_file.baml`) — Tightened
+  guidance for `complexity_warning` (requires specific invariant/symbol/
+  path/version), `wikilinks` (material-shaping bar), and `tags` (cap at 3,
+  each adding non-derivable signal)
+- **Design file serializer** — New inline footer format for metadata;
+  backward compatible with legacy layouts
+- **`status` frontmatter field** — Now optional; absent value treated as
+  `active` (serializer omits the default)
+- **`lexi design comment` docstring** — Clarified intended use (durable
+  design rationale / intent, not release-history notes)
+
 ## [0.6.2] - 2026-04-21
 
 ### Added
