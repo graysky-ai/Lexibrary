@@ -6,18 +6,18 @@ This guide covers common issues you may encounter when using Lexibrary, organize
 
 ### Re-init error: "Project already initialised"
 
-**Symptoms:** Running `lexictl init` prints "Project already initialised. Use lexictl setup --update to modify settings." and exits with code 1.
+**Symptoms:** Running `lexictl init` prints "Project already initialised. Use `lexictl upgrade` to refresh agent rules and config." and exits with code 1.
 
 **Cause:** The `.lexibrary/` directory already exists. The re-init guard prevents accidental overwriting of your configuration and generated artifacts.
 
-**Fix:** Do not re-initialize. Instead, edit settings directly or use `lexictl setup`:
+**Fix:** Do not re-initialize. Instead, edit settings directly and run `lexictl upgrade`:
 
 ```bash
 # Edit the config file directly
 $EDITOR .lexibrary/config.yaml
 
-# Regenerate agent rules after config changes
-lexictl setup --update
+# Refresh agent rules, gitignore patterns, and git hooks
+lexictl upgrade
 ```
 
 If you truly need to start from scratch (this deletes all generated design files):
@@ -198,9 +198,9 @@ See [Ignore Patterns](ignore-patterns.md) for the complete ignore system documen
 
 2. To prevent this in the future, install the git post-commit hook:
    ```bash
-   lexictl setup --hooks
+   lexictl upgrade
    ```
-   This runs `lexictl update --changed-only` automatically after each commit.
+   The `git-hooks` step of `upgrade` installs the post-commit and pre-commit hooks. The post-commit hook runs `lexictl update --changed-only` automatically after each commit.
 
 3. Alternatively, set up periodic sweeps:
    ```bash

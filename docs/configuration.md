@@ -4,7 +4,7 @@ Lexibrary is configured via `.lexibrary/config.yaml`, created during `lexictl in
 
 All configuration models use `extra="ignore"`, which means unknown keys are silently ignored. This provides forward compatibility -- upgrading Lexibrary will never break your existing config even if new keys are added.
 
-To change settings after initialization, edit `.lexibrary/config.yaml` directly and (optionally) run `lexictl setup --update` to regenerate agent rules.
+To change settings after initialization, edit `.lexibrary/config.yaml` directly and run `lexictl upgrade` to refresh agent rules and the rest of the project's Lexibrary surface.
 
 ## Top-level Keys
 

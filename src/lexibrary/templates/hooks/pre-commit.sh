@@ -1,5 +1,5 @@
 {hook_marker}
-# — Lexibrary pre-commit validation (installed by lexictl setup --hooks) —
+# — Lexibrary pre-commit validation (installed by lexictl upgrade) —
 if ! lexictl validate --ci --severity error; then
     echo ""
     echo "Lexibrary validation failed."

@@ -405,6 +405,15 @@ class LexibraryConfig(BaseModel):
 
     scope_roots: list[ScopeRoot] = Field(default_factory=lambda: [ScopeRoot(path=".")])
     project_name: str = ""
+    lexibrary_version: str = Field(
+        default="",
+        description=(
+            "Version of Lexibrary that last ran ``lexictl upgrade`` against this "
+            "project. Stamped automatically by the upgrade pipeline; users do not "
+            "set this by hand. Empty string means the project was initialised "
+            "before the version stamp existed."
+        ),
+    )
     agent_environment: list[str] = Field(default_factory=list)
     concepts: ConceptConfig = Field(default_factory=ConceptConfig)
     conventions: ConventionConfig = Field(default_factory=ConventionConfig)
@@ -434,6 +443,13 @@ class LexibraryConfig(BaseModel):
         ``extra="ignore"``; this key is a known-renamed field from the
         single-root era and deserves a loud pointer to the new shape instead
         of a silent no-op.
+
+        Note: :func:`lexibrary.config.loader.load_config` rewrites legacy
+        ``scope_root:`` to ``scope_roots:`` and emits a deprecation warning
+        before reaching this validator, so end users hitting Lexibrary through
+        the normal config-loading path never see this error. It remains as a
+        defensive fallback for code that constructs ``LexibraryConfig``
+        directly via ``model_validate`` (tests, scaffolder validation, etc.).
         """
 
         if isinstance(data, dict) and "scope_root" in data:

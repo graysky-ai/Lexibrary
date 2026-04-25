@@ -85,6 +85,45 @@ def _migrate_daemon_to_sweep(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _migrate_scope_root_to_scope_roots(data: dict[str, Any]) -> dict[str, Any]:
+    """Migrate legacy single-root ``scope_root:`` to multi-root ``scope_roots:``.
+
+    Pre-multi-root configs declared a single root as a scalar
+    (``scope_root: .``). The current schema requires a list of mappings
+    (``scope_roots: [{path: .}]``). When ``data`` contains the legacy key but
+    not the new one, the scalar is wrapped in the new shape and a deprecation
+    warning is logged so the user knows to update their on-disk config.
+
+    If both keys exist, ``scope_roots`` takes precedence and ``scope_root`` is
+    silently dropped (mirrors :func:`_migrate_daemon_to_sweep`).
+    """
+    if "scope_root" not in data:
+        return data
+
+    if "scope_roots" not in data:
+        legacy_value = data["scope_root"]
+        # Old schema only allowed a string path. Anything else (None, list,
+        # dict) is left to fall through to the schema validator so the user
+        # gets a precise error rather than a silent shape coercion.
+        if isinstance(legacy_value, str):
+            data["scope_roots"] = [{"path": legacy_value}]
+            logger.warning(
+                "Config key 'scope_root:' is deprecated and will be removed in a "
+                "future release. Replace it with:\n"
+                "  scope_roots:\n"
+                "    - path: %s",
+                legacy_value,
+            )
+            del data["scope_root"]
+            return data
+        # Non-string legacy value: leave the key in place so the schema
+        # validator surfaces the original migration error.
+        return data
+
+    del data["scope_root"]
+    return data
+
+
 def _load_yaml(path: Path) -> dict[str, Any]:
     """Load a YAML file and return its contents as a dict."""
     with open(path) as f:
@@ -132,6 +171,9 @@ def load_config(
 
     # Migrate legacy daemon: -> sweep:
     merged = _migrate_daemon_to_sweep(merged)
+
+    # Migrate legacy scope_root: -> scope_roots:
+    merged = _migrate_scope_root_to_scope_roots(merged)
 
     # Validate and return
     try:

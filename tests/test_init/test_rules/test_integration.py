@@ -1,6 +1,6 @@
 """Integration tests for agent rule generation.
 
-Exercises the full flow from ``generate_rules()`` and ``lexictl setup --update``
+Exercises the full flow from ``generate_rules()`` and ``lexictl lexictl upgrade``
 through to file creation, user content preservation, multi-environment support,
 and gitignore integration.
 """
@@ -56,7 +56,12 @@ def _setup_project(
 
 
 def _invoke_setup(tmp_path: Path, args: list[str]) -> object:
-    """Invoke ``lexictl setup`` from within *tmp_path*."""
+    """Invoke ``lexictl`` from within *tmp_path*.
+
+    Historically named ``_invoke_setup`` because the integration suite
+    targeted ``lexictl setup`` before the rename to ``lexictl upgrade``.
+    The helper itself is generic — it just changes directory and dispatches.
+    """
     old_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
@@ -200,14 +205,14 @@ class TestMultiEnvironment:
 # ---------------------------------------------------------------------------
 
 
-class TestSetupUpdateRefresh:
-    """``lexictl setup --update`` regenerates rules and refreshes gitignore."""
+class TestUpgradeRefresh:
+    """``lexictl upgrade`` regenerates rules and refreshes gitignore."""
 
-    def test_setup_update_creates_rules_and_gitignore(self, tmp_path: Path) -> None:
-        """Full ``setup --update`` flow creates rule files and updates gitignore."""
+    def test_upgrade_creates_rules_and_gitignore(self, tmp_path: Path) -> None:
+        """Full ``upgrade`` flow creates rule files and updates gitignore."""
         project = _setup_project(tmp_path, environments=["claude"])
 
-        result = _invoke_setup(project, ["setup", "--update"])
+        result = _invoke_setup(project, ["upgrade"])
         assert result.exit_code == 0  # type: ignore[union-attr]
 
         # Rules created
@@ -221,14 +226,14 @@ class TestSetupUpdateRefresh:
 
         # Output confirms success
         output = result.output  # type: ignore[union-attr]
-        assert "Setup complete" in output
+        assert "Upgrade complete" in output
 
-    def test_setup_update_refreshes_existing_rules(self, tmp_path: Path) -> None:
-        """Running ``setup --update`` twice updates existing rule files."""
+    def test_upgrade_refreshes_existing_rules(self, tmp_path: Path) -> None:
+        """A second ``upgrade`` refreshes a modified CLAUDE.md back to canonical content."""
         project = _setup_project(tmp_path, environments=["claude"])
 
         # First run
-        _invoke_setup(project, ["setup", "--update"])
+        _invoke_setup(project, ["upgrade"])
 
         # Manually modify CLAUDE.md marker content to simulate stale rules
         claude_md = project / "CLAUDE.md"
@@ -237,7 +242,7 @@ class TestSetupUpdateRefresh:
         claude_md.write_text(stale_content, encoding="utf-8")
 
         # Second run refreshes
-        result = _invoke_setup(project, ["setup", "--update"])
+        result = _invoke_setup(project, ["upgrade"])
         assert result.exit_code == 0  # type: ignore[union-attr]
 
         refreshed = claude_md.read_text(encoding="utf-8")
@@ -245,25 +250,22 @@ class TestSetupUpdateRefresh:
         assert "OLD_COMMAND" not in refreshed
         assert "lexi lookup" in refreshed
 
-    def test_setup_update_with_explicit_env_overrides_config(self, tmp_path: Path) -> None:
-        """``--env`` flag overrides environments from config."""
-        project = _setup_project(tmp_path, environments=["claude"])
+    def test_upgrade_uses_config_environments(self, tmp_path: Path) -> None:
+        """``upgrade`` reads ``agent_environment`` from config (no CLI override)."""
+        project = _setup_project(tmp_path, environments=["codex"])
 
-        result = _invoke_setup(project, ["setup", "--update", "--env", "codex"])
+        result = _invoke_setup(project, ["upgrade"])
         assert result.exit_code == 0  # type: ignore[union-attr]
 
-        # Codex file created, Claude file NOT created (env override)
+        # Codex file created, Claude file NOT created
         assert (project / "AGENTS.md").exists()
         assert not (project / "CLAUDE.md").exists()
 
-    def test_setup_update_multiple_envs_via_cli(self, tmp_path: Path) -> None:
-        """Multiple ``--env`` flags generate rules for all specified environments."""
-        project = _setup_project(tmp_path)
+    def test_upgrade_handles_multiple_envs(self, tmp_path: Path) -> None:
+        """Three declared environments all get their rule files."""
+        project = _setup_project(tmp_path, environments=["claude", "cursor", "codex"])
 
-        result = _invoke_setup(
-            project,
-            ["setup", "--update", "--env", "claude", "--env", "cursor", "--env", "codex"],
-        )
+        result = _invoke_setup(project, ["upgrade"])
         assert result.exit_code == 0  # type: ignore[union-attr]
 
         assert (project / "CLAUDE.md").exists()
@@ -274,7 +276,7 @@ class TestSetupUpdateRefresh:
         assert "claude" in output
         assert "cursor" in output
         assert "codex" in output
-        assert "Setup complete" in output
+        assert "Upgrade complete" in output
 
 
 # ---------------------------------------------------------------------------
@@ -375,14 +377,15 @@ class TestUnsupportedEnvironment:
         for env in supported_environments():
             assert env in error_msg
 
-    def test_setup_update_rejects_unsupported_env(self, tmp_path: Path) -> None:
-        """``lexictl setup --update --env fake`` exits 1 with clear error."""
-        project = _setup_project(tmp_path)
+    def test_upgrade_warns_on_unsupported_env_in_config(self, tmp_path: Path) -> None:
+        """An unsupported environment in config surfaces as a warning, not exit-1."""
+        project = _setup_project(tmp_path, environments=["nonexistent"])
 
-        result = _invoke_setup(project, ["setup", "--update", "--env", "nonexistent"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
+        result = _invoke_setup(project, ["upgrade"])
+        # ``upgrade`` is best-effort: invalid envs don't stop the rest of the
+        # pipeline. The agent-rules step records the issue as a warning.
+        assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
-        assert "Unsupported" in output
         assert "nonexistent" in output
 
     def test_mixed_valid_and_invalid_envs_rejected(self, tmp_path: Path) -> None:
@@ -446,11 +449,11 @@ class TestGitignoreIntegration:
         # Only the original pattern, no duplicate added
         assert content.count(".iwh") == 1
 
-    def test_setup_update_integrates_gitignore(self, tmp_path: Path) -> None:
-        """``lexictl setup --update`` includes gitignore integration."""
+    def test_upgrade_integrates_gitignore(self, tmp_path: Path) -> None:
+        """``lexictl upgrade`` includes gitignore integration."""
         project = _setup_project(tmp_path, environments=["cursor"])
 
-        result = _invoke_setup(project, ["setup", "--update"])
+        result = _invoke_setup(project, ["upgrade"])
         assert result.exit_code == 0  # type: ignore[union-attr]
 
         # gitignore should have been created
@@ -458,13 +461,13 @@ class TestGitignoreIntegration:
         assert gitignore.exists()
         assert "**/.iwh" in gitignore.read_text(encoding="utf-8")
 
-    def test_setup_update_idempotent_gitignore(self, tmp_path: Path) -> None:
-        """Running ``setup --update`` twice does not duplicate gitignore pattern."""
+    def test_upgrade_idempotent_gitignore(self, tmp_path: Path) -> None:
+        """Running ``upgrade`` twice does not duplicate the IWH pattern."""
         project = _setup_project(tmp_path, environments=["claude"])
         (project / ".gitignore").write_text("**/.iwh\n", encoding="utf-8")
 
-        _invoke_setup(project, ["setup", "--update"])
-        _invoke_setup(project, ["setup", "--update"])
+        _invoke_setup(project, ["upgrade"])
+        _invoke_setup(project, ["upgrade"])
 
         content = (project / ".gitignore").read_text(encoding="utf-8")
         assert content.count("**/.iwh") == 1
@@ -477,7 +480,7 @@ class TestGitignoreIntegration:
             encoding="utf-8",
         )
 
-        _invoke_setup(project, ["setup", "--update"])
+        _invoke_setup(project, ["upgrade"])
 
         content = (project / ".gitignore").read_text(encoding="utf-8")
         assert "__pycache__/" in content
@@ -487,7 +490,7 @@ class TestGitignoreIntegration:
 
 
 # ---------------------------------------------------------------------------
-# End-to-end: init flow followed by setup --update
+# End-to-end: init flow followed by lexictl upgrade
 # ---------------------------------------------------------------------------
 
 

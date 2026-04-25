@@ -9,10 +9,10 @@ The most common integration is a git post-commit hook that automatically updates
 ### Installing the Hook
 
 ```bash
-lexictl setup --hooks
+lexictl upgrade
 ```
 
-This installs a post-commit hook at `.git/hooks/post-commit` that:
+`lexictl upgrade`'s `git-hooks` step installs a post-commit hook at `.git/hooks/post-commit` (and a pre-commit hook for validation) that:
 
 1. Determines which files were changed in the most recent commit.
 2. Runs `lexictl update --changed-only <changed-files>` to regenerate design files for those files only.
@@ -277,4 +277,4 @@ Key config settings that affect CI behavior:
 - [Design Files](design-files.md) -- How `lexictl update` and `--changed-only` work
 - [Validation](validation.md) -- The 13 checks and their exit codes
 - [Configuration](configuration.md) -- `sweep`, `llm`, and `crawl` settings
-- [Project Setup](project-setup.md) -- `lexictl init --defaults` and `lexictl setup --hooks`
+- [Project Setup](project-setup.md) -- `lexictl init --defaults` and `lexictl upgrade`

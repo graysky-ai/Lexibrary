@@ -113,9 +113,9 @@ Step 3/8: Agent Environment
 
 If existing Lexibrary sections are found in rule files (detected by `<!-- lexibrary:` markers), the wizard notes this.
 
-**What it affects:** The `agent_environment` list in `config.yaml`. Determines which rule files `lexictl setup --update` generates. You can specify multiple environments separated by commas.
+**What it affects:** The `agent_environment` list in `config.yaml`. Determines which rule files `lexictl upgrade` generates. You can specify multiple environments separated by commas.
 
-**Entering none:** Leave the field empty and press Enter to skip agent rule generation. You can add environments later by editing `config.yaml` and running `lexictl setup --update`.
+**Entering none:** Leave the field empty and press Enter to skip agent rule generation. You can add environments later by editing `config.yaml` and running `lexictl upgrade`.
 
 ### Step 4: LLM Provider
 
@@ -303,7 +303,7 @@ This prevents the wizard from hanging on input prompts in automated environments
 If `.lexibrary/` already exists when you run `lexictl init`, the command refuses to proceed:
 
 ```
-Project already initialised. Use lexictl setup --update to modify settings.
+Project already initialised. Use `lexictl upgrade` to refresh agent rules and config.
 ```
 
 This prevents accidental re-initialization that would overwrite your configuration. To change settings after initialization, see the next section.
@@ -321,25 +321,17 @@ $EDITOR .lexibrary/config.yaml
 
 After editing, your changes take effect the next time you run any `lexictl` command.
 
-### Regenerating agent rules
+### Refreshing agent rules and project surface
 
-If you changed the `agent_environment` list or want to refresh rule files:
-
-```bash
-lexictl setup --update
-```
-
-This regenerates agent rule files (e.g., `CLAUDE.md`, `.cursor/rules`) based on the current configuration.
-
-### Updating for specific environments
-
-To generate rules for environments not in your config (e.g., testing a new agent tool):
+If you changed the `agent_environment` list, want to refresh rule files, or pulled a new Lexibrary release:
 
 ```bash
-lexictl setup --update --env claude --env codex
+lexictl upgrade
 ```
 
-The `--env` flag overrides the `agent_environment` config value for that run.
+`lexictl upgrade` regenerates agent rule files (e.g., `CLAUDE.md`, `.cursor/rules`), persists any pending config-key migrations, backfills `.gitignore` patterns for newly introduced generated artifacts, stamps the running Lexibrary version into `config.yaml`, and (re)installs git hooks. The command is idempotent — every step reports `[ok]` when the project is already current.
+
+To change which environments are regenerated, edit the `agent_environment:` list in `config.yaml` before running `lexictl upgrade`. There is no per-run override flag — config is the single source of truth.
 
 ### Full re-generation
 
@@ -357,8 +349,7 @@ After initialization:
 
 1. **Generate design files** -- Run `lexictl update` to crawl your project and generate the full library.
 2. **Verify the output** -- Run `lexictl status` to see a health dashboard.
-3. **Set up automation** -- Run `lexictl setup --hooks` to install the git post-commit hook.
-4. **Configure your agents** -- Run `lexictl setup --update` to generate agent rule files.
+3. **Set up automation** -- Run `lexictl upgrade` to install the git post-commit hook (and refresh agent rule files).
 
 See also:
 

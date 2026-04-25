@@ -88,7 +88,7 @@ lexictl init --defaults
 If `.lexibrary/` already exists, `lexictl init` will refuse to run. To change settings after initialization, edit `.lexibrary/config.yaml` directly or run:
 
 ```bash
-lexictl setup --update
+lexictl upgrade
 ```
 
 ## Generate Design Files

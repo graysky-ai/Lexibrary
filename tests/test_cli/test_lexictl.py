@@ -271,7 +271,7 @@ class TestInit:
 
         assert result.exit_code == 1
         assert "already initialised" in result.output
-        assert "setup --update" in result.output
+        assert "lexictl upgrade" in result.output
 
     def test_defaults_creates_skeleton(self, tmp_path: Path) -> None:
         """``--defaults`` should run the wizard in non-interactive mode and create .lexibrary/."""
@@ -1031,8 +1031,8 @@ class TestStatusCommand:
 # ---------------------------------------------------------------------------
 
 
-class TestSetupCommand:
-    """Tests for the ``lexictl setup`` command."""
+class TestUpgradeCommand:
+    """Tests for the ``lexictl upgrade`` command (replaces ``lexictl setup``)."""
 
     def _invoke(self, tmp_path: Path, args: list[str]) -> object:
         old_cwd = os.getcwd()
@@ -1042,165 +1042,101 @@ class TestSetupCommand:
         finally:
             os.chdir(old_cwd)
 
-    def test_setup_without_update_shows_usage(self, tmp_path: Path) -> None:
-        """Running ``setup`` without ``--update`` shows usage instructions and exits 0."""
-        result = self._invoke(tmp_path, ["setup"])
+    def test_upgrade_list_describes_registered_steps(self, tmp_path: Path) -> None:
+        """``upgrade --list`` prints every registered step with its description."""
+        result = self._invoke(tmp_path, ["upgrade", "--list"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
-        assert "setup --update" in output
-        assert "lexictl init" in output
+        # Every step in the registry should appear by name.
+        from lexibrary.upgrade import UPGRADE_STEPS  # noqa: PLC0415
 
-    def test_setup_update_no_project_exits_1(self, tmp_path: Path) -> None:
-        """``setup --update`` outside a project should exit 1."""
-        result = self._invoke(tmp_path, ["setup", "--update"])
+        for step in UPGRADE_STEPS:
+            assert step.name in output
+
+    def test_upgrade_outside_project_exits_1(self, tmp_path: Path) -> None:
+        """``upgrade`` with no .lexibrary/ exits 1 with a clear error."""
+        result = self._invoke(tmp_path, ["upgrade"])
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
 
-    def test_setup_update_empty_env_shows_message(self, tmp_path: Path) -> None:
-        """``setup --update`` with no agent environments shows a message and exits 1."""
+    def test_upgrade_legacy_project_persists_migration(self, tmp_path: Path) -> None:
+        """A graysky-v2-style legacy project comes out fully upgraded on disk."""
+        (tmp_path / ".lexibrary").mkdir()
+        (tmp_path / ".lexibrary" / "config.yaml").write_text(
+            "scope_root: .\n"
+            "project_name: legacy\n"
+            "agent_environment:\n  - claude\n"
+        )
+        (tmp_path / ".gitignore").write_text(".lexibrary/index.db\n", encoding="utf-8")
+
+        result = self._invoke(tmp_path, ["upgrade"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "Upgrade complete" in output
+        assert "[updated] config-migrations" in output
+        assert "[updated] version-stamp" in output
+        assert "[updated] gitignore-patterns" in output
+        # Legacy key persisted to disk.
+        cfg_text = (tmp_path / ".lexibrary" / "config.yaml").read_text()
+        assert "scope_root:" not in cfg_text or "scope_roots" in cfg_text
+        # Newer gitignore patterns added.
+        assert "symbols.db" in (tmp_path / ".gitignore").read_text()
+        # Agent rules regenerated.
+        assert (tmp_path / "CLAUDE.md").exists()
+
+    def test_upgrade_warns_when_no_agent_environments(self, tmp_path: Path) -> None:
+        """Empty agent_environment list yields a warning, not a hard failure."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text(
             "scope_roots:\n  - path: .\nagent_environment: []\n"
         )
 
-        result = self._invoke(tmp_path, ["setup", "--update"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "No agent environments configured" in output
-        assert "lexictl init" in output
-
-    def test_setup_update_config_persisted_envs(self, tmp_path: Path) -> None:
-        """``setup --update`` reads environments from config and generates rules."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_roots:\n  - path: .\nagent_environment:\n  - claude\n  - cursor\n"
-        )
-
-        result = self._invoke(tmp_path, ["setup", "--update"])
+        result = self._invoke(tmp_path, ["upgrade"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
-        assert "claude" in output
-        assert "cursor" in output
-        assert "Setup complete" in output
-        # Verify files were actually created
-        assert (tmp_path / "CLAUDE.md").exists()
-        assert (tmp_path / ".cursor" / "rules" / "lexibrary.mdc").exists()
+        assert "[ok]" in output  # other steps still report
+        assert "agent-rules" in output
+        assert "no agent_environment configured" in output
 
-    def test_setup_update_explicit_env_arg(self, tmp_path: Path) -> None:
-        """``--env`` overrides config-persisted environments."""
+    def test_upgrade_warns_on_unsupported_env_but_continues(self, tmp_path: Path) -> None:
+        """Unsupported envs are surfaced as warnings; supported envs still generate."""
         (tmp_path / ".lexibrary").mkdir()
-        # Config has claude, but we explicitly request codex
         (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_roots:\n  - path: .\nagent_environment:\n  - claude\n"
+            "scope_roots:\n  - path: .\nagent_environment:\n  - claude\n  - vscode\n"
         )
 
-        result = self._invoke(tmp_path, ["setup", "--update", "--env", "codex"])
+        result = self._invoke(tmp_path, ["upgrade"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
-        assert "codex" in output
-        assert "Setup complete" in output
-        # Codex file created, Claude file NOT created
-        assert (tmp_path / "AGENTS.md").exists()
-        assert not (tmp_path / "CLAUDE.md").exists()
-
-    def test_setup_update_explicit_env_overrides_empty_config(self, tmp_path: Path) -> None:
-        """``--env`` works even when config has no environments."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_roots:\n  - path: .\nagent_environment: []\n"
-        )
-
-        result = self._invoke(tmp_path, ["setup", "--update", "--env", "claude"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "claude" in output
-        assert "Setup complete" in output
-        assert (tmp_path / "CLAUDE.md").exists()
-
-    def test_setup_update_no_env_error(self, tmp_path: Path) -> None:
-        """``setup --update`` with no config envs and no ``--env`` exits 1."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: .\n")
-
-        result = self._invoke(tmp_path, ["setup", "--update"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "No agent environments configured" in output
-
-    def test_setup_update_unsupported_env_error(self, tmp_path: Path) -> None:
-        """``setup --update --env fake`` exits 1 with unsupported environment error."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: .\n")
-
-        result = self._invoke(tmp_path, ["setup", "--update", "--env", "nonexistent"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "Unsupported" in output
-        assert "nonexistent" in output
-        # Should show supported environments
-        assert "claude" in output
-
-    def test_setup_update_unsupported_env_from_config(self, tmp_path: Path) -> None:
-        """Config with unsupported environment exits 1 with clear error."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_roots:\n  - path: .\nagent_environment:\n  - vscode\n"
-        )
-
-        result = self._invoke(tmp_path, ["setup", "--update"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "Unsupported" in output
         assert "vscode" in output
+        assert (tmp_path / "CLAUDE.md").exists()
 
-    def test_setup_update_flag_generates_rules_and_gitignore(self, tmp_path: Path) -> None:
-        """``--update`` generates rules AND adds IWH pattern to gitignore."""
+    def test_upgrade_idempotent_second_run(self, tmp_path: Path) -> None:
+        """A second ``upgrade`` after a first reports every step as ``[ok]``."""
         (tmp_path / ".lexibrary").mkdir()
         (tmp_path / ".lexibrary" / "config.yaml").write_text(
             "scope_roots:\n  - path: .\nagent_environment:\n  - claude\n"
         )
 
-        result = self._invoke(tmp_path, ["setup", "--update"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        # Rules generated
-        assert "claude" in output
-        assert "file(s) written" in output
-        # Gitignore updated
-        assert ".gitignore" in output
-        assert "IWH" in output
-        # .gitignore file should exist with IWH pattern
-        gitignore = (tmp_path / ".gitignore").read_text()
-        assert "**/.iwh" in gitignore
+        first = self._invoke(tmp_path, ["upgrade"])
+        assert first.exit_code == 0  # type: ignore[union-attr]
 
-    def test_setup_update_idempotent_gitignore(self, tmp_path: Path) -> None:
-        """Running ``setup --update`` twice does not duplicate .gitignore pattern."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text(
-            "scope_roots:\n  - path: .\nagent_environment:\n  - claude\n"
-        )
-        # Pre-existing gitignore with pattern
-        (tmp_path / ".gitignore").write_text("**/.iwh\n")
-
-        result = self._invoke(tmp_path, ["setup", "--update"])
-        assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        # Should NOT report gitignore modification
-        assert ".gitignore" not in output
-        # Pattern should appear only once
+        second = self._invoke(tmp_path, ["upgrade"])
+        assert second.exit_code == 0  # type: ignore[union-attr]
+        output = second.output  # type: ignore[union-attr]
+        assert "Project already up to date." in output
         gitignore = (tmp_path / ".gitignore").read_text()
         assert gitignore.count("**/.iwh") == 1
 
-    def test_setup_update_multiple_envs(self, tmp_path: Path) -> None:
-        """``setup --update`` with multiple --env flags generates for all."""
+    def test_upgrade_handles_multiple_envs(self, tmp_path: Path) -> None:
+        """Two declared environments both get rule files."""
         (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: .\n")
+        (tmp_path / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: .\nagent_environment:\n  - claude\n  - codex\n"
+        )
 
-        result = self._invoke(tmp_path, ["setup", "--update", "--env", "claude", "--env", "codex"])
+        result = self._invoke(tmp_path, ["upgrade"])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "claude" in output
-        assert "codex" in output
         assert (tmp_path / "CLAUDE.md").exists()
         assert (tmp_path / "AGENTS.md").exists()
 
@@ -1385,12 +1321,12 @@ class TestSweepCommand:
 
 
 # ---------------------------------------------------------------------------
-# Setup --hooks tests
+# Upgrade git-hooks integration
 # ---------------------------------------------------------------------------
 
 
-class TestSetupHooks:
-    """Tests for the ``--hooks`` flag on ``lexictl setup``."""
+class TestUpgradeGitHooks:
+    """Verify ``lexictl upgrade``'s git-hooks step (replaces ``setup --hooks``)."""
 
     def _invoke(self, tmp_path: Path, args: list[str]) -> object:
         old_cwd = os.getcwd()
@@ -1400,42 +1336,40 @@ class TestSetupHooks:
         finally:
             os.chdir(old_cwd)
 
-    def test_setup_hooks_installs_hook(self, tmp_path: Path) -> None:
-        """``setup --hooks`` installs the post-commit hook."""
+    def test_upgrade_installs_hooks_when_git_present(self, tmp_path: Path) -> None:
+        """``upgrade`` installs both pre-commit and post-commit hooks when .git/ exists."""
         (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: .\n")
         (tmp_path / ".git" / "hooks").mkdir(parents=True)
 
-        result = self._invoke(tmp_path, ["setup", "--hooks"])
+        result = self._invoke(tmp_path, ["upgrade"])
         assert result.exit_code == 0  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "installed" in output.lower()
-        # Hook file should exist
         assert (tmp_path / ".git" / "hooks" / "post-commit").exists()
+        assert (tmp_path / ".git" / "hooks" / "pre-commit").exists()
+        assert "[updated] git-hooks" in result.output  # type: ignore[union-attr]
 
-    def test_setup_hooks_idempotent(self, tmp_path: Path) -> None:
-        """``setup --hooks`` twice reports already installed."""
+    def test_upgrade_hooks_idempotent(self, tmp_path: Path) -> None:
+        """A second ``upgrade`` reports the git-hooks step as ``[ok]``."""
         (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: .\n")
         (tmp_path / ".git" / "hooks").mkdir(parents=True)
 
-        # Install once
-        self._invoke(tmp_path, ["setup", "--hooks"])
-        # Install again
-        result = self._invoke(tmp_path, ["setup", "--hooks"])
+        self._invoke(tmp_path, ["upgrade"])
+        second = self._invoke(tmp_path, ["upgrade"])
+        assert second.exit_code == 0  # type: ignore[union-attr]
+        output = second.output  # type: ignore[union-attr]
+        assert "[ok]" in output and "git-hooks" in output
+
+    def test_upgrade_skips_hooks_without_git_dir(self, tmp_path: Path) -> None:
+        """No .git/ directory yields a clean skip, not a hard failure."""
+        (tmp_path / ".lexibrary").mkdir()
+        (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_roots:\n  - path: .\n")
+
+        result = self._invoke(tmp_path, ["upgrade"])
         assert result.exit_code == 0  # type: ignore[union-attr]
         output = result.output  # type: ignore[union-attr]
-        assert "already installed" in output.lower()
-
-    def test_setup_hooks_no_git_dir(self, tmp_path: Path) -> None:
-        """``setup --hooks`` without .git exits 1."""
-        (tmp_path / ".lexibrary").mkdir()
-        (tmp_path / ".lexibrary" / "config.yaml").write_text("")
-
-        result = self._invoke(tmp_path, ["setup", "--hooks"])
-        assert result.exit_code == 1  # type: ignore[union-attr]
-        output = result.output  # type: ignore[union-attr]
-        assert "No .git" in output or "no git" in output.lower()
+        assert "git-hooks" in output
+        assert "no .git" in output
 
 
 # ---------------------------------------------------------------------------

@@ -100,7 +100,10 @@ def init(
 
     # Re-init guard
     if (project_root / ".lexibrary").exists():
-        error("Project already initialised. Use `lexictl setup --update` to modify settings.")
+        error(
+            "Project already initialised. "
+            "Use `lexictl upgrade` to refresh agent rules and config."
+        )
         raise typer.Exit(1)
 
     # Non-TTY detection
@@ -886,107 +889,64 @@ def status(
 
 
 # ---------------------------------------------------------------------------
-# setup / sweep
+# upgrade / sweep
 # ---------------------------------------------------------------------------
 
 
 @lexictl_app.command()
-def setup(
+def upgrade(
     *,
-    update_flag: Annotated[
-        bool,
-        typer.Option("--update", help="Update existing agent rules."),
-    ] = False,
-    env: Annotated[
-        list[str] | None,
-        typer.Option("--env", help="Explicit environment(s) to generate rules for."),
-    ] = None,
-    hooks: Annotated[
+    list_steps: Annotated[
         bool,
         typer.Option(
-            "--hooks",
-            help="Install git hooks (post-commit auto-update, pre-commit validation).",
+            "--list",
+            help="List the registered upgrade steps and exit without running them.",
         ),
     ] = False,
 ) -> None:
-    """Install or update agent environment rules."""
-    if hooks:
-        from lexibrary.hooks.post_commit import install_post_commit_hook  # noqa: PLC0415
-        from lexibrary.hooks.pre_commit import install_pre_commit_hook  # noqa: PLC0415
+    """Bring this project's Lexibrary surface up to current standards.
 
-        project_root = require_project_root()
+    Runs every registered upgrade step in order: persists legacy config
+    migrations to disk, stamps the running Lexibrary version into
+    ``config.yaml``, ensures the ``.lexibrary/`` skeleton is complete,
+    backfills ``.gitignore`` patterns for generated artifacts, regenerates
+    agent rule files, and installs git hooks. Each step is idempotent — a
+    no-op step prints ``[ok]``, a step that changed something prints
+    ``[updated]``.
 
-        # Install post-commit hook
-        post_result = install_post_commit_hook(project_root)
-        if post_result.no_git_dir:
-            error(post_result.message)
-            raise typer.Exit(1)
-        if post_result.already_installed:
-            warn(post_result.message)
-        else:
-            info(post_result.message)
-
-        # Install pre-commit hook
-        pre_result = install_pre_commit_hook(project_root)
-        if pre_result.no_git_dir:
-            error(pre_result.message)
-            raise typer.Exit(1)
-        if pre_result.already_installed:
-            warn(pre_result.message)
-        else:
-            info(pre_result.message)
-        return
-
-    if not update_flag:
-        info(
-            "Usage:\n"
-            "  lexictl setup --update  "
-            "Update agent rules for configured environments\n"
-            "  lexictl init             "
-            "Initialise a new Lexibrary project"
-        )
-        raise typer.Exit(0)
-
+    Run ``lexictl upgrade --list`` to see the registered steps without
+    executing them.
+    """
     from lexibrary.config.loader import load_config  # noqa: PLC0415
-    from lexibrary.init.rules import generate_rules, supported_environments  # noqa: PLC0415
-    from lexibrary.iwh.gitignore import ensure_iwh_gitignored  # noqa: PLC0415
+    from lexibrary.upgrade import UPGRADE_STEPS, run_upgrade  # noqa: PLC0415
+
+    if list_steps:
+        info("Registered upgrade steps (run in order):\n")
+        for step in UPGRADE_STEPS:
+            info(f"  {step.name}")
+            info(f"    {step.description}")
+        return
 
     project_root = require_project_root()
     config = load_config(project_root)
 
-    # Determine which environments to generate for
-    environments = list(env) if env else list(config.agent_environment)
+    info(f"Upgrading {project_root.name}...\n")
+    results = run_upgrade(project_root, config)
 
-    if not environments:
-        warn("No agent environments configured. Run `lexictl init` to set up agent environments.")
-        raise typer.Exit(1)
+    # Per-step report
+    for r in results:
+        prefix = "[updated]" if r.changed else "[ok]     "
+        info(f"  {prefix} {r.name}: {r.summary}")
+        for d in r.details:
+            info(f"             - {d}")
+        for w in r.warnings:
+            warn(f"             ! {w}")
 
-    # Validate environment names before generating
-    supported = supported_environments()
-    unsupported = [e for e in environments if e not in supported]
-    if unsupported:
-        error(
-            f"Unsupported environment(s): {', '.join(sorted(unsupported))}\n"
-            f"Supported: {', '.join(supported)}"
-        )
-        raise typer.Exit(1)
-
-    # Generate rules for each environment
-    results = generate_rules(project_root, environments)
-
-    for env_name, paths in results.items():
-        info(f"  {env_name}: {len(paths)} file(s) written")
-        for p in paths:
-            rel = p.relative_to(project_root)
-            info(f"    {rel}")
-
-    # Ensure IWH files are gitignored
-    iwh_modified = ensure_iwh_gitignored(project_root)
-    if iwh_modified:
-        info("  .gitignore: added IWH pattern")
-
-    total_files = sum(len(paths) for paths in results.values())
-    info(f"\nSetup complete. {total_files} rule file(s) updated.")
+    changed_count = sum(1 for r in results if r.changed)
+    if changed_count == 0:
+        info("\nProject already up to date.")
+    else:
+        info(f"\nUpgrade complete. {changed_count} step(s) made changes.")
 
 
 @lexictl_app.command()
@@ -1148,8 +1108,9 @@ Running lexictl commands in agent sessions is prohibited per project rules.
 
 Setup & Initialization
   lexictl init [--defaults]              Initialize project (runs setup wizard)
-  lexictl setup [--update] [--env ENV] [--hooks]
-                                         Install/update agent rules or git hooks
+  lexictl upgrade [--list]               Bring the project's Lexibrary surface
+                                         up to current standards (config
+                                         migrations, agent rules, git hooks)
   lexictl bootstrap [--scope SCOPE] [--full | --quick]
                                          Batch-initialize library (idempotent)
 

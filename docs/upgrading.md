@@ -16,10 +16,10 @@ This guide covers how to upgrade Lexibrary to a new version, what to expect duri
 
 2. **Check release notes** for any breaking changes, new features, or new config keys.
 
-3. **Re-run agent rule generation** to pick up any changes to agent instructions:
+3. **Run `lexictl upgrade`** to bring the project's Lexibrary surface up to current standards. This persists any pending config-key migrations to disk, stamps the new Lexibrary version into `config.yaml`, backfills `.gitignore` patterns for any newly introduced generated artifacts, regenerates agent rule files, and refreshes git hooks. Every step is idempotent — `[ok]` means the project was already current for that step.
 
    ```bash
-   lexictl setup --update
+   lexictl upgrade
    ```
 
 4. **Run a full update** if the release notes indicate changes to design file format, new validation checks, or link graph schema changes:
@@ -134,31 +134,21 @@ See [Link Graph](link-graph.md) for full details on the index, its schema, and r
 
 ## Agent Rule Updates
 
-After upgrading, regenerate agent rule files to ensure agents receive the latest instructions:
+`lexictl upgrade`'s `agent-rules` step regenerates rule files for every environment listed in `agent_environment:` (e.g., `CLAUDE.md`, `.cursor/rules`, `AGENTS.md`). Rule content may change between versions to reflect new commands, updated workflows, or new features.
 
-```bash
-lexictl setup --update
-```
-
-This updates rule files for all configured environments (e.g., `CLAUDE.md`, `.cursor/rules`, `AGENTS.md`). The rule content may change between versions to reflect new commands, updated workflows, or new features.
-
-If you have added new agent environments since the last upgrade:
-
-```bash
-lexictl setup --update --env claude --env cursor --env codex
-```
+To add a new agent environment, edit `agent_environment:` in `.lexibrary/config.yaml` and re-run `lexictl upgrade`. The command reads from config — there is no per-run override flag.
 
 ## Git Hook Updates
 
-The git post-commit hook installed by `lexictl setup --hooks` calls `lexictl update --changed-only`. Since the hook calls the `lexictl` binary directly, it automatically uses the upgraded version after a package update. No hook reinstallation is needed.
+The git post-commit hook installed by `lexictl upgrade`'s `git-hooks` step calls `lexictl update --changed-only`. Since the hook calls the `lexictl` binary directly, it automatically uses the upgraded version after a package update. No hook reinstallation is needed.
 
-If hook behavior has changed in a new version (check release notes), you can reinstall:
+If hook behavior has changed in a new version (check release notes), re-run:
 
 ```bash
-lexictl setup --hooks
+lexictl upgrade
 ```
 
-The hook installation is idempotent -- it checks for an existing Lexibrary hook section (via a marker comment) and updates it if present.
+Hook installation is idempotent — the underlying installers detect their hook marker and short-circuit when already present.
 
 ## Downgrading
 
@@ -189,7 +179,7 @@ lexictl update
 | YAML parse error in config | Config file was manually edited with syntax errors | See [Troubleshooting -- YAML parse errors](troubleshooting.md#yaml-parse-errors) |
 | New config key has no effect | Key name is misspelled or at the wrong nesting level | Compare against [Configuration](configuration.md) reference |
 | Link graph queries return empty | Schema version mismatch | Run `lexictl update` or delete `index.db` and rebuild |
-| Agent rules outdated | Rule files were not regenerated after upgrade | Run `lexictl setup --update` |
+| Agent rules outdated | Rule files were not regenerated after upgrade | Run `lexictl upgrade` |
 | Design files look different | New version uses updated BAML prompts | Expected behavior -- new prompts produce improved output |
 
 For other issues, see [Troubleshooting](troubleshooting.md).
@@ -201,5 +191,5 @@ For other issues, see [Troubleshooting](troubleshooting.md).
 - [Design Files](design-files.md) -- How `lexictl update` detects and processes changes
 - [Validation](validation.md) -- The 13 validation checks
 - [CI Integration](ci-integration.md) -- Automated update and validation pipelines
-- [Project Setup](project-setup.md) -- `lexictl setup --update` and agent rule generation
+- [Project Setup](project-setup.md) -- `lexictl upgrade` and agent rule generation
 - [Troubleshooting](troubleshooting.md) -- Common issues and fixes

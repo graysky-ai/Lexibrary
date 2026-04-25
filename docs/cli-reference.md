@@ -1155,7 +1155,7 @@ lexictl init [--defaults]
 
 **Behavior:**
 
-1. **Re-init guard** -- If `.lexibrary/` already exists, exits with code 1 and directs to `lexictl setup --update`.
+1. **Re-init guard** -- If `.lexibrary/` already exists, exits with code 1 and directs to `lexictl upgrade`.
 2. **Non-TTY detection** -- If stdin is not a terminal and `--defaults` is not set, exits with code 1 and suggests `--defaults`.
 3. **Wizard flow** -- Runs the setup wizard (see [Project Setup](project-setup.md) for a detailed walkthrough).
 4. **Skeleton creation** -- Creates the `.lexibrary/` directory with `config.yaml`, `START_HERE.md`, subdirectories (`concepts/`, `stack/`), and a `.lexignore` file.
@@ -1330,37 +1330,50 @@ See `lexi status` above for full documentation of options and output modes.
 
 ---
 
-### setup
+### upgrade
 
-Install or update agent environment rules and git hooks.
+Bring this project's Lexibrary surface up to current standards. Replaces the old `lexictl setup` command.
 
 ```
-lexictl setup [--update] [--env ENV] [--hooks]
+lexictl upgrade [--list]
 ```
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `--update` | Update agent rules for the configured environments. Required to perform rule generation. |
-| `--env` | Explicit environment(s) to generate rules for (repeatable). Overrides `agent_environment` config. |
-| `--hooks` | Install the git post-commit hook for automatic design file updates. |
+| `--list` | List the registered upgrade steps and exit without running them. |
 
-**Supported environments:**
+**What it does:**
+
+`lexictl upgrade` runs every registered upgrade step in order. Each step is idempotent — a no-op step prints `[ok]`, a step that changed something prints `[updated]`. Running `upgrade` against an already-current project reports "Project already up to date." The current step list:
+
+| Step | Description |
+|------|-------------|
+| `config-migrations` | Persist legacy config-key renames (`scope_root` → `scope_roots`, `daemon` → `sweep`) to disk so deprecation warnings stop firing. Writes a `.lexibrary/config.yaml.bak` backup. |
+| `version-stamp` | Record the running Lexibrary version in `config.yaml` as `lexibrary_version:`. |
+| `skeleton-directories` | Create any missing `.lexibrary/` subdirectories. |
+| `gitignore-patterns` | Backfill `.gitignore` patterns for generated artifacts (`symbols.db`, `tmp/`, etc.). |
+| `iwh-gitignore` | Ensure `**/.iwh` signal files are gitignored. |
+| `agent-rules` | Regenerate agent rule files (`CLAUDE.md`, `.cursor/rules`, etc.) for environments listed in `agent_environment`. |
+| `git-hooks` | Install pre-commit (validation) and post-commit (auto-update) git hooks. Skipped when no `.git/` directory is present. |
+
+**Supported agent environments** (set in `config.yaml` `agent_environment:`):
 
 | Environment | Generated Files |
 |-------------|----------------|
-| `claude` | `CLAUDE.md` or `.claude/CLAUDE.md` |
-| `cursor` | `.cursor/rules` |
+| `claude` | `CLAUDE.md` plus `.claude/` skills, agents, hooks, and settings |
+| `cursor` | `.cursor/rules/lexibrary*.mdc` and `.cursor/skills/lexi.md` |
 | `codex` | `AGENTS.md` |
 
-Running `lexictl setup` without `--update` or `--hooks` displays usage instructions.
+**Examples:**
 
 ```bash
-lexictl setup --update
-lexictl setup --update --env claude --env cursor
-lexictl setup --hooks
+lexictl upgrade           # bring the project up to current standards
+lexictl upgrade --list    # show the registered steps without running them
 ```
+
+To change which agent environments are regenerated, edit `agent_environment:` in `config.yaml` and re-run `lexictl upgrade`.
 
 ---
 
@@ -1455,6 +1468,6 @@ See `lexictl curate --help` for full option documentation.
 | `lexictl index [dir] [-r]` | Generate `.aindex` routing table(s) |
 | `lexictl validate [--severity] [--check] [--json]` | Run consistency checks |
 | `lexictl status [--quiet]` | Show library health summary |
-| `lexictl setup [--update] [--env] [--hooks]` | Install agent rules and git hooks |
+| `lexictl upgrade [--list]` | Bring project's Lexibrary surface up to current standards |
 | `lexictl sweep [--watch]` | Run library update sweep |
 | `lexictl curate` | Run autonomous maintenance |

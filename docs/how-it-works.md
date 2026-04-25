@@ -20,7 +20,7 @@ Operators use `lexictl` for maintenance tasks:
 - `lexictl update` -- Generate or regenerate design files from source code.
 - `lexictl validate` -- Run health checks on the library.
 - `lexictl status` -- View a dashboard of library health and staleness.
-- `lexictl setup` -- Install or update agent environment rules and git hooks.
+- `lexictl upgrade` -- Bring the project's Lexibrary surface up to current standards (config migrations, agent rules, git hooks). Replaces the old `lexictl setup` command.
 - `lexictl sweep` -- Run a library update sweep (one-shot or watch mode).
 
 ### `lexi` -- For AI agents
@@ -156,7 +156,7 @@ The operator-agent collaboration model follows a clear separation of concerns:
 - **Generating** design files (`lexictl update`).
 - **Validating** library health (`lexictl validate`).
 - **Configuring** settings (editing `config.yaml`).
-- **Setting up** CI hooks and agent rules (`lexictl setup`).
+- **Setting up** CI hooks and agent rules (`lexictl upgrade`).
 - **Monitoring** staleness and issues (`lexictl status`).
 
 ### Agents are responsible for:

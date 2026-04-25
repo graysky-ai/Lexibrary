@@ -189,3 +189,77 @@ def test_load_config_migration_logs_warning(
         )
     assert config.sweep.sweep_interval_seconds == 1800
     assert "deprecated" in caplog.text.lower()
+
+
+# --- scope_root -> scope_roots migration tests ---
+
+
+def test_load_config_migrates_scope_root_to_scope_roots(tmp_path: Path) -> None:
+    """Legacy 'scope_root: <path>' is transparently migrated to 'scope_roots: [{path: <path>}]'."""
+    (tmp_path / ".lexibrary").mkdir()
+    (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_root: src\n")
+
+    config = load_config(
+        project_root=tmp_path,
+        global_config_path=tmp_path / "nonexistent_global.yaml",
+    )
+    assert len(config.scope_roots) == 1
+    assert config.scope_roots[0].path == "src"
+
+
+def test_load_config_scope_roots_takes_precedence_over_scope_root(tmp_path: Path) -> None:
+    """When both scope_root: and scope_roots: exist, scope_roots: wins."""
+    (tmp_path / ".lexibrary").mkdir()
+    (tmp_path / ".lexibrary" / "config.yaml").write_text(
+        "scope_root: legacy_path\nscope_roots:\n  - path: new_path\n"
+    )
+
+    config = load_config(
+        project_root=tmp_path,
+        global_config_path=tmp_path / "nonexistent_global.yaml",
+    )
+    assert [sr.path for sr in config.scope_roots] == ["new_path"]
+
+
+def test_load_config_scope_root_migration_logs_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Migration logs a deprecation warning when scope_root: key is found."""
+    import logging
+
+    (tmp_path / ".lexibrary").mkdir()
+    (tmp_path / ".lexibrary" / "config.yaml").write_text("scope_root: .\n")
+
+    with caplog.at_level(logging.WARNING, logger="lexibrary.config.loader"):
+        config = load_config(
+            project_root=tmp_path,
+            global_config_path=tmp_path / "nonexistent_global.yaml",
+        )
+    assert config.scope_roots[0].path == "."
+    assert "deprecated" in caplog.text.lower()
+    assert "scope_roots" in caplog.text
+
+
+def test_load_config_scope_root_migration_real_world_example(tmp_path: Path) -> None:
+    """Regression test: full graysky-v2 style legacy config loads cleanly."""
+    (tmp_path / ".lexibrary").mkdir()
+    (tmp_path / ".lexibrary" / "config.yaml").write_text(
+        "scope_root: .\n"
+        "project_name: graysky-v2\n"
+        "agent_environment:\n- claude\n- cursor\n"
+        "iwh:\n  enabled: true\n"
+        "llm:\n"
+        "  provider: openai\n"
+        "  model: gpt-4o\n"
+        "  api_key_env: OPENAI_API_KEY\n"
+        "  api_key_source: dotenv\n"
+    )
+
+    config = load_config(
+        project_root=tmp_path,
+        global_config_path=tmp_path / "nonexistent_global.yaml",
+    )
+    assert config.project_name == "graysky-v2"
+    assert config.scope_roots[0].path == "."
+    assert config.llm.provider == "openai"
+    assert config.llm.api_key_source == "dotenv"

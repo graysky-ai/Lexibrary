@@ -54,7 +54,7 @@ scope_roots:
 
 ### config.yaml
 
-The project configuration file. Created by `lexictl init` and edited manually or via `lexictl setup --update`. Contains all settings that control Lexibrary's behavior: scope roots, LLM provider, token budgets, ignore patterns, sweep settings, and more.
+The project configuration file. Created by `lexictl init`, edited manually, or refreshed by `lexictl upgrade`. Contains all settings that control Lexibrary's behavior: scope roots, LLM provider, token budgets, ignore patterns, sweep settings, and more. The `lexibrary_version` key is stamped automatically by `lexictl upgrade` and records the version that last brought the project up to date.
 
 See [Configuration](configuration.md) for the full reference.
 
