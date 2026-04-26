@@ -18,10 +18,12 @@ from lexibrary.upgrade.steps import (
     UPGRADE_STEPS,
     apply_agent_rules,
     apply_config_migrations,
+    apply_full_default_sections,
     apply_gitignore_patterns,
     apply_iwh_gitignore,
     apply_skeleton_directories,
     apply_version_stamp,
+    missing_default_sections,
 )
 
 # ---------------------------------------------------------------------------
@@ -328,3 +330,169 @@ def test_run_upgrade_idempotent(legacy_project: Path) -> None:
     assert not by_name["skeleton-directories"].changed
     assert not by_name["gitignore-patterns"].changed
     assert not by_name["iwh-gitignore"].changed
+
+
+# ---------------------------------------------------------------------------
+# missing_default_sections helper (Task 1)
+# ---------------------------------------------------------------------------
+
+
+def _basemodel_section_names() -> set[str]:
+    """Return the set of BaseModel-typed top-level fields on LexibraryConfig."""
+    from pydantic import BaseModel
+
+    return {
+        name
+        for name, info in LexibraryConfig.model_fields.items()
+        if isinstance(info.annotation, type) and issubclass(info.annotation, BaseModel)
+    }
+
+
+def test_missing_default_sections_zero_when_all_present(tmp_path: Path) -> None:
+    """A config.yaml with every BaseModel section present has no missing entries."""
+    base = tmp_path / ".lexibrary"
+    base.mkdir()
+    section_names = _basemodel_section_names()
+    raw = {name: {} for name in section_names}
+    raw["scope_roots"] = [{"path": "."}]  # type: ignore[assignment]
+    (base / "config.yaml").write_text(yaml.dump(raw, sort_keys=False))
+
+    assert missing_default_sections(base / "config.yaml") == []
+
+
+def test_missing_default_sections_all_when_minimal(tmp_path: Path) -> None:
+    """A minimal config.yaml reports every BaseModel section as missing."""
+    base = tmp_path / ".lexibrary"
+    base.mkdir()
+    (base / "config.yaml").write_text(
+        "scope_roots:\n  - path: .\nproject_name: bare\nlexibrary_version: '0.1.0'\n"
+    )
+
+    missing = missing_default_sections(base / "config.yaml")
+    assert set(missing) == _basemodel_section_names()
+
+
+def test_missing_default_sections_partial(tmp_path: Path) -> None:
+    """A config.yaml with some sections present reports only the absent ones."""
+    base = tmp_path / ".lexibrary"
+    base.mkdir()
+    (base / "config.yaml").write_text(
+        "scope_roots:\n  - path: .\n"
+        "iwh:\n  enabled: true\n"
+        "llm:\n  provider: anthropic\n"
+    )
+
+    missing = set(missing_default_sections(base / "config.yaml"))
+    section_names = _basemodel_section_names()
+    assert "iwh" not in missing
+    assert "llm" not in missing
+    assert section_names - {"iwh", "llm"} <= missing
+
+
+# ---------------------------------------------------------------------------
+# full-default-sections step (Task 2)
+# ---------------------------------------------------------------------------
+
+
+def test_full_default_sections_writes_all_missing(tmp_path: Path) -> None:
+    """The step inserts every absent BaseModel section into config.yaml."""
+    base = tmp_path / ".lexibrary"
+    base.mkdir()
+    (base / "config.yaml").write_text(
+        "scope_roots:\n  - path: .\n"
+        "project_name: minimal\n"
+        "lexibrary_version: '0.1.0'\n"
+    )
+
+    config = LexibraryConfig.model_validate(
+        {"scope_roots": [{"path": "."}], "lexibrary_version": "0.1.0"}
+    )
+    result = apply_full_default_sections(tmp_path, config)
+    assert result.changed
+    section_names = _basemodel_section_names()
+    assert f"added {len(section_names)} default section(s)" == result.summary
+
+    # Every section is now present on disk.
+    after = yaml.safe_load((base / "config.yaml").read_text(encoding="utf-8"))
+    for name in section_names:
+        assert name in after
+
+    # And a backup was written.
+    assert (base / "config.yaml.bak").exists()
+
+
+def test_full_default_sections_values_match_pydantic_defaults(tmp_path: Path) -> None:
+    """Written values for each section equal the Pydantic-default-instance dump."""
+    base = tmp_path / ".lexibrary"
+    base.mkdir()
+    (base / "config.yaml").write_text(
+        "scope_roots:\n  - path: .\n"
+        "project_name: minimal\n"
+        "lexibrary_version: '0.1.0'\n"
+    )
+
+    config = LexibraryConfig.model_validate(
+        {"scope_roots": [{"path": "."}], "lexibrary_version": "0.1.0"}
+    )
+    apply_full_default_sections(tmp_path, config)
+
+    after = yaml.safe_load((base / "config.yaml").read_text(encoding="utf-8"))
+    expected = LexibraryConfig.model_validate({}).model_dump(mode="python")
+    for name in _basemodel_section_names():
+        assert after[name] == expected[name]
+
+
+def test_full_default_sections_idempotent(tmp_path: Path) -> None:
+    """A second call after a first reports changed=False."""
+    base = tmp_path / ".lexibrary"
+    base.mkdir()
+    (base / "config.yaml").write_text("scope_roots:\n  - path: .\n")
+    config = LexibraryConfig.model_validate({"scope_roots": [{"path": "."}]})
+
+    first = apply_full_default_sections(tmp_path, config)
+    assert first.changed
+    second = apply_full_default_sections(tmp_path, config)
+    assert not second.changed
+    assert "already" in second.summary
+
+
+def test_full_default_sections_missing_config_returns_unchanged(tmp_path: Path) -> None:
+    """When .lexibrary/config.yaml is absent, the step is a no-op."""
+    config = LexibraryConfig()
+    result = apply_full_default_sections(tmp_path, config)
+    assert not result.changed
+
+
+# ---------------------------------------------------------------------------
+# Runner gating (Task 2)
+# ---------------------------------------------------------------------------
+
+
+def test_runner_skips_flagged_steps_by_default(tmp_path: Path) -> None:
+    """run_upgrade() with no flags skips steps that require a flag."""
+    from lexibrary.upgrade import run_upgrade
+
+    base = tmp_path / ".lexibrary"
+    base.mkdir()
+    (base / "config.yaml").write_text("scope_roots:\n  - path: .\n")
+
+    config = LexibraryConfig.model_validate({"scope_roots": [{"path": "."}]})
+    results = run_upgrade(tmp_path, config)
+    names = {r.name for r in results}
+    assert "full-default-sections" not in names
+    # always-on step should still appear:
+    assert "version-stamp" in names
+
+
+def test_runner_runs_flagged_step_when_flag_set(tmp_path: Path) -> None:
+    """run_upgrade(flags={'all'}) includes steps that require the 'all' flag."""
+    from lexibrary.upgrade import run_upgrade
+
+    base = tmp_path / ".lexibrary"
+    base.mkdir()
+    (base / "config.yaml").write_text("scope_roots:\n  - path: .\n")
+
+    config = LexibraryConfig.model_validate({"scope_roots": [{"path": "."}]})
+    results = run_upgrade(tmp_path, config, flags={"all"})
+    names = {r.name for r in results}
+    assert "full-default-sections" in names

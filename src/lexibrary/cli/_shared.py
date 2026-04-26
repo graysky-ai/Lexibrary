@@ -50,6 +50,80 @@ def stub(name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _emit_lexibrary_version_check(project_root: Path) -> None:
+    """Print the running-vs-stamped Lexibrary version comparison.
+
+    Compares the version recorded in ``.lexibrary/config.yaml`` against
+    :data:`lexibrary.__version__` and emits one of four messages:
+
+    * matches: ``info`` line confirming alignment.
+    * not stamped: ``warn`` pointing at ``lexictl upgrade``.
+    * older: ``warn`` pointing at ``lexictl upgrade``.
+    * newer: ``warn`` noting the downgrade.
+
+    Always informational — never raises and never affects the validate
+    exit code.
+    """
+    import lexibrary  # noqa: PLC0415
+    from lexibrary.config.loader import load_config  # noqa: PLC0415
+
+    installed = lexibrary.__version__
+
+    try:
+        config = load_config(project_root)
+    except Exception:  # noqa: BLE001
+        # Defensive: if config loading fails for any reason, skip the
+        # version check entirely. Validation summary already surfaced
+        # whatever the underlying problem is.
+        return
+
+    config_version = config.lexibrary_version
+
+    if not config_version:
+        warn(
+            f"Lexibrary version not stamped in config.yaml. Run "
+            f"`lexictl upgrade` to record version {installed}."
+        )
+        return
+
+    if config_version == installed:
+        info(f"Lexibrary version: {installed} (matches installed)")
+        return
+
+    try:
+        from packaging.version import Version  # noqa: PLC0415
+
+        config_v: object = Version(config_version)
+        installed_v: object = Version(installed)
+        is_older = config_v < installed_v  # type: ignore[operator]
+    except Exception:  # noqa: BLE001
+        # Fallback to a simple tuple comparison on dotted ints; if even
+        # that fails we treat the config as older so the user is nudged
+        # to upgrade rather than ignored.
+        def _tuple(v: str) -> tuple[int, ...]:
+            parts: list[int] = []
+            for piece in v.split("."):
+                try:
+                    parts.append(int(piece))
+                except ValueError:
+                    break
+            return tuple(parts)
+
+        is_older = _tuple(config_version) < _tuple(installed)
+
+    if is_older:
+        warn(
+            f"Lexibrary version mismatch: config.yaml says {config_version}, "
+            f"installed is {installed}. Run `lexictl upgrade` to bring this "
+            f"project up to date."
+        )
+    else:
+        warn(
+            f"Lexibrary version mismatch: config.yaml says {config_version}, "
+            f"installed is {installed} (downgraded)."
+        )
+
+
 def _run_validate(
     project_root: Path,
     *,
@@ -276,12 +350,14 @@ def _run_validate(
                 f"Fixed {fixed_count} of {total_issues} issues."
                 f" {manual_count} require manual attention."
             )
+        _emit_lexibrary_version_check(project_root)
         return report.exit_code()
 
     if json_output:
         info(_json.dumps(report.to_dict(), indent=2))
     else:
         report.render()
+        _emit_lexibrary_version_check(project_root)
 
     return report.exit_code()
 

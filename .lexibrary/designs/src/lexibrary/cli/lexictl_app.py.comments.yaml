@@ -9,3 +9,9 @@ comments:
     skeleton+path) still fire first. The skeleton guard was also updated to reject
     --skeleton --reindex combinations.
   date: '2026-04-09T12:36:20.672969Z'
+- body: lexictl upgrade gained an --all flag that passes flags={'all'} to run_upgrade,
+    opting in apply_full_default_sections. After the per-step report, when --all is
+    NOT set and missing_default_sections() reports any absent BaseModel sections,
+    the command prints a one-line hint nudging the user toward --all. --list now annotates
+    flag-gated steps with '(requires --<flag>)'.
+  date: '2026-04-25T21:25:53.008991Z'

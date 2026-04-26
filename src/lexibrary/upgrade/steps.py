@@ -26,6 +26,15 @@ formats ``[updated]`` / ``[ok]`` based on the ``changed`` flag.
 If a step needs to mutate ``config.yaml``, prefer routing through
 :func:`lexibrary.upgrade.config_writer.rewrite_config_yaml` so all writes
 share one round-trip strategy.
+
+Opt-in steps
+------------
+Some steps should only run when the user explicitly opts in (e.g. steps
+that materially expand ``config.yaml``). Set :attr:`UpgradeStep.requires_flag`
+to a short flag name (e.g. ``"all"``) on the step entry. The runner skips
+steps whose ``requires_flag`` is not in the set passed to
+:func:`lexibrary.upgrade.run_upgrade`. Wire the corresponding flag on the
+``lexictl upgrade`` command and pass ``flags={"<flag>"}`` when set.
 """
 
 from __future__ import annotations
@@ -33,6 +42,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from pydantic import BaseModel
+from pydantic.fields import FieldInfo
 
 from lexibrary.config.schema import LexibraryConfig
 
@@ -69,11 +81,56 @@ class UpgradeStep:
             ``lexictl upgrade --list``.
         apply: Callable invoked with ``(project_root, config)`` that
             performs the upgrade and returns a :class:`StepResult`.
+        requires_flag: When set, the runner only invokes this step when
+            the named flag is in the opt-in set passed to
+            :func:`run_upgrade`. ``None`` (the default) means the step
+            always runs.
     """
 
     name: str
     description: str
     apply: Callable[[Path, LexibraryConfig], StepResult]
+    requires_flag: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Default-section detection (Task 1 / Task 2 helpers)
+# ---------------------------------------------------------------------------
+
+
+def _basemodel_section_fields() -> dict[str, FieldInfo]:
+    """Return the BaseModel-typed top-level fields on :class:`LexibraryConfig`.
+
+    These are the "config sections" — fields whose annotation is a
+    Pydantic ``BaseModel`` subclass (e.g. ``concepts``, ``conventions``,
+    ``llm``). Scalar fields (``project_name``, ``lexibrary_version``)
+    and list fields (``scope_roots``, ``agent_environment``,
+    ``convention_declarations``) are excluded.
+    """
+    sections: dict[str, FieldInfo] = {}
+    for name, info in LexibraryConfig.model_fields.items():
+        annotation = info.annotation
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            sections[name] = info
+    return sections
+
+
+def missing_default_sections(config_path: Path) -> list[str]:
+    """Return the BaseModel-typed sections absent from on-disk ``config.yaml``.
+
+    Reads the file as raw YAML — Pydantic's defaults erase the distinction
+    between "absent" and "set to default", so we can't introspect the
+    loaded config. Returns the section names in :class:`LexibraryConfig`
+    declaration order.
+    """
+    import yaml  # noqa: PLC0415
+
+    if not config_path.exists():
+        return list(_basemodel_section_fields().keys())
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raw = {}
+    return [name for name in _basemodel_section_fields() if name not in raw]
 
 
 # ---------------------------------------------------------------------------
@@ -372,6 +429,66 @@ def apply_git_hooks(project_root: Path, config: LexibraryConfig) -> StepResult:
     )
 
 
+def apply_full_default_sections(
+    project_root: Path, config: LexibraryConfig
+) -> StepResult:
+    """Materialise every default config section into ``.lexibrary/config.yaml``.
+
+    Opt-in step (``requires_flag="all"``). For every BaseModel-typed
+    top-level field on :class:`LexibraryConfig` that is absent from the
+    on-disk YAML, this step inserts the field's default values. Existing
+    sections are left untouched. The write routes through
+    :func:`lexibrary.upgrade.config_writer._write_with_backup` so the
+    canonical header and ``.bak`` snapshot are preserved.
+
+    Idempotent: when every BaseModel section is already present in the
+    file, returns ``changed=False``.
+    """
+    import yaml  # noqa: PLC0415
+
+    from lexibrary.upgrade.config_writer import _write_with_backup
+
+    config_path = project_root / ".lexibrary" / "config.yaml"
+    if not config_path.exists():
+        return StepResult(
+            name="full-default-sections",
+            changed=False,
+            summary="no .lexibrary/config.yaml to populate",
+        )
+
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raw = {}
+
+    section_fields = _basemodel_section_fields()
+    added: list[str] = []
+    for name, info in section_fields.items():
+        if name in raw:
+            continue
+        annotation = info.annotation
+        # _basemodel_section_fields() guarantees the annotation is a
+        # BaseModel subclass; instantiating with no args yields the
+        # field's default values.
+        assert isinstance(annotation, type) and issubclass(annotation, BaseModel)
+        raw[name] = annotation().model_dump(mode="python")
+        added.append(name)
+
+    if not added:
+        return StepResult(
+            name="full-default-sections",
+            changed=False,
+            summary="config.yaml already has all default sections",
+        )
+
+    _write_with_backup(config_path, raw)
+    return StepResult(
+        name="full-default-sections",
+        changed=True,
+        summary=f"added {len(added)} default section(s)",
+        details=[f"+ {name}" for name in added],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Registry — order matters
 # ---------------------------------------------------------------------------
@@ -414,5 +531,14 @@ UPGRADE_STEPS: list[UpgradeStep] = [
         name="git-hooks",
         description="Install pre-commit and post-commit git hooks.",
         apply=apply_git_hooks,
+    ),
+    UpgradeStep(
+        name="full-default-sections",
+        description=(
+            "Materialise every default config section into config.yaml "
+            "(opt-in via --all)."
+        ),
+        apply=apply_full_default_sections,
+        requires_flag="all",
     ),
 ]

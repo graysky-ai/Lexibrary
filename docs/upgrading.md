@@ -34,6 +34,8 @@ This guide covers how to upgrade Lexibrary to a new version, what to expect duri
    lexictl validate
    ```
 
+   `lexictl validate` (and `lexi validate`) ends with a short Lexibrary-version comparison line. If the version stamped in `.lexibrary/config.yaml` is older than (or unset compared to) the installed package, the line is a warning that points you back at `lexictl upgrade`. If the versions match, you'll see a confirmation line instead. The version mismatch never affects the validate exit code — it's an informational nudge.
+
 ## Config Schema Evolution
 
 Lexibrary's configuration system is designed for seamless upgrades. All Pydantic config models use `extra="ignore"`, which provides two guarantees:

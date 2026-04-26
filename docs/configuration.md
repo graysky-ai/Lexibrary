@@ -6,6 +6,14 @@ All configuration models use `extra="ignore"`, which means unknown keys are sile
 
 To change settings after initialization, edit `.lexibrary/config.yaml` directly and run `lexictl upgrade` to refresh agent rules and the rest of the project's Lexibrary surface.
 
+If your `config.yaml` is minimal (only the keys you customised) and you want to make every default explicit on disk, run:
+
+```bash
+lexictl upgrade --all
+```
+
+This expands `.lexibrary/config.yaml` so every top-level config section (e.g. `concepts`, `conventions`, `llm`, `token_budgets`) is present with its default values. Existing sections you've already customised are not touched. A `.lexibrary/config.yaml.bak` backup is written before the rewrite. Running `lexictl upgrade` without `--all` will print a one-line hint reporting how many sections are still using defaults.
+
 ## Top-level Keys
 
 ### `scope_roots`

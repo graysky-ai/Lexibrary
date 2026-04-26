@@ -504,6 +504,19 @@ Info-level checks (informational):
 | 1 | One or more error-level issues found, or an invalid check/severity was specified |
 | 2 | Warning-level issues found but no errors |
 
+**Lexibrary version check:**
+
+After the validation summary, `lexi validate` (and `lexictl validate`) print one of four version-comparison lines, comparing `lexibrary_version` in `.lexibrary/config.yaml` against the installed Lexibrary version:
+
+| Condition | Output |
+|-----------|--------|
+| Versions match | `Lexibrary version: <X.Y.Z> (matches installed)` |
+| Not stamped | `Warning: Lexibrary version not stamped in config.yaml. Run \`lexictl upgrade\` to record version <installed>.` |
+| Config older | `Warning: Lexibrary version mismatch: config.yaml says <config>, installed is <installed>. Run \`lexictl upgrade\` to bring this project up to date.` |
+| Config newer | `Warning: Lexibrary version mismatch: config.yaml says <config>, installed is <installed> (downgraded).` |
+
+The version line is informational — a mismatch never changes the validate exit code. The check is suppressed for `--json` (to keep output valid JSON) and `--ci` (to keep the single-line summary).
+
 **Examples:**
 
 ```bash
@@ -1314,7 +1327,7 @@ Run consistency checks on the library (same checks as `lexi validate`).
 lexictl validate [--severity LEVEL] [--check NAME] [--json]
 ```
 
-See `lexi validate` above for full documentation of options, available checks, and exit codes.
+See `lexi validate` above for full documentation of options, available checks, exit codes, and the post-summary Lexibrary version-mismatch hint that nudges you to run `lexictl upgrade` when the project's stamped version drifts from the installed one.
 
 ---
 
@@ -1335,14 +1348,15 @@ See `lexi status` above for full documentation of options and output modes.
 Bring this project's Lexibrary surface up to current standards. Replaces the old `lexictl setup` command.
 
 ```
-lexictl upgrade [--list]
+lexictl upgrade [--list] [--all]
 ```
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `--list` | List the registered upgrade steps and exit without running them. |
+| `--list` | List the registered upgrade steps and exit without running them. Steps gated behind an opt-in flag are annotated with `(requires --<flag>)`. |
+| `--all` | Additionally materialise every default config section into `.lexibrary/config.yaml`. Existing sections are left untouched. |
 
 **What it does:**
 
@@ -1357,6 +1371,7 @@ lexictl upgrade [--list]
 | `iwh-gitignore` | Ensure `**/.iwh` signal files are gitignored. |
 | `agent-rules` | Regenerate agent rule files (`CLAUDE.md`, `.cursor/rules`, etc.) for environments listed in `agent_environment`. |
 | `git-hooks` | Install pre-commit (validation) and post-commit (auto-update) git hooks. Skipped when no `.git/` directory is present. |
+| `full-default-sections` *(opt-in via `--all`)* | Write every BaseModel-typed config section (`concepts`, `conventions`, `playbooks`, `topology`, `iwh`, `deprecation`, `validator`, `stack`, `symbols`, `llm`, `token_budgets`, `mapping`, `ignore`, `sweep`, `crawl`, `ast`, `curator`) into `.lexibrary/config.yaml` populated with schema defaults. Existing sections are not touched. Writes a `.lexibrary/config.yaml.bak` backup. |
 
 **Supported agent environments** (set in `config.yaml` `agent_environment:`):
 
@@ -1371,7 +1386,10 @@ lexictl upgrade [--list]
 ```bash
 lexictl upgrade           # bring the project up to current standards
 lexictl upgrade --list    # show the registered steps without running them
+lexictl upgrade --all     # also expand config.yaml with every default section
 ```
+
+When run without `--all`, `upgrade` ends with a one-line hint reporting how many top-level config sections are absent from `.lexibrary/config.yaml` (and therefore using Pydantic defaults), pointing at `lexictl upgrade --all` if you want to make those defaults explicit. The hint is suppressed when zero sections are missing or when `--all` was used.
 
 To change which agent environments are regenerated, edit `agent_environment:` in `config.yaml` and re-run `lexictl upgrade`.
 
@@ -1468,6 +1486,6 @@ See `lexictl curate --help` for full option documentation.
 | `lexictl index [dir] [-r]` | Generate `.aindex` routing table(s) |
 | `lexictl validate [--severity] [--check] [--json]` | Run consistency checks |
 | `lexictl status [--quiet]` | Show library health summary |
-| `lexictl upgrade [--list]` | Bring project's Lexibrary surface up to current standards |
+| `lexictl upgrade [--list] [--all]` | Bring project's Lexibrary surface up to current standards |
 | `lexictl sweep [--watch]` | Run library update sweep |
 | `lexictl curate` | Run autonomous maintenance |

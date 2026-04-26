@@ -11,8 +11,16 @@ scope_roots:
 # Project name (set during lexictl init)
 project_name: ""
 
+# Lexibrary version stamp — auto-managed; do NOT set by hand.
+# Stamped by `lexictl upgrade`. Empty string means the project predates the stamp.
+lexibrary_version: ""
+
 # Agent environments configured during init (e.g., claude, cursor)
 agent_environment: []
+
+# User-declared conventions (each entry is materialized to .lexibrary/conventions/
+# with source: config, status: active). Shape: { body, scope: project, tags: [] }.
+convention_declarations: []
 
 # I Was Here (IWH) configuration
 iwh:
@@ -112,10 +120,21 @@ crawl:
 concepts:
   deprecation_confirm: human               # Who confirms concept deprecation: human or maintainer
 
+# Convention system settings
+conventions:
+  lookup_display_limit: 5                # Max conventions shown in lexi lookup output
+  deprecation_confirm: human             # Who confirms convention deprecation: human | maintainer
+  curator_deprecation_confirm: false     # Allow curator to auto-confirm convention deprecation
+
 # Deprecation lifecycle settings
 deprecation:
   ttl_commits: 50                        # Commits before deprecated files are deleted
   comment_warning_threshold: 10           # Comment count that triggers a maintenance warning
+
+# Validator fixer kill-switches
+validator:
+  fix_lookup_token_budget_condense: false  # Opt-in: condense over-budget design bodies (mutates content + LLM cost)
+  fix_orphaned_iwh_signals_delete: true    # Delete expired IWH signals past their TTL (signals are ephemeral)
 
 # Stack post staleness lifecycle
 stack:
@@ -130,11 +149,35 @@ playbooks:
   staleness_commits: 100                 # Commits since last_verified before flagging stale
   staleness_days: 180                    # Calendar day fallback for staleness
 
+# Topology generation (TOPOLOGY.md output)
+topology:
+  detail_dirs: []                        # Dirs to expand with full file lists in TOPOLOGY.md (empty = none)
+
 # Curator subsystem settings
 curator:
+  autonomy: auto_low                     # Autonomy level: auto_low | full | propose
+  max_llm_calls_per_run: 50              # Max LLM calls per curator run
+  risk_overrides: {}                     # Per-action risk-tier overrides (action_key: low | medium | high)
+  consistency_collect: scope             # Consistency-check scope: off | scope | full
+  verify_after_sweep: false              # Re-run validate_library() after dispatch and record before/after delta
   prepare_indexes: true                  # Phase 0: refresh symbol/link graphs before collect (opt-out for large libraries)
   reactive_bootstrap_regenerate: false   # When true, reactive post-edit hook invokes archivist LLM regen (counts against max_llm_calls_per_run)
   two_pass_collect: true                 # Phase 2: two-pass hash/graph collect with 70/30 budget split (kill-switch)
+  deprecation:
+    ttl_commits: 50                      # Commits before curator-deprecated artifacts hard-delete
+  budget:
+    token_limits:
+      design_file: 4000                  # Token budget for design files (Budget Trimmer sub-agent)
+      start_here: 3000                   # Token budget for START-HERE files
+      handoff: 2000                      # Token budget for HANDOFF files
+  auditing:
+    quality_threshold: 0.7               # Comment quality threshold (0.0–1.0); below this triggers audit
+  reactive:
+    enabled: false                       # Master switch for reactive hooks
+    post_edit: true                      # Run reactive curator on post-edit hook
+    post_bead_close: true                # Run reactive curator on post-bead-close hook
+    validation_failure: true             # Run reactive curator on validation failure
+    severity_threshold: error            # Min severity to trigger reactive curator: error | warning | critical
 
 # AST-based interface extraction
 ast:

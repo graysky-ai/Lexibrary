@@ -1,0 +1,7 @@
+comments:
+- body: Added requires_flag to UpgradeStep and an opt-in step apply_full_default_sections
+    (registered with requires_flag='all'). Helper missing_default_sections() reports
+    BaseModel-typed top-level fields on LexibraryConfig that are absent from on-disk
+    config.yaml; used by both the CLI hint and the new step. The step writes via config_writer._write_with_backup
+    so the canonical header and .bak snapshot are preserved.
+  date: '2026-04-25T21:25:42.694745Z'

@@ -903,6 +903,16 @@ def upgrade(
             help="List the registered upgrade steps and exit without running them.",
         ),
     ] = False,
+    all_sections: Annotated[
+        bool,
+        typer.Option(
+            "--all",
+            help=(
+                "Also materialise every default config section into "
+                "config.yaml. Existing sections are left untouched."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Bring this project's Lexibrary surface up to current standards.
 
@@ -915,23 +925,33 @@ def upgrade(
     ``[updated]``.
 
     Run ``lexictl upgrade --list`` to see the registered steps without
-    executing them.
+    executing them. Pass ``--all`` to additionally write every default
+    config section to ``.lexibrary/config.yaml``.
     """
-    from lexibrary.config.loader import load_config  # noqa: PLC0415
     from lexibrary.upgrade import UPGRADE_STEPS, run_upgrade  # noqa: PLC0415
+    from lexibrary.upgrade.steps import missing_default_sections  # noqa: PLC0415
 
     if list_steps:
         info("Registered upgrade steps (run in order):\n")
         for step in UPGRADE_STEPS:
-            info(f"  {step.name}")
+            suffix = (
+                f"  (requires --{step.requires_flag})"
+                if step.requires_flag is not None
+                else ""
+            )
+            info(f"  {step.name}{suffix}")
             info(f"    {step.description}")
         return
+
+    from lexibrary.config.loader import load_config  # noqa: PLC0415
 
     project_root = require_project_root()
     config = load_config(project_root)
 
+    flags: set[str] = {"all"} if all_sections else set()
+
     info(f"Upgrading {project_root.name}...\n")
-    results = run_upgrade(project_root, config)
+    results = run_upgrade(project_root, config, flags=flags)
 
     # Per-step report
     for r in results:
@@ -947,6 +967,20 @@ def upgrade(
         info("\nProject already up to date.")
     else:
         info(f"\nUpgrade complete. {changed_count} step(s) made changes.")
+
+    # Hint about default sections — suppressed when --all was used
+    # (the user already chose to expand) or when nothing is missing.
+    if not all_sections:
+        config_path = project_root / ".lexibrary" / "config.yaml"
+        missing = missing_default_sections(config_path)
+        if missing:
+            count = len(missing)
+            noun = "section is" if count == 1 else "sections are"
+            info(
+                f"\n{count} config {noun} using defaults — run "
+                f"`lexictl upgrade --all` to add all default sections to "
+                f"config.yaml."
+            )
 
 
 @lexictl_app.command()

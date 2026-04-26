@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -775,6 +776,82 @@ Project root
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert "No .lexibrary/" in result.output  # type: ignore[union-attr]
 
+    def test_validate_version_matches_emits_info_line(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When config version equals installed, validate prints a match info line."""
+        import lexibrary  # noqa: PLC0415
+
+        monkeypatch.setattr(lexibrary, "__version__", "9.9.9")
+
+        project = _setup_validate_project(tmp_path)
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: .\nlexibrary_version: '9.9.9'\n"
+        )
+
+        result = self._invoke(project, ["validate"])
+        output = result.output  # type: ignore[union-attr]
+        assert "Lexibrary version: 9.9.9 (matches installed)" in output
+
+    def test_validate_version_unstamped_emits_warning(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When lexibrary_version is missing, validate warns and points at upgrade."""
+        import lexibrary  # noqa: PLC0415
+
+        monkeypatch.setattr(lexibrary, "__version__", "9.9.9")
+
+        project = _setup_validate_project(tmp_path)
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: .\n"
+        )
+
+        result = self._invoke(project, ["validate"])
+        output = result.output  # type: ignore[union-attr]
+        assert "Lexibrary version not stamped in config.yaml" in output
+        assert "9.9.9" in output
+        assert "lexictl upgrade" in output
+
+    def test_validate_version_older_emits_warning(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An older config version triggers the upgrade-required warning."""
+        import lexibrary  # noqa: PLC0415
+
+        monkeypatch.setattr(lexibrary, "__version__", "9.9.9")
+
+        project = _setup_validate_project(tmp_path)
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: .\nlexibrary_version: '0.5.0'\n"
+        )
+
+        result = self._invoke(project, ["validate"])
+        output = result.output  # type: ignore[union-attr]
+        assert "Lexibrary version mismatch" in output
+        assert "config.yaml says 0.5.0" in output
+        assert "installed is 9.9.9" in output
+        assert "Run `lexictl upgrade`" in output
+
+    def test_validate_version_newer_emits_downgrade_warning(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A newer config version triggers the downgrade-noted warning."""
+        import lexibrary  # noqa: PLC0415
+
+        monkeypatch.setattr(lexibrary, "__version__", "0.6.3")
+
+        project = _setup_validate_project(tmp_path)
+        (project / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: .\nlexibrary_version: '9.9.9'\n"
+        )
+
+        result = self._invoke(project, ["validate"])
+        output = result.output  # type: ignore[union-attr]
+        assert "Lexibrary version mismatch" in output
+        assert "config.yaml says 9.9.9" in output
+        assert "installed is 0.6.3" in output
+        assert "downgraded" in output
+
 
 # ---------------------------------------------------------------------------
 # Status command tests
@@ -1139,6 +1216,59 @@ class TestUpgradeCommand:
         assert result.exit_code == 0  # type: ignore[union-attr]
         assert (tmp_path / "CLAUDE.md").exists()
         assert (tmp_path / "AGENTS.md").exists()
+
+    def test_upgrade_without_all_only_hints(self, tmp_path: Path) -> None:
+        """Without --all, the CLI prints the missing-section hint and does not write sections."""
+        import yaml as _yaml  # noqa: PLC0415
+
+        (tmp_path / ".lexibrary").mkdir()
+        (tmp_path / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: .\nproject_name: m\nlexibrary_version: '0.1.0'\n"
+        )
+
+        result = self._invoke(tmp_path, ["upgrade"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "lexictl upgrade --all" in output
+        assert "config sections" in output or "config section" in output
+
+        cfg = _yaml.safe_load((tmp_path / ".lexibrary" / "config.yaml").read_text())
+        # Sections like ``concepts``, ``llm`` should NOT have been added.
+        assert "concepts" not in cfg
+        assert "llm" not in cfg
+
+    def test_upgrade_all_writes_default_sections(self, tmp_path: Path) -> None:
+        """``upgrade --all`` writes every BaseModel section into config.yaml."""
+        import yaml as _yaml  # noqa: PLC0415
+        from pydantic import BaseModel  # noqa: PLC0415
+
+        from lexibrary.config.schema import LexibraryConfig  # noqa: PLC0415
+
+        (tmp_path / ".lexibrary").mkdir()
+        (tmp_path / ".lexibrary" / "config.yaml").write_text(
+            "scope_roots:\n  - path: .\nproject_name: m\nlexibrary_version: '0.1.0'\n"
+        )
+
+        result = self._invoke(tmp_path, ["upgrade", "--all"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "[updated] full-default-sections" in output
+        # The hint must be suppressed when --all was used.
+        assert "lexictl upgrade --all" not in output
+
+        cfg = _yaml.safe_load((tmp_path / ".lexibrary" / "config.yaml").read_text())
+        for name, info in LexibraryConfig.model_fields.items():
+            ann = info.annotation
+            if isinstance(ann, type) and issubclass(ann, BaseModel):
+                assert name in cfg
+
+    def test_upgrade_list_marks_flagged_steps(self, tmp_path: Path) -> None:
+        """``upgrade --list`` indicates which steps require an opt-in flag."""
+        result = self._invoke(tmp_path, ["upgrade", "--list"])
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        output = result.output  # type: ignore[union-attr]
+        assert "full-default-sections" in output
+        assert "requires --all" in output
 
 
 # ---------------------------------------------------------------------------

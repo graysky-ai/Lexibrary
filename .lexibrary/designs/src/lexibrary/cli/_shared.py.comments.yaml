@@ -1,0 +1,7 @@
+comments:
+- body: _run_validate now ends every plain-text path (default render and --fix mode)
+    by calling _emit_lexibrary_version_check, which compares config.lexibrary_version
+    against lexibrary.__version__ and emits one of four messages (match info, unstamped
+    warn, older warn, newer 'downgraded' warn). Suppressed for --json and --ci to
+    keep their output formats clean. Never affects exit code.
+  date: '2026-04-25T21:25:52.801471Z'

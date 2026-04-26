@@ -1,0 +1,5 @@
+comments:
+- body: run_upgrade now accepts flags (Iterable[str]); steps with requires_flag are
+    skipped unless that flag is in the set. Always-on steps (requires_flag is None)
+    keep running unconditionally.
+  date: '2026-04-25T21:25:52.599127Z'
